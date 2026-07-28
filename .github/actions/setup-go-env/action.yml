@@ -1,0 +1,29 @@
+name: Setup Go env
+description: Shared Go environment setup
+
+inputs:
+  go-version:
+    required: false
+    default: '1.26.5'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: true
+
+    - name: Display Go version
+      shell: bash
+      run: go version
+
+    - name: what do we have
+      shell: bash
+      run: ls
+
+    - name: Get dependencies
+      shell: bash
+      run: |
+        go mod tidy
+        go get -x ./...

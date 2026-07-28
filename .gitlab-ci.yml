@@ -1,0 +1,215 @@
+image : os/oraclelinux:8
+
+.periodic-validation-common-rules:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"
+    - if: $OGD_TEST_CATEGORY != null
+      when: on_success
+    - when: never
+
+.mr-common-rules:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TITLE =~ /^(\[Draft\]|\(Draft\)|Draft:)/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH
+      when: on_success
+    - when: never
+
+variables:
+  GIT_STRATEGY: fetch
+  GIT_DEPTH: 1
+  GOLANG_VERSION: 1.26.5
+  GOPATH: $CI_PROJECT_DIR/.go
+  ORACLE_DRIVER_MODULE: "github.com/oracle/go-driver/oracle"
+  CI_DEBUG_SERVICES: "false"
+  SCHEDULED_CONFIG: "pipeline_test"
+  RUN_DESCRIPTION: $CI_PIPELINE_SCHEDULE_DESCRIPTION
+
+
+before_script:
+    - export http_proxy="http://$ORACLE_HTTP_PROXY_HOST:$ORACLE_HTTP_PROXY_PORT/"
+    - export https_proxy="http://$ORACLE_HTTP_PROXY_HOST:$ORACLE_HTTP_PROXY_PORT/"
+    - export no_proxy="*.us.oracle.com|*.oraclecorp.com"
+    # need this for cache to be pulled and GOPATH to be valid
+    - mkdir -p $GOPATH
+    - export PATH=$GOPATH/go/bin/:/bin:/usr/bin/:$PATH
+
+
+default:
+  cache:
+    - key: $CI_COMMIT_REF_SLUG
+      policy: pull-push
+      paths:
+        - $CI_PROJECT_DIR/.go
+
+stages:
+  - setup_image
+  - check
+  - build
+  - test
+  - function_validation
+  - documentation
+  - deploy
+
+
+setup_go_env:
+  stage: setup_image
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $OGD_TEST_CATEGORY != null
+      when: on_success
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TITLE =~ /^(\[Draft\]|\(Draft\)|Draft:)/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH
+      when: on_success
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: on_success
+    - when: never
+  script:
+    # grab go and extract it
+    - curl --silent --show-error --location https://go.dev/dl/go$GOLANG_VERSION.linux-amd64.tar.gz | tar  --gunzip --extract --directory=$GOPATH --file=-
+    # sanity
+    - $GOPATH/go/bin/go version
+    # dependencies
+    - $GOPATH/go/bin/go get -x ./...
+    # install gcc for concurrency checks
+    #- /usr/bin/dnf install -y --installroot=$OPT_INSTALL_DIR gcc
+    #- $OPT_INSTALL_DIR/bin/gcc --version
+
+check_format:
+  extends:
+    - .mr-common-rules
+  stage: check
+  script:
+    - $GOPATH/go/bin/gofmt -l $(find $CI_PROJECT_DIR -type f \( -not -path '*/.go/*' -a -not -path */.git/* \) -name \*.go) | awk ' {print $0} END {exit NR}'
+
+vet:
+  extends:
+    - .mr-common-rules
+  stage: check
+  script:
+    - $GOPATH/go/bin/go get -x ./...
+    - $GOPATH/go/bin/go vet $($GOPATH/go/bin/go list $CI_PROJECT_DIR/... | egrep -v /vendor/)
+
+unit_tests:
+  extends:
+    - .mr-common-rules
+  stage: test
+  timeout: 400s
+  script:
+    - $GOPATH/go/bin/go get -x ./...
+    - $GOPATH/go/bin/go test -parallel=10  -shuffle=on -v -coverprofile=$CI_PROJECT_DIR/.go/coverage-ttc.out  $($GOPATH/go/bin/go list $CI_PROJECT_DIR/... | grep -v /vendor/) -run TestCategoryExecutor -test.category="unitary"
+
+
+
+#check_concurrency:
+#  extends:
+#    - .mr-common-rules
+#  stage: test
+#  script:
+#    - export CGO_ENABLED=1
+#    - echo $PATH
+#    - /bin/ls $OPT_INSTALL_DIR
+#    - $GOPATH/go/bin/go get -x ./...
+#    - $GOPATH/go/bin/go test -v -race -short $($GOPATH/go/bin/go list $CI_PROJECT_DIR/... | egrep -v /vendor/)
+#
+
+
+check_mem_usage:
+  extends:
+    - .mr-common-rules
+  stage: test
+  script:
+    # see later as it requires Clang/LLVM
+    #- $GOPATH/go/bin/go test -v -msan -short $($GOPATH/go/bin/go list $CI_PROJECT_DIR/... | grep -v /vendor/)
+    - echo "enough for now."
+
+
+coverage:
+  extends:
+    - .mr-common-rules
+  needs: ["unit_tests"]
+  stage: test
+  script:
+    # we accept 80% and more
+    - $GOPATH/go/bin/go tool cover -func $CI_PROJECT_DIR/.go/coverage-ttc.out | awk 'BEGIN {ec=0} {split($1,t,":") ; sub(/%$/,"",$3) ; files[t[1]]+=int($3) ; files_a[t[1]]++} END {for (k in files) { printf ("%80s --> %d%%\n",k,files[k]/files_a[k]);if ((files[k]/files_a[k]) < 80 ) ec=1}} END {exit ec}'
+  allow_failure: true
+
+build:
+  extends:
+    - .mr-common-rules
+  stage: build
+  script:
+    # dependencies
+    - $GOPATH/go/bin/go get -x ./...
+    - $GOPATH/go/bin/go build ./...
+
+doc:
+  stage: documentation
+  tags:
+    - JDBC.tools
+  script:
+    # TODO : find better than that
+    #  we are running as gitlab-runner
+    - /bin/rsync -avu --delete --exclude .git/ $CI_PROJECT_DIR/ /usr/local/home/gitlab-runner/wks/go-driver/
+    - /bin/systemctl --user restart  go-driver-godoc.service
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - when : never
+
+deploy:
+  stage: deploy
+  script:
+    - echo "one day, we gonna have something here"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - when : never
+
+scheduled_validate_driver:
+  tags:
+    - JDBC.service.enabled
+  extends:
+    - .periodic-validation-common-rules
+  stage: function_validation
+  timeout: 360s
+  services:
+    - name: database/free:latest-lite-cooked 
+      alias: oracledb
+  script:
+    - echo "'$RUN_DESCRIPTION'"
+    - $GOPATH/go/bin/go get -x ./...
+    - $GOPATH/go/bin/go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=$GO_DRIVER_CONFIGURATIONS -driver.config.name=${SCHEDULED_CONFIG}  -test.category=$OGD_TEST_CATEGORY
+
+validate_driver:
+  tags:
+    - JDBC.service.enabled
+  extends:
+    - .mr-common-rules
+  stage: function_validation
+  timeout: 800s
+  services:
+    - name: database/free:latest-lite-cooked
+      alias: oracledb
+  script:
+    - $GOPATH/go/bin/go get -x ./...
+    - mkdir -p $CI_PROJECT_DIR/configurations
+    - cp $WALLET $CI_PROJECT_DIR/configurations/ewallet.pem
+    - $GOPATH/go/bin/go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=$GO_DRIVER_CONFIGURATIONS -driver.config.name=pipeline_test  -test.category="sanity"
+
+
+bench_driver:
+  tags:
+    - JDBC.service.enabled
+  extends:
+    - .mr-common-rules
+  stage: function_validation
+  timeout: 800s
+  services:
+    - name: database/free:latest-lite-cooked
+      alias: oracledb
+  script:
+    - $GOPATH/go/bin/go get -x ./...
+    - $GOPATH/go/bin/go test -parallel=10  -shuffle=on -v $($GOPATH/go/bin/go list $CI_PROJECT_DIR/oracle/... | egrep -v /vendor/) -run=^$ -bench=. -benchmem -benchtime=10x -driver.config.filename=$GO_DRIVER_CONFIGURATIONS -driver.config.name=pipeline_test
+

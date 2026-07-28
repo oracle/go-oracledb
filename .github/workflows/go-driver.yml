@@ -1,0 +1,133 @@
+name: pull-request-validation
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch name
+        required: true
+        type: string
+env:
+  VALIDATION_USER_NAME: ogd_test_user
+  ORACLE_DRIVER_MODULE: "github.com/oracle/go-driver/oracle"
+  GO_DRIVER_CONFIGURATIONS: |-
+    [
+      {
+        "config_name": "pipeline_test",
+        "enabled": true,
+        "database_version": TEST_DB_VERSION,
+        "driver": {
+          "name": "oraclego"
+        },
+        "database": {
+          "host": "TEST_DB_HOST",
+          "port": 1521,
+          "servicename": "TEST_DB_SERVICE",
+          "protocol": "tcp"
+        },
+        "credentials": {
+          "username": "TEST_DB_USER",
+          "password": "TEST_DB_PASSWORD"
+        }
+      }
+    ]
+
+
+concurrency:
+  group: "${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  check_format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+      - uses: ./.github/actions/setup-go-env
+      - run: "gofmt -l $(find ${{ github.workspace }} -type f \\( -not -path '*/.go/*' -a -not -path */.git/* \\) -name \\*.go) | awk ' {print $0} END {exit NR}'"
+
+  check_source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+      - uses: ./.github/actions/setup-go-env
+      - run: go vet ./...
+
+  build:
+    needs:
+      - check_source
+      - check_format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - run: go build ./...
+
+  unit_tests:
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - run: go test -parallel=10  -shuffle=on -v -coverprofile=${{ github.workspace }}/coverage-results.out  $(go list ${{ github.workspace }}/... | grep -v /vendor/) -run TestCategoryExecutor -test.category="unitary"
+      - uses: actions/upload-artifact@v4
+        with:
+            name: coverage
+            path: coverage-results.out
+
+  coverage:
+    needs:
+      - unit_tests
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: .
+      - run: go tool cover -func ${{ github.workspace }}/coverage-results.out | awk 'BEGIN {ec=0} {split($1,t,":") ; sub(/%$/,"",$3) ; files[t[1]]+=int($3) ; files_a[t[1]]++} END {for (k in files) { printf ("%80s --> %d%%\n",k,files[k]/files_a[k]);if ((files[k]/files_a[k]) < 80 ) ec=1}} END {exit ec}'
+
+
+  validate_driver:
+    runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
+    strategy:
+      matrix:
+        include:
+          - rdbms: base-database-service-26ai
+    needs:
+      - unit_tests
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - name: Create test database
+        id: create_database
+        uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: create
+          user: ${{ env.VALIDATION_USER_NAME }}
+      - uses: ./.github/actions/setup-test-configuration
+        with:
+          configuration-content: ${{ env.GO_DRIVER_CONFIGURATIONS }}
+          database-version: ${{ steps.create_database.outputs.database_version }}
+          database-service: ${{ steps.create_database.outputs.database_service }}
+          database-host: ${{ steps.create_database.outputs.database_host }}
+          database-user: ${{ env.VALIDATION_USER_NAME }}
+          database-password: ${{ steps.create_database.outputs.database_password }}
+      - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
+      - uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
+        if: always()
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: delete
+          user: ${{ env.VALIDATION_USER_NAME }}

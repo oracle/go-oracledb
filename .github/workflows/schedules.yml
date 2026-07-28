@@ -1,0 +1,99 @@
+name: functional-validation
+on:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '0 1 * * 1-5'
+      timezone: "America/New_York"
+      inputs:
+        branch:
+          description: Branch name
+          required: false
+          default: main
+          type: string
+
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch name
+        required: true
+        type: string
+
+env:
+  ORACLE_DRIVER_MODULE: "github.com/oracle/go-driver/oracle"
+  VALIDATION_USER_NAME: ogd_test_user
+  GO_DRIVER_CONFIGURATIONS: |-
+    [
+      {
+        "config_name": "pipeline_test",
+        "enabled": true,
+        "database_version": TEST_DB_VERSION,
+        "driver": {
+          "name": "oraclego"
+        },
+        "database": {
+          "host": "TEST_DB_HOST",
+          "port": 1521,
+          "servicename": "TEST_DB_SERVICE",
+          "protocol": "tcp"
+        },
+        "credentials": {
+          "username": "TEST_DB_USER",
+          "password": "TEST_DB_PASSWORD"
+        }
+      }
+    ]
+concurrency:
+  group: "${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+
+  functional_validate_driver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - name: Create test database
+        id: create_database
+        uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: create
+          user: ${{ env.VALIDATION_USER_NAME }}
+      - uses: ./.github/actions/setup-test-configuration
+        with:
+          configuration-content: ${{ env.GO_DRIVER_CONFIGURATIONS }}
+          database-version: ${{ steps.create_database.outputs.database_version }}
+          database-service: ${{ steps.create_database.outputs.database_service }}
+          database-host: ${{ steps.create_database.outputs.database_host }}
+          database-user: ${{ env.VALIDATION_USER_NAME }}
+          database-password: ${{ steps.create_database.outputs.database_password }}
+      - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="functional"
+
+  bench_driver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go-env
+      - name: Create test database
+        id: create_database
+        uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: create
+          user: ${{ env.VALIDATION_USER_NAME }}
+      - uses: ./.github/actions/setup-test-configuration
+        with:
+          configuration-content: ${{ env.GO_DRIVER_CONFIGURATIONS }}
+          database-version: ${{ steps.create_database.outputs.database_version }}
+          database-service: ${{ steps.create_database.outputs.database_service }}
+          database-host: ${{ steps.create_database.outputs.database_host }}
+          database-user: ${{ env.VALIDATION_USER_NAME }}
+          database-password: ${{ steps.create_database.outputs.database_password }}
+      - run: go test -parallel=10  -shuffle=on -v $(go list ${{ github.workspace }}/oracle/... | egrep -v /vendor/) -run=^$ -bench=. -benchmem -benchtime=10x -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test
+
+
