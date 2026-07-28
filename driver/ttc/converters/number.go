@@ -658,6 +658,7 @@ func FromNumber(inputData []byte) (mantissa uint64, negative bool, exponent int,
 	// Small negative numbers get a trailing 0x66 byte per Oracle convention
 	if negative && inputData[len(inputData)-1] == _negTerminatorByte {
 		if len(inputData) == 1 {
+			// Protection against panic because of  a malicious or compromised Oracle TTC peer
 			return 0, negative, exponent, mantissaDigits,
 				common.NewOracleError(common.ConverterExpectedFormat, nil,
 					"NUMBER", "Decode", common.ReasonInvalidFormat, "_negTerminatorByte")
@@ -738,6 +739,7 @@ func _fromNumberBig(inputData []byte) (mantissa *big.Int, negative bool, exponen
 	// Small negative numbers may have trailing 0x66 terminator
 	if negative && inputData[len(inputData)-1] == _negTerminatorByte {
 		if len(inputData) == 1 {
+			// Protection against panic because of  a malicious or compromised Oracle TTC peer
 			return nil, negative, exponent, mantissaDigits,
 				common.NewOracleError(common.ConverterExpectedFormat, nil,
 					"NUMBER", "Decode", common.ReasonInvalidFormat, "_negTerminatorByte")

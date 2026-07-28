@@ -191,7 +191,8 @@ struct. The configuration items are:
 3. IncludeSensitive: Is sensitive information allowed in the logs ?
 4. Truncate: Does the driver truncate the file at startup ? 
 
-The _ApplyDriverLoggingConfig_ can be call more than once.
+_ApplyDriverLoggingConfig_ can be called more than once when the logging configuration needs to change during the application lifetime.
+Note that this method is not thread-safe.
 
 Example :
 ``` go

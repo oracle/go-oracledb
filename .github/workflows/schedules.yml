@@ -1,8 +1,5 @@
 name: functional-validation
 on:
-  pull_request:
-    branches:
-      - main
   schedule:
     - cron: '0 1 * * 1-5'
       timezone: "America/New_York"

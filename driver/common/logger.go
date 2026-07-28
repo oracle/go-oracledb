@@ -76,6 +76,8 @@ func InitLoggingWithConfig(config *OracleLoggingConfig) {
 		} else {
 			return
 		}
+	} else {
+		ready.Store(true)
 	}
 
 	configToUse.AssignFromFlags()
