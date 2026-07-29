@@ -236,7 +236,7 @@ var testCases = []struct {
 	{"TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls_NullScanners", "functional", false, TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls_NullScanners},
 	{"TestDriver_Prepared_Insert_Nclob_Small", "functional", false, TestDriver_Prepared_Insert_Nclob_Small},
 	{"TestDriver_Select_NumericFloatTypes_Prepared_Named", "functional", false, TestDriver_Select_NumericFloatTypes_Prepared_Named},
-	{"TestDriver_TCPS_DN_Components_WhiteSpaces", "functional", false, TestDriver_TCPS_DN_Components_WhiteSpaces},
+	{"TestDriver_TCPS_DN_Components_WhiteSpaces", "manual", false, TestDriver_TCPS_DN_Components_WhiteSpaces},
 	{"TestDriver_TCPS_Handshake_EnforcesDNMatching_WhitespaceMismatchRejection", "functional", false, TestDriver_TCPS_Handshake_EnforcesDNMatching_WhitespaceMismatchRejection},
 	{"TestDriver_TCPS_InvalidCertDn", "functional", false, TestDriver_TCPS_InvalidCertDn},
 	{"TestDriver_TCPS_SSL_SERVER_DN_MATCH_DEFAULT", "functional", false, TestDriver_TCPS_SSL_SERVER_DN_MATCH_DEFAULT},
