@@ -46,9 +46,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
   functional_validate_driver:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
+    strategy:
+      matrix:
+        include:
+          - rdbms: base-database-service-26ai
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +74,11 @@ jobs:
       - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="functional"
 
   bench_driver:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
+    strategy:
+      matrix:
+        include:
+          - rdbms: base-database-service-26ai
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
