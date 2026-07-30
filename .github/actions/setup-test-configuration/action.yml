@@ -2,28 +2,7 @@ name: Setup test configuration file
 description: Shared test environment setup.
 # This action takes few inputs and generate a JSON configuration file
 # suitable for GO driver tests.
-env:
-  GO_DRIVER_CONFIGURATIONS: |-
-    [
-      {
-        "\"config_name\"": "\"pipeline_test\"",
-        "\"enabled\"": true,
-        "\"database_version\"": TEST_DB_VERSION,
-        "\"driver\"": {
-        "\"name\"": "\"oracledb\""
-        },
-        "\"database\"": {
-          "\"host\"": TEST_DB_HOST,
-          "\"port\"": 1521,
-          "\"servicename\"": TEST_DB_SERVICE,
-          "\"protocol\"": "\"tcp\""
-        },
-        "\"credentials"\": {
-          "\"username"\": TEST_DB_USER,
-          "\"password"\": TEST_DB_PASSWORD
-        }
-      }
-    ]
+
 inputs:
   configuration-file:
     required: false
@@ -44,6 +23,28 @@ runs:
   steps:
     - name: Write config to file
       shell: bash
+      env:
+       GO_DRIVER_CONFIGURATIONS: |-
+        [
+         {
+          "\"config_name\"": "\"pipeline_test\"",
+          "\"enabled\"": true,
+          "\"database_version\"": TEST_DB_VERSION,
+          "\"driver\"": {
+          "\"name\"": "\"oracledb\""
+         },
+         "\"database\"": {
+           "\"host\"": TEST_DB_HOST,
+           "\"port\"": 1521,
+           "\"servicename\"": TEST_DB_SERVICE,
+           "\"protocol\"": "\"tcp\""
+         },
+         "\"credentials"\": {
+            "\"username"\": TEST_DB_USER,
+            "\"password"\": TEST_DB_PASSWORD
+         }
+        }
+       ]
       run: |
         echo -n  "${{ env.GO_DRIVER_CONFIGURATIONS }}" \
           | sed \
