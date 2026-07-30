@@ -26,19 +26,19 @@ env:
       {
         "config_name": "pipeline_test",
         "enabled": true,
-        "database_version": 26,
+        "database_version": TEST_DB_VERSION,
         "driver": {
           "name": "oraclego"
         },
         "database": {
-          "host": "localhost",
+          "host": "TEST_DB_HOST",
           "port": 1521,
-          "servicename": "FREEPDB1",
+          "servicename": "TEST_DB_SERVICE",
           "protocol": "tcp"
         },
         "credentials": {
-          "username": "ogd_test_user",
-          "password": "tiger"
+          "username": "TEST_DB_USER",
+          "password": "TEST_DB_PASSWORD"
         }
       }
     ]
@@ -56,13 +56,17 @@ jobs:
       - uses: ./.github/actions/setup-go-env
       - uses: gvenzl/setup-oracle-free@v1
         with:
-          app-user: ${VALIDATION_USER_NAME}
-          app-user-password: ${VALIDATION_USER_PASSWORD}
+          app-user: ${{ env.VALIDATION_USER_NAME }}
+          app-user-password: ${{ secrets.test_user_password }}
           container-name: oracledb
-      - name: Write config to file
-        shell: bash
-        run: |
-          printf '%s' "$GO_DRIVER_CONFIGURATIONS" > ${{ github.workspace }}/go-driver-config.json
+      - uses: ./.github/actions/setup-test-configuration
+        with:
+          configuration-content: ${{ env.GO_DRIVER_CONFIGURATIONS }}
+          database-version: "26"
+          database-service: "FREEPDB1"
+          database-host: "localhost"
+          database-user: ${{ env.VALIDATION_USER_NAME }}
+          database-password: ${{ secrets.test_user_password }}
       - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="functional"
 
   bench_driver:
@@ -73,13 +77,17 @@ jobs:
       - uses: ./.github/actions/setup-go-env
       - uses: gvenzl/setup-oracle-free@v1
         with:
-          app-user: ${VALIDATION_USER_NAME}
-          app-user-password: ${VALIDATION_USER_PASSWORD}
+          app-user: ${{ env.VALIDATION_USER_NAME }}
+          app-user-password: ${{ secrets.test_user_password }}
           container-name: oracledb
-      - name: Write config to file
-        shell: bash
-        run: |
-          printf '%s' "$GO_DRIVER_CONFIGURATIONS" > ${{ github.workspace }}/go-driver-config.json
+      - uses: ./.github/actions/setup-test-configuration
+        with:
+          configuration-content: ${{ env.GO_DRIVER_CONFIGURATIONS }}
+          database-version: "26"
+          database-service: "FREEPDB1"
+          database-host: "localhost"
+          database-user: ${{ env.VALIDATION_USER_NAME }}
+          database-password: ${{ secrets.test_user_password }}
       - run: go test -parallel=10  -shuffle=on -v $(go list ${{ github.workspace }}/oracle/... | egrep -v /vendor/) -run=^$ -bench=. -benchmem -benchtime=10x -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test
 
 
