@@ -25,19 +25,12 @@ runs:
   steps:
     - name: Write config to file
       shell: bash
-      env:
-        CONFIGURATION_CONTENT: ${{ inputs.configuration-content }}
-        CONFIGURATION_FILE: ${{ inputs.configuration-file }}
-        TEST_DB_VERSION_VALUE: ${{ inputs.database-version }}
-        TEST_DB_SERVICE_VALUE: ${{ inputs.database-service }}
-        TEST_DB_USER_VALUE: ${{ inputs.database-user }}
-        TEST_DB_PASSWORD_VALUE: ${{ inputs.database-password }}
       run: |
         echo -n  "${{ inputs.configuration-content }}" \
           | sed \
               -e "s/TEST_DB_VERSION/${{ inputs.database-version }}/g" \
               -e "s/TEST_DB_SERVICE/${{ inputs.database-service }}/g" \
-              -e "s/TEST_DB_HOST/${{ inputs.database-service }}/g" \
+              -e "s/TEST_DB_HOST/${{ inputs.database-host }}/g" \
               -e "s/TEST_DB_USER/${{ inputs.database-user }}/g" \
               -e "s/TEST_DB_PASSWORD/${{ inputs.database-password }}/g" \
           > "${{ inputs.configuration-file }}"
