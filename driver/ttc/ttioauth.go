@@ -87,7 +87,7 @@ const (
 	authClientCapabilities = "AUTH_CLIENT_CAPABILITIES"
 	authPbkdf2VgenCount    = "AUTH_PBKDF2_VGEN_COUNT"
 	authPbkdf2SderCount    = "AUTH_PBKDF2_SDER_COUNT"
-	driverNameDefault      = "purego"
+	driverNameDefault      = "oracledb"
 	authOraEdition         = "AUTH_ORA_EDITION"
 
 	passwordBufferLength = 2112
