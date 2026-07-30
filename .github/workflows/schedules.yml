@@ -20,7 +20,6 @@ on:
 env:
   ORACLE_DRIVER_MODULE: "github.com/oracle/go-driver/oracle"
   VALIDATION_USER_NAME: ogd_test_user
-  VALIDATION_USER_PASSWORD: tiger
   GO_DRIVER_CONFIGURATIONS: |-
     [
       {
