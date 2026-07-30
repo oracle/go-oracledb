@@ -53,4 +53,5 @@ runs:
               -e "s/TEST_DB_USER/${{ inputs.database-user }}/g" \
               -e "s/TEST_DB_PASSWORD/${{ inputs.database-password }}/g" \
           > "${{ inputs.configuration-file }}"
+        echo "==== JSON CONFIG ===== "
         cat  ${{ inputs.configuration-file }}
