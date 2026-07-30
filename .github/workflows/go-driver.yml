@@ -65,7 +65,6 @@ jobs:
     needs:
       - unit_tests
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go-env
@@ -73,7 +72,7 @@ jobs:
         with:
           name: coverage
           path: .
-      - run: go tool cover -func ${{ github.workspace }}/coverage-results.out | awk 'BEGIN {ec=0} {split($1,t,":") ; sub(/%$/,"",$3) ; files[t[1]]+=int($3) ; files_a[t[1]]++} END {for (k in files) { printf ("%80s --> %d%%\n",k,files[k]/files_a[k]);if ((files[k]/files_a[k]) < 40 ) ec=1}} END {exit ec}'
+      - run: awk 'BEGIN{min=80} /^mode:/ {next} {split($1,a,":"); f=a[1]; s=$2+0; c=$3+0; total[f]+=s; all+=s; if(c>0){covered[f]+=s; cov+=s}} END{for(f in total) printf "%s %.1f%%\n", f, 100*covered[f]/total[f]; pct=all?100*cov/all:0; printf "total: %.1f%%\n", pct; exit(pct>=min?0:1)}' ${{ github.workspace }}/coverage-results.out
 
 
   validate_driver:
