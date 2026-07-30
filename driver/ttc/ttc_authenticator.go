@@ -50,7 +50,7 @@ import (
 // server-side code.
 const maxPasswordBytes = 1024
 
-// PasswordAuthenticator authenticator using user/password O5loon
+// PasswordAuthenticator authenticates using user/password O5 logon.
 type PasswordAuthenticator struct {
 	_username                      common.B1Array
 	_password                      common.B1Array
@@ -62,7 +62,7 @@ type PasswordAuthenticator struct {
 	_logonHelper                   *o5Logon
 }
 
-// NewPasswordAuthenticator instantiate a new password authenticator
+// NewPasswordAuthenticator instantiates a new password authenticator.
 // Parameters:
 //   - username : the username
 //   - password : user password
@@ -77,7 +77,7 @@ func NewPasswordAuthenticator(username, password string, connectString string) *
 	return &pa
 }
 
-// NewPasswordAuthenticatorWithLogonMode instantiate a new password authenticator
+// NewPasswordAuthenticatorWithLogonMode instantiates a new password authenticator.
 // Parameters:
 //   - username : the username
 //   - password : user password
@@ -89,7 +89,7 @@ func NewPasswordAuthenticatorWithLogonMode(username, password string, mode commo
 	return pa
 }
 
-// Authenticate perform authentication
+// Authenticate performs authentication.
 func (pa *PasswordAuthenticator) Authenticate(ctx context.Context) error {
 	common.Odl.Debug("Authenticate start for user", "userName", pa._username)
 
@@ -119,12 +119,12 @@ func (pa *PasswordAuthenticator) validatePasswordLength() error {
 	return nil
 }
 
-// SetShelf sets the shelf to be using within the authenticator
+// SetShelf sets the shelf to use within the authenticator.
 func (pa *PasswordAuthenticator) SetShelf(shelf *ttiShelf[common.MessageType]) {
 	pa._shelf = *shelf
 }
 
-// SetSessionContext sets the session context to be using within the authenticator
+// SetSessionContext sets the session context to use within the authenticator.
 func (pa *PasswordAuthenticator) SetSessionContext(sessCtx *common.SessionContext) {
 	pa._sessionContext = sessCtx
 }

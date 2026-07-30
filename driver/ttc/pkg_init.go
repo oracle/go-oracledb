@@ -78,7 +78,7 @@ var _keyValStaticInfoForOAuthConnectString *list.Element
 var _dummyTerminalName = common.StringToB1Array("unknown")
 var currentUserName common.B1Array
 
-// _initEnvironmentStaticInformation initialize static values from current environement
+// _initEnvironmentStaticInformation initializes static values from the current environment.
 func _initEnvironmentStaticInformation() {
 
 	currentTerminal := common.StringToB1Array("unknown")

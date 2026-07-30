@@ -803,7 +803,7 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 	}
 }
 
-// TestOAuthRPA_UnMarshalFrom_Fail tests successful unmarshaling.
+// TestOAuthRPA_UnMarshalFrom_Fail tests failed unmarshaling.
 func TestOAuthRPA_UnMarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	rpa := NewOAuthRPA().(*OAuthRPA)

@@ -22,12 +22,12 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
 For end-to-end examples, go to the examples subdirectory.
 
 Oracle Database Driver for Go is an implementation of Go's database/sql/driver interface.
-All you need to do, is to import the driver, and you can use the full database/sql API.
+Import the driver to use the full database/sql API.
 
-The driver name is "oracle-db" and the dataSourceName supports both easy connect and Connect Descriptor.
+The driver name is "oracledb", and the Data Source Name supports both Easy Connect and Connect Descriptor.
 
 ``` go
-  db, err := sql.Open("oracle-db", "myuser/mypassword@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=my_host)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=my_service_name)))")
+  db, err := sql.Open("oracledb", "myuser/mypassword@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=my_host)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=my_service_name)))")
   if err != nil {
     return nil, err
   }
@@ -81,9 +81,9 @@ The driver supports several sources of configuration. They apply in the followin
 3. CLI flags.
 4. Configuration set in the Oracle Connector.
 
-The list of supported configuration items are the fields of the `oracle.OracleDriverConfig` struct.
+The list of supported configuration items is the fields of the `oracle.OracleDriverConfig` struct.
 This type can be used to create a new Oracle [connector](https://pkg.go.dev/database/sql/driver#Connector).
-All Easy connect parameters are supported by `oracle.OracleConnectionProperties`.
+All Easy Connect parameters are supported by `oracle.OracleConnectionProperties`.
 
 #### Configuration item naming
 
@@ -93,7 +93,7 @@ in uppercase. As an example, the property oracle.foo.bar maps to the ORACLE_FOO_
 
 There is a direct mapping of `oracle.OracleDriverConfig` fields and nested structs' fields to configuration properties and vice versa.
 
-As an example let's look at connection descriptor:
+As an example, let's look at the connection descriptor:
 
 ``` go
 type OracleDriverConfig struct {
@@ -114,37 +114,36 @@ connectorConfig.ConnectionProperties.Failover=true
 ```
 
 This configuration field maps:
-1. As a CLI flag, e.g. -oracle.go.DriverProperties.Failover_="true".
-2. As an environment variable, e.g.  ORACLE_GO_DRIVERPROPERTIES_FAILOVER_="true".
-3. As a query parameter, e.g. oracle.go.DriverProperties.Failover_="true"
+1. As a CLI flag, e.g. -oracle.go.DriverProperties.Failover="true".
+2. As an environment variable, e.g.  ORACLE_GO_DRIVERPROPERTIES_FAILOVER="true".
+3. As a query parameter, e.g. oracle.go.DriverProperties.Failover="true"
 
-###### Easy connect plus query parameters
+##### Easy Connect plus query parameters
 
-For compatibility with other Oracle drivers, the Easy connect parameters name set in the Data Source Name query parameters
-are the ones listed here https://docs.oracle.com/en/database/oracle/oracle-database/26/netag/support-easy-connect-plus.html
-As an example, the failover property _oracle.go.ConnectionProperties.Failover_ when set as query parameter. translates to 
+For compatibility with other Oracle drivers, the Easy Connect parameter names set in the Data Source Name query parameters
+are the ones listed here: https://docs.oracle.com/en/database/oracle/oracle-database/26/netag/support-easy-connect-plus.html
+As an example, when the failover property _oracle.go.ConnectionProperties.Failover_ is set as a query parameter, it translates to
 myuser/mypassword@//my_host:1521/my_service_name?failover=true.
 
 ##### Display configuration
 
-The `oracle.OracleDriverConfig` struct implements the go Stringer interface.
+The `oracle.OracleDriverConfig` struct implements the Go Stringer interface.
 
 ```go
  conf := oracle.NewOracleDriverConfig()
  fmt.Printf("Oracle configuration: [%v]", conf)
 ```
 
-The _-oracle-db-config-help_ flag can also be set in the application, in that case, all available configuration flags are displayed on STDOUT.
+The _-oracledb-config-help_ flag can also be set in the application. When set, all available configuration flags are displayed on STDOUT.
 
-#### Configurations types
+#### Configuration types
 
-The driver uses the following Golang types for configuration: `oracle.OracleDriverConfig`,
+The driver uses the following Go types for configuration: `oracle.OracleDriverConfig`,
 `oracle.OracleLoggingConfig`, `oracle.OracleCredentials`, `oracle.OracleNLSParameters`,
 `oracle.OracleDriverProperties`, and `oracle.OracleConnectionProperties`.
-To instantiate such objects the *oracle.NewOracleDriverConfig()* and *oracle.NewOracleLoggingConfig()* functions **must** be used.
-They are the only supported way to get new references.
-This method ensures that default values and proper initialization is performed on the struct before the caller can use it.
+Use *oracle.NewOracleDriverConfig()* and *oracle.NewOracleLoggingConfig()* to create these objects.
 
+These functions are the only supported way to obtain new instances, and they ensure each struct is properly initialized with default values before use.
 The `oracle.OracleDriverConfig` type has the _Validate()_ method which validates that all fields
 and all nested type fields are set with valid values.
 
@@ -152,10 +151,10 @@ and all nested type fields are set with valid values.
 
 ##### Connector Configuration
 
-When specific configuration is required, the _sql.OpenDB_ can be used. The required connector is then created with the
+When specific configuration is required, _sql.OpenDB_ can be used. The required connector is then created with the
 _oracle.NewOracleDriverConfig_() API. Once the `oracle.OracleDriverConfig` instance is created and populated with custom
 values, the Validate method will be called before creating connectors.
-Note that when this API is used, the credentials must be provided using Credentials struct. 
+Note that when this API is used, credentials must be provided using the Credentials struct.
 
 ``` go
   connectorConfig := oracle.NewOracleDriverConfig()
@@ -217,7 +216,7 @@ Besides driver properties, here is the list of environment variables that can be
 Errors are returned as `oracle.SQLError` which implements Go's `Error` interface and adds an `ErrorCode() string` function that allows to retrieve the error code which will be either "ORA-XXXXX" for Oracle Database errors, or "OGD-XXXXX" for driver errors.
 
 ``` go
-  db, err := sql.Open("oracle-db", "myuser/mypassword@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=my_host)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=my_service_name)))")
+  db, err := sql.Open("oracledb", "myuser/mypassword@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=my_host)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=my_service_name)))")
   if err != nil {
     if sqlError, ok := err.(oracle.SQLError); ok {
       if sqlError.ErrorCode() == string(oracle.InvalidCredential) {
@@ -308,4 +307,4 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 | `JSON` (21c+) | `string`             |
 
 ## Contributing
-see [CONTRIBUTING](CONTRIBUTING.md)
+See [CONTRIBUTING](CONTRIBUTING.md)

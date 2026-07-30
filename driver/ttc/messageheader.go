@@ -55,14 +55,14 @@ func (mh *messageHeader) UnMarshalFrom(ctx context.Context, engine common.Marsha
 	var err error
 	msgType, err := engine.UnmarshalUB1(ctx)
 	if err != nil {
-		common.Odl.Warn("An error occured while unmarshalling the message type", "error", err)
+		common.Odl.Warn("An error occurred while unmarshalling the message type", "error", err)
 		return common.NewOracleError(common.FailUnmarshal, err, nil)
 	}
 	mh.messageType = common.MessageType(msgType)
 	if isFunction(mh.messageType) {
 		funcType, err := engine.UnmarshalUB1(ctx)
 		if err != nil {
-			common.Odl.Warn("An error occured while unmarshalling the function type", "error", err)
+			common.Odl.Warn("An error occurred while unmarshalling the function type", "error", err)
 			return common.NewOracleError(common.FailUnmarshal, err, nil)
 		}
 		mh.functionType = common.FunctionType(funcType)

@@ -54,7 +54,7 @@ import (
 //  4. Pull the TTIPRO, this should cause the SPF to be treated by the callback
 //     and the TTIPRO to be returned. No message should be left in the streamer
 //  5. Pull the SPF, this should fail, there are no more messages, and the mock
-//     data buffer will return an EOF errror.
+//     data buffer will return an EOF error.
 func TestRegisterServerToClientPiggybacks(t *testing.T) {
 	t.Parallel()
 	// Build payload from captured dump

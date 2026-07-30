@@ -585,7 +585,7 @@ func normalizeBoolean(value string) (bool, error) {
 
 // parses a duration string as milliseconds.
 //  when there is no duration suffix, we assume that the value is in seconds
-//  Negative value ae not allowed
+//  Negative values are not allowed
 //  ex:
 //    "10"  -> 10000
 //    "10s" -> 10000

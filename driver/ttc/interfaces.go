@@ -46,7 +46,7 @@ import (
 
 // Authenticator implementors authenticate against a remote database
 type Authenticator interface {
-	// Authenticate perform authentication
+	// Authenticate performs authentication.
 	// return error on failure. One of the ORACode
 	Authenticate(context.Context) error
 }

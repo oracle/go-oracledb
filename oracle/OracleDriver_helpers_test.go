@@ -102,7 +102,7 @@ func openTestDBWithConfig(cfg *TestConfig) (*sql.DB, error) {
 // openTestDBWithDriverConfig opens a test database connection using the provided driver configuration
 // and performs a ping. The caller owns the returned *sql.DB and must close it.
 func openTestDBWithDriverConfig(cfg *common.OracleDriverConfig) (*sql.DB, error) {
-	db, err := sql.Open("oracle-db", cfg.ConnectDescriptor)
+	db, err := sql.Open("oracledb", cfg.ConnectDescriptor)
 	if err != nil {
 		return nil, err
 	}

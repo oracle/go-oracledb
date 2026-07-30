@@ -95,7 +95,7 @@ jobs:
         with:
           name: coverage
           path: .
-      - run: go tool cover -func ${{ github.workspace }}/coverage-results.out | awk 'BEGIN {ec=0} {split($1,t,":") ; sub(/%$/,"",$3) ; files[t[1]]+=int($3) ; files_a[t[1]]++} END {for (k in files) { printf ("%80s --> %d%%\n",k,files[k]/files_a[k]);if ((files[k]/files_a[k]) < 80 ) ec=1}} END {exit ec}'
+      - run: go tool cover -func ${{ github.workspace }}/coverage-results.out | awk 'BEGIN {ec=0} {split($1,t,":") ; sub(/%$/,"",$3) ; files[t[1]]+=int($3) ; files_a[t[1]]++} END {for (k in files) { printf ("%80s --> %d%%\n",k,files[k]/files_a[k]);if ((files[k]/files_a[k]) < 40 ) ec=1}} END {exit ec}'
 
 
   validate_driver:

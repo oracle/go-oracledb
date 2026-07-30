@@ -157,7 +157,7 @@ func DecodeIntervalYearToMonth(value common.B1Array) (string, error) {
 			"DecodeIntervalYearToMonth: unexpected interval value length",
 			"value",
 			value,
-			"expected-lenght",
+			"expected-length",
 			_intervalYTMEncodingLen)
 		return "", common.NewOracleError(common.ConverterExpectedFormat, nil, "IntervalYearToMonth", "Decode", common.ReasonInvalidLength, _intervalYTMEncodingLen)
 	}
@@ -358,7 +358,7 @@ func DecodeIntervalDayToSecond(value common.B1Array) (string, error) {
 			"DecodeIntervalDayToSecond: unexpected interval value length",
 			"value",
 			value,
-			"expected-lenght",
+			"expected-length",
 			_intervalDSEncodingLen)
 		return "", common.NewOracleError(common.ConverterExpectedFormat, nil, "IntervalDayToSecond", "Decode", common.ReasonInvalidLength, _intervalDSEncodingLen)
 	}
