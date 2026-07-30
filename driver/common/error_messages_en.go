@@ -438,12 +438,12 @@ func initMessagesEn() {
 	// Comment:  N/A
 	message.SetString(language.English, string(AlreadyInTransaction), "Isolation level not supported")
 	// Document: No
-	// Cause:    An error occured while committing or rolling back the transaction.
+	// Cause:    An error occurred while committing or rolling back the transaction.
 	// Action:   Try agian.
 	// Comment:  N/A
-	message.SetString(language.English, string(ErrorInTransaction), "An error occured while performing transaction operation %s")
+	message.SetString(language.English, string(ErrorInTransaction), "An error occurred while performing transaction operation %s")
 	// Document: No
-	// Cause:    An error occured while executing the ALTER SESSION statement to
+	// Cause:    An error occurred while executing the ALTER SESSION statement to
 	//           set the transaction ISOLATION LEVEL.
 	// Action:   Verify the cause of the error, and try again.
 	// Comment:  N/A

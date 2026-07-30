@@ -68,7 +68,7 @@ type Factory interface {
 }
 
 // MessageCreationFunc defines the function signature for creating new messages.
-// This function is used during registration to instantiate a new message implementor.
+// This function is used during registration to instantiate new message implementors.
 type MessageCreationFunc func() common.Message[common.MessageType]
 
 // RegisteredItem represents a registered message or function implementor.

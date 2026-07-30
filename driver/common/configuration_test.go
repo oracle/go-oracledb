@@ -195,7 +195,7 @@ func TestConfiguration_AssignFromEnv(t *testing.T) {
 //
 //	environment string values are validated, converted, and assigned to integer fields.
 func TestConfiguration_AssignFromEnvValidatedIntString(t *testing.T) {
-	// cannot run in parallele as we are modifying the env
+	// cannot run in parallel as we are modifying the env
 	conf := NewOracleDriverConfig()
 	t.Setenv("ORACLE_GO_CONNECTIONPROPERTIES_CONNECTTIMEOUT", "43")
 

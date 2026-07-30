@@ -51,7 +51,7 @@ can be accepted.
 
 The code must be formatted the same way. Code format is one of the validation steps of pipelines run beside merge-request
 Please use the [go fmt command](https://pkg.go.dev/cmd/gofmt)
-If your IDE supports a Go code format, please enable it.
+Formatting is validated in CI and contributors should run gofmt.
 
 #### Code format in IntelliJ
 
@@ -59,15 +59,15 @@ If your IDE supports a Go code format, please enable it.
 
 ### Errors
 
-Error codes and error message are declared in the [errror_messages_en.go](/driver/common/error_messages_en.go) file. 
+Error codes and error messages are declared in the [error_messages_en.go](./driver/common/error_messages_en.go) file. 
 
-To create a new error 
- - declare a constant with the error code, if an ORA code exists for that error use the ORA code, otherwise create an 
+To create a new error:
+ - declare a constant with the error code. If an ORA code exists for that error, use the ORA code; otherwise create an
  OGD error code.
  - register the error message using the [message.SetString](https://pkg.go.dev/golang.org/x/text/message#SetString) or 
  the [message.Set](https://pkg.go.dev/golang.org/x/text/message#Set) methods.
 
- The return an error in the code, return an instance of OracleError:
+To return an error, return an instance of OracleError.
  ```
  return &OracleError{
 		code:  ConnectionLost,
@@ -81,15 +81,14 @@ or:
 ## Testing
 
 ### Configuration
-Test that require a database connection use a JSON file to specify the 
-configuration. This JSON file can contain several configurations. Each 
+Tests that require a database connection use a JSON file to specify the
+configuration. This JSON file can contain several configurations. Each
 configuration in the JSON file is identified by a name. The following flags
-allow to identify the configuration file and which configiration within the file
-to use:
+identify the configuration file and which configuration within the file to use:
 - driver.config.filename: path to the configuration JSON file
 - driver.config.name: name of the configuration to be applied at runtime within the file
 
- The format of the JSON file is the following:
+The JSON file has the following format:
 
 ```
 [
@@ -98,7 +97,7 @@ to use:
     "enabled": true, // if false linked tests will be skipped
     "database_version": 26, // database version
     "driver": {
-      "name": "oracle-db"
+      "name": "oracledb"
     },
     "database": {
       "host": "host_name",
@@ -120,13 +119,13 @@ to use:
 go test $(go list ./...) -v  -driver.config.filename=/foo/my_config.json -driver.config.name=my_rack_in_phx 
 ```
 
-### Adding tests to a test suite.
+### Adding tests to a test suite
 
-Test must belong to one or more testing categories. 
-Categories are free form string like unitary, functional, performance, robustness. Test suites are superset of tests and defined in 
-<package name>_pkg_test.go files in go packages. 
+Tests must belong to one or more testing categories.
+Categories are free-form strings like unitary, functional, performance, and robustness. Test suites are supersets of tests and are defined in
+<package name>_pkg_test.go files in Go packages.
 
-Test suites ae defined in these files as follows
+Test suites are defined in these files as follows:
 
 ```go
 var testCases = []struct {
@@ -139,12 +138,12 @@ var testCases = []struct {
 	{"test bar", "unitary", false, TestBar},
 }
 ```
-In the example above, two tests are registered. One unitary test named "test bar" that will execute TestBar test method 
-and one functional test named "test foo" that will execute TestFoo. The exclusive field marks tests that should not run
-under the parallel category executor. Tests that can be run within parallele execution (most of them should), must call 
-t.Parallel() method at the beginning of their execution 
+In the example above, two tests are registered: one unitary test named "test bar" that executes the TestBar test method
+and one functional test named "test foo" that executes TestFoo. The exclusive field marks tests that should not run
+under the parallel category executor. Tests that can be run within parallel execution (most of them should) must call
+t.Parallel() at the beginning of their execution.
 
-All <package name>_pkg_test.go files must also define a test suite executor as shown below
+All <package name>_pkg_test.go files must also define a test suite executor as shown below:
 
 ```go
 func TestCategoryExecutor(t *testing.T) {
@@ -184,14 +183,14 @@ func TestCategoryExecutor(t *testing.T) {
 }
 
 ```
-#### Tests coding rules.
+#### Tests coding rules
 - Tests should remain as simple as possible and should test only one thing.
 - Tests must include a documentation block that describes the test logic and expected results.
 
-##### Running tests by category.
+#### Running tests by category
 
-Test suites are run calling the "go test" command with TestCategoryExecutor as test name filter.
-The category is specified with the test.category flag as a single string or a comma separated list of categories
+Test suites are run by calling the "go test" command with TestCategoryExecutor as the test name filter.
+The category is specified with the test.category flag as a single string or a comma-separated list of categories.
 The `-parallel` flag limits parallel tests per package test binary. Use Go's `-p` flag when you need to limit how many
 packages are tested at the same time.
 

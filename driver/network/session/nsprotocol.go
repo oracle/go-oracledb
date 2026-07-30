@@ -214,7 +214,7 @@ func (ns *NetworkSession) handleRefuse(ctx context.Context, p *RefusePacket, add
 	if p.Overflow {
 		_, err := ns.recvPacket(ctx)
 		if err != nil {
-			common.Odl.Error("An error occured while receiving packet", "error", err)
+			common.Odl.Error("An error occurred while receiving packet", "error", err)
 			return err
 		}
 		p.DataBuf = string(ns.RcvDatapkt.Buf[ns.RcvDatapkt.Offset:ns.RcvDatapkt.Len])
@@ -680,13 +680,13 @@ func (ns *NetworkSession) Reset(ctx context.Context) error {
 	err = ns.SendPacket(ctx, markerPkt.Buf)
 	common.Odl.Debug("Reset packet sent")
 	if err != nil {
-		common.Odl.Error("An error occured while sending reset", "error", err)
+		common.Odl.Error("An error occurred while sending reset", "error", err)
 		return err
 	}
 	for !ns.IsReset {
 		_, err := ns.recvPacket(ctx)
 		if err != nil {
-			common.Odl.Error("An error occured while receiving packet", "error", err)
+			common.Odl.Error("An error occurred while receiving packet", "error", err)
 			return err
 		}
 		common.Odl.Debug("Packet received", "IsReset", ns.IsReset)

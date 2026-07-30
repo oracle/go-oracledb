@@ -37,7 +37,7 @@
  */
 
 // Package main demonstrates opening an Oracle database connection with database/sql
-// using the globally registered oracle-db driver.
+// using the globally registered oracledb driver.
 package main
 
 import (
@@ -64,16 +64,25 @@ func main() {
 
 	// Configure driver logging before opening the first connection.
 	loggingConfig := oracle.NewOracleLoggingConfig()
+
+	// Defines the logging level from the environment.
+	// For example: ORACLE_LOG_LEVEL=DEBUG.
+	// See README.md for more information.
 	if level := os.Getenv("ORACLE_LOG_LEVEL"); level != "" {
 		loggingConfig.Level = level
 	}
+
+	// Defines the logging destination from the environment.
+	// By default, logging activity is discarded.
+	// For example, to send log messages to the console, use ORACLE_LOG_DESTINATION=STDOUT.
+	// See README.md for more information.
 	if destination := os.Getenv("ORACLE_LOG_DESTINATION"); destination != "" {
 		loggingConfig.Destination = destination
 	}
 	oracle.GetDefaultDriver().ApplyDriverLoggingConfig(loggingConfig)
 
-	// sql.Open uses the oracle-db driver registered by the oracle package.
-	db, err := sql.Open("oracle-db", dsn)
+	// sql.Open uses the oracledb driver registered by the oracle package.
+	db, err := sql.Open("oracledb", dsn)
 	if err != nil {
 		log.Fatal(err)
 	}

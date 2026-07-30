@@ -93,7 +93,7 @@ type codecFactory interface {
 }
 
 // encoderFunc defines the function signature of encoder functions.
-// This function is used during registration to instantiate a new encoder
+// This function is used during registration to instantiate new encoders.
 // implementor.
 type encoderFunc func(driver.Value) (common.B1Array, error)
 

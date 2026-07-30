@@ -946,7 +946,7 @@ func init() {
 	// populate flag for user configuration
 
 	// populate flag for user configuration
-	flag.BoolFunc("oracle-db-config-help", "Display all Oracle driver flags", func(string) error {
+	flag.BoolFunc("oracledb-config-help", "Display all Oracle driver flags", func(string) error {
 		io.WriteString(flag.CommandLine.Output(), "Oracle driver properties:\n\n")
 		flag.VisitAll(func(vf *flag.Flag) {
 			if _, ok := _allFlags[vf.Name]; ok {

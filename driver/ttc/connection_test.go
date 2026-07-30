@@ -268,7 +268,7 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 			// pull message from streamer to trigger callback
 			msg, err := streamer.Pull(context.Background(), connInvalidationMsg.msgType)
 			if err != nil {
-				t.Fatalf("Unexpected error occured while pulling message %v", err)
+				t.Fatalf("Unexpected error occurred while pulling message %v", err)
 			}
 			if msg.GetMsgCode() != connInvalidationMsg.msgType {
 				t.Fatalf("Unexpected message type, expected %d, but was %d", connInvalidationMsg.msgType, msg.GetMsgCode())

@@ -649,7 +649,7 @@ func TestMessageStreamer_PullWithTimeout(t *testing.T) {
 // 4 - pull TTIPRO
 // expectations:
 //   - should go out on timeout error on step #3
-//   - should pull out succesfuly  on step #4
+//   - should pull out successfully on step #4
 func TestMessageStreamer_PullWithTimeoutAndIncomings(t *testing.T) {
 	t.Parallel()
 	t.Skipf("IMPLEMENT ME !")

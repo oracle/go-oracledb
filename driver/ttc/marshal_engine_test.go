@@ -1245,7 +1245,7 @@ func TestUnmarshalByteArray(t *testing.T) {
 		dataBuffer.currentReadPosition = 0
 		readValue, err := engine.UnmarshalB1Array(context.Background(), length)
 		if err != nil {
-			t.Errorf("An error occured while reading values %v", err)
+			t.Errorf("An error occurred while reading values %v", err)
 		}
 
 		for j := 0; j < length; j++ {
@@ -1267,7 +1267,7 @@ func TestUnmarshalByteArray(t *testing.T) {
 		length := len(value)
 		readValue, err := engine.UnmarshalB1Array(context.Background(), length)
 		if err != nil {
-			t.Errorf("An error occured while reading values %v", err)
+			t.Errorf("An error occurred while reading values %v", err)
 		}
 
 		for j := 0; j < length; j++ {

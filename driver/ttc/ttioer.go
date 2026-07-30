@@ -48,7 +48,7 @@ import (
 
 // tTIOerIface defines an interface for Oracle error data protocol unmarshalling and processing.
 type tTIOerIface interface {
-	// getError gets the wrapped error sent back from teh server.
+	// getError gets the wrapped error sent back from the server.
 	// in some context. Oer can be received but that do not indicate an error situation.
 	// when that is the case, this method return nil.
 	// 'getError() == nil' is equivalent as 'GetErrorCode() == 0'

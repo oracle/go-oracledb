@@ -60,9 +60,9 @@ import (
 // Ext is the extension (currently unused).
 //
 // In go we only have the first 3 values V.RU.RUR, Inc and Ext will be 0.
-var NumericDriverVersion = StringToB1Array("436273152") // 26<<24 | 1<<16 | 0<<12 | 0<<4 | 0
-const DriverVersion = "26.1.0-beta"
-const DriverName = "oracle-db"
+var NumericDriverVersion = StringToB1Array("436207616") // 26<<24 | 0<<16 | 0<<12 | 0<<4 | 0
+const DriverVersion = "26.0.0-beta"
+const DriverName = "oracledb"
 const MaxIdentifierLength = 128
 
 type Protocol int
@@ -85,7 +85,7 @@ func (p Protocol) String() string {
 
 // NormalizeProtocol parses a supported protocol name expressed as string
 //
-//	"supported ae "TCP", "TCPS"
+//	Supported values are "TCP" and "TCPS".
 //
 // inputs:
 //   - protocol as string.

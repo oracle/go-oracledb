@@ -487,7 +487,7 @@ func (ns *NetworkSession) CancelOperation(ctx context.Context) error {
 	err = ns.SendPacket(ctx, markerPkt.Buf)
 	common.Odl.Debug("Break packet sent")
 	if err != nil {
-		common.Odl.Info("An error occured while sending the break packet", "error", err)
+		common.Odl.Info("An error occurred while sending the break packet", "error", err)
 		return err
 	}
 	// Call reset

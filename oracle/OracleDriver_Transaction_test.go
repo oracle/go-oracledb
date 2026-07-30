@@ -49,7 +49,7 @@ import (
 
 // TestCommit checks that changes are not available to other transactions before
 // the transaction is committed and that they are available after the
-// transaction is commited
+// transaction is committed
 func TestCommit(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

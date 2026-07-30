@@ -146,7 +146,7 @@ const (
 	DtyAqi      DtyType = 88 + DtyExpBase  // AQ array enq/deq IN params
 	DtyUlb      DtyType = 89 + DtyExpBase  // loader buffer transfer
 	DtyUld      DtyType = 90 + DtyExpBase  // loader function call
-	DtySls      DtyType = 91               // Datatype for display sign leading seperate
+	DtySls      DtyType = 91               // Datatype for display sign leading separate
 	DtySid      DtyType = 92 + DtyExpBase  // Oracle session id
 	DtyNa7      DtyType = 93 + DtyExpBase  //new network uac type
 	DtyLvc      DtyType = 94               // Long long varchars

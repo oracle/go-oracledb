@@ -135,7 +135,7 @@ func TestConnectionPinger_IsValidWithInband(t *testing.T) {
 		returnMsg: NewOall18(),
 	}
 	mockStr := &mockStreamer{
-		pullMsg: &mockOer{err: fmt.Errorf("an error occured")},
+		pullMsg: &mockOer{err: fmt.Errorf("an error occurred")},
 	}
 
 	mockNs := &mockNetworkSession{
