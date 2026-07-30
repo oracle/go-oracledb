@@ -27,24 +27,24 @@ runs:
        GO_DRIVER_CONFIGURATIONS: |-
         [
          {
-          "\"config_name\"": "\"pipeline_test\"",
-          "\"enabled\"": true,
-          "\"database_version\"": TEST_DB_VERSION,
-          "\"driver\"": {
-          "\"name\"": "\"oracledb\""
-         },
-         "\"database\"": {
-           "\"host\"": TEST_DB_HOST,
-           "\"port\"": 1521,
-           "\"servicename\"": TEST_DB_SERVICE,
-           "\"protocol\"": "\"tcp\""
-         },
-         "\"credentials"\": {
-            "\"username"\": TEST_DB_USER,
-            "\"password"\": TEST_DB_PASSWORD
+           "\"config_name\"": "\"pipeline_test\"",
+           "\"enabled\"": true,
+           "\"database_version\"": TEST_DB_VERSION,
+           "\"driver\"": {
+             "\"name\"": "\"oracledb\""
+           },
+           "\"database\"": {
+             "\"host\"": TEST_DB_HOST,
+             "\"port\"": 1521,
+             "\"servicename\"": TEST_DB_SERVICE,
+             "\"protocol\"": "\"tcp\""
+           },
+           "\"credentials"\": {
+             "\"username"\": TEST_DB_USER,
+             "\"password"\": TEST_DB_PASSWORD
+           }
          }
-        }
-       ]
+        ]
       run: |
         echo -n  "${{ env.GO_DRIVER_CONFIGURATIONS }}" \
           | sed \
