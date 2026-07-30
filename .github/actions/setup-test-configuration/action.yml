@@ -49,10 +49,10 @@ runs:
         echo -n  "${{ env.GO_DRIVER_CONFIGURATIONS }}" \
           | sed \
               -e "s/TEST_DB_VERSION/${{ inputs.database-version }}/g" \
-              -e "s/TEST_DB_SERVICE/${{ inputs.database-service }}/g" \
-              -e "s/TEST_DB_HOST/${{ inputs.database-host }}/g" \
-              -e "s/TEST_DB_USER/${{ inputs.database-user }}/g" \
-              -e "s/TEST_DB_PASSWORD/${{ inputs.database-password }}/g" \
+              -e "s/TEST_DB_SERVICE/\"${{ inputs.database-service }}\"/g" \
+              -e "s/TEST_DB_HOST/\"${{ inputs.database-host }}\"/g" \
+              -e "s/TEST_DB_USER/\"${{ inputs.database-user }}\"/g" \
+              -e "s/TEST_DB_PASSWORD/\"${{ inputs.database-password }}\"/g" \
           > "${{ inputs.configuration-file }}"
         echo "==== JSON CONFIG ===== "
         cat  ${{ inputs.configuration-file }}
