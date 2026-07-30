@@ -2,10 +2,29 @@ name: Setup test configuration file
 description: Shared test environment setup.
 # This action takes few inputs and generate a JSON configuration file
 # suitable for GO driver tests.
-
+env:
+  GO_DRIVER_CONFIGURATIONS: |-
+    [
+      {
+        "\"config_name\"": "\"pipeline_test\"",
+        "\"enabled\"": true,
+        "\"database_version\"": TEST_DB_VERSION,
+        "\"driver\"": {
+        "\"name\"": "\"oracledb\""
+        },
+        "\"database\"": {
+          "\"host\"": TEST_DB_HOST,
+          "\"port\"": 1521,
+          "\"servicename\"": TEST_DB_SERVICE,
+          "\"protocol\"": "\"tcp\""
+        },
+        "\"credentials"\": {
+          "\"username"\": TEST_DB_USER,
+          "\"password"\": TEST_DB_PASSWORD
+        }
+      }
+    ]
 inputs:
-  configuration-content:
-    required: true
   configuration-file:
     required: false
     default: "${{ github.workspace }}/go-driver-config.json"
@@ -26,7 +45,7 @@ runs:
     - name: Write config to file
       shell: bash
       run: |
-        echo -n  "${{ inputs.configuration-content }}" \
+        echo -n  "${{ env.GO_DRIVER_CONFIGURATIONS }}" \
           | sed \
               -e "s/TEST_DB_VERSION/${{ inputs.database-version }}/g" \
               -e "s/TEST_DB_SERVICE/${{ inputs.database-service }}/g" \

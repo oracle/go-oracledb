@@ -12,27 +12,6 @@ on:
 env:
   VALIDATION_USER_NAME: ogd_test_user
   ORACLE_DRIVER_MODULE: "github.com/oracle/go-driver/oracle"
-  GO_DRIVER_CONFIGURATIONS: |-
-    [
-      {
-        "config_name": "pipeline_test",
-        "enabled": true,
-        "database_version": TEST_DB_VERSION,
-        "driver": {
-          "name": "oraclego"
-        },
-        "database": {
-          "host": "TEST_DB_HOST",
-          "port": 1521,
-          "servicename": "TEST_DB_SERVICE",
-          "protocol": "tcp"
-        },
-        "credentials": {
-          "username": "TEST_DB_USER",
-          "password": "TEST_DB_PASSWORD"
-        }
-      }
-    ]
 
 
 concurrency:
@@ -112,7 +91,6 @@ jobs:
             container-name: oracledb
       - uses: ./.github/actions/setup-test-configuration
         with:
-            configuration-content: ${{ env.GO_DRIVER_CONFIGURATIONS }}
             database-version: "26"
             database-service: "FREEPDB1"
             database-host: "localhost"
