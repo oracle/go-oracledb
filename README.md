@@ -328,4 +328,4 @@ See [CONTRIBUTING](CONTRIBUTING.md)
 [^1]: "oracledb" was previously used by [go-oracledb driver](https://github.com/go-goracle/go-oracledb) which is no longer maintained.
 
 ## License
-Copyright (c) 2023 Oracle and/or its affiliates. Released under the Universal Permissive License v1.0 as shown at <https://oss.oracle.com/licenses/upl/>.
+Copyright (c) 2026 Oracle and/or its affiliates. Released under the Universal Permissive License v1.0 as shown at <https://oss.oracle.com/licenses/upl/>.
