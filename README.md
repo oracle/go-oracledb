@@ -24,11 +24,9 @@ go get github.com/oracle/go-oracledb@latest
 ```
 
 ## Examples
-
 For end-to-end examples, go to the examples subdirectory.
 
 ## Usage
-
 Oracle Database Driver for Go is an implementation of Go's database/sql/driver interface.
 Import the driver to use the full database/sql API.
 
@@ -314,7 +312,6 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 | `JSON` (21c+) | `string`             |
 
 ## Help
-
 Are you having trouble with Oracle Database Driver for Go? We want to help!
 
 For help programming with Oracle Oracle Database Driver for Go, ask questions on Stack Overflow tagged with [go-oracledb](https://stackoverflow.com/tags/go-oracledb). The development team monitors Stack Overflow regularly.
@@ -322,7 +319,6 @@ For help programming with Oracle Oracle Database Driver for Go, ask questions on
 Issues may be opened as described in our contribution guide.
 
 ## Security
-
 Please consult the [security guide](./SECURITY.md) for our responsible security
 vulnerability disclosure process
 
@@ -332,5 +328,4 @@ See [CONTRIBUTING](CONTRIBUTING.md)
 [^1]: "oracledb" was previously used by [go-oracledb driver](https://github.com/go-goracle/go-oracledb) which is no longer maintained.
 
 ## License
-
 Copyright (c) 2023 Oracle and/or its affiliates. Released under the Universal Permissive License v1.0 as shown at <https://oss.oracle.com/licenses/upl/>.
