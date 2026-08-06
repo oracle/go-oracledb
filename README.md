@@ -17,9 +17,17 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
   - BLOB support using prefetch and returning `[]byte`
   - CLOB support using prefetch and returning `string`
 
-## Usage
+## Installation
+Run:
+```
+go get github.com/oracle/go-oracledb@latest 
+```
+
+## Examples
 
 For end-to-end examples, go to the examples subdirectory.
+
+## Usage
 
 Oracle Database Driver for Go is an implementation of Go's database/sql/driver interface.
 Import the driver to use the full database/sql API.
@@ -44,6 +52,7 @@ The driver name is "oracledb"[^1], and the Data Source Name supports both Easy C
     }
   }
 ```
+## Documentation
 
 ### Data Source Name as a string
 
@@ -64,8 +73,6 @@ _Note that query parameters are not supported when using the TNS format._
 ```
 myuser/mypassword@(DESCRIPTION=(ADDRESS=(HOST=my_host)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=my_service_name)))
 ```
-
-
 ### Driver configuration
 
 #### Public API contract
@@ -306,7 +313,24 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 |---------------|----------------------|
 | `JSON` (21c+) | `string`             |
 
+## Help
+
+Are you having trouble with Oracle Database Driver for Go? We want to help!
+
+For help programming with Oracle Oracle Database Driver for Go, ask questions on Stack Overflow tagged with [go-oracledb](https://stackoverflow.com/tags/go-oracledb). The development team monitors Stack Overflow regularly.
+
+Issues may be opened as described in our contribution guide.
+
+## Security
+
+Please consult the [security guide](./SECURITY.md) for our responsible security
+vulnerability disclosure process
+
 ## Contributing
 See [CONTRIBUTING](CONTRIBUTING.md)
 
 [^1]: "oracledb" was previously used by [go-oracledb driver](https://github.com/go-goracle/go-oracledb) which is no longer maintained.
+
+## License
+
+Copyright (c) 2023 Oracle and/or its affiliates. Released under the Universal Permissive License v1.0 as shown at <https://oss.oracle.com/licenses/upl/>.
