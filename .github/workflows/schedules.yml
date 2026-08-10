@@ -30,14 +30,18 @@ jobs:
   functional_validate_driver:
     runs-on: ubuntu-latest
     timeout-minutes: 6
+    services:
+      oracle:
+        image: gvenzl/oracle-free:latest
+        env:
+          APP_USER: ${{ env.GORM_ORACLEDB_USER }}
+          APP_USER_PASSWORD: ${{ env.VALIDATION_USER_NAME }}
+          ORACLE_PASSWORD: ${{ secrets.test_user_password }}
+        ports:
+          - 1521:1521
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go-env
-      - uses: gvenzl/setup-oracle-free@v1
-        with:
-          app-user: ${{ env.VALIDATION_USER_NAME }}
-          app-user-password: ${{ secrets.test_user_password }}
-          container-name: oracledb
       - uses: ./.github/actions/setup-test-configuration
         with:
           database-version: "26"
@@ -50,14 +54,18 @@ jobs:
   bench_driver:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      oracle:
+        image: gvenzl/oracle-free:latest
+        env:
+          APP_USER: ${{ env.GORM_ORACLEDB_USER }}
+          APP_USER_PASSWORD: ${{ env.VALIDATION_USER_NAME }}
+          ORACLE_PASSWORD: ${{ secrets.test_user_password }}
+        ports:
+          - 1521:1521
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go-env
-      - uses: gvenzl/setup-oracle-free@v1
-        with:
-          app-user: ${{ env.VALIDATION_USER_NAME }}
-          app-user-password: ${{ secrets.test_user_password }}
-          container-name: oracledb
       - uses: ./.github/actions/setup-test-configuration
         with:
           database-version: "26"
