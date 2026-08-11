@@ -460,6 +460,61 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 	}
 }
 
+// TestCodecFactory_GetBindValue verifies that ordinary binds keep CLR transport
+// while registered VECTOR types select their dedicated transport builder.
+func TestCodecFactory_GetBindValue(t *testing.T) {
+	type testCase struct {
+		name          string
+		protocol      int8
+		bindValue     driver.Value
+		payload       common.B1Array
+		setup         func(reg *codecRegistry[reflect.Type, bindValueBuilder])
+		wantTransport any
+	}
+
+	cases := []testCase{
+		{
+			name:          "defaults to clr transport when no builder is registered",
+			protocol:      1,
+			bindValue:     "x",
+			payload:       common.B1Array{0x01},
+			setup:         func(reg *codecRegistry[reflect.Type, bindValueBuilder]) {},
+			wantTransport: clrBindTransport{},
+		},
+		{
+			name:      "selects registered bind transport builder",
+			protocol:  2,
+			bindValue: common.VectorBinary{0xAA},
+			payload:   common.B1Array{0x10, 0x11},
+			setup: func(reg *codecRegistry[reflect.Type, bindValueBuilder]) {
+				reg.Register(reflect.TypeOf(common.VectorBinary(nil)), 2, buildVectorBindValue)
+			},
+			wantTransport: &vectorBindTransport{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bindValueReg := newCodecRegistry[reflect.Type, bindValueBuilder]()
+			if tc.setup != nil {
+				tc.setup(bindValueReg)
+			}
+			factory := &CodecFactoryImpl{ttcVersion: tc.protocol, bindValues: bindValueReg}
+
+			got, err := factory.GetBindValue(normalizeBindValue(tc.bindValue), tc.payload)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if reflect.TypeOf(got.transport) != reflect.TypeOf(tc.wantTransport) {
+				t.Fatalf("unexpected transport type: got %T want %T", got.transport, tc.wantTransport)
+			}
+			if !reflect.DeepEqual(got.payload, tc.payload) {
+				t.Fatalf("unexpected payload: got %v want %v", got.payload, tc.payload)
+			}
+		})
+	}
+}
+
 func TestCodecFactory_GetDefineOac(t *testing.T) {
 	t.Parallel()
 	type testCase struct {

@@ -1,6 +1,7 @@
 package converters
 
 import (
+	"encoding/binary"
 	"math"
 	"testing"
 
@@ -28,6 +29,37 @@ func TestVectorFloat64RoundTrip(t *testing.T) {
 	for i := range input {
 		if values[i] != input[i] {
 			t.Fatalf("decoded value mismatch at %d: got %v want %v", i, values[i], input[i])
+		}
+	}
+}
+
+// TestDecodeVectorWithoutNormField verifies decoding vectors whose values begin
+// immediately after the base header because no norm metadata was sent.
+func TestDecodeVectorWithoutNormField(t *testing.T) {
+	withNorm, err := EncodeVectorFloat32(common.VectorFloat32{1.5, -2.25})
+	if err != nil {
+		t.Fatalf("EncodeVectorFloat32 failed: %v", err)
+	}
+
+	// A VECTOR may omit NORM and NORMSRC. Its values then begin immediately
+	// after the nine-byte base header instead of after the padded norm field.
+	withoutNorm := make(common.B1Array, vectorBaseHeaderBytes+len(withNorm)-vectorHeaderBytes)
+	copy(withoutNorm[:vectorBaseHeaderBytes], withNorm[:vectorBaseHeaderBytes])
+	binary.BigEndian.PutUint16(withoutNorm[2:4], 0)
+	copy(withoutNorm[vectorBaseHeaderBytes:], withNorm[vectorHeaderBytes:])
+
+	got, err := DecodeVector(withoutNorm)
+	if err != nil {
+		t.Fatalf("DecodeVector failed: %v", err)
+	}
+	values, ok := got.([]float32)
+	if !ok {
+		t.Fatalf("decoded type mismatch: got %T want []float32", got)
+	}
+	want := []float32{1.5, -2.25}
+	for i := range want {
+		if values[i] != want[i] {
+			t.Fatalf("decoded value mismatch at %d: got %v want %v", i, values[i], want[i])
 		}
 	}
 }
