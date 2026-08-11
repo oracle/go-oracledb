@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/oracle/pure-go-driver/driver/common"
+	"github.com/oracle/go-driver/driver/common"
 )
 
 func TestVectorFloat64RoundTrip(t *testing.T) {

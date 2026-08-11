@@ -775,6 +775,18 @@ func init() {
 	if err := EncoderRegistry.Register(reflect.TypeOf(float64(0)), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
 		common.Odl.Warn("Failed to register float64 encoder", "error", err)
 	}
+	if err := EncoderRegistry.Register(reflect.TypeOf(common.VectorFloat64(nil)), MinTTCProtocolVersion, converters.EncodeVectorFloat64); err != nil {
+		common.Odl.Warn("Failed to register VectorFloat64 encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(reflect.TypeOf(common.VectorFloat32(nil)), MinTTCProtocolVersion, converters.EncodeVectorFloat32); err != nil {
+		common.Odl.Warn("Failed to register VectorFloat32 encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(reflect.TypeOf(common.VectorInt8(nil)), MinTTCProtocolVersion, converters.EncodeVectorInt8); err != nil {
+		common.Odl.Warn("Failed to register VectorInt8 encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(reflect.TypeOf(common.VectorBinary(nil)), MinTTCProtocolVersion, converters.EncodeVectorBinary); err != nil {
+		common.Odl.Warn("Failed to register VectorBinary encoder", "error", err)
+	}
 	if err := EncoderRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, converters.EncodeTimestampWithTimeZone); err != nil {
 		common.Odl.Warn("Failed to register time.Time encoder", "error", err)
 	}
@@ -886,6 +898,9 @@ func init() {
 		GetScanTypeForTimestampWithLocalTimeZonColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with local time zone (extended) decoder", "error", err)
 	}
+	if err := DecoderRegistry.Register(DtyVec, MinTTCProtocolVersion, newTypeDecoder(DecodeVectorColumn, nil)); err != nil {
+		common.Odl.Warn("Failed to register vector decoder", "error", err)
+	}
 
 	if err := DecoderRegistry.Register(DtyBin, MinTTCProtocolVersion, newTypeDecoder(DecodeBinaryColumn,
 		GetScanTypeForBinaryColumn)); err != nil {
@@ -947,6 +962,42 @@ func init() {
 	if err := BindOacRegistry.Register(reflect.TypeOf(float64(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(common.UB4) common.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength, scale: common.SB1(NumberScaleFloatSentinel)}); err != nil {
 		common.Odl.Warn("Failed to register float64 bind OAC", "error", err)
 	}
+	if err := BindOacRegistry.Register(reflect.TypeOf(common.VectorFloat64(nil)), MinTTCProtocolVersion, bindOacType{
+		bindOacFunc: func(maxLength common.UB4) common.Marshallable { return newTTIoac(DtyVec, maxLength) },
+		maxLength:   converters.MaxVarcharLength,
+	}); err != nil {
+		common.Odl.Warn("Failed to register VectorFloat64 bind OAC", "error", err)
+	}
+	if err := BindValueRegistry.Register(reflect.TypeOf(common.VectorFloat64(nil)), MinTTCProtocolVersion, buildVectorBindValue); err != nil {
+		common.Odl.Warn("Failed to register VectorFloat64 bind value", "error", err)
+	}
+	if err := BindOacRegistry.Register(reflect.TypeOf(common.VectorFloat32(nil)), MinTTCProtocolVersion, bindOacType{
+		bindOacFunc: func(maxLength common.UB4) common.Marshallable { return newTTIoac(DtyVec, maxLength) },
+		maxLength:   converters.MaxVarcharLength,
+	}); err != nil {
+		common.Odl.Warn("Failed to register VectorFloat32 bind OAC", "error", err)
+	}
+	if err := BindValueRegistry.Register(reflect.TypeOf(common.VectorFloat32(nil)), MinTTCProtocolVersion, buildVectorBindValue); err != nil {
+		common.Odl.Warn("Failed to register VectorFloat32 bind value", "error", err)
+	}
+	if err := BindOacRegistry.Register(reflect.TypeOf(common.VectorInt8(nil)), MinTTCProtocolVersion, bindOacType{
+		bindOacFunc: func(maxLength common.UB4) common.Marshallable { return newTTIoac(DtyVec, maxLength) },
+		maxLength:   converters.MaxVarcharLength,
+	}); err != nil {
+		common.Odl.Warn("Failed to register VectorInt8 bind OAC", "error", err)
+	}
+	if err := BindValueRegistry.Register(reflect.TypeOf(common.VectorInt8(nil)), MinTTCProtocolVersion, buildVectorBindValue); err != nil {
+		common.Odl.Warn("Failed to register VectorInt8 bind value", "error", err)
+	}
+	if err := BindOacRegistry.Register(reflect.TypeOf(common.VectorBinary(nil)), MinTTCProtocolVersion, bindOacType{
+		bindOacFunc: func(maxLength common.UB4) common.Marshallable { return newTTIoac(DtyVec, maxLength) },
+		maxLength:   converters.MaxVarcharLength,
+	}); err != nil {
+		common.Odl.Warn("Failed to register VectorBinary bind OAC", "error", err)
+	}
+	if err := BindValueRegistry.Register(reflect.TypeOf(common.VectorBinary(nil)), MinTTCProtocolVersion, buildVectorBindValue); err != nil {
+		common.Odl.Warn("Failed to register VectorBinary bind value", "error", err)
+	}
 	if err := BindOacRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBytes, maxLength: 32767}); err != nil {
 		common.Odl.Warn("Failed to register []byte bind OAC", "error", err)
 	}
@@ -971,6 +1022,9 @@ func init() {
 	// JSON currently uses a BLOB-based define OAC with max length 4000.
 	if err := DefineOacRegistry.Register(DtyJSON, MinTTCProtocolVersion, newTTIOacJSONDefine); err != nil {
 		common.Odl.Warn("Failed to register JSON define OAC", "error", err)
+	}
+	if err := DefineOacRegistry.Register(DtyVec, MinTTCProtocolVersion, newTTIOacVectorDefine); err != nil {
+		common.Odl.Warn("Failed to register VECTOR define OAC", "error", err)
 	}
 
 	if err := DefineOacRegistry.Register(DtyClob, MinTTCProtocolVersion, newTTIOacClobDefine); err != nil {

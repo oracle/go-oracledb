@@ -3,8 +3,7 @@ package ttc
 import (
 	"context"
 
-	"github.com/oracle/pure-go-driver/driver/common"
-	"github.com/oracle/pure-go-driver/logging"
+	"github.com/oracle/go-driver/driver/common"
 )
 
 // bindTransport owns the TTC wire representation for a prepared bind value.
@@ -49,14 +48,14 @@ func (clrBindTransport) marshal(
 ) error {
 	if bind.isNull || bind.payload == nil {
 		if err := engine.MarshalUB1(ctx, common.UB1(0)); err != nil {
-			logging.Odl.Error("tTIrxd.MarshalTo: failed to write null length indicator",
+			common.Odl.Error("tTIrxd.MarshalTo: failed to write null length indicator",
 				"error", err, "stage", "null-indicator", "index", index)
 			return common.NewOracleError(common.FailMarshal, err, TTCMsgTypeDescription[msgCode])
 		}
 		return nil
 	}
 	if err := engine.MarshalCLR(ctx, bind.payload, 0, len(bind.payload)); err != nil {
-		logging.Odl.Error("tTIrxd.MarshalTo: failed to write CLR",
+		common.Odl.Error("tTIrxd.MarshalTo: failed to write CLR",
 			"error", err, "stage", "clr", "index", index)
 		return common.NewOracleError(common.FailMarshal, err, TTCMsgTypeDescription[msgCode])
 	}

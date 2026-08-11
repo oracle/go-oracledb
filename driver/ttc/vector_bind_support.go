@@ -5,8 +5,7 @@ import (
 	"database/sql/driver"
 	"reflect"
 
-	"github.com/oracle/pure-go-driver/driver/common"
-	"github.com/oracle/pure-go-driver/logging"
+	"github.com/oracle/go-driver/driver/common"
 )
 
 var (
@@ -60,7 +59,7 @@ func (t *vectorBindTransport) marshal(
 ) error {
 	if bind.isNull {
 		if err := engine.MarshalUB4(ctx, 0); err != nil {
-			logging.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector null length",
+			common.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector null length",
 				"error", err, "stage", "vector-null-length", "index", index)
 			return common.NewOracleError(common.FailMarshal, err, TTCMsgTypeDescription[msgCode])
 		}
@@ -69,17 +68,17 @@ func (t *vectorBindTransport) marshal(
 
 	locLen := len(t.locator)
 	if err := engine.MarshalUB4(ctx, common.UB4(locLen)); err != nil {
-		logging.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector locator length",
+		common.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector locator length",
 			"error", err, "stage", "vector-locator-length", "index", index)
 		return common.NewOracleError(common.FailMarshal, err, TTCMsgTypeDescription[msgCode])
 	}
 	if err := engine.MarshalCLR(ctx, t.locator, 0, locLen); err != nil {
-		logging.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector locator",
+		common.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector locator",
 			"error", err, "stage", "vector-locator", "index", index)
 		return common.NewOracleError(common.FailMarshal, err, TTCMsgTypeDescription[msgCode])
 	}
 	if err := engine.MarshalCLR(ctx, bind.payload, 0, len(bind.payload)); err != nil {
-		logging.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector payload",
+		common.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector payload",
 			"error", err, "stage", "vector-payload", "index", index)
 		return common.NewOracleError(common.FailMarshal, err, TTCMsgTypeDescription[msgCode])
 	}

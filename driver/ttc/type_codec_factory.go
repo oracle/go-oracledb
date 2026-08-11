@@ -530,7 +530,7 @@ Returns:
   - error: Non-nil if a type-specific bind transport builder fails.
 */
 func (f *CodecFactoryImpl) GetBindValue(normalized normalizedBindValue, payload common.B1Array) (bindValue, error) {
-	logging.Odl.Debug("New bind value requested", "goType", normalized.goType, "payloadLength", len(payload))
+	common.Odl.Debug("New bind value requested", "goType", normalized.goType, "payloadLength", len(payload))
 
 	candidates := f.bindValues.getCandidates(normalized.goType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)

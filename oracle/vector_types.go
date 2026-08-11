@@ -1,6 +1,6 @@
 package oracle
 
-import "github.com/oracle/pure-go-driver/driver/common"
+import "github.com/oracle/go-driver/driver/common"
 
 // VectorFloat64 is an alias for dense VECTOR(FLOAT64) bind values.
 // VECTOR query results are decoded as []float64.

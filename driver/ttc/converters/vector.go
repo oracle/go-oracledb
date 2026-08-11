@@ -6,7 +6,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/oracle/pure-go-driver/driver/common"
+	"github.com/oracle/go-driver/driver/common"
 )
 
 const (

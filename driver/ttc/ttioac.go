@@ -234,6 +234,11 @@ func newTTIOacJSONDefine(columnContext ColumnContext, lobPrefetchSize common.UB4
 	return newTTIOAcDefine(DtyBlob, max_lob_length, columnContext, uacfsald, lobPrefetchSize)
 }
 
+// newTTIOacVectorDefine creates a define OAC descriptor for VECTOR values with LOB prefetch enabled.
+func newTTIOacVectorDefine(columnContext ColumnContext, lobPrefetchSize common.UB4) common.Marshallable {
+	return newTTIOAcDefine(DtyVec, max_lob_length, columnContext, uacfsald, lobPrefetchSize)
+}
+
 // newTTIOacClobDefine creates a define OAC descriptor for CLOB values using column metadata and LOB prefetch settings.
 func newTTIOacClobDefine(columnContext ColumnContext, lobPrefetchSize common.UB4) common.Marshallable {
 	return newTTIOAcDefine(columnContext.DataType, max_lob_length, columnContext, 0, lobPrefetchSize)

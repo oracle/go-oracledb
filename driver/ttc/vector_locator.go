@@ -1,6 +1,6 @@
 package ttc
 
-import "github.com/oracle/pure-go-driver/driver/common"
+import "github.com/oracle/go-driver/driver/common"
 
 // buildVectorQuasiLocator builds a value-based LOB locator for VECTOR bind payloads.
 func buildVectorQuasiLocator(payloadLength int) common.B1Array {
