@@ -90,6 +90,7 @@ Description:
 type codecFactory interface {
 	getEncoder(normalizedBindValue) (encoderFunc, error)
 	getDecoder(DtyType) (*typeDecoder, error)
+	getBindValue(normalizedBindValue, driverCommon.B1Array) (bindValue, error)
 	getBindOac(normalizedBindValue, driverCommon.UB4) (driverCommon.Marshallable, error)
 	getDefineOac(DtyType, columnContext, driverCommon.DriverProperties) driverCommon.Marshallable
 }
@@ -108,6 +109,9 @@ type decoderFunc func(columnContext, driverCommon.B1Array) (driver.Value, error)
 // with the codec factory. The function receives the requested maximum bind length
 // and must return a TTC OAC descriptor suitable for marshalling bind metadata.
 type bindOacFunc func(driverCommon.UB4) driverCommon.Marshallable
+
+// bindValueBuilder prepares a bind value whose TTC representation differs from CLR.
+type bindValueBuilder func(normalizedBindValue, driverCommon.B1Array) (bindValue, error)
 
 // bindOacType stores a bind OAC constructor together with the default max-length
 // and scale metadata that should be applied for OUT bind handling.
@@ -382,6 +386,9 @@ var DecoderRegistry = newCodecRegistry[DtyType, *typeDecoder]()
 // BindOacRegistry is the global registry for bind OAC metadata keyed by Go type.
 var BindOacRegistry = newCodecRegistry[reflect.Type, bindOacType]()
 
+// BindValueRegistry is the global registry for type-specific bind transports.
+var BindValueRegistry = newCodecRegistry[reflect.Type, bindValueBuilder]()
+
 // DefineOacRegistry is the global registry for define OAC instances keyed by Oracle database type,
 // column context and connection properties.
 var DefineOacRegistry = newCodecRegistry[DtyType, defineOacFunc]()
@@ -401,6 +408,7 @@ type CodecFactoryImpl struct {
 	ttcVersion int8
 	encoders   *codecRegistry[reflect.Type, encoderFunc]
 	decoders   *codecRegistry[DtyType, *typeDecoder]
+	bindValues *codecRegistry[reflect.Type, bindValueBuilder]
 	bindOacs   *codecRegistry[reflect.Type, bindOacType]
 	defineOacs *codecRegistry[DtyType, defineOacFunc]
 }
@@ -427,6 +435,7 @@ func NewCodecFactoryForProtocol(protocolVersion int8) codecFactory {
 		ttcVersion: protocolVersion,
 		encoders:   EncoderRegistry,
 		decoders:   DecoderRegistry,
+		bindValues: BindValueRegistry,
 		bindOacs:   BindOacRegistry,
 		defineOacs: DefineOacRegistry,
 	}
@@ -501,6 +510,16 @@ func (f *CodecFactoryImpl) getDecoder(dbType DtyType) (*typeDecoder, error) {
 
 	common.Odl.Debug("Decoder returned", "candidate", bestCandidate)
 	return bestCandidate.makeFunc, nil
+}
+
+// getBindValue returns the type-specific TTC transport for an encoded bind.
+// Values without a registered transport use ordinary CLR marshalling.
+func (f *CodecFactoryImpl) getBindValue(normalized normalizedBindValue, payload driverCommon.B1Array) (bindValue, error) {
+	candidates := f.bindValues.getCandidates(normalized.goType)
+	if bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates); bestCandidate != nil {
+		return bestCandidate.makeFunc(normalized, payload)
+	}
+	return newCLRBindValue(payload), nil
 }
 
 /*
