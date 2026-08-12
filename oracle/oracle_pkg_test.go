@@ -247,6 +247,12 @@ var testCases = []struct {
 	{"TestIssue_ColumnTypePrecisionScale", "functional", false, TestIssue_ColumnTypePrecisionScale},
 	{"TestIssue_DecodeBinaryColumnType", "functional", false, TestIssue_DecodeBinaryColumnType},
 	{"TestServerError", "functional", false, TestServerError},
+
+	{"TestDriver_OSON_ScalarDocuments", "functional", false, TestDriver_OSON_ScalarDocuments},
+	{"TestDriver_OSON_RichObject", "functional", false, TestDriver_OSON_RichObject},
+	{"TestDriver_OSON_RichNestedArray", "functional", false, TestDriver_OSON_RichNestedArray},
+	{"TestDriver_OSON_LargeDocument", "functional", false, TestDriver_OSON_LargeDocument},
+	{"TestDriver_OSON_LongUTF8DictionaryKey", "functional", false, TestDriver_OSON_LongUTF8DictionaryKey},
 }
 
 func TestCategoryExecutor(t *testing.T) {

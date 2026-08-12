@@ -46,12 +46,16 @@ import (
 
 	"github.com/oracle/go-driver/driver/common"
 	"github.com/oracle/go-driver/driver/ttc/converters"
+	"github.com/oracle/go-driver/driver/ttc/oson"
+	"github.com/oracle/go-driver/oracle/json"
 )
 
 const (
 	// NumberScaleFloatSentinel is the scale value the server uses to denote FLOAT columns
 	// that are marshalled over the NUMBER wire representation.
 	NumberScaleFloatSentinel int8 = -127
+	// _jsonOsonMagicProbeLen is the minimum byte count needed to identify an OSON payload.
+	_jsonOsonMagicProbeLen = 6
 )
 
 /*
@@ -485,28 +489,23 @@ func DecodeClob(columnContext ColumnContext, data common.B1Array) (driver.Value,
 }
 
 /*
-DecodeJson decodes a TTC JSON payload into a Go string. In V1, we are requesting BLOB
-for JSON. As a result, the server sends it as utf-8 string. Hence, no decoding is
-necessary.
-
-Description:
-
-	The current JSON fetch path provides prefetched JSON data as text-compatible bytes.
-	This helper converts that payload directly into a Go string.
+DecodeJson returns the underlying JSON payload as a driver.Value.
 
 Parameters:
   - _: Unused column metadata (present for a uniform decode function signature).
   - data: Raw TTC payload bytes for the JSON column.
 
 Returns:
-  - driver.Value: A Go string containing the decoded JSON document.
-  - error: Always nil.
+  - driver.Value: raw OSON bytes for OSON payloads, or JSON text for text payloads.
+  - error: currently nil.
 
 Errors:
   - None.
 */
 func DecodeJson(_ ColumnContext, data common.B1Array) (driver.Value, error) {
-	// Default path: assume payload is UTF-8 compatible.
+	if len(data) >= _jsonOsonMagicProbeLen && oson.IsOson(data) {
+		return []byte(data), nil
+	}
 	return string(data), nil
 }
 
@@ -623,7 +622,7 @@ func GetScanTypeForIntervalYearToMonthColumn(_ ColumnContext) reflect.Type {
 }
 
 func GetScanTypeForJsonColumn(_ ColumnContext) reflect.Type {
-	return reflect.TypeFor[string]()
+	return reflect.TypeOf((*json.JSON)(nil))
 }
 
 func GetScanTypeForCLOBColumn(_ ColumnContext) reflect.Type {

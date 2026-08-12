@@ -93,3 +93,85 @@ type ConnectionInstantiator interface {
 type Comparable interface {
 	Equals(c Comparable) bool
 }
+
+// Kind identifies the high-level JSON node category.
+type Kind uint8
+
+const (
+
+	// KindObject represents a JSON object node.
+	KindObject Kind = iota
+	// KindArray represents a JSON array node.
+	KindArray
+	// KindScalar represents a scalar JSON node.
+	KindScalar
+)
+
+// JSONNumber is representation for number as string
+type JSONNumber string
+
+// MarshalJSON implements json.Marshaler.MarshalJSON
+func (num JSONNumber) MarshalJSON() ([]byte, error) {
+	return []byte(num), nil
+}
+
+// JSONOption controls JSON materialization behavior such as Number etc
+type JSONOption uint8
+
+const (
+	// JSONOptDefault: returns value stored as NUMBER in DB as float64
+	JSONOptDefault JSONOption = iota
+	// JSONOptNumberAsString: returns value stored as NUMBER in DB as JSONNumber
+	JSONOptNumberAsString
+)
+
+// JSONNode is a lazily decoded JSON value.
+type JSONNode interface {
+	// Kind returns the JSON value kind.
+	Kind() Kind
+
+	// GetValue materializes the JSON value using opts.
+	GetValue(opts JSONOption) (any, error)
+
+	// StringWithOption returns the JSON representation using opts.
+	StringWithOption(opts JSONOption) (string, error)
+}
+
+// JSONObjectNode is a lazily decoded JSON object.
+type JSONObjectNode interface {
+	JSONNode
+
+	// Get returns the value for key and whether key exists.
+	Get(key string) (JSONNode, bool)
+
+	// Len returns the number of object members.
+	Len() int
+
+	// Keys returns the object member names.
+	Keys() []string
+
+	// Value materializes the object using opts.
+	Value(opts JSONOption) (map[string]any, error)
+}
+
+// JSONArrayNode is a lazily decoded JSON array.
+type JSONArrayNode interface {
+	JSONNode
+
+	// Get returns the value at index and whether index is in range.
+	Get(index int) (JSONNode, bool)
+
+	// Len returns the number of array elements.
+	Len() int
+
+	// Value materializes the array using opts.
+	Value(opts JSONOption) ([]any, error)
+}
+
+// JSONScalarNode is a lazily decoded JSON scalar.
+type JSONScalarNode interface {
+	JSONNode
+
+	// Value materializes the scalar using opts.
+	Value(opts JSONOption) (any, error)
+}

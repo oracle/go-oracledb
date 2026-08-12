@@ -498,5 +498,54 @@ func initMessagesEn() {
 	// Action:   Verify the database connection and the DBTIMEZONE value returned by the server.
 	// Comment:  Arg[0]: operation (query|retrieve|parse)
 	message.SetString(language.English, string(ServerTimeZoneError), "Failed to %s server timezone")
-
+	// Document: No
+	// Cause:    The OSON scalar opcode is not supported by the decoder.
+	// Action:   Check the database/version and update the driver if needed.
+	// Comment:  Arg[0]: opcode byte
+	message.SetString(language.English, string(OsonUnsupportedScalarError), "unsupported OSON scalar opcode: 0x%02x")
+	// Document: No
+	// Cause:    A JSON access request used an invalid access path or mode.
+	// Action:   Verify that the requested JSON access is valid for the value kind.
+	// Comment:  Arg[0]: access descriptor.
+	message.SetString(language.English, string(JSONAccessError), "invalid JSON access: %s")
+	// Document: No
+	// Cause:    The OSON header is invalid, truncated, or unsupported.
+	// Action:   Verify the OSON payload and review driver logs for parsing details.
+	// Comment:  N/A
+	message.SetString(language.English, string(OsonHeaderError), "OSON header parsing failed")
+	// Document: No
+	// Cause:    An invalid or out-of-bounds read was attempted on the OSON buffer.
+	// Action:   Verify the OSON payload and review driver logs for buffer access details.
+	// Comment:  N/A
+	message.SetString(language.English, string(OsonBufferError), "OSON buffer access failed")
+	// Document: No
+	// Cause:    The OSON tree layout, offsets, or opcode stream is invalid or unsupported.
+	// Action:   Verify the OSON payload and review driver logs for parsing details.
+	// Comment:  N/A
+	message.SetString(language.English, string(OsonParsingError), "OSON tree parsing failed")
+	// Document: No
+	// Cause:    A public oracle/json method was called on a nil receiver.
+	// Action:   Initialize the receiver before calling the method.
+	// Comment:  Arg[0]: method name.
+	message.SetString(language.English, string(JSONNilReceiver), "oracle/json method %s called on nil receiver")
+	// Document: No
+	// Cause:    oracle/json Scan received a source type that is not supported by the current API.
+	// Action:   Scan OSON bytes or use a supported source representation.
+	// Comment:  Arg[0]: source type.
+	message.SetString(language.English, string(JSONScanTypeUnsupportedError), "oracle/json cannot scan %s")
+	// Document: No
+	// Cause:    The caller requested a JSON wrapper that does not match the value kind.
+	// Action:   Inspect the JSON kind before requesting an object, array, or scalar wrapper.
+	// Comment:  Arg[0]: actual kind; Arg[1]: requested kind.
+	message.SetString(language.English, string(JSONKindMismatchError), "oracle/json value is %s, not %s")
+	// Document: No
+	// Cause:    The caller requested an array element outside the valid bounds.
+	// Action:   Validate the index against the array length before reading.
+	// Comment:  Arg[0]: array index.
+	message.SetString(language.English, string(JSONArrayIndexOutOfRangeError), "oracle/json array index %d out of range")
+	// Document: No
+	// Cause:    The supplied Go value cannot be encoded into an OSON image.
+	// Action:   Use supported JSONValue input types or bind JSONString for preformatted JSON text.
+	// Comment:  Arg[0]: unsupported value description.
+	message.SetString(language.English, string(OsonEncodingError), "OSON encoding failed: %v")
 }

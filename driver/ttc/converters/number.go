@@ -45,6 +45,7 @@ import (
 	"math/bits"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/oracle/go-driver/driver/common"
 )
@@ -459,6 +460,80 @@ func DecodeDecimal(inputData []byte, precision, scale int) (string, error) {
 	// Multiply back by factor; result is an integer with no fractional digits.
 	rounded := new(big.Int).Mul(q, factor)
 	return rounded.String(), nil
+}
+
+/*
+DecodeExactDecimal decodes an Oracle NUMBER wire payload to its exact
+decimal string without applying declared precision/scale formatting.
+
+Input:
+- inputData: Oracle NUMBER wire-encoded bytes
+
+Output:
+- string representation of the exact value
+
+Errors:
+- OGD-00021 (ConverterEmptyInput) when inputData is empty
+- OGD-00023 (ConverterExpectedFormat) for invalid wire format or digit ranges
+*/
+func DecodeExactDecimal(inputData []byte) (string, error) {
+	// Oracle zero is encoded as a single byte.
+	if len(inputData) == 1 && inputData[0] == _numberZeroWireByte {
+		return "0", nil
+	}
+
+	mantissa, negative, exponent, _, err := _fromNumberBig(inputData)
+	if err != nil {
+		return "", err
+	}
+
+	mantissaString := mantissa.String()
+
+	// normalizeDecimalString removes trailing fractional zeros and a trailing dot.
+	normalizeDecimalString := func(decimalString string) string {
+		integerPart, fractionPart, hasFraction := strings.Cut(decimalString, ".")
+		if hasFraction {
+			fractionPart = strings.TrimRight(fractionPart, "0")
+			if fractionPart == "" {
+				decimalString = integerPart
+			} else {
+				decimalString = integerPart + "." + fractionPart
+			}
+		}
+
+		// Treat empty and "-0" as plain zero.
+		if decimalString == "" || decimalString == "-0" {
+			return "0"
+		}
+		return decimalString
+	}
+
+	// decimal point position relative to the mantissa string
+	decimalPoint := exponent + len(mantissaString)
+
+	var decimalString string
+	switch {
+	case decimalPoint >= len(mantissaString):
+		// The number is an integer. Append the required trailing zeros.
+		decimalString = mantissaString + strings.Repeat("0", decimalPoint-len(mantissaString))
+
+	case decimalPoint > 0:
+		// Insert the decimal point inside the mantissa digits.
+		decimalString = normalizeDecimalString(
+			mantissaString[:decimalPoint] + "." + mantissaString[decimalPoint:],
+		)
+
+	default:
+		// The decimal point is left of the first digit.
+		decimalString = normalizeDecimalString(
+			"0." + strings.Repeat("0", -decimalPoint) + mantissaString,
+		)
+	}
+
+	if negative {
+		return "-" + decimalString, nil
+	}
+	return decimalString, nil
 }
 
 /*

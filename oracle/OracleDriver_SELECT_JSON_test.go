@@ -40,17 +40,20 @@ package oracle
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
+	stdjson "encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
+
+	ojson "github.com/oracle/go-driver/oracle/json"
 )
 
 // TestDriver_Table_Select_JSON
 // What it does: Creates a table with a JSON column, inserts JSON payloads of different sizes,
 // then selects them back.
-// Expectation: Selecting the JSON column and scanning into string returns the exact JSON text inserted.
+// Expectation: Selecting the JSON column and scanning into JSON returns the same JSON document inserted.
 // Notes:
 //   - JSON data type is supported in Oracle 21c+ (and enhanced in 23c). If unsupported in the test DB,
 //     CREATE TABLE will fail and this test will Skip.
@@ -91,20 +94,6 @@ func TestDriver_Table_Select_JSON(t *testing.T) {
 		}
 	}()
 
-	normalize := func(s string) string {
-		// Minimal normalization: remove spaces, tabs, newlines, carriage returns.
-		out := make([]rune, 0, len(s))
-		for _, r := range s {
-			switch r {
-			case ' ', '\t', '\n', '\r':
-				continue
-			default:
-				out = append(out, r)
-			}
-		}
-		return string(out)
-	}
-
 	buildSizedJSON := func(sizeBytes int, ch string) string {
 		if sizeBytes <= 0 {
 			return `{}`
@@ -118,10 +107,9 @@ func TestDriver_Table_Select_JSON(t *testing.T) {
 	}
 
 	testCases := []struct {
-		id      int64
-		name    string
-		jsonIn  string
-		useHash bool
+		id     int64
+		name   string
+		jsonIn string
 	}{
 		{
 			id:     1,
@@ -134,16 +122,14 @@ func TestDriver_Table_Select_JSON(t *testing.T) {
 			jsonIn: buildSizedJSON(0, "z"),
 		},
 		{
-			id:      3,
-			name:    "20mb-json",
-			jsonIn:  buildSizedJSON(20*1024*1024, "m"),
-			useHash: true,
+			id:     3,
+			name:   "20mb-json",
+			jsonIn: buildSizedJSON(20*1024*1024, "m"),
 		},
 		{
-			id:      4,
-			name:    "30mb-json",
-			jsonIn:  buildSizedJSON(30*1024*1024, "t"),
-			useHash: true,
+			id:     4,
+			name:   "30mb-json",
+			jsonIn: buildSizedJSON(30*1024*1024, "t"),
 		},
 	}
 
@@ -165,27 +151,12 @@ func TestDriver_Table_Select_JSON(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run("select-"+tc.name, func(t *testing.T) {
-			var jsonOut string
+			var jsonOut ojson.JSON
 			if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", tc.id)).Scan(&jsonOut); err != nil {
 				t.Fatalf("select/scan %s failed: %v", tc.name, err)
 			}
 
-			if tc.useHash {
-				gotHash := sha256.Sum256([]byte(normalize(jsonOut)))
-				wantHash := sha256.Sum256([]byte(normalize(tc.jsonIn)))
-				if gotHash != wantHash {
-					t.Fatalf("%s mismatch (sha256 differs):\n got:  %x\nwant: %x", tc.name, gotHash, wantHash)
-				}
-				return
-			}
-
-			if normalize(jsonOut) != normalize(tc.jsonIn) {
-				t.Fatalf("%s mismatch:\n got: %s\nwant: %s", tc.name, jsonOut, tc.jsonIn)
-			}
-
-			if tc.name == "zero-mb-json" && normalize(jsonOut) != "{}" {
-				t.Fatalf("zero-mb-json expected empty object, got: %s", fmt.Sprintf("%q", jsonOut))
-			}
+			assertSameJSONDocument(t, jsonOut, tc.jsonIn)
 		})
 	}
 }
@@ -250,7 +221,7 @@ func TestDriver_Table_Select_NullJSON(t *testing.T) {
 // What it does: Inserts 15 rows containing JSON data, then reads them back using SELECT *.
 // Expectation: Every row selected from the table matches exactly what was inserted.
 // Notes:
-//   - Uses JSON normalization (whitespace removal) for text comparison.
+//   - Uses the public JSON type for semantic JSON comparison.
 //   - Query uses `SELECT * FROM <table>`.
 func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 	t.Parallel()
@@ -280,20 +251,6 @@ func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 		return
 	}
 	t.Cleanup(func() { _ = dropTable(ctx, db, table) })
-
-	// Define JSON normalization helper for robust text comparison.
-	normalize := func(s string) string {
-		out := make([]rune, 0, len(s))
-		for _, r := range s {
-			switch r {
-			case ' ', '\t', '\n', '\r':
-				continue
-			default:
-				out = append(out, r)
-			}
-		}
-		return string(out)
-	}
 
 	// Insert 15 rows of JSON data and store expected values by ID.
 	expected := make(map[int64]string, 15)
@@ -333,7 +290,7 @@ func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 	for rows.Next() {
 		var (
 			id   int64
-			jdoc string
+			jdoc ojson.JSON
 		)
 
 		scanTargets := make([]any, len(colsReturned))
@@ -358,9 +315,7 @@ func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 			t.Fatalf("unexpected id returned from select: %d", id)
 		}
 
-		if normalize(jdoc) != normalize(exp) {
-			t.Fatalf("json mismatch for id=%d:\n got: %s\nwant: %s", id, jdoc, exp)
-		}
+		assertSameJSONDocument(t, jdoc, exp)
 
 		seen[id] = true
 	}
@@ -372,5 +327,63 @@ func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 
 	if len(seen) != 15 {
 		t.Fatalf("row count mismatch: got=%d want=15", len(seen))
+	}
+}
+
+// assertSameJSONDocument compares JSON semantically through the public JSON API
+// instead of normalizing raw text, which would corrupt whitespace inside strings.
+func assertSameJSONDocument(t *testing.T, got ojson.JSON, wantText string) {
+	t.Helper()
+
+	gotValue, err := got.GetValue(ojson.JSONOptNumberAsString)
+	if err != nil {
+		t.Fatalf("JSON.GetValue() failed: %v", err)
+	}
+
+	wantValue := decodeExpectedJSONValue(t, wantText)
+	if !reflect.DeepEqual(gotValue, wantValue) {
+		gotText, textErr := got.StringWithOption(ojson.JSONOptNumberAsString)
+		if textErr != nil {
+			t.Fatalf("JSON mismatch and StringWithOption failed: %v", textErr)
+		}
+		t.Fatalf("JSON mismatch:\n got:  %s\nwant: %s", gotText, wantText)
+	}
+}
+
+// decodeExpectedJSONValue decodes expected JSON text with numeric precision
+// preserved so it can be compared with JSONOptNumberAsString materialization.
+func decodeExpectedJSONValue(t *testing.T, text string) any {
+	t.Helper()
+
+	var value any
+	decoder := stdjson.NewDecoder(strings.NewReader(text))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		t.Fatalf("expected JSON decode failed: %v\njson: %s", err, text)
+	}
+
+	return convertJSONNumbers(value)
+}
+
+// convertJSONNumbers converts encoding/json numbers into the driver's JSON
+// number type recursively, matching JSON.GetValue(JSONOptNumberAsString).
+func convertJSONNumbers(value any) any {
+	switch v := value.(type) {
+	case stdjson.Number:
+		return ojson.Number(v.String())
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, elem := range v {
+			out[key] = convertJSONNumbers(elem)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, elem := range v {
+			out[i] = convertJSONNumbers(elem)
+		}
+		return out
+	default:
+		return v
 	}
 }

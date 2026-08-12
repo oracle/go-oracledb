@@ -802,3 +802,31 @@ func TestEncodeBinary_ReturnsSameBytes(t *testing.T) {
 		t.Fatalf("EncodeBinary should not copy: got points to different backing array")
 	}
 }
+
+// TestDecodeExactDecimal_DecimalWireFormats verifies that DecodeExactDecimal
+// reconstructs the exact decimal string for known Oracle NUMBER decimal cases.
+func TestDecodeExactDecimal_DecimalWireFormats(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		decimalStr string
+		wire       []byte
+	}{
+		{"123.4501", []byte{0xC2, 0x02, 0x18, 0x2E, 0x02, 0x01}},
+		{"-42.857", []byte{0x3E, 0x3B, 0x10, 0x1F, 0x66}},
+		{"0.0001", []byte{0xBF, 0x02}},
+		{"-0.25", []byte{0x3F, 0x4C, 0x66}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.decimalStr, func(t *testing.T) {
+			got, err := DecodeExactDecimal(tc.wire)
+			if err != nil {
+				t.Fatalf("DecodeExactDecimal(%#v) returned error: %v", tc.wire, err)
+			}
+			if got != tc.decimalStr {
+				t.Fatalf("DecodeExactDecimal(%#v) = %q, want %q", tc.wire, got, tc.decimalStr)
+			}
+		})
+	}
+}

@@ -342,7 +342,7 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar co
 			return err
 		}
 	case DtyBlob, DtyJSON:
-		if err := rxd._unmarshalBlobColumn(ctx, mar, col, dtyType); err != nil {
+		if err := rxd._unmarshalBlobColumn(ctx, mar, col); err != nil {
 			return err
 		}
 	default:
@@ -480,41 +480,6 @@ func (rxd *tTIrxd) _unmarshalClobColumn(ctx context.Context, mar common.Marshall
 
 }
 
-/*
-_processIndicator unmarshals the trailing JSON indicator fields for a JSON LOB column.
-
-Description:
-
-	Consumes the two UB2 indicator values emitted after JSON LOB payloads in the TTC
-	wire format. Both values are required for proper stream alignment even when the
-	column value is NULL.
-
-Parameters:
-  - ctx: Request context used by the marshaller while reading from the wire.
-  - mar: Marshaller used to decode bytes from the RXD payload.
-  - col: Zero-based column index within the current row.
-
-Returns:
-  - error: Non-nil if either JSON indicator field cannot be unmarshalled.
-
-Errors:
-  - Returns an error when either trailing JSON indicator cannot be read from the wire.
-*/
-func (rxd *tTIrxd) _processIndicator(ctx context.Context, mar common.Marshaller, col int) error {
-	var err error
-	if _, err = mar.UnmarshalSB2(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read JSON indicator 1",
-			"error", err, "stage", "json-indicator-1", "index", col)
-		return common.NewOracleError(common.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	if _, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read JSON indicator 2",
-			"error", err, "stage", "json-indicator-2", "index", col)
-		return common.NewOracleError(common.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	return nil
-}
-
 func (rxd *tTIrxd) _processDMLPlSqlIndicator(ctx context.Context, mar common.Marshaller, col int) error {
 	var err error
 	if _, err = mar.UnmarshalSB2(ctx); err != nil {
@@ -531,8 +496,7 @@ _unmarshalBlobColumn unmarshals a prefetched BLOB or JSON column and its LOB met
 Description:
 
 	Reads the TTC LOB header for binary LOB payloads, including prefetch metadata, inline
-	prefetched bytes, and the server-side locator. When the datatype is JSON, the function
-	also consumes the trailing JSON indicator fields emitted by the protocol. The decoded
+	prefetched bytes, and the server-side locator. The decoded
 	raw bytes are stored in rxd.row[col] and the associated LOB metadata is appended to
 	rxd.lobColContext.
 
@@ -548,7 +512,7 @@ Returns:
 Errors:
   - Returns an error when the prefetched column payload cannot be read from the wire.
 */
-func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar common.Marshaller, col int, dtyType DtyType) error {
+func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar common.Marshaller, col int) error {
 	// length
 	lob := &LobColumnContext{}
 	var err error
@@ -560,11 +524,7 @@ func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar common.Marshall
 	if lob.LobLength == 0 {
 		rxd.row[col] = nil
 		rxd.lobColContext = append(rxd.lobColContext, lob)
-		if dtyType == DtyJSON {
-			if err = rxd._processIndicator(ctx, mar, col); err != nil {
-				return err
-			}
-		}
+
 		return nil
 	}
 
@@ -603,15 +563,7 @@ func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar common.Marshall
 		return common.NewOracleError(common.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
 
-	// indicator
-	if dtyType == DtyJSON {
-		if err = rxd._processIndicator(ctx, mar, col); err != nil {
-			return err
-		}
-	}
-
 	rxd.lobColContext = append(rxd.lobColContext, lob)
 
 	return nil
-
 }

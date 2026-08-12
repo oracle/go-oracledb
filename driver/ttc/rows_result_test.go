@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/oracle/go-driver/driver/common"
+	"github.com/oracle/go-driver/oracle/json"
 )
 
 // Test_defaultNumericValue verifies numeric defaults for NULL values across
@@ -295,7 +296,7 @@ func TestTTCRowsColumnTypeScanType(t *testing.T) {
 		{name: "CLOB", dtype: DtyClob, want: reflect.TypeFor[string]()},
 		{name: "BLOB", dtype: DtyBlob, want: reflect.TypeFor[[]byte]()},
 
-		{name: "JSON", dtype: DtyJSON, want: reflect.TypeFor[string]()},
+		{name: "JSON", dtype: DtyJSON, want: reflect.TypeOf((*json.JSON)(nil))},
 	}
 
 	for _, tc := range cases {

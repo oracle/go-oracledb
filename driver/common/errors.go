@@ -395,6 +395,27 @@ const (
 	ServerTimeZoneError     ErrorCode = "OGD-00110"
 
 	ProtocolViolationLimitExceeded ErrorCode = "OGD-00200"
+
+	// OsonBufferError occurs when violating oson buffer access
+	OsonBufferError ErrorCode = "OGD-00300"
+	// OsonHeaderError occurs when something goes while parsing oson header
+	OsonHeaderError ErrorCode = "OGD-00301"
+	// OsonParsingError occurs when the OSON tree layout or opcode stream is invalid or unsupported
+	OsonParsingError ErrorCode = "OGD-00302"
+	// JSONNilReceiver indicates a public oracle/json API was called on a nil receiver.
+	JSONNilReceiver ErrorCode = "OGD-00303"
+	// JSONScanTypeUnsupportedError indicates Scan received a source type that oracle/json does not accept.
+	JSONScanTypeUnsupportedError ErrorCode = "OGD-00304"
+	// JSONKindMismatchError indicates the caller requested the wrong high-level JSON wrapper for the value kind.
+	JSONKindMismatchError ErrorCode = "OGD-00305"
+	// JSONArrayIndexOutOfRangeError indicates array element lookup used an invalid index.
+	JSONArrayIndexOutOfRangeError ErrorCode = "OGD-00306"
+	// OsonEncodingError occurs when a Go value cannot be encoded as OSON.
+	OsonEncodingError ErrorCode = "OGD-00307"
+	// OsonUnsupportedScalarError occurs when the decoder sees an OSON scalar opcode it does not support.
+	OsonUnsupportedScalarError ErrorCode = "OGD-00308"
+	// JSONAccessError indicates a JSON access request used an invalid access path or mode.
+	JSONAccessError ErrorCode = "OGD-00309"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error
