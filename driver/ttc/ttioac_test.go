@@ -322,3 +322,24 @@ func TestTTIoac_Setters(t *testing.T) {
 		t.Errorf("addFlagsContinuation failed: expected flagsContinuation=10, got %d", obj.flagsContinuation)
 	}
 }
+func TestNewTTIOacVectorDefine_UsesNativeVectorPrefetch(t *testing.T) {
+	columnContext := ColumnContext{
+		DataType:    DtyVec,
+		CharsetForm: 2,
+		CharsetID:   873,
+	}
+	oac := newTTIOacVectorDefine(columnContext, 4096).(*tTIoac)
+
+	if oac.dataType != common.UB1(DtyVec) {
+		t.Fatalf("data type mismatch: got %d want %d", oac.dataType, DtyVec)
+	}
+	if oac.maxLength != max_lob_length {
+		t.Fatalf("max length mismatch: got %d want %d", oac.maxLength, max_lob_length)
+	}
+	if oac.codepointLengthLimit != vectorPrefetchSize {
+		t.Fatalf("prefetch size mismatch: got %d want %d", oac.codepointLengthLimit, vectorPrefetchSize)
+	}
+	if oac.flagsContinuation&uacflsz == 0 || oac.flagsContinuation&uacfsald == 0 {
+		t.Fatalf("vector define missing LOB prefetch flags: %d", oac.flagsContinuation)
+	}
+}
