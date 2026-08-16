@@ -176,9 +176,9 @@ func (s *testStringScanner) Scan(src any) error {
 
 func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T) {
 	t.Parallel()
-	decoderRegistry := newCodecRegistry[DtyType, *typeDecoder]()
+	decoderRegistry := newCodecRegistry[common.DtyType, *typeDecoder]()
 	if err := decoderRegistry.Register(
-		DtyVCS,
+		common.DtyVCS,
 		-1,
 		newTypeDecoder(func(ColumnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
@@ -200,7 +200,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 		},
 		outDestPtrs: []any{dest},
 		outColumnContexts: []ColumnContext{
-			{DataType: DtyVCS},
+			{DataType: common.DtyVCS},
 		},
 	}
 
@@ -223,9 +223,9 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 
 func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T) {
 	t.Parallel()
-	decoderRegistry := newCodecRegistry[DtyType, *typeDecoder]()
+	decoderRegistry := newCodecRegistry[common.DtyType, *typeDecoder]()
 	if err := decoderRegistry.Register(
-		DtyVCS,
+		common.DtyVCS,
 		-1,
 		newTypeDecoder(func(ColumnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
@@ -247,7 +247,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 		},
 		outDestPtrs: []any{dest},
 		outColumnContexts: []ColumnContext{
-			{DataType: DtyVCS},
+			{DataType: common.DtyVCS},
 		},
 	}
 

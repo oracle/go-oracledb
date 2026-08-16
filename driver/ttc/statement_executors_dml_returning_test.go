@@ -210,7 +210,7 @@ func TestNeedToSendOACs_NoPreviousOACs(t *testing.T) {
 	registerTestCodecs(shelf, 20)
 
 	sp := &statementProcessor{shelf: shelf}
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(1)}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(1)}, dml); err != nil {
 		t.Fatalf("prepareBindsAndOAC: %v", err)
 	}
 	// previousOacs is still nil after the first call.
@@ -233,14 +233,14 @@ func TestNeedToSendOACs_CountChanged(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// First "execution" – simulated by preparing and promoting to previousOacs.
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(1)}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(1)}, dml); err != nil {
 		t.Fatalf("first prepareBindsAndOAC: %v", err)
 	}
 	sp.previousOacs = sp.currentOacs // mimic post-execution promotion
 
 	// Second "execution" with a larger bind count.  getMaxLengthForOac must not
 	// panic for position 1 (which has no prior OAC entry).
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(2), "extra"}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(2), "extra"}, dml); err != nil {
 		t.Fatalf("second prepareBindsAndOAC: %v", err)
 	}
 	if !sp.needToSendOACs() {
@@ -258,13 +258,13 @@ func TestNeedToSendOACs_TypeChanged(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// First execution: int64 bind.
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(1)}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(1)}, dml); err != nil {
 		t.Fatalf("first prepareBindsAndOAC: %v", err)
 	}
 	sp.previousOacs = sp.currentOacs
 
 	// Second execution: string bind at the same position → different dataType OAC.
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{"hello"}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{"hello"}, dml); err != nil {
 		t.Fatalf("second prepareBindsAndOAC: %v", err)
 	}
 	if !sp.needToSendOACs() {
@@ -282,7 +282,7 @@ func TestNeedToSendOACs_LengthIncreased(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// First execution: short string.
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{"ab"}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{"ab"}, dml); err != nil {
 		t.Fatalf("first prepareBindsAndOAC: %v", err)
 	}
 	sp.previousOacs = sp.currentOacs
@@ -290,7 +290,7 @@ func TestNeedToSendOACs_LengthIncreased(t *testing.T) {
 
 	// Second execution: longer string that exceeds prevMaxLen.
 	longStr := "this-string-is-definitely-longer-than-two-characters"
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{longStr}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{longStr}, dml); err != nil {
 		t.Fatalf("second prepareBindsAndOAC: %v", err)
 	}
 	newMaxLen := sp.currentOacs[0].(*tTIoac).maxLength
@@ -312,13 +312,13 @@ func TestNeedToSendOACs_SameOAC_ReturnsFalse(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// First execution.
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(100)}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(100)}, dml); err != nil {
 		t.Fatalf("first prepareBindsAndOAC: %v", err)
 	}
 	sp.previousOacs = sp.currentOacs
 
 	// Second execution: same type and same encoded length.
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(200)}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(200)}, dml); err != nil {
 		t.Fatalf("second prepareBindsAndOAC: %v", err)
 	}
 	if sp.needToSendOACs() {
@@ -353,7 +353,7 @@ func TestGetMaxLengthForOac_PreservesPreviousLarger(t *testing.T) {
 
 	// Establish previousOacs with a large maxLength by executing with a long string.
 	longStr := "abcdefghijklmnopqrstuvwxyz" // 26 chars
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{longStr}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{longStr}, dml); err != nil {
 		t.Fatalf("prepareBindsAndOAC: %v", err)
 	}
 	sp.previousOacs = sp.currentOacs
@@ -380,7 +380,7 @@ func TestGetMaxLengthForOac_UsesCurrentIfLarger(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// Establish previousOacs with a small maxLength.
-	if err := sp.prepareBindsAndOAC([]sqldriver.Value{"xy"}); err != nil {
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{"xy"}, dml); err != nil {
 		t.Fatalf("prepareBindsAndOAC: %v", err)
 	}
 	sp.previousOacs = sp.currentOacs
@@ -414,7 +414,7 @@ func TestHandleRXDRow_AssignsDecodedValue(t *testing.T) {
 	var dest string
 	exec.outDestPtrs = []any{&dest}
 	exec.outColumnContexts = []ColumnContext{
-		{Index: 0, DataType: DtyVCS},
+		{Index: 0, DataType: common.DtyVCS},
 	}
 
 	// Build a fake tTIrxd carrying the wire bytes for "hello".
@@ -444,7 +444,7 @@ func TestHandleRXDRow_NilDestinationSkipped(t *testing.T) {
 
 	exec.outDestPtrs = []any{nil} // nil destination
 	exec.outColumnContexts = []ColumnContext{
-		{Index: 0, DataType: DtyVCS},
+		{Index: 0, DataType: common.DtyVCS},
 	}
 
 	rxd := newTTIrxd().(*tTIrxd)
@@ -473,8 +473,8 @@ func TestHandleRXDRow_MoreDestsThanReturnedValues(t *testing.T) {
 	var dest2 string = "sentinel2"
 	exec.outDestPtrs = []any{&dest1, &dest2}
 	exec.outColumnContexts = []ColumnContext{
-		{Index: 0, DataType: DtyVCS},
-		{Index: 1, DataType: DtyVCS},
+		{Index: 0, DataType: common.DtyVCS},
+		{Index: 1, DataType: common.DtyVCS},
 	}
 
 	// Server only returned one value.
@@ -509,7 +509,7 @@ func TestHandleRXDRow_NilWireValue_SkipsAssignment(t *testing.T) {
 
 	exec.outDestPtrs = []any{new("original")}
 	exec.outColumnContexts = []ColumnContext{
-		{Index: 0, DataType: DtyVCS},
+		{Index: 0, DataType: common.DtyVCS},
 	}
 
 	// Nil wire payload – decoder returns nil → assignment skipped.
@@ -519,14 +519,14 @@ func TestHandleRXDRow_NilWireValue_SkipsAssignment(t *testing.T) {
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error for nil wire value: %v", err)
 	}
-	// The decoder for DtyVCS called with nil data returns "".
+	// The decoder for common.DtyVCS called with nil data returns "".
 	// An empty string IS a valid decoded value (not nil), so the field gets assigned "".
 	// This is acceptable behaviour for an empty/null string wire payload.
 	// The important thing is: no panic and no error.
 }
 
 // TestHandleRXDRow_RawBytes_AssignedToByteSlice verifies that raw bytes in the wire
-// payload are assigned to a []byte destination via the registered DtyBin decoder.
+// payload are assigned to a []byte destination via the registered common.DtyBin decoder.
 func TestHandleRXDRow_RawBytes_AssignedToByteSlice(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[common.MessageType]()
@@ -541,7 +541,7 @@ func TestHandleRXDRow_RawBytes_AssignedToByteSlice(t *testing.T) {
 	var dest []byte
 	exec.outDestPtrs = []any{&dest}
 	exec.outColumnContexts = []ColumnContext{
-		{Index: 0, DataType: DtyBin},
+		{Index: 0, DataType: common.DtyBin},
 	}
 
 	payload := common.B1Array{0xDE, 0xAD, 0xBE, 0xEF}

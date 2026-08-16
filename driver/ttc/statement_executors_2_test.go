@@ -83,41 +83,41 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	// Register bind OAC makers used by prepareBindsAndOAC tests.
 	_ = BindOacRegistry.Register(reflect.TypeOf(int64(0)), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyNum, maxLength)
+			return newTTIoac(common.DtyNum, maxLength)
 		},
 		maxLength: converters.MaxNumberLength,
 	})
 	_ = BindOacRegistry.Register(reflect.TypeOf(""), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyVCS, maxLength)
+			return newTTIoac(common.DtyVCS, maxLength)
 		},
 		maxLength: 32768,
 	})
 	_ = BindOacRegistry.Register(reflect.TypeOf([]byte(nil)), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyVbi, maxLength)
+			return newTTIoac(common.DtyVbi, maxLength)
 		},
 		maxLength: 32767,
 	})
 	_ = BindOacRegistry.Register(reflect.TypeOf(true), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyBol, maxLength)
+			return newTTIoac(common.DtyBol, maxLength)
 		},
 		maxLength: converters.MaxBoolLength,
 	})
 	_ = BindOacRegistry.Register(reflect.TypeOf(time.Time{}), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyStz, maxLength)
+			return newTTIoac(common.DtyStz, maxLength)
 		},
 		maxLength: converters.MaxTimeStampLength,
 	})
 
 	// Decoders are not exercised by statement_executors_2_test directly today, but the task
 	// explicitly requests registering them. Add minimal decoders to keep registry complete.
-	_ = DecoderRegistry.Register(DtyVCS, 2, newTypeDecoder(func(_ ColumnContext, data common.B1Array) (sqldriver.Value, error) {
+	_ = DecoderRegistry.Register(common.DtyVCS, 2, newTypeDecoder(func(_ ColumnContext, data common.B1Array) (sqldriver.Value, error) {
 		return string(data), nil
 	}, nil))
-	_ = DecoderRegistry.Register(DtyBin, 2, newTypeDecoder(func(_ ColumnContext, data common.B1Array) (sqldriver.Value, error) {
+	_ = DecoderRegistry.Register(common.DtyBin, 2, newTypeDecoder(func(_ ColumnContext, data common.B1Array) (sqldriver.Value, error) {
 		return []byte(data), nil
 	}, nil))
 
@@ -157,7 +157,7 @@ func TestPrepareBindsAndOAC_Normalize_Supported(t *testing.T) {
 	registerTestCodecs(shelf, 20)
 
 	sp := &statementProcessor{shelf: shelf}
-	if err := sp.prepareBindsAndOAC(args); err != nil {
+	if err := sp.prepareBindsAndOAC(args, dml); err != nil {
 		t.Fatalf("prepareBindsAndOAC returned error: %v", err)
 	}
 	out := sp.bindValues
@@ -238,7 +238,7 @@ func TestPrepareBindsAndOAC_Normalize_Errors(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// unsupported type
-	err := sp.prepareBindsAndOAC([]sqldriver.Value{struct{}{}})
+	err := sp.prepareBindsAndOAC([]sqldriver.Value{struct{}{}}, dml)
 	if err == nil || !strings.Contains(err.Error(), "internal error occurred") {
 		t.Fatalf("expected unsupported type error containing 'bind-type', got %v", err)
 	}
@@ -267,7 +267,7 @@ func TestPrepareBindsAndOAC_Encode_Supported(t *testing.T) {
 	registerTestCodecs(shelf, 20)
 
 	sp := &statementProcessor{shelf: shelf}
-	if err := sp.prepareBindsAndOAC(args); err != nil {
+	if err := sp.prepareBindsAndOAC(args, dml); err != nil {
 		t.Fatalf("prepareBindsAndOAC returned error: %v", err)
 	}
 	encoded := sp.encodedValues
@@ -314,7 +314,7 @@ func TestPrepareBindsAndOAC_Encode_Errors(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// unsupported type should raise bind-type (was bind-encode-type in old API)
-	err := sp.prepareBindsAndOAC([]sqldriver.Value{struct{}{}})
+	err := sp.prepareBindsAndOAC([]sqldriver.Value{struct{}{}}, dml)
 	if err == nil || !strings.Contains(err.Error(), "internal error occurred") {
 		t.Fatalf("expected type encode error containing 'bind-type', got %v", err)
 	}
@@ -339,7 +339,7 @@ func TestPushBindRowsIfAny_EncodeBindValues_Error(t *testing.T) {
 	// float64 encodes successfully via prepareBindsAndOAC
 	args := []sqldriver.Value{float64(1.25)}
 	sp := &statementProcessor{shelf: shelf}
-	if err := sp.prepareBindsAndOAC(args); err != nil {
+	if err := sp.prepareBindsAndOAC(args, dml); err != nil {
 		t.Fatalf("unexpected prepareBindsAndOAC error, got %v", err)
 	}
 	err := sp.pushBindRows(ctx, "ut", common.RunExecError)
@@ -380,7 +380,7 @@ func TestPushBindRowsIfAny_GetMessage_RXD_Error(t *testing.T) {
 	// Supported bind so prepareBindsAndOAC succeeds
 	args := []sqldriver.Value{int64(1)}
 	sp := &statementProcessor{shelf: shelf}
-	if err := sp.prepareBindsAndOAC(args); err != nil {
+	if err := sp.prepareBindsAndOAC(args, dml); err != nil {
 		t.Fatalf("unexpected prepareBindsAndOAC error: %v", err)
 	}
 	err := sp.pushBindRows(ctx, "ut", common.RunExecError)
@@ -412,7 +412,7 @@ func TestPushBindRowsIfAny_Push_RXD_Error(t *testing.T) {
 	// Supported bind so prepareBindsAndOAC succeeds; Push should fail
 	args := []sqldriver.Value{int64(1)}
 	sp := &statementProcessor{shelf: shelf}
-	if err := sp.prepareBindsAndOAC(args); err != nil {
+	if err := sp.prepareBindsAndOAC(args, dml); err != nil {
 		t.Fatalf("unexpected prepareBindsAndOAC error: %v", err)
 	}
 	err := sp.pushBindRows(ctx, "ut", common.RunExecError)
@@ -431,19 +431,19 @@ func TestPrepareBindsAndOAC_OAC_Supported(t *testing.T) {
 	ts := time.Date(2025, 1, 2, 3, 4, 5, 0, tz)
 
 	args := []sqldriver.Value{
-		int64(5),     // -> DtyNum, len 22
-		"abc",        // -> DtyVCS (wire dataType DtyChr), len 3
-		[]byte{0xAA}, // -> DtyVbi (wire dataType DtyBin), len 1
-		true,         // -> DtyBol, len 2
-		nil,          // -> DtyVCS (wire dataType DtyChr), len 0
-		ts,           // -> DtyStz, len 11/13 per current implementation
+		int64(5),     // -> common.DtyNum, len 22
+		"abc",        // -> common.DtyVCS (wire dataType common.DtyChr), len 3
+		[]byte{0xAA}, // -> common.DtyVbi (wire dataType common.DtyBin), len 1
+		true,         // -> common.DtyBol, len 2
+		nil,          // -> common.DtyVCS (wire dataType common.DtyChr), len 0
+		ts,           // -> common.DtyStz, len 11/13 per current implementation
 	}
 
 	shelf := newShelf[common.MessageType]()
 	registerTestCodecs(shelf, 20)
 
 	sp := &statementProcessor{shelf: shelf}
-	if err := sp.prepareBindsAndOAC(args); err != nil {
+	if err := sp.prepareBindsAndOAC(args, dml); err != nil {
 		t.Fatalf("prepareBindsAndOAC returned error: %v", err)
 	}
 	oacs := sp.currentOacs
@@ -452,12 +452,12 @@ func TestPrepareBindsAndOAC_OAC_Supported(t *testing.T) {
 	}
 
 	// int64 -> NUMBER
-	if got := oacs[0].(*tTIoac); got == nil || got.dataType != common.UB1(DtyNum) || got.maxLength != 22 {
+	if got := oacs[0].(*tTIoac); got == nil || got.dataType != common.UB1(common.DtyNum) || got.maxLength != 22 {
 		t.Fatalf("oac[0] mismatch: dataType=%d maxLength=%d", got.dataType, got.maxLength)
 	}
 
-	// string -> VARCHAR (wire dataType DtyChr) with len=3
-	if got := oacs[1].(*tTIoac); got == nil || got.dataType != common.UB1(DtyChr) || got.maxLength != 3 {
+	// string -> VARCHAR (wire dataType common.DtyChr) with len=3
+	if got := oacs[1].(*tTIoac); got == nil || got.dataType != common.UB1(common.DtyChr) || got.maxLength != 3 {
 		t.Fatalf("oac[1] mismatch: dataType=%d maxLength=%d", got.dataType, got.maxLength)
 	}
 	if oacs[1].(*tTIoac).flags&_uacFlagIndicator == 0 || oacs[1].(*tTIoac).flags&_uacFlagLengthVector == 0 {
@@ -467,23 +467,46 @@ func TestPrepareBindsAndOAC_OAC_Supported(t *testing.T) {
 		t.Fatalf("oac[1] flagsContinuation missing noadj bit: flagsContinuation=%d", oacs[1].(*tTIoac).flagsContinuation)
 	}
 
-	// raw -> VBI (wire dataType DtyBin) with len=1
-	if got := oacs[2]; got == nil || got.(*tTIoac).dataType != common.UB1(DtyBin) || got.(*tTIoac).maxLength != 1 {
+	// raw -> VBI (wire dataType common.DtyBin) with len=1
+	if got := oacs[2]; got == nil || got.(*tTIoac).dataType != common.UB1(common.DtyBin) || got.(*tTIoac).maxLength != 1 {
 		t.Fatalf("oac[2] mismatch: dataType=%d maxLength=%d", got.(*tTIoac).dataType, got.(*tTIoac).maxLength)
 	}
 	// bool -> BOL with len=2
-	if got := oacs[3]; got == nil || got.(*tTIoac).dataType != common.UB1(DtyBol) || got.(*tTIoac).maxLength != converters.MaxBoolLength {
+	if got := oacs[3]; got == nil || got.(*tTIoac).dataType != common.UB1(common.DtyBol) || got.(*tTIoac).maxLength != converters.MaxBoolLength {
 		t.Fatalf("oac[3] mismatch: dataType=%d maxLength=%d", got.(*tTIoac).dataType, got.(*tTIoac).maxLength)
 	}
 
 	// nil -> VARCHAR with len=4
-	if got := oacs[4]; got == nil || got.(*tTIoac).dataType != common.UB1(DtyChr) || got.(*tTIoac).maxLength != 4 {
+	if got := oacs[4]; got == nil || got.(*tTIoac).dataType != common.UB1(common.DtyChr) || got.(*tTIoac).maxLength != 4 {
 		t.Fatalf("oac[4] mismatch: dataType=%d maxLength=%d", got.(*tTIoac).dataType, got.(*tTIoac).maxLength)
 	}
 
 	// time.Time -> STZ with len=13 (per current code)
-	if got := oacs[5]; got == nil || got.(*tTIoac).dataType != common.UB1(DtyStz) || got.(*tTIoac).maxLength != 13 {
+	if got := oacs[5]; got == nil || got.(*tTIoac).dataType != common.UB1(common.DtyStz) || got.(*tTIoac).maxLength != 13 {
 		t.Fatalf("oac[5] mismatch: dataType=%d maxLength=%d", got.(*tTIoac).dataType, got.(*tTIoac).maxLength)
+	}
+}
+
+func TestPrepareBindsAndOAC_PLSQLVariableBindsUseMaximumLength(t *testing.T) {
+	shelf := newShelf[common.MessageType]()
+	shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	registerTestCodecs(shelf, 20)
+
+	sp := &statementProcessor{shelf: shelf}
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{"x", []byte{1}}, plsql); err != nil {
+		t.Fatal(err)
+	}
+	for i, bindOAC := range sp.currentOacs {
+		if got := bindOAC.(*tTIoac).maxLength; got != converters.MaxVarcharLength {
+			t.Fatalf("PL/SQL bind %d maxLength = %d, want %d", i, got, converters.MaxVarcharLength)
+		}
+	}
+
+	if err := sp.prepareBindsAndOAC([]sqldriver.Value{"x"}, dml); err != nil {
+		t.Fatal(err)
+	}
+	if got := sp.currentOacs[0].(*tTIoac).maxLength; got == converters.MaxVarcharLength {
+		t.Fatalf("DML varchar maxLength unexpectedly expanded to %d", got)
 	}
 }
 
@@ -494,7 +517,7 @@ func TestPrepareBindsAndOAC_OAC_Errors(t *testing.T) {
 
 	// unsupported type
 	sp := &statementProcessor{shelf: shelf}
-	err := sp.prepareBindsAndOAC([]sqldriver.Value{map[string]int{"x": 1}})
+	err := sp.prepareBindsAndOAC([]sqldriver.Value{map[string]int{"x": 1}}, dml)
 	if err == nil || !strings.Contains(err.Error(), "internal error occurred") {
 		t.Fatalf("expected type encode error containing 'bind-type', got %v", err)
 	}

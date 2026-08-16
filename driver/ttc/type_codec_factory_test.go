@@ -58,24 +58,24 @@ var dummyDecoderB = newTypeDecoder(func(ColumnContext, common.B1Array) (driver.V
 
 var dummyBindOacA = bindOacType{
 	bindOacFunc: func(common.UB4) common.Marshallable {
-		return newTTIoac(DtyNum, 8)
+		return newTTIoac(common.DtyNum, 8)
 	},
 	maxLength: 8,
 }
 
 var dummyBindOacB = bindOacType{
 	bindOacFunc: func(common.UB4) common.Marshallable {
-		return newTTIoac(DtyVCS, 16)
+		return newTTIoac(common.DtyVCS, 16)
 	},
 	maxLength: 16,
 }
 
 func dummyDefineOacA(ColumnContext, common.UB4) common.Marshallable {
-	return newTTIoac(DtyNum, define_maxlength_scalar)
+	return newTTIoac(common.DtyNum, define_maxlength_scalar)
 }
 
 func dummyDefineOacB(ColumnContext, common.UB4) common.Marshallable {
-	return newTTIoac(DtyVCS, define_maxlength_varchar)
+	return newTTIoac(common.DtyVCS, define_maxlength_varchar)
 }
 
 // TestCodecFactory_GetEncoder exercises encoder selection and error paths for CodecFactoryImpl.
@@ -180,29 +180,29 @@ func TestCodecFactory_GetDecoder(t *testing.T) {
 		{
 			name:     "picks highest version within protocol",
 			protocol: 5,
-			dbType:   DtyNum,
+			dbType:   common.DtyNum,
 			setup: func(reg *codecRegistry[int16, *typeDecoder]) {
-				reg.Register(DtyNum, -1, dummyDecoderA)
-				reg.Register(DtyNum, 2, dummyDecoderB)
+				reg.Register(common.DtyNum, -1, dummyDecoderA)
+				reg.Register(common.DtyNum, 2, dummyDecoderB)
 			},
 			wantValue: "B",
 		},
 		{
 			name:     "falls back to lower version when protocol is low",
 			protocol: 1,
-			dbType:   DtyNum,
+			dbType:   common.DtyNum,
 			setup: func(reg *codecRegistry[int16, *typeDecoder]) {
-				reg.Register(DtyNum, -1, dummyDecoderA)
-				reg.Register(DtyNum, 2, dummyDecoderB)
+				reg.Register(common.DtyNum, -1, dummyDecoderA)
+				reg.Register(common.DtyNum, 2, dummyDecoderB)
 			},
 			wantValue: "A",
 		},
 		{
 			name:     "no candidate eligible for negotiated protocol",
 			protocol: 1,
-			dbType:   DtyNum,
+			dbType:   common.DtyNum,
 			setup: func(reg *codecRegistry[int16, *typeDecoder]) {
-				reg.Register(DtyNum, 3, dummyDecoderB)
+				reg.Register(common.DtyNum, 3, dummyDecoderB)
 			},
 			expectError: true,
 			errCode:     common.InternalError,
@@ -210,9 +210,9 @@ func TestCodecFactory_GetDecoder(t *testing.T) {
 		{
 			name:     "decoder type not registered",
 			protocol: 1,
-			dbType:   DtyChr,
+			dbType:   common.DtyChr,
 			setup: func(reg *codecRegistry[int16, *typeDecoder]) {
-				reg.Register(DtyNum, -1, dummyDecoderA)
+				reg.Register(common.DtyNum, -1, dummyDecoderA)
 			},
 			expectError: true,
 			errCode:     common.InternalError,
@@ -282,7 +282,7 @@ func TestCodecFactory_GetBindOac(t *testing.T) {
 				reg.Register(reflect.TypeOf(int64(0)), 1, dummyBindOacA)
 				reg.Register(reflect.TypeOf(int64(0)), 3, dummyBindOacB)
 			},
-			wantDataType: common.UB1(DtyChr),
+			wantDataType: common.UB1(common.DtyChr),
 		},
 		{
 			name:            "missing bind oac candidate",
@@ -465,9 +465,9 @@ func TestCodecFactory_GetDefineOac(t *testing.T) {
 	type testCase struct {
 		name         string
 		protocol     int8
-		dbType       DtyType
+		dbType       common.DtyType
 		columnCtx    ColumnContext
-		setup        func(reg *codecRegistry[DtyType, defineOacFunc])
+		setup        func(reg *codecRegistry[common.DtyType, defineOacFunc])
 		wantMaxLen   common.UB4
 		wantDataType common.UB1
 	}
@@ -476,29 +476,29 @@ func TestCodecFactory_GetDefineOac(t *testing.T) {
 		{
 			name:      "selects highest compatible define oac constructor",
 			protocol:  3,
-			dbType:    DtyVCS,
-			columnCtx: ColumnContext{DataType: DtyVCS},
-			setup: func(reg *codecRegistry[DtyType, defineOacFunc]) {
-				reg.Register(DtyVCS, 1, dummyDefineOacA)
-				reg.Register(DtyVCS, 3, dummyDefineOacB)
+			dbType:    common.DtyVCS,
+			columnCtx: ColumnContext{DataType: common.DtyVCS},
+			setup: func(reg *codecRegistry[common.DtyType, defineOacFunc]) {
+				reg.Register(common.DtyVCS, 1, dummyDefineOacA)
+				reg.Register(common.DtyVCS, 3, dummyDefineOacB)
 			},
 			wantMaxLen:   define_maxlength_varchar,
-			wantDataType: common.UB1(DtyChr),
+			wantDataType: common.UB1(common.DtyChr),
 		},
 		{
 			name:         "falls back to scalar define oac when missing",
 			protocol:     1,
-			dbType:       DtyNum,
-			columnCtx:    ColumnContext{DataType: DtyNum},
-			setup:        func(reg *codecRegistry[DtyType, defineOacFunc]) {},
+			dbType:       common.DtyNum,
+			columnCtx:    ColumnContext{DataType: common.DtyNum},
+			setup:        func(reg *codecRegistry[common.DtyType, defineOacFunc]) {},
 			wantMaxLen:   define_maxlength_scalar,
-			wantDataType: common.UB1(DtyNum),
+			wantDataType: common.UB1(common.DtyNum),
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			defineReg := newCodecRegistry[DtyType, defineOacFunc]()
+			defineReg := newCodecRegistry[common.DtyType, defineOacFunc]()
 			if tc.setup != nil {
 				tc.setup(defineReg)
 			}

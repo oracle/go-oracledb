@@ -70,7 +70,7 @@ type tTIoac struct {
 	characterSetID common.UB2
 	// characterSetForm specifies the character set form (e.g., implicit/explicit, AL16UTF16, etc.)
 	characterSetForm common.UB1
-	// dataType is the wire protocol data type (e.g., DtyNum, DtyChr, etc.) for this column.
+	// dataType is the wire protocol data type (e.g., common.DtyNum, common.DtyChr, etc.) for this column.
 	dataType common.UB1
 	// flags holds protocol flags for binding/definition properties.
 	flags common.UB1
@@ -109,7 +109,7 @@ Usage:
 
 	Call this constructore before Marshalling the TTIoac for binding or defining a column.
 */
-func newTTIoac(typ DtyType, maxLength common.UB4) *tTIoac {
+func newTTIoac(typ common.DtyType, maxLength common.UB4) *tTIoac {
 	common.Odl.Debug("TTIoac.newTTIoac called", "requestedtype", typ, "maxLength", maxLength)
 	obj := &tTIoac{}
 	obj.requestedtype = typ
@@ -121,32 +121,32 @@ func newTTIoac(typ DtyType, maxLength common.UB4) *tTIoac {
 	   DTY type is negotiated with server during the TTC handshake.
 	   For example:
 
-	   For DtyVCS, we use DtyChr instead of DtyVCS because:
-	      typeRepresentationTable.addTypeRepToTable(DtyVCS, DtyChr, int16(RepCUnv))
+	   For common.DtyVCS, we use common.DtyChr instead of common.DtyVCS because:
+	      typeRepresentationTable.addTypeRepToTable(common.DtyVCS, common.DtyChr, int16(RepCUnv))
 	   refer to pkg_init for the mappings.
 	*/
 	switch typ {
-	case DtyVCS, DtyChr:
-		obj.dataType = common.UB1(DtyChr)
-	case DtyRdd:
-		obj.dataType = common.UB1(DtyRiD)
-	case DtyVnu, DtyNum:
-		obj.dataType = common.UB1(DtyNum)
-	case DtyVbi:
-		obj.dataType = common.UB1(DtyBin)
-	case DtyRSet:
-		obj.dataType = common.UB1(DtyCur)
+	case common.DtyVCS, common.DtyChr:
+		obj.dataType = common.UB1(common.DtyChr)
+	case common.DtyRdd:
+		obj.dataType = common.UB1(common.DtyRiD)
+	case common.DtyVnu, common.DtyNum:
+		obj.dataType = common.UB1(common.DtyNum)
+	case common.DtyVbi:
+		obj.dataType = common.UB1(common.DtyBin)
+	case common.DtyRSet:
+		obj.dataType = common.UB1(common.DtyCur)
 	default:
 		obj.dataType = common.UB1(typ)
 	}
 
-	if obj.dataType == common.UB1(DtyChr) || obj.dataType == common.UB1(DtyAfc) {
+	if obj.dataType == common.UB1(common.DtyChr) || obj.dataType == common.UB1(common.DtyAfc) {
 		obj.flagsContinuation = _uacFlagContinuationNoadj
 	} else {
 		obj.flagsContinuation = 0
 	}
 
-	if obj.dataType == common.UB1(DtyCur) {
+	if obj.dataType == common.UB1(common.DtyCur) {
 		obj.maxLength = 4
 	} else {
 		obj.maxLength = maxLength
@@ -177,7 +177,7 @@ Parameters:
   - prefetchSize: LOB prefetch size applied to codepointLengthLimit.
 */
 func newTTIOAcDefine(
-	typ DtyType,
+	typ common.DtyType,
 	maxLength common.UB4,
 	colCtx ColumnContext,
 	flags common.UB8,
@@ -196,42 +196,42 @@ func newTTIOacString(maxLength common.UB4) common.Marshallable {
 	if maxLength == 0 {
 		maxLength = converters.EmptyStringOacLength
 	}
-	return newTTIoac(DtyVCS, maxLength)
+	return newTTIoac(common.DtyVCS, maxLength)
 }
 
 // newTTIOacNumber creates an OAC descriptor for Oracle NUMBER values using the negotiated maximum NUMBER length.
 func newTTIOacNumber() common.Marshallable {
-	return newTTIoac(DtyNum, converters.MaxNumberLength)
+	return newTTIoac(common.DtyNum, converters.MaxNumberLength)
 }
 
 // newTTIOacBytes creates an OAC descriptor for raw byte bind values.
 func newTTIOacBytes(maxLength common.UB4) common.Marshallable {
-	return newTTIoac(DtyVbi, maxLength)
+	return newTTIoac(common.DtyVbi, maxLength)
 }
 
 // newTTIOacNull creates an OAC descriptor for null bind values using the driver's null placeholder length.
 func newTTIOacNull() common.Marshallable {
-	return newTTIoac(DtyVCS, converters.MaxNullLength)
+	return newTTIoac(common.DtyVCS, converters.MaxNullLength)
 }
 
 // newTTIOacBoolV17 creates an OAC descriptor for pre-native-boolean representations that are sent as NUMBER values.
 func newTTIOacBoolV17(maxLength common.UB4) common.Marshallable {
-	return newTTIoac(DtyNum, maxLength)
+	return newTTIoac(common.DtyNum, maxLength)
 }
 
 // newTTIOacBool creates an OAC descriptor for native Oracle BOOLEAN values.
 func newTTIOacBool() common.Marshallable {
-	return newTTIoac(DtyBol, converters.MaxBoolLength)
+	return newTTIoac(common.DtyBol, converters.MaxBoolLength)
 }
 
 // newTTIOacTime creates an OAC descriptor for timestamp-with-time-zone values.
 func newTTIOacTime() common.Marshallable {
-	return newTTIoac(DtyStz, converters.MaxTimeStampLength)
+	return newTTIoac(common.DtyStz, converters.MaxTimeStampLength)
 }
 
 // newTTIOacJSONDefine creates a define OAC descriptor for JSON values transported as LOBs with prefetch enabled.
 func newTTIOacJSONDefine(columnContext ColumnContext, lobPrefetchSize common.UB4) common.Marshallable {
-	return newTTIOAcDefine(DtyBlob, max_lob_length, columnContext, uacfsald, lobPrefetchSize)
+	return newTTIOAcDefine(common.DtyBlob, max_lob_length, columnContext, uacfsald, lobPrefetchSize)
 }
 
 // newTTIOacClobDefine creates a define OAC descriptor for CLOB values using column metadata and LOB prefetch settings.
@@ -274,11 +274,11 @@ func (p *tTIoac) MarshalTo(ctx context.Context, mar common.Marshaller) error {
 		return common.NewOracleError(common.FailMarshal, err, "OAC")
 	}
 
-	if p.dataType == common.UB1(DtyNum) ||
-		p.dataType == common.UB1(DtyStamp) ||
-		p.dataType == common.UB1(DtyStz) ||
-		p.dataType == common.UB1(DtySitz) ||
-		p.dataType == common.UB1(DtyIds) {
+	if p.dataType == common.UB1(common.DtyNum) ||
+		p.dataType == common.UB1(common.DtyStamp) ||
+		p.dataType == common.UB1(common.DtyStz) ||
+		p.dataType == common.UB1(common.DtySitz) ||
+		p.dataType == common.UB1(common.DtyIds) {
 		if err := mar.MarshalUB2(ctx, common.UB2(p.scale)); err != nil {
 			common.Odl.Warn("MarshalTo: Failed to marshal scale as UB2", "error", err)
 			return common.NewOracleError(common.FailMarshal, err, "OAC")
@@ -423,11 +423,11 @@ func (p *tTIoac) UnMarshalFrom(ctx context.Context, mar common.Marshaller) error
 
 	if p.maxLength > 0 {
 		switch p.dataType {
-		case common.UB1(DtyNum):
+		case common.UB1(common.DtyNum):
 			p.maxLength = _oacMaxLengthNumber
-		case common.UB1(DtyDat):
+		case common.UB1(common.DtyDat):
 			p.maxLength = _oacMaxLengthDate
-		case common.UB1(DtyStz):
+		case common.UB1(common.DtyStz):
 			p.maxLength = _oacMaxLengthStampTZ
 		}
 	}

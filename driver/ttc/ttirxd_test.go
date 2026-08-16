@@ -133,6 +133,66 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 	}
 }
 
+func TestTTIrxd_MarshalTo_NamedTypeWritesEnvelope(t *testing.T) {
+	t.Parallel()
+	rxd := newTTIrxd().(*tTIrxd)
+	image := common.B1Array{0x88, 0x01, 0x02}
+	rxd.setBindValues([]common.B1Array{image})
+	rxd.setCurrentOACs([]common.Marshallable{newTTIoac(common.DtyNty, 11)})
+
+	buf, eng := NewMarshalEngineTest(session.BIG_ENDIAN, B4, Native, 64)
+	if err := rxd.MarshalTo(context.Background(), eng); err != nil {
+		t.Fatalf("MarshalTo returned error: %v", err)
+	}
+
+	// Three empty DALCs, VCN 0, image length 3, flags 1, then CLR(image).
+	want := []byte{
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0,
+		0, 0, 0, 3,
+		0, 1,
+		3, 0x88, 0x01, 0x02,
+	}
+	got := buf.bytes[:buf.currentWritePosition]
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("named-type RXD bytes = % X, want % X", got, want)
+	}
+}
+
+func TestTTIrxd_UnmarshalNamedTypeEnvelope(t *testing.T) {
+	t.Parallel()
+	image := common.B1Array{0x88, 0x01, 0x02}
+	buf, eng := NewMarshalEngineTest(session.BIG_ENDIAN, B4, Native, 64)
+	for i := 0; i < 3; i++ {
+		if err := (&dynamicAllocatedArray{}).MarshalTo(context.Background(), eng); err != nil {
+			t.Fatalf("marshal empty locator: %v", err)
+		}
+	}
+	if err := eng.MarshalUB2(context.Background(), 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.MarshalUB4(context.Background(), common.UB4(len(image))); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.MarshalUB2(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.MarshalCLR(context.Background(), image, 0, len(image)); err != nil {
+		t.Fatal(err)
+	}
+	buf.currentReadPosition = 0
+
+	rxd := newTTIrxd().(*tTIrxd)
+	rxd.setColumnContexts([]ColumnContext{{DataType: common.DtyINty}})
+	rxd.numberOfColumns = 1
+	if err := rxd.UnMarshalFrom(context.Background(), eng); err != nil {
+		t.Fatalf("unmarshal named type: %v", err)
+	}
+	if !reflect.DeepEqual(rxd.row[0], image) {
+		t.Errorf("named-type image = % X, want % X", rxd.row[0], image)
+	}
+}
+
 // TestTTIrxd_MarshalTo_FailOnNullIndicator simulates a failure when writing the null indicator byte.
 // Uses FaultyArrayBasedDataBuffer (via createMarshaller) to fail WriteByte on first call.
 func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {
@@ -191,7 +251,7 @@ func TestTTIrxd_BvcOnFirstRow_ReturnsError(t *testing.T) {
 	rxd := newTTIrxd().(*tTIrxd)
 	rxd.SetNumberOfColumns(2)
 	rxd.SetRowCount(0)
-	rxd.setColumnContexts([]ColumnContext{{DataType: DtyVCS}, {DataType: DtyVCS}})
+	rxd.setColumnContexts([]ColumnContext{{DataType: common.DtyVCS}, {DataType: common.DtyVCS}})
 	bitset := common.NewBitSet(2)
 	bitset.Set(0, true)
 	bitset.Set(1, true)
@@ -330,7 +390,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 			tc.setup(rxd)
 			columnContexts := make([]ColumnContext, int(rxd.numberOfColumns))
 			for i := range columnContexts {
-				columnContexts[i].DataType = DtyVCS
+				columnContexts[i].DataType = common.DtyVCS
 			}
 			rxd.setColumnContexts(columnContexts)
 			// Create the test marshaller with provided payload
@@ -365,7 +425,7 @@ func TestTTIrxd_UnmarshalFrom(t *testing.T) {
 	rxd.SetRowCount(rowCount)
 	rxd.SetPrevRow(nil)
 	rxd.SetBvcState(nil, false)
-	rxd.setColumnContexts([]ColumnContext{{DataType: DtyVCS}, {DataType: DtyVCS}})
+	rxd.setColumnContexts([]ColumnContext{{DataType: common.DtyVCS}, {DataType: common.DtyVCS}})
 
 	// Attempt to unmarshal: should succeed with valid data
 	err := rxd.UnMarshalFrom(context.Background(), mar)
@@ -474,7 +534,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 			rxd.SetPrevRow(prevRow)
 			columnContexts := make([]ColumnContext, int(noCols))
 			for i := range columnContexts {
-				columnContexts[i].DataType = DtyVCS
+				columnContexts[i].DataType = common.DtyVCS
 			}
 			rxd.setColumnContexts(columnContexts)
 			// Step: Attempt to unmarshal row data
@@ -526,7 +586,7 @@ func TestTTIrxd_BvcPresentColumn_UnmarshalError(t *testing.T) {
 	bitset := common.NewBitSet(numCols)
 	bitset.Set(0, true) // Only column 0 marked present
 	rxd.SetBvcState(bitset, true)
-	rxd.setColumnContexts([]ColumnContext{{DataType: DtyVCS}, {DataType: DtyVCS}})
+	rxd.setColumnContexts([]ColumnContext{{DataType: common.DtyVCS}, {DataType: common.DtyVCS}})
 
 	// Payload with only length byte, not enough data (forces error in _unmarshalScalarColumn)
 	payload := []byte{5}
@@ -554,8 +614,8 @@ func TestTTIrxd_BvcCarriedNullKeepsLobContextAligned(t *testing.T) {
 	rxd.SetRowCount(2)
 	rxd.SetPrevRow([]common.B1Array{{0x11}, nil})
 	rxd.setColumnContexts([]ColumnContext{
-		{DataType: DtyVCS},
-		{DataType: DtyClob},
+		{DataType: common.DtyVCS},
+		{DataType: common.DtyClob},
 	})
 
 	// Only column 0 is present in this row. Column 1 is SQL NULL and must be
@@ -594,8 +654,8 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 			sessCtx: &common.SessionContext{},
 		},
 		resultMetadata: selectResultMetadata{columns: []ColumnContext{
-			{DataType: DtyVCS},
-			{DataType: DtyClob},
+			{DataType: common.DtyVCS},
+			{DataType: common.DtyClob},
 		}},
 	}
 	state := &queryRunState{rows: exec.resultMetadata.newRows(shelf)}
