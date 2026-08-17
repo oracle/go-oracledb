@@ -238,8 +238,7 @@ const vectorPrefetchSize common.UB4 = 524308
 
 // newTTIOacVectorDefine creates a define OAC descriptor for VECTOR values with LOB prefetch enabled.
 // 524,308 bytes covers the largest dense FLOAT64 VECTOR: 65,535 dimensions,
-// its eight-byte norm field, and the protocol header. This normally makes the
-// locator only a fallback rather than part of the data path.
+// its eight-byte norm field, and the protocol header.
 func newTTIOacVectorDefine(columnContext ColumnContext, _ common.UB4) common.Marshallable {
 	return newTTIOAcDefine(DtyVec, max_lob_length, columnContext, uacfsald, vectorPrefetchSize)
 }
