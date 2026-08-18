@@ -44,10 +44,9 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
-
-	"reflect"
 
 	"github.com/oracle/go-driver/driver/common"
 )
@@ -67,71 +66,6 @@ type Connection struct {
 	// failure) or when then connectionShouldBeDropped flag is received on an STA
 	// or OER message (TODO).
 	_isValid bool
-}
-
-// rowsWithStatementCloser keeps an ad-hoc statement alive for the lifetime of its rows.
-type rowsWithStatementCloser struct {
-	rows   driver.Rows
-	stmt   *Statement
-	closed bool
-}
-
-func (r *rowsWithStatementCloser) Columns() []string              { return r.rows.Columns() }
-func (r *rowsWithStatementCloser) Next(dest []driver.Value) error { return r.rows.Next(dest) }
-
-func (r *rowsWithStatementCloser) ColumnTypeDatabaseTypeName(index int) string {
-	if rows, ok := r.rows.(driver.RowsColumnTypeDatabaseTypeName); ok {
-		return rows.ColumnTypeDatabaseTypeName(index)
-	}
-	return ""
-}
-
-func (r *rowsWithStatementCloser) ColumnTypeLength(index int) (int64, bool) {
-	if rows, ok := r.rows.(driver.RowsColumnTypeLength); ok {
-		return rows.ColumnTypeLength(index)
-	}
-	return 0, false
-}
-
-func (r *rowsWithStatementCloser) ColumnTypeNullable(index int) (bool, bool) {
-	if rows, ok := r.rows.(driver.RowsColumnTypeNullable); ok {
-		return rows.ColumnTypeNullable(index)
-	}
-	return false, false
-}
-
-func (r *rowsWithStatementCloser) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
-	if rows, ok := r.rows.(driver.RowsColumnTypePrecisionScale); ok {
-		return rows.ColumnTypePrecisionScale(index)
-	}
-	if rows, ok := r.rows.(interface {
-		ColumnTypePrecisionScale(int) (int64, int8, bool)
-	}); ok {
-		precision, scale, available := rows.ColumnTypePrecisionScale(index)
-		return precision, int64(scale), available
-	}
-	return 0, 0, false
-}
-
-func (r *rowsWithStatementCloser) ColumnTypeScanType(index int) reflect.Type {
-	if rows, ok := r.rows.(driver.RowsColumnTypeScanType); ok {
-		return rows.ColumnTypeScanType(index)
-	}
-	return nil
-}
-
-func (r *rowsWithStatementCloser) Close() error {
-	if r.closed {
-		return nil
-	}
-	r.closed = true
-	if r.stmt != nil {
-		return r.stmt.Close()
-	}
-	if r.rows != nil {
-		return r.rows.Close()
-	}
-	return nil
 }
 
 // NewConnection constructs a new Oracle Connection wrapping negotiated state.
@@ -223,12 +157,9 @@ func (c *Connection) QueryContext(ctx context.Context, query string, args []driv
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
+	defer stmt.Close()
 	result, err := stmt.QueryContext(ctx, args)
-	if err != nil {
-		_ = stmt.Close()
-		return nil, c.shelf.LocalizeError(err)
-	}
-	return &rowsWithStatementCloser{rows: result, stmt: stmt}, nil
+	return result, c.shelf.LocalizeError(err)
 }
 
 // cancelCurrentExecution sends a request to the database to cancel the current
