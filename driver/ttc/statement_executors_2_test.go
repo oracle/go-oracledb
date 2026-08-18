@@ -73,6 +73,10 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	_ = EncoderRegistry.Register(reflect.TypeOf(true), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeBoolean(v.(bool))
 	})
+	_ = EncoderRegistry.Register(reflect.TypeOf(common.VectorFloat64(nil)), 2, converters.EncodeVectorFloat64)
+	_ = EncoderRegistry.Register(reflect.TypeOf(common.VectorFloat32(nil)), 2, converters.EncodeVectorFloat32)
+	_ = EncoderRegistry.Register(reflect.TypeOf(common.VectorInt8(nil)), 2, converters.EncodeVectorInt8)
+	_ = EncoderRegistry.Register(reflect.TypeOf(common.VectorBinary(nil)), 2, converters.EncodeVectorBinary)
 	_ = EncoderRegistry.Register(reflect.TypeOf(time.Time{}), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeTimestampWithTimeZone(v.(time.Time))
 	})
@@ -105,6 +109,30 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 		},
 		maxLength: converters.MaxBoolLength,
 	})
+	_ = BindOacRegistry.Register(reflect.TypeOf(common.VectorFloat64(nil)), 2, bindOacType{
+		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
+			return newTTIoac(DtyVec, maxLength)
+		},
+	})
+	_ = BindOacRegistry.Register(reflect.TypeOf(common.VectorFloat32(nil)), 2, bindOacType{
+		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
+			return newTTIoac(DtyVec, maxLength)
+		},
+	})
+	_ = BindOacRegistry.Register(reflect.TypeOf(common.VectorInt8(nil)), 2, bindOacType{
+		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
+			return newTTIoac(DtyVec, maxLength)
+		},
+	})
+	_ = BindOacRegistry.Register(reflect.TypeOf(common.VectorBinary(nil)), 2, bindOacType{
+		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
+			return newTTIoac(DtyVec, maxLength)
+		},
+	})
+	_ = BindValueRegistry.Register(reflect.TypeOf(common.VectorFloat64(nil)), 2, buildVectorBindValue)
+	_ = BindValueRegistry.Register(reflect.TypeOf(common.VectorFloat32(nil)), 2, buildVectorBindValue)
+	_ = BindValueRegistry.Register(reflect.TypeOf(common.VectorInt8(nil)), 2, buildVectorBindValue)
+	_ = BindValueRegistry.Register(reflect.TypeOf(common.VectorBinary(nil)), 2, buildVectorBindValue)
 	_ = BindOacRegistry.Register(reflect.TypeOf(time.Time{}), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyStz, maxLength)
@@ -120,6 +148,7 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	_ = DecoderRegistry.Register(DtyBin, 2, newTypeDecoder(func(_ ColumnContext, data common.B1Array) (sqldriver.Value, error) {
 		return []byte(data), nil
 	}, nil))
+	_ = DecoderRegistry.Register(DtyVec, 2, newTypeDecoder(DecodeVectorColumn, nil))
 
 	shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(ttcProtocolVersion))
 }
@@ -280,29 +309,29 @@ func TestPrepareBindsAndOAC_Encode_Supported(t *testing.T) {
 	}
 
 	expNum, _ := converters.EncodeInt(42)
-	if !bytes.Equal([]byte(row[0]), []byte(expNum)) {
-		t.Fatalf("int64 encoding mismatch: got %v want %v", []byte(row[0]), []byte(expNum))
+	if !bytes.Equal([]byte(row[0].payload), []byte(expNum)) {
+		t.Fatalf("int64 encoding mismatch: got %v want %v", []byte(row[0].payload), []byte(expNum))
 	}
 	expVcs, _ := converters.EncodeVarchar("X")
-	if !bytes.Equal([]byte(row[1]), []byte(expVcs)) {
-		t.Fatalf("varchar encoding mismatch: got %v want %v", []byte(row[1]), []byte(expVcs))
+	if !bytes.Equal([]byte(row[1].payload), []byte(expVcs)) {
+		t.Fatalf("varchar encoding mismatch: got %v want %v", []byte(row[1].payload), []byte(expVcs))
 	}
-	if !bytes.Equal([]byte(row[2]), []byte{1, 2, 3}) {
-		t.Fatalf("raw encoding mismatch: got %v want %v", []byte(row[2]), []byte{1, 2, 3})
+	if !bytes.Equal([]byte(row[2].payload), []byte{1, 2, 3}) {
+		t.Fatalf("raw encoding mismatch: got %v want %v", []byte(row[2].payload), []byte{1, 2, 3})
 	}
-	if row[3] != nil {
-		t.Fatalf("nil bind should encode as nil cell, got %v", row[3])
+	if !row[3].isNull {
+		t.Fatalf("nil bind should encode as null, got %+v", row[3])
 	}
 	// bool -> representation per current impl
-	if !bytes.Equal([]byte(row[4]), []byte{1, 1}) {
-		t.Fatalf("bool(true) encoding mismatch: got %v want %v", []byte(row[4]), []byte{1})
+	if !bytes.Equal([]byte(row[4].payload), []byte{1, 1}) {
+		t.Fatalf("bool(true) encoding mismatch: got %v want %v", []byte(row[4].payload), []byte{1})
 	}
-	if !bytes.Equal([]byte(row[5]), []byte{0}) {
-		t.Fatalf("bool(false) encoding mismatch: got %v want %v", []byte(row[5]), []byte{0})
+	if !bytes.Equal([]byte(row[5].payload), []byte{0}) {
+		t.Fatalf("bool(false) encoding mismatch: got %v want %v", []byte(row[5].payload), []byte{0})
 	}
 	expTS, _ := converters.EncodeTimestampWithTimeZone(ts)
-	if !bytes.Equal([]byte(row[6]), []byte(expTS)) {
-		t.Fatalf("timestamp encoding mismatch: got %v want %v", []byte(row[6]), []byte(expTS))
+	if !bytes.Equal([]byte(row[6].payload), []byte(expTS)) {
+		t.Fatalf("timestamp encoding mismatch: got %v want %v", []byte(row[6].payload), []byte(expTS))
 	}
 }
 
@@ -317,6 +346,58 @@ func TestPrepareBindsAndOAC_Encode_Errors(t *testing.T) {
 	err := sp.prepareBindsAndOAC([]sqldriver.Value{struct{}{}})
 	if err == nil || !strings.Contains(err.Error(), "internal error occurred") {
 		t.Fatalf("expected type encode error containing 'bind-type', got %v", err)
+	}
+}
+
+// TestPrepareBindsAndOAC_VectorBinds verifies that each supported VECTOR bind
+// receives its native DtyVec OAC and value-based locator transport.
+func TestPrepareBindsAndOAC_VectorBinds(t *testing.T) {
+	args := []sqldriver.Value{
+		common.VectorFloat64{1.25, -2.5},
+		common.VectorFloat32{3.5, 4.25},
+		common.VectorInt8{1, -2, 3},
+		common.VectorBinary{0xAA, 0x0F},
+	}
+
+	shelf := newShelf[common.MessageType]()
+	registerTestCodecs(shelf, 20)
+
+	sp := &statementProcessor{shelf: shelf}
+	if err := sp.prepareBindsAndOAC(args); err != nil {
+		t.Fatalf("prepareBindsAndOAC returned error: %v", err)
+	}
+
+	if len(sp.encodedValues) != 1 {
+		t.Fatalf("expected one encoded row, got %d", len(sp.encodedValues))
+	}
+	row := sp.encodedValues[0]
+	if len(row) != len(args) {
+		t.Fatalf("encoded row size mismatch: got %d want %d", len(row), len(args))
+	}
+	for i, bind := range row {
+		if bind.isNull {
+			t.Fatalf("bind %d unexpectedly null", i)
+		}
+		if len(bind.payload) == 0 {
+			t.Fatalf("bind %d payload is empty", i)
+		}
+		transport, ok := bind.transport.(*vectorBindTransport)
+		if !ok {
+			t.Fatalf("bind %d transport mismatch: got %T want *vectorBindTransport", i, bind.transport)
+		}
+		if len(transport.locator) == 0 {
+			t.Fatalf("bind %d locator is empty", i)
+		}
+	}
+
+	if len(sp.currentOacs) != len(args) {
+		t.Fatalf("oac count mismatch: got %d want %d", len(sp.currentOacs), len(args))
+	}
+	for i, o := range sp.currentOacs {
+		oac := o.(*tTIoac)
+		if oac.dataType != common.UB1(DtyVec) {
+			t.Fatalf("oac[%d] datatype mismatch: got %d want %d", i, oac.dataType, DtyVec)
+		}
 	}
 }
 

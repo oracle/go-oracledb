@@ -39,6 +39,7 @@
 package ttc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -88,8 +89,7 @@ func makeRowPayload(dump []string) []byte {
 	return buf[1:]
 }
 
-// rowToBytes converts a slice of common.B1Array (used for row data) to a slice of byte slices.
-// Primarily used to compare row results in tests.
+// rowToBytes converts row data to byte slices for result comparisons in tests.
 func rowToBytes(row []common.B1Array) [][]byte {
 	out := make([][]byte, len(row))
 	for i, arr := range row {
@@ -116,7 +116,10 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 
 	// Encoded bind data set before calling MarshalTo (nil, then 3-byte value)
 	val := common.B1Array{0x01, 0x02, 0x03}
-	rxd.setBindValues([]common.B1Array{nil, val})
+	rxd.setBindValues([]bindValue{
+		{isNull: true},
+		newCLRBindValue(val),
+	})
 
 	// Use ArrayBasedDataBuffer via NewMarshalEngineTest so we can inspect bytes directly
 	buf, eng := NewMarshalEngineTest(session.BIG_ENDIAN, B2, Universal, 64)
@@ -133,12 +136,57 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 	}
 }
 
+// TestTTIrxd_MarshalTo_VectorLocator verifies the VECTOR bind wire sequence:
+// quasi-locator length, quasi-locator CLR, then encoded VECTOR CLR.
+func TestTTIrxd_MarshalTo_VectorLocator(t *testing.T) {
+	rxd := newTTIrxd().(*tTIrxd)
+	payload := common.B1Array{0xAA, 0xBB, 0xCC}
+	locator := buildVectorQuasiLocator(len(payload))
+	rxd.setBindValues([]bindValue{
+		{
+			transport: &vectorBindTransport{locator: locator},
+			payload:   payload,
+		},
+	})
+
+	buf, eng := NewMarshalEngineTest(session.BIG_ENDIAN, B2, Universal, 128)
+	if err := rxd.MarshalTo(context.Background(), eng); err != nil {
+		t.Fatalf("MarshalTo returned error: %v", err)
+	}
+
+	got := buf.bytes[:buf.currentWritePosition]
+	mar := createMarshaller(got, 0, 0)
+	locLen, err := mar.UnmarshalUB4(context.Background())
+	if err != nil {
+		t.Fatalf("failed to read locator length: %v", err)
+	}
+	if int(locLen) != len(locator) {
+		t.Fatalf("locator length mismatch: got %d want %d", locLen, len(locator))
+	}
+	locData, _, err := mar.UnmarshalCLRColumnData(context.Background())
+	if err != nil {
+		t.Fatalf("failed to read locator CLR: %v", err)
+	}
+	if !bytes.Equal(locData, locator) {
+		t.Fatalf("locator payload mismatch: got %v want %v", locData, locator)
+	}
+	valueData, _, err := mar.UnmarshalCLRColumnData(context.Background())
+	if err != nil {
+		t.Fatalf("failed to read vector payload CLR: %v", err)
+	}
+	if !bytes.Equal(valueData, payload) {
+		t.Fatalf("vector payload mismatch: got %v want %v", valueData, payload)
+	}
+}
+
 // TestTTIrxd_MarshalTo_FailOnNullIndicator simulates a failure when writing the null indicator byte.
 // Uses FaultyArrayBasedDataBuffer (via createMarshaller) to fail WriteByte on first call.
 func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.setBindValues([]common.B1Array{nil})
+	rxd.setBindValues([]bindValue{
+		{isNull: true},
+	})
 
 	// Fail the first WriteByteWithContext call (which writes the null indicator)
 	mar := createMarshaller(make([]byte, 8), failOnWriteByte, 1)
@@ -162,7 +210,9 @@ func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {
 func TestTTIrxd_MarshalTo_FailOnCLRDataWrite(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.setBindValues([]common.B1Array{{0xAA, 0xBB, 0xCC}})
+	rxd.setBindValues([]bindValue{
+		newCLRBindValue(common.B1Array{0xAA, 0xBB, 0xCC}),
+	})
 
 	// First WriteBytesWithContext call should fail (after successful length byte write)
 	mar := createMarshaller(make([]byte, 8), failOnWriteBytes, 1)

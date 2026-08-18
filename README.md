@@ -16,6 +16,7 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
   - JSON support returning JSON as `string`
   - BLOB support using prefetch and returning `[]byte`
   - CLOB support using prefetch and returning `string`
+  - VECTOR support for dense `FLOAT64`, `FLOAT32`, `INT8`, and `BINARY` values (Oracle Database 23c+)
 
 ## Installation
 Run:
@@ -307,9 +308,14 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 
 ### Advanced and Complex Types
 
-| Oracle Type   | Driver returns       |
-|---------------|----------------------|
-| `JSON` (21c+) | `string`             |
+| Oracle Type   | Driver returns                                      |
+|---------------|-----------------------------------------------------|
+| `JSON` (21c+) | `string`                                            |
+| `VECTOR` (23c+) | `[]float64`, `[]float32`, `[]int8`, or `[]byte` |
+
+To bind a VECTOR value, use the corresponding named type: `oracle.VectorFloat64`,
+`oracle.VectorFloat32`, `oracle.VectorInt8`, or `oracle.VectorBinary`. `VectorBinary`
+uses packed, most-significant-bit-first bits.
 
 ## Help
 Are you having trouble with Oracle Database Driver for Go? We want to help!

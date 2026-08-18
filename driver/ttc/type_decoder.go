@@ -574,6 +574,27 @@ func DecodeBinaryColumn(_ ColumnContext, data common.B1Array) (driver.Value, err
 	return []byte(data), nil
 }
 
+/*
+DecodeVectorColumn decodes a TTC VECTOR payload into the matching Go slice type.
+
+Parameters:
+- columnContext: metadata used when reporting a decode error.
+- data: VECTOR bytes received from the wire.
+
+Returns:
+- []float64, []float32, []int8, or []byte for the encoded VECTOR type.
+
+Errors:
+- A RowDecodeError when the VECTOR payload cannot be decoded.
+*/
+func DecodeVectorColumn(columnContext ColumnContext, data common.B1Array) (driver.Value, error) {
+	value, err := converters.DecodeVector(data)
+	if err != nil {
+		return nil, rowDecodeError(columnContext, err, "VECTOR")
+	}
+	return value, nil
+}
+
 func GetScanTypeForVarcharColumn(_ ColumnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }

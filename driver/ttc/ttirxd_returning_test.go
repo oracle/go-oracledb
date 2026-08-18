@@ -398,7 +398,7 @@ func TestTTIrxd_MarshalTo_LargeCLR(t *testing.T) {
 	for i := range large {
 		large[i] = byte(i & 0xFF)
 	}
-	rxd.setBindValues([]common.B1Array{large})
+	rxd.setBindValues([]bindValue{newCLRBindValue(large)})
 
 	buf, eng := NewMarshalEngineTest(session.BIG_ENDIAN, B2, Universal, 1024)
 
