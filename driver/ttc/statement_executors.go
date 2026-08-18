@@ -39,6 +39,7 @@
 package ttc
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -46,7 +47,9 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/oracle/go-oracledb/driver/adt"
 	"github.com/oracle/go-oracledb/driver/common"
+	"github.com/oracle/go-oracledb/driver/ttc/converters"
 )
 
 // Internal AL8I4 flags used in oall8Options[9]
@@ -188,6 +191,7 @@ type queryRunState struct {
 	// prevRow and prevLobColContext form the aligned previous-row state used by
 	// BVC carry.
 	prevRow           []common.B1Array
+	prevRefCursorRows []*ttcRows
 	prevLobColContext []*LobColumnContext
 	rows              *ttcRows
 }
@@ -253,17 +257,32 @@ func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
 			}
 
 			// Capture decoder-relevant metadata from the bind OAC when it is available.
-			bindOac, err := codecFactory.GetBindOac(normalizeBindValue(outArg), 0)
+			normalized := normalizeBindValue(outArg)
+			var bindOac common.Marshallable
+			var err error
+			typ, ok := namedTypeForBind(normalized.value)
+			if !ok && normalized.isOut {
+				typ, ok = inferNamedTypeForOut(args, outIndex)
+			}
+			if ok {
+				bindOac, err = newTTIOacNamedType(typ, 0)
+			} else {
+				bindOac, err = codecFactory.GetBindOac(normalized, 0)
+			}
 			if err == nil {
 				if oac, ok := bindOac.(*tTIoac); ok {
 					e.outColumnContexts = append(e.outColumnContexts, ColumnContext{
-						Index:       outIndex,
-						DataType:    int16(oac.dataType),
-						Precision:   int64(oac.precision),
-						Scale:       int8(oac.scale),
-						CharsetForm: uint8(oac.characterSetForm),
-						CharsetID:   uint16(oac.characterSetID),
+						Index:            outIndex,
+						DataType:         int16(oac.dataType),
+						Precision:        int64(oac.precision),
+						Scale:            int8(oac.scale),
+						CharsetForm:      uint8(oac.characterSetForm),
+						CharsetID:        uint16(oac.characterSetID),
+						NamedTypeVersion: uint16(oac.versionNumber),
 					})
+					if oac.toid != nil {
+						e.outColumnContexts[len(e.outColumnContexts)-1].NamedTypeTOID = append(common.B1Array(nil), (*oac.toid)...)
+					}
 				}
 			}
 			continue
@@ -354,7 +373,7 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 		return nil, err
 	}
 	if len(args) > 0 {
-		if err := e.prepareBindsAndOAC(args); err != nil {
+		if err := e.prepareBindsAndOAC(args, query.kind); err != nil {
 			return nil, err
 		}
 	}
@@ -642,7 +661,12 @@ Notes / limitations:
 Returns:
   - error: non-nil if encoder/OAC factory lookup fails or if encoding fails for any bind value.
 */
-func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value) error {
+func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value, kind sqlKind) error {
+	// GetObjectType can be used directly through the public API, bypassing
+	// Connection.GetObjectType and its per-connection cache. Register descriptors
+	// carried by the supplied values before preparing OACs so RXD decoding can
+	// resolve the returned TOID on this physical session.
+	e.registerNamedTypes(args)
 	n := len(args)
 
 	e.bindValues = make([]any, n)
@@ -657,6 +681,27 @@ func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value) error {
 		// sql.Out{}, int, float, string,time
 		var err error
 		normalized := normalizeBindValue(v)
+		typ, ok := namedTypeForBind(normalized.value)
+		if !ok && normalized.isOut {
+			typ, ok = inferNamedTypeForOut(args, i)
+		}
+		if ok {
+			if normalized.isOutOnly {
+				e.encodedValues[currentRow][i] = nil
+			} else if collection, ok := collectionForBind(normalized.value); ok {
+				e.encodedValues[currentRow][i], err = encodeCollectionImage(collection, e.shelf.GetCodecFactory())
+				if err != nil {
+					return err
+				}
+			} else {
+				return common.NewOracleError(common.InternalError, nil, "object ADT encoding is not implemented")
+			}
+			e.currentOacs[i], err = newTTIOacNamedType(typ, e.getMaxLengthForOac(i, len(e.encodedValues[currentRow][i])))
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		encoder, err := e.shelf.GetCodecFactory().GetEncoder(normalized)
 		if err != nil {
 			return err
@@ -674,8 +719,66 @@ func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value) error {
 		if err != nil {
 			return err
 		}
+		e.setPLSQLBindMaxLength(kind, e.currentOacs[i])
 	}
 	return nil
+}
+
+// registerNamedTypes records named-type descriptors supplied as bind values.
+// Do not replace an existing descriptor: it was obtained on this physical
+// connection and is the authoritative instance for the current TOID.
+func (e *statementProcessor) registerNamedTypes(args []sqldriver.Value) {
+	if e.shelf == nil || e.shelf.adtByTOID == nil {
+		return
+	}
+	for _, arg := range args {
+		normalized := normalizeBindValue(arg)
+		typ, ok := namedTypeForBind(normalized.value)
+		if !ok || len(typ.TOID) == 0 {
+			continue
+		}
+		key := string(typ.TOID)
+		if e.shelf.adtByTOID[key] == nil {
+			e.shelf.adtByTOID[key] = typ
+		}
+	}
+}
+
+// inferNamedTypeForOut finds the named-type descriptor for an OUT destination
+// whose Go value is initially zero (for example, *ObjectCollection). The
+// descriptor is carried by the corresponding IN collection bind in the same
+// statement and is required to construct the OUT OAC and decode its result.
+func inferNamedTypeForOut(args []sqldriver.Value, outIndex int) (*adt.ObjectType, bool) {
+	for i, arg := range args {
+		if i == outIndex {
+			continue
+		}
+		if out, ok := arg.(sql.Out); ok && !out.In {
+			continue
+		}
+		normalized := normalizeBindValue(arg)
+		if typ, ok := namedTypeForBind(normalized.value); ok {
+			return typ, true
+		}
+	}
+	return nil, false
+}
+
+// setPLSQLBindMaxLength expands variable-width character and binary binds for
+// PL/SQL. PL/SQL formal parameters can accept up to 32,768 bytes, while SQL
+// bind sizing normally follows the encoded value length.
+func (e *statementProcessor) setPLSQLBindMaxLength(kind sqlKind, bindOAC common.Marshallable) {
+	if kind != plsql {
+		return
+	}
+	oac, ok := bindOAC.(*tTIoac)
+	if !ok {
+		return
+	}
+	switch common.DtyType(oac.requestedtype) {
+	case common.DtyVCS, common.DtyVbi, common.DtyBin:
+		oac.maxLength = converters.MaxVarcharLength
+	}
 }
 
 /*
@@ -710,6 +813,7 @@ func (e *statementProcessor) pushBindRows(
 		}
 		rxd := msg.(*tTIrxd)
 		rxd.setBindValues(row)
+		rxd.setCurrentOACs(e.currentOacs)
 		if err := stmr.Push(ctx, rxd); err != nil {
 			common.Odl.Error(caller+": Push RXD failed", "error", err, "stage", "push", "msgCode", rxd.GetMsgCode())
 			return common.NewOracleError(errCode, err, "push")
@@ -735,14 +839,25 @@ func (e *statementProcessor) needToSendOACs() bool {
 	}
 	var ret = true
 	for position := 0; position < len(e.currentOacs); position++ {
-		if e.previousOacs[position].(*tTIoac).dataType != e.currentOacs[position].(*tTIoac).dataType ||
-			e.previousOacs[position].(*tTIoac).maxLength < e.currentOacs[position].(*tTIoac).maxLength {
+		previous := e.previousOacs[position].(*tTIoac)
+		current := e.currentOacs[position].(*tTIoac)
+		if previous.dataType != current.dataType ||
+			previous.maxLength < current.maxLength ||
+			previous.versionNumber != current.versionNumber ||
+			!sameNamedTypeTOID(previous.toid, current.toid) {
 			return true
 		} else {
 			ret = false
 		}
 	}
 	return ret
+}
+
+func sameNamedTypeTOID(left, right *common.B1Array) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return bytes.Equal(*left, *right)
 }
 
 /*
@@ -862,7 +977,7 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message common.M
 
 func (e *statementExecutorExec) prepareForExec(query *qualifiedSQLStatement, args []sqldriver.Value) (common.Message[common.MessageType], error) {
 	if len(args) > 0 {
-		if err := e.prepareBindsAndOAC(args); err != nil {
+		if err := e.prepareBindsAndOAC(args, query.kind); err != nil {
 			return nil, err
 		}
 	}
@@ -954,6 +1069,7 @@ func (e *statementExecutorPlSql) createRXD(t *messageHeader) (common.Message[com
 	rxd := msg.(*tTIrxd)
 	rxd.SetNumberofReturningArgs(len(e.outDestPtrs))
 	rxd.setColumnContexts(e.outColumnContexts)
+	e.configureRefCursorRXD(rxd)
 	return rxd, nil
 }
 
@@ -1125,8 +1241,10 @@ func (e *statementExecutorSelect) createRXD(state *queryRunState, t *messageHead
 	rxd.SetNumberOfColumns(e.resultMetadata.columnCount())
 	// Reuse the existing column metadata slice to avoid per-row datatype allocations.
 	rxd.setColumnContexts(e.resultMetadata.columns)
+	e.configureRefCursorRXD(rxd)
 	if state.prevRow != nil {
 		rxd.SetPrevRow(state.prevRow)
+		rxd.setPrevRefCursorRows(state.prevRefCursorRows)
 		rxd.setPrevLobColumnContext(state.prevLobColContext)
 	}
 	// Pass the character set to RXD so that it can be set in lobContext if
@@ -1166,7 +1284,23 @@ func (e *statementExecutorDML) createRXD(t *messageHeader) (common.Message[commo
 	rxd := msg.(*tTIrxd)
 	rxd.SetNumberofReturningArgs(len(e.outDestPtrs))
 	rxd.setDmlReturning()
+	rxd.setColumnContexts(e.outColumnContexts)
+	e.configureRefCursorRXD(rxd)
 	return rxd, nil
+}
+
+// configureRefCursorRXD supplies the negotiated DCB constructor and child-row
+// builder needed while an RXD value contains a REF CURSOR.
+func (e *statementProcessor) configureRefCursorRXD(rxd *tTIrxd) {
+	rxd.setRefCursorFactories(func() (*tTIdcb, error) {
+		msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIDCB)
+		if err != nil {
+			return nil, err
+		}
+		return msg.(*tTIdcb), nil
+	}, func(columns []ColumnContext, cursorID common.SB4) *ttcRows {
+		return newRefCursorRows(e.shelf, e.sessCtx, cursorID, columns)
+	})
 }
 
 /*
@@ -1200,7 +1334,11 @@ func (e *statementExecutorExec) handleRXDRow(msg common.Message[common.MessageTy
 	for i, dest := range e.outDestPtrs {
 		// Skip destinations that have no matching returned value
 		// or no data received from server.
-		if i >= len(rxd.row) || len(rxd.row[i]) == 0 {
+		isRefCursor := i < len(e.outColumnContexts) && e.outColumnContexts[i].DataType == common.DtyCur
+		isNamedType := i < len(e.outColumnContexts) &&
+			(e.outColumnContexts[i].DataType == common.DtyINty || e.outColumnContexts[i].DataType == common.DtyNty) &&
+			e.outColumnContexts[i].NamedTypeTOID != nil
+		if i >= len(rxd.row) || (!isRefCursor && !isNamedType && len(rxd.row[i]) == 0) {
 			continue
 		}
 
@@ -1211,19 +1349,45 @@ func (e *statementExecutorExec) handleRXDRow(msg common.Message[common.MessageTy
 		}
 
 		// Decode the TTC payload for this returned bind position into a Go value.
-		decoder, err := codecFactory.GetDecoder(columnContext.DataType)
-		if err != nil {
-			return err
+		var value sqldriver.Value
+		var err error
+		var namedType *adt.ObjectType
+		if isNamedType {
+			namedType = e.shelf.adtByTOID[string(columnContext.NamedTypeTOID)]
+			if namedType == nil {
+				return common.NewOracleError(common.InternalError, nil, "named type descriptor is not cached")
+			}
+			if len(rxd.row[i]) != 0 {
+				value, err = decodeCollectionImage(rxd.row[i], namedType, codecFactory)
+			}
+		} else if columnContext.DataType == common.DtyCur && i < len(rxd.getRefCursorRows()) {
+			value = rxd.getRefCursorRows()[i]
+		} else {
+			decoder, decoderErr := codecFactory.GetDecoder(columnContext.DataType)
+			if decoderErr != nil {
+				return decoderErr
+			}
+			value, err = decoder.decodeToType(columnContext, rxd.row[i])
 		}
-
-		value, err := decoder.decodeToType(columnContext, rxd.row[i])
 		if err != nil {
 			return err
 		}
 		if value == nil {
+			if collection, ok := dest.(*adt.ObjectCollection); ok && namedType != nil {
+				*collection = adt.ObjectCollection{Object: &adt.Object{ObjectType: namedType}, Null: true}
+			}
+			if object, ok := dest.(*adt.Object); ok && namedType != nil {
+				*object = adt.Object{ObjectType: namedType, Attributes: make(map[string]any)}
+			}
 			continue
 		}
 		if dest == nil {
+			continue
+		}
+		if cursor, ok := dest.(*RefCursor); ok {
+			if rows, ok := value.(*ttcRows); ok {
+				cursor.rows = rows
+			}
 			continue
 		}
 
@@ -1360,8 +1524,10 @@ func (s *queryRunState) handleRXDRow(msg common.Message[common.MessageType]) {
 		// after unmarshalling, so rows and BVC state can safely share this slice.
 		currLobColContext := rxd.getLobColumnContext()
 		s.rows.rowData = append(s.rows.rowData, currRow)
+		s.rows.refCursorData = append(s.rows.refCursorData, rxd.getRefCursorRows())
 		s.rows.lobColContext = append(s.rows.lobColContext, currLobColContext)
 		s.prevRow = currRow
+		s.prevRefCursorRows = rxd.getRefCursorRows()
 		common.Odl.Debug("handleRXDRow: appended RXD row", "len", len(rxd.row))
 		s.prevLobColContext = currLobColContext
 		common.Odl.Debug("handleRXDRow: appended RXD row", "len", len(rxd.row))

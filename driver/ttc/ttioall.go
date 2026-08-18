@@ -157,7 +157,7 @@ setBindOACs attaches per-bind OAC (Oracle Access Descriptor) definitions to this
 
 Parameter:
   - currRowOac: slice of OAC descriptors, one per bind position, in bind order (SQL 1-based -> slice 0-based).
-    Each tTIoac advertises the TTC datatype (e.g., DtyNum, DtyChr via DtyVCS, DtyBin via DtyVbi, DtyBol, DtyStz)
+    Each tTIoac advertises the TTC datatype (e.g., common.DtyNum, common.DtyChr via common.DtyVCS, common.DtyBin via common.DtyVbi, common.DtyBol, common.DtyStz)
     and the maximum length for the associated bind value. The slice length should be greater than or equal to
     numberOfBinds; only the first numberOfBinds entries are marshalled.
 

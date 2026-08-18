@@ -39,9 +39,11 @@
 package ttc
 
 import (
+	"context"
 	"database/sql/driver"
 	"io"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/oracle/go-oracledb/driver/common"
@@ -89,7 +91,7 @@ type ColumnContext struct {
 	DBTypeName           common.B1Array
 	ScanType             *reflect.Type
 	Length               int64
-	DataType             DtyType
+	DataType             common.DtyType
 	Precision            int64
 	Scale                int8
 	KernelPosition       int
@@ -97,6 +99,8 @@ type ColumnContext struct {
 	CharsetForm          uint8
 	CharsetID            uint16
 	Nullable             bool
+	NamedTypeTOID        common.B1Array
+	NamedTypeVersion     uint16
 	LobContext           *LobColumnContext
 	serverTimeZoneOffset int16
 }
@@ -116,8 +120,15 @@ type ColumnContext struct {
 type ttcRows struct {
 	// row buffer
 	rowData       [][]common.B1Array
+	refCursorData [][]*ttcRows
 	currentRowIdx int
 	numOfRows     int
+	cursorID      common.SB4
+	fetchOnce     sync.Once
+	fetch         func() error
+	fetchErr      error
+	closeOnce     sync.Once
+	closeErr      error
 
 	// metadata caches for ColumnType* interfaces
 	columnContexts []ColumnContext
@@ -153,6 +164,12 @@ func (r *ttcRows) Columns() []string {
 // column's raw []common.B1Array value as a type provided in dest. Row count is
 // computed once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {
+	if r.fetch != nil {
+		r.fetchOnce.Do(func() { r.fetchErr = r.fetch() })
+		if r.fetchErr != nil {
+			return r.fetchErr
+		}
+	}
 	if r.currentRowIdx >= r.numOfRows {
 		return io.EOF
 	}
@@ -181,15 +198,26 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	// Fast-path locals to minimize repeated bounds checks and lookups
 	colCtx := r.columnContexts[i]
 	dtype := colCtx.DataType
+	if dtype == common.DtyCur {
+		if r.currentRowIdx < len(r.refCursorData) && i < len(r.refCursorData[r.currentRowIdx]) {
+			return r.refCursorData[r.currentRowIdx][i], nil
+		}
+		return nil, nil
+	}
 	scale := colCtx.Scale
 	data := r.rowData[r.currentRowIdx][i]
-	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]
-	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
-	// Handle Oracle SQL NULL (typically raw length zero is NULL).
+	// A NULL named-type image has no collection payload. Handle it before
+	// attempting to parse its collection image.
 	if len(data) == 0 {
 		return r.handleNull(i, dtype, scale), nil
 	}
-
+	if (dtype == common.DtyINty || dtype == common.DtyNty) && colCtx.NamedTypeTOID != nil {
+		if typ := r.shelf.adtByTOID[string(colCtx.NamedTypeTOID)]; typ != nil {
+			return decodeCollectionImage(data, typ, r.shelf.GetCodecFactory())
+		}
+	}
+	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]
+	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
 	decoder, err := r.shelf.GetCodecFactory().GetDecoder(dtype)
 	if err != nil || decoder == nil {
 		// Preserve unknown types as raw bytes
@@ -218,7 +246,7 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 // Outputs:
 //   - driver.Value representing the NULL substitution (for example 0, "", time.Time{}),
 //     or nil when no specific default applies.
-func (r *ttcRows) handleNull(i int, dtype DtyType, scale int8) driver.Value {
+func (r *ttcRows) handleNull(i int, dtype common.DtyType, scale int8) driver.Value {
 	if !r.strictNullHandlingValue {
 		if val, ok := _defaultValueForNull(dtype, scale); ok {
 			return val
@@ -245,7 +273,7 @@ func (r *ttcRows) handleNull(i int, dtype DtyType, scale int8) driver.Value {
 //
 // Numeric defaults consider scale to decide between integer, floating-point, or
 // decimal string representations.
-func _defaultValueForNull(dtype DtyType, scale int8) (driver.Value, bool) {
+func _defaultValueForNull(dtype common.DtyType, scale int8) (driver.Value, bool) {
 	if resolver, ok := defaultNullValueResolvers[dtype]; ok {
 		return resolver(scale)
 	}
@@ -269,42 +297,42 @@ func constantDefaultNullValue(value driver.Value) defaultNullValueResolver {
 // defaultNullValueResolvers defines the default substitution for TTC datatypes when
 // strict null handling is disabled. Numeric types are handled separately because the
 // default representation depends on scale metadata.
-var defaultNullValueResolvers = map[DtyType]defaultNullValueResolver{
-	DtyNum:      defaultNumericValue,
-	DtyVnu:      defaultNumericValue,
-	DtyInt:      defaultNumericValue,
-	DtyPdn:      defaultNumericValue,
-	DtyUin:      defaultNumericValue,
-	DtySls:      defaultNumericValue,
-	DtyIbFloat:  constantDefaultNullValue(float64(0)),
-	DtyIbDouble: constantDefaultNullValue(float64(0)),
-	DtyChr:      constantDefaultNullValue(""),
-	DtyStr:      constantDefaultNullValue(""),
-	DtyVCS:      constantDefaultNullValue(""),
-	DtyAfc:      constantDefaultNullValue(""),
-	DtyAvc:      constantDefaultNullValue(""),
-	DtyBin:      constantDefaultNullValue(common.B1Array{}),
-	DtyVbi:      constantDefaultNullValue(common.B1Array{}),
-	DtyLbi:      constantDefaultNullValue(common.B1Array{}),
-	DtyBlob:     constantDefaultNullValue(common.B1Array{}),
-	DtyDblob:    constantDefaultNullValue(common.B1Array{}),
-	DtyBol:      constantDefaultNullValue(false),
-	DtyDat:      constantDefaultNullValue(time.Time{}),
-	DtyEdate:    constantDefaultNullValue(time.Time{}),
-	DtyStamp:    constantDefaultNullValue(time.Time{}),
-	DtyEstamp:   constantDefaultNullValue(time.Time{}),
-	DtyStz:      constantDefaultNullValue(time.Time{}),
-	DtyEstz:     constantDefaultNullValue(time.Time{}),
-	DtySitz:     constantDefaultNullValue(time.Time{}),
-	DtyEsitz:    constantDefaultNullValue(time.Time{}),
-	DtyTime:     constantDefaultNullValue(time.Time{}),
-	DtyEtime:    constantDefaultNullValue(time.Time{}),
-	DtyTtz:      constantDefaultNullValue(time.Time{}),
-	DtyEttz:     constantDefaultNullValue(time.Time{}),
-	DtyIym:      constantDefaultNullValue("00-00"),
-	DtyEiym:     constantDefaultNullValue("00-00"),
-	DtyIds:      constantDefaultNullValue("00 00:00:00.0"),
-	DtyEids:     constantDefaultNullValue("00 00:00:00.0"),
+var defaultNullValueResolvers = map[common.DtyType]defaultNullValueResolver{
+	common.DtyNum:      defaultNumericValue,
+	common.DtyVnu:      defaultNumericValue,
+	common.DtyInt:      defaultNumericValue,
+	common.DtyPdn:      defaultNumericValue,
+	common.DtyUin:      defaultNumericValue,
+	common.DtySls:      defaultNumericValue,
+	common.DtyIbFloat:  constantDefaultNullValue(float64(0)),
+	common.DtyIbDouble: constantDefaultNullValue(float64(0)),
+	common.DtyChr:      constantDefaultNullValue(""),
+	common.DtyStr:      constantDefaultNullValue(""),
+	common.DtyVCS:      constantDefaultNullValue(""),
+	common.DtyAfc:      constantDefaultNullValue(""),
+	common.DtyAvc:      constantDefaultNullValue(""),
+	common.DtyBin:      constantDefaultNullValue(common.B1Array{}),
+	common.DtyVbi:      constantDefaultNullValue(common.B1Array{}),
+	common.DtyLbi:      constantDefaultNullValue(common.B1Array{}),
+	common.DtyBlob:     constantDefaultNullValue(common.B1Array{}),
+	common.DtyDblob:    constantDefaultNullValue(common.B1Array{}),
+	common.DtyBol:      constantDefaultNullValue(false),
+	common.DtyDat:      constantDefaultNullValue(time.Time{}),
+	common.DtyEdate:    constantDefaultNullValue(time.Time{}),
+	common.DtyStamp:    constantDefaultNullValue(time.Time{}),
+	common.DtyEstamp:   constantDefaultNullValue(time.Time{}),
+	common.DtyStz:      constantDefaultNullValue(time.Time{}),
+	common.DtyEstz:     constantDefaultNullValue(time.Time{}),
+	common.DtySitz:     constantDefaultNullValue(time.Time{}),
+	common.DtyEsitz:    constantDefaultNullValue(time.Time{}),
+	common.DtyTime:     constantDefaultNullValue(time.Time{}),
+	common.DtyEtime:    constantDefaultNullValue(time.Time{}),
+	common.DtyTtz:      constantDefaultNullValue(time.Time{}),
+	common.DtyEttz:     constantDefaultNullValue(time.Time{}),
+	common.DtyIym:      constantDefaultNullValue("00-00"),
+	common.DtyEiym:     constantDefaultNullValue("00-00"),
+	common.DtyIds:      constantDefaultNullValue("00 00:00:00.0"),
+	common.DtyEids:     constantDefaultNullValue("00 00:00:00.0"),
 }
 
 // defaultNumericValue calculates the default driver.Value to surface for
@@ -333,11 +361,77 @@ func defaultNumericValue(scale int8) (driver.Value, bool) {
 	}
 }
 
-// Close implements driver.Rows.Close. No network/protocol resources are owned
-// by this object currently, so this is a no-op.
+// Close implements driver.Rows.Close and closes the child server cursor.
 func (r *ttcRows) Close() error {
-	common.Odl.Debug("closing rows")
+	r.closeOnce.Do(func() {
+		for _, row := range r.refCursorData {
+			for _, cursor := range row {
+				if cursor != nil {
+					if err := cursor.Close(); err != nil && r.closeErr == nil {
+						r.closeErr = err
+					}
+				}
+			}
+		}
+		if r.cursorID != 0 {
+			if err := r.closeServerCursor(); err != nil && r.closeErr == nil {
+				r.closeErr = err
+			}
+		}
+	})
+	return r.closeErr
+}
+
+func (r *ttcRows) closeServerCursor() error {
+	msg, err := r.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
+	if err != nil {
+		return r.shelf.LocalizeError(err)
+	}
+	occaMsg := msg.(*tTIOcca)
+	occaMsg.setCursorIDs([]common.UB4{common.UB4(r.cursorID)})
+	stmr := r.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	if err = stmr.Push(context.Background(), occaMsg); err != nil {
+		return r.shelf.LocalizeError(err)
+	}
+	if err = stmr.Flush(context.Background()); err != nil {
+		return r.shelf.LocalizeError(err)
+	}
+	r.cursorID = 0
 	return nil
+}
+
+// newRefCursorRows creates a result set whose first Next performs the define
+// and fetch round trip for a server cursor already described in an RXD value.
+func newRefCursorRows(shelf *ttiShelf[common.MessageType], sessCtx *common.SessionContext, cursorID common.SB4, columns []ColumnContext) *ttcRows {
+	rows := newTTCRows(columns)
+	rows.SetShelf(shelf)
+	rows.cursorID = cursorID
+	rows.fetch = func() error {
+		exec := newStatementExecutorSelect()
+		exec.SetShelf(shelf)
+		exec.SetSessionContext(sessCtx)
+		exec.resultMetadata.replace(columns)
+		exec.opts = exec.buildOAll8Options(true)
+		exec.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
+		query := &qualifiedSQLStatement{cursorId: cursorID}
+		msg, err := exec.createOAll8Msg(query, nil)
+		if err != nil {
+			return err
+		}
+		exec.prepareDefines(msg)
+		state, _, err := exec.runQuery(context.Background(), msg)
+		if err != nil && !isNoDataFoundError(err) {
+			return err
+		}
+		if state != nil && state.rows != nil {
+			rows.rowData = state.rows.rowData
+			rows.refCursorData = state.rows.refCursorData
+			rows.lobColContext = state.rows.lobColContext
+			rows.numOfRows = state.rows.numOfRows
+		}
+		return nil
+	}
+	return rows
 }
 
 // newTTCRows constructs a ttcRows instance from decoded column metadata.
@@ -364,65 +458,65 @@ func newTTCRows(columnContexts []ColumnContext) *ttcRows {
 func (r *ttcRows) ColumnTypeDatabaseTypeName(index int) string {
 	// inline translation here waiting for refactor of our type registry
 	switch r.columnContexts[index].DataType {
-	case DtyChr:
+	case common.DtyChr:
 		if r.columnContexts[index].CharsetForm == 2 {
 			return "NVARCHAR2"
 		}
 		return "VARCHAR2"
-	case DtyNum, DtyVnu:
+	case common.DtyNum, common.DtyVnu:
 		if r.columnContexts[index].Precision != 0 && r.columnContexts[index].Precision == -127 {
 			return "FLOAT"
 		}
 		return "NUMBER"
-	case DtyLng:
+	case common.DtyLng:
 		return "LONG"
-	case DtyDat:
+	case common.DtyDat:
 		return "DATE"
-	case DtyBin:
+	case common.DtyBin:
 		return "RAW"
-	case DtyLbi:
+	case common.DtyLbi:
 		return "LONG RAW"
-	case DtyAfc:
+	case common.DtyAfc:
 		if r.columnContexts[index].CharsetForm == 2 {
 			return "NCHAR"
 		}
 		return "CHAR"
-	case DtyIbFloat:
+	case common.DtyIbFloat:
 		return "BINARY_FLOAT"
-	case DtyIbDouble:
+	case common.DtyIbDouble:
 		return "BINARY_DOUBLE"
-	case DtyCur:
+	case common.DtyCur:
 		return "REFCURSOR"
-	case DtyRdd, DtyBuri:
+	case common.DtyRdd, common.DtyBuri:
 		return "ROWID"
-	case DtyINty:
+	case common.DtyINty:
 		return "Internal Named Type" // enough for now
-	case DtyIref:
+	case common.DtyIref:
 		return "Internal Named Type" // enough for now
-	case DtyClob:
+	case common.DtyClob:
 		if r.columnContexts[index].CharsetForm == 2 {
 			return "NCLOB"
 		}
 		return "CLOB"
-	case DtyBlob:
+	case common.DtyBlob:
 		return "BLOB"
-	case DtyBFil:
+	case common.DtyBFil:
 		return "BFILE"
-	case DtyJSON:
+	case common.DtyJSON:
 		return "JSON"
-	case DtyVec:
+	case common.DtyVec:
 		return "VECTOR"
-	case DtyStamp:
+	case common.DtyStamp:
 		return "TIMESTAMP"
-	case DtyStz:
+	case common.DtyStz:
 		return "TIMESTAMP WITH TIME ZONE"
-	case DtyIym:
+	case common.DtyIym:
 		return "INTERVALYM"
-	case DtyIds:
+	case common.DtyIds:
 		return "INTERVALDS"
-	case DtySitz:
+	case common.DtySitz:
 		return "TIMESTAMP WITH LOCAL TIME ZONE"
-	case DtyBol:
+	case common.DtyBol:
 		return "BOOLEAN"
 	default:
 		common.Odl.Warn("Do not have name mapping", "type", r.columnContexts[index].DataType)
@@ -452,7 +546,7 @@ func (r *ttcRows) ColumnTypeNullable(index int) (bool, bool) {
 // the precision and scale for decimal types. If not applicable, ok should be false.
 func (r *ttcRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
 	dty := r.columnContexts[index].DataType
-	if dty == DtyNum || dty == DtyVnu {
+	if dty == common.DtyNum || dty == common.DtyVnu {
 		return r.columnContexts[index].Precision, int64(r.columnContexts[index].Scale), true
 	}
 

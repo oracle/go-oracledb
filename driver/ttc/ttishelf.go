@@ -44,6 +44,7 @@ import (
 	"maps"
 	"weak"
 
+	"github.com/oracle/go-oracledb/driver/adt"
 	"github.com/oracle/go-oracledb/driver/common"
 )
 
@@ -69,6 +70,7 @@ type ttiShelf[T any] struct {
 	_cancelExecutionFunction StmtCancellationFunction
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
+	adtByTOID                map[string]*adt.ObjectType
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
@@ -81,6 +83,7 @@ func newShelf[T any]() *ttiShelf[T] {
 		codecFactory:  nil,
 		_statements:   make(map[*Statement]weak.Pointer[Statement]),
 		_eventService: newEventService(),
+		adtByTOID:     make(map[string]*adt.ObjectType),
 	}
 }
 

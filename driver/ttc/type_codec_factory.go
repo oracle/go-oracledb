@@ -81,15 +81,16 @@ Description:
 		_ = oac // e.g. used to describe bind metadata (type/length) in TTC messages
 
 		// Row/scan path: resolve a decoder for an Oracle database type id.
-		decoder, _ := f.GetDecoder(DtyVCS)
+		decoder, _ := f.GetDecoder(common.DtyVCS)
 		v, _ := decoder.decodeToType(ColumnContext{Name: "C1", Index: 0}, wireBytes)
 		_ = v // decoded driver.Value (string, number, time.Time, etc.)
 */
 type codecFactory interface {
 	GetEncoder(normalizedBindValue) (encoderFunc, error)
-	GetDecoder(DtyType) (*typeDecoder, error)
+	GetCollectionEncoder(common.DtyType) (encoderFunc, error)
+	GetDecoder(common.DtyType) (*typeDecoder, error)
 	GetBindOac(normalizedBindValue, common.UB4) (common.Marshallable, error)
-	GetDefineOac(DtyType, ColumnContext, *common.OracleDriverProperties) common.Marshallable
+	GetDefineOac(common.DtyType, ColumnContext, *common.OracleDriverProperties) common.Marshallable
 }
 
 // encoderFunc defines the function signature of encoder functions.
@@ -374,15 +375,20 @@ func (r *codecRegistry[K, F]) getCandidates(key K) []codecRegistryEntry[F] {
 // Populate it during package init of encoder implementors.
 var EncoderRegistry = newCodecRegistry[reflect.Type, encoderFunc]()
 
+// CollectionEncoderRegistry contains encoders selected by the declared
+// Oracle collection element type. This is distinct from EncoderRegistry,
+// whose key is the Go value type (for example float32 normally maps to NUMBER).
+var CollectionEncoderRegistry = newCodecRegistry[common.DtyType, encoderFunc]()
+
 // DecoderRegistry is the global registry for decoders keyed by Oracle database type.
-var DecoderRegistry = newCodecRegistry[DtyType, *typeDecoder]()
+var DecoderRegistry = newCodecRegistry[common.DtyType, *typeDecoder]()
 
 // BindOacRegistry is the global registry for bind OAC metadata keyed by Go type.
 var BindOacRegistry = newCodecRegistry[reflect.Type, bindOacType]()
 
 // DefineOacRegistry is the global registry for define OAC instances keyed by Oracle database type,
 // column context and connection properties.
-var DefineOacRegistry = newCodecRegistry[DtyType, defineOacFunc]()
+var DefineOacRegistry = newCodecRegistry[common.DtyType, defineOacFunc]()
 
 /*
 CodecFactoryImpl is the codecFactory implementation used by TTC to resolve encoders/decoders/OAC makers.
@@ -396,11 +402,12 @@ Description:
 	- DefineOacRegistry (Oracle db type id -> defineOacFunc)
 */
 type CodecFactoryImpl struct {
-	ttcVersion int8
-	encoders   *codecRegistry[reflect.Type, encoderFunc]
-	decoders   *codecRegistry[DtyType, *typeDecoder]
-	bindOacs   *codecRegistry[reflect.Type, bindOacType]
-	defineOacs *codecRegistry[DtyType, defineOacFunc]
+	ttcVersion         int8
+	encoders           *codecRegistry[reflect.Type, encoderFunc]
+	collectionEncoders *codecRegistry[common.DtyType, encoderFunc]
+	decoders           *codecRegistry[common.DtyType, *typeDecoder]
+	bindOacs           *codecRegistry[reflect.Type, bindOacType]
+	defineOacs         *codecRegistry[common.DtyType, defineOacFunc]
 }
 
 /*
@@ -422,12 +429,27 @@ Errors:
 */
 func NewCodecFactoryForProtocol(protocolVersion int8) codecFactory {
 	return &CodecFactoryImpl{
-		ttcVersion: protocolVersion,
-		encoders:   EncoderRegistry,
-		decoders:   DecoderRegistry,
-		bindOacs:   BindOacRegistry,
-		defineOacs: DefineOacRegistry,
+		ttcVersion:         protocolVersion,
+		encoders:           EncoderRegistry,
+		collectionEncoders: CollectionEncoderRegistry,
+		decoders:           DecoderRegistry,
+		bindOacs:           BindOacRegistry,
+		defineOacs:         DefineOacRegistry,
 	}
+}
+
+// GetCollectionEncoder resolves an encoder using the Oracle-declared element
+// type. Registry version selection remains encapsulated by the codec factory.
+func (f *CodecFactoryImpl) GetCollectionEncoder(elementType common.DtyType) (encoderFunc, error) {
+	registry := f.collectionEncoders
+	if registry == nil {
+		registry = CollectionEncoderRegistry
+	}
+	candidate := getEntryFromRegistry(f.ttcVersion, registry.getCandidates(elementType))
+	if candidate == nil {
+		return nil, common.NewOracleError(common.InternalError, nil)
+	}
+	return candidate.makeFunc, nil
 }
 
 /*
@@ -477,7 +499,7 @@ Description:
 	negotiated version.
 
 Parameters:
-  - dbType: Oracle database type id (DtyType) describing the column type.
+  - dbType: Oracle database type id (common.DtyType) describing the column type.
 
 Returns:
   - *typeDecoder: The selected decoder implementation.
@@ -486,7 +508,7 @@ Returns:
 Errors:
   - Returns a common.OracleError with code common.InternalError when no decoder candidate exists for dbType.
 */
-func (f *CodecFactoryImpl) GetDecoder(dbType DtyType) (*typeDecoder, error) {
+func (f *CodecFactoryImpl) GetDecoder(dbType common.DtyType) (*typeDecoder, error) {
 	common.Odl.Debug("New decoder requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
 
 	candidates := f.decoders.getCandidates(dbType)
@@ -588,7 +610,7 @@ Description:
 	properties. If no compatible candidate is registered, a scalar define OAC is used as fallback.
 
 Parameters:
-  - dbType: Oracle database type id (DtyType) describing the column type.
+  - dbType: Oracle database type id (common.DtyType) describing the column type.
   - columnContext: Column metadata used to build the define OAC.
   - connectionProperties: Connection properties used to derive define settings such as LOB prefetch size.
 
@@ -596,7 +618,7 @@ Returns:
   - common.Marshallable: The selected define OAC instance.
 */
 func (f *CodecFactoryImpl) GetDefineOac(
-	dbType DtyType,
+	dbType common.DtyType,
 	columnContext ColumnContext,
 	connectionProperties *common.OracleDriverProperties,
 ) common.Marshallable {

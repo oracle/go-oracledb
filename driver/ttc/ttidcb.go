@@ -94,19 +94,23 @@ func (p *tTIdcb) getColumnContexts() ([]ColumnContext, error) {
 		if udsProv != nil {
 			oac := udsProv.getOac()
 			metaData[i] = ColumnContext{
-				Index:          i,
-				Name:           udsProv.getColumnName(),
-				SchemaName:     udsProv.getSchemaName(),
-				DBTypeName:     udsProv.getTypeName(),
-				Length:         int64(oac.maxLength),
-				DataType:       DtyType(oac.dataType),
-				Precision:      int64(oac.precision),
-				Scale:          int8(oac.scale),
-				KernelPosition: int(udsProv.getKernelPosition()),
-				ColumnFlags:    uint32(udsProv.getColumnFlags()),
-				CharsetForm:    uint8(oac.characterSetForm),
-				CharsetID:      uint16(oac.characterSetID),
-				Nullable:       udsProv.nullable(),
+				Index:            i,
+				Name:             udsProv.getColumnName(),
+				SchemaName:       udsProv.getSchemaName(),
+				DBTypeName:       udsProv.getTypeName(),
+				Length:           int64(oac.maxLength),
+				DataType:         common.DtyType(oac.dataType),
+				Precision:        int64(oac.precision),
+				Scale:            int8(oac.scale),
+				KernelPosition:   int(udsProv.getKernelPosition()),
+				ColumnFlags:      uint32(udsProv.getColumnFlags()),
+				CharsetForm:      uint8(oac.characterSetForm),
+				CharsetID:        uint16(oac.characterSetID),
+				Nullable:         udsProv.nullable(),
+				NamedTypeVersion: uint16(oac.versionNumber),
+			}
+			if oac.toid != nil {
+				metaData[i].NamedTypeTOID = append(common.B1Array(nil), (*oac.toid)...)
 			}
 			common.Odl.Debug("populateColumnMetaData: added column", "colName", metaData[i].Name)
 		}
@@ -146,6 +150,19 @@ func (p *tTIdcb) UnMarshalFrom(ctx context.Context, mar common.Marshaller) error
 		common.Odl.Debug("tTIdcb: UnMarshalFrom done", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
+}
+
+// unmarshalFromRefCursor reads the DCB embedded in a REF CURSOR RXD value.
+// Unlike a top-level DCB, this form starts with an ignored UB1 and UB4 before
+// the common descriptor body.
+func (p *tTIdcb) unmarshalFromRefCursor(ctx context.Context, mar common.Marshaller) error {
+	if _, err := mar.UnmarshalUB1(ctx); err != nil {
+		return common.NewOracleError(common.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
+	}
+	if _, err := mar.UnmarshalUB4(ctx); err != nil {
+		return common.NewOracleError(common.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
+	}
+	return p.receiveCommon(ctx, mar, false)
 }
 
 // receiveCommon unmarshals column information.
