@@ -39,7 +39,9 @@
 package ttc
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/driver/common"
@@ -377,6 +379,112 @@ func TestMarshalKeyValue(t *testing.T) {
 				if uint32(keyvalflagValue) != uint32(kv.Flag) {
 					t.Errorf("keyvalflag mismatch: got %d, want %d", keyvalflagValue, kv.Flag)
 				}
+			}
+		})
+	}
+}
+
+// Marshals a keywordValuePairWithName and checks the wire field order and values.
+func TestMarshalKeyValuePairWithName(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Native, 1024)
+
+	wantKey := common.StringToB1Array("ORCL_XS_AUTHZ_CONTEXT")
+	wantText := common.StringToB1Array("Hello, World!")
+	wantBinary := common.B1Array{0x00, 0x01, 0xff}
+	const wantFlag common.UB4 = 0x12345678
+
+	kve, err := newKeywordValuePairWithName(
+		string(wantKey), string(wantText), wantBinary, wantFlag,
+	)
+	if err != nil {
+		t.Fatalf("newKeywordValuePairWithName failed: %v", err)
+	}
+	if err := kve.MarshalTo(ctx, engine); err != nil {
+		t.Fatalf("MarshalTo failed: %v", err)
+	}
+
+	dataBuffer.currentReadPosition = 0
+
+	flag, err := engine.UnmarshalUB4(ctx)
+	if err != nil {
+		t.Fatalf("unmarshal flag: %v", err)
+	}
+	if flag != wantFlag {
+		t.Fatalf("flag = %#x, want %#x", flag, wantFlag)
+	}
+
+	for _, tt := range []struct {
+		name string
+		want common.B1Array
+	}{
+		{"key", wantKey},
+		{"text value", wantText},
+		{"binary value", wantBinary},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var got dynamicAllocatedArray
+			if err := got.UnMarshalFrom(ctx, engine); err != nil {
+				t.Fatalf("unmarshal %s: %v", tt.name, err)
+			}
+			if !bytes.Equal(got.value, tt.want) {
+				t.Fatalf("%s = %x, want %x", tt.name, got.value, tt.want)
+			}
+		})
+	}
+}
+
+// Tests that newKeywordValuePairWithName accepts protocol limits and rejects oversized fields.
+func TestNewKeywordValuePairWithNameLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		key         string
+		textValue   string
+		binaryValue common.B1Array
+		wantErr     bool
+	}{
+		{
+			name:        "accepts exact byte limits",
+			key:         strings.Repeat("k", maxKPDKVEKeyLength),
+			textValue:   strings.Repeat("v", maxKPDKVEValueLength),
+			binaryValue: bytes.Repeat([]byte{0xab}, maxKPDKVEValueLength),
+		},
+		{
+			name:    "rejects key one byte over limit",
+			key:     strings.Repeat("k", maxKPDKVEKeyLength+1),
+			wantErr: true,
+		},
+		{
+			name:      "rejects text value one byte over limit",
+			textValue: strings.Repeat("v", maxKPDKVEValueLength+1),
+			wantErr:   true,
+		},
+		{
+			name:        "rejects binary value one byte over limit",
+			binaryValue: bytes.Repeat([]byte{0xab}, maxKPDKVEValueLength+1),
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := newKeywordValuePairWithName(
+				tt.key, tt.textValue, tt.binaryValue, 0,
+			)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected newKeywordValuePairWithName to fail")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("newKeywordValuePairWithName failed: %v", err)
 			}
 		})
 	}

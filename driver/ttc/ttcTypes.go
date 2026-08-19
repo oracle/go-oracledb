@@ -437,3 +437,79 @@ func GetKeyValueFromKeyword(nlsKeys [64]string, keyword keywordValuePair) (strin
 
 	return "", nil
 }
+
+// keywordValuePairWithName represents the TTC DTYKVE record.
+type keywordValuePairWithName struct {
+	flag        common.UB4
+	key         dynamicAllocatedArray
+	textValue   dynamicAllocatedArray
+	binaryValue dynamicAllocatedArray
+}
+
+// Constraints for the (keyword, value) tuple element DTYKVE.
+const (
+	// maximum length of a key name
+	maxKPDKVEKeyLength = 128
+	// maximum length of a key value
+	maxKPDKVEValueLength = 64 * 1024
+)
+
+// newKeywordValuePairWithName returns a DTYKVE record.
+func newKeywordValuePairWithName(
+	key string,
+	textValue string,
+	binaryValue common.B1Array,
+	flag common.UB4,
+) (*keywordValuePairWithName, error) {
+	kve := &keywordValuePairWithName{
+		flag:        flag,
+		key:         dynamicAllocatedArray{value: common.StringToB1Array(key)},
+		textValue:   dynamicAllocatedArray{value: common.StringToB1Array(textValue)},
+		binaryValue: dynamicAllocatedArray{value: append(common.B1Array(nil), binaryValue...)},
+	}
+
+	err := kve.validate()
+	if err != nil {
+		return nil, err
+	}
+
+	return kve, nil
+}
+
+// MarshalTo writes one DTYKVE record.
+func (kve *keywordValuePairWithName) MarshalTo(ctx context.Context, engine common.Marshaller) error {
+	if err := kve.validate(); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+
+	if err := engine.MarshalUB4(ctx, kve.flag); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.key.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.textValue.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.binaryValue.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	return nil
+}
+
+// validate ensures that DTYKVE record respects the wire limits.
+func (kve *keywordValuePairWithName) validate() error {
+	if kve == nil {
+		return common.NewOracleError(common.FailMarshal, nil, "DTYKVE")
+	}
+	if len(kve.key.value) > maxKPDKVEKeyLength {
+		return common.NewOracleError(common.FailMarshal, nil, "DTYKVE key")
+	}
+	if len(kve.textValue.value) > maxKPDKVEValueLength {
+		return common.NewOracleError(common.FailMarshal, nil, "DTYKVE text value")
+	}
+	if len(kve.binaryValue.value) > maxKPDKVEValueLength {
+		return common.NewOracleError(common.FailMarshal, nil, "DTYKVE binary value")
+	}
+	return nil
+}
