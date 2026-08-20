@@ -52,9 +52,9 @@ func initMessagesFr() {
 	message.SetString(language.French, string(UnknownHost), "h\u00F4te inconnu sp\u00E9cifi\u00E9.")
 	message.SetString(language.French, string(LogonDenied), "FR invalid credential or not authorized")
 	message.SetString(language.French, string(TableOrViewNotFound), "table ou vue n'existe pas")
-	message.SetString(language.French, string(InsufficientPrivilege), "privilèges insuffisants")
+	message.SetString(language.French, string(InsufficientPrivilege), "privilÃ¨ges insuffisants")
 	message.SetString(language.French, string(InvalidTableName), "nom de table invalide")
 	message.SetString(language.French, string(InvalidIdentifier), "identifiant SQL invalide")
-	message.SetString(language.French, string(MissingReadPrivilege), "privilège READ manquant")
+	message.SetString(language.French, string(MissingReadPrivilege), "privilÃ¨ge READ manquant")
 	message.SetString(language.French, string(MissingLocalizationService), "service de localisation manquant sur la shelf")
 }

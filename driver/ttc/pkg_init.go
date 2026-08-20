@@ -312,6 +312,23 @@ func init() {
 		common.Odl.Warn("Failed to register function occa", "error", err)
 	}
 
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxSe}, 18, newOTxSe18)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxSe", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxSe}, MinTTCProtocolVersion, newOTxSe)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxSe", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, 18, newOTxSePfn18)
+	if err != nil {
+		common.Odl.Warn("Failed to register piggyback function oTxSe", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, MinTTCProtocolVersion, newOTxSePfn)
+	if err != nil {
+		common.Odl.Warn("Failed to register piggyback function oTxSe", "error", err)
+	}
+
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, MinTTCProtocolVersion, newTTIOallRPA)
 	if err != nil {
 		common.Odl.Warn("Failed to register OAll8 function reply", "error", err)

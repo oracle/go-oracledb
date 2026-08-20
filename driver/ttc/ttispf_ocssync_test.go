@@ -334,6 +334,33 @@ func TestGetKeyValueFromKeyword_PdbAppRoot_True(t *testing.T) {
 	}
 }
 
+func TestGetKeyValueFromKeyword_SessionlessGTRID(t *testing.T) {
+	t.Parallel()
+
+	kv := keywordValuePair{
+		binaryValue: dynamicAllocatedArray{value: []byte{'g', 't', 'r', 'i', 'd', sessionlessGTRIDSyncSet, 1}},
+		keyword:     al8kwSessionlessGTRID,
+	}
+	sync := NewttiSPFOCSSync()
+	key, val := GetKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
+	if key != sessionlessGTRIDProperty {
+		t.Fatalf("key = %q, want %q", key, sessionlessGTRIDProperty)
+	}
+	got, ok := val.(SessionlessGTRIDSync)
+	if !ok {
+		t.Fatalf("value type = %T, want SessionlessGTRIDSync", val)
+	}
+	if !got.IsSet() {
+		t.Fatal("expected decoded sessionless sync payload to report set")
+	}
+	if got.GlobalTransactionID() != "gtrid" {
+		t.Fatalf("gtrid = %q, want %q", got.GlobalTransactionID(), "gtrid")
+	}
+	if string(got.Raw()) != string([]byte{'g', 't', 'r', 'i', 'd', sessionlessGTRIDSyncSet, 1}) {
+		t.Fatalf("raw payload = %v, want sessionless GTRID sync bytes", []byte(got.Raw()))
+	}
+}
+
 // contains is a tiny helper to avoid importing strings in this file.
 func contains(s, sub string) bool {
 	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)

@@ -38,12 +38,18 @@
 
 package common
 
+import "reflect"
+
+// SessionPropertyChangeListener reacts to session property value changes.
+type SessionPropertyChangeListener func(key string, oldValue any, newValue any)
+
 // SessionContext connection session context. This holds database session information
 type SessionContext struct {
 	sessionProperties        *Properties[string] // sessionProperties represents the negotiated properties during OAuth
 	timeZoneVersionNumber    byte
 	driverCharacterSet       UB2
 	sessionNCharCharacterSet UB2
+	propertyListeners        []SessionPropertyChangeListener
 }
 
 // SetTimeZoneVersionNumber sets the time zone version number in the session context.
@@ -73,12 +79,27 @@ func (s *SessionContext) SessionNCharCharacterSet() UB2 {
 
 // UpdateSessionProperties updates/adds the session properties with new values
 func (s *SessionContext) UpdateSessionProperties(props *Properties[string]) {
-	s.sessionProperties.PutAll(props)
+	for key := range _fetchAllKeys(props._source, props._updated) {
+		oldValue := s.sessionProperties.GetProperty(key)
+		newValue := props.GetProperty(key)
+		s.sessionProperties.SetProperty(key, newValue)
+		if !reflect.DeepEqual(oldValue, newValue) {
+			for _, listener := range s.propertyListeners {
+				listener(key, oldValue, newValue)
+			}
+		}
+	}
 }
 
 // GetSessionProperties gets properetis of the session
 func (s *SessionContext) GetSessionProperties() *Properties[string] {
 	return s.sessionProperties
+}
+
+// RegisterPropertyChangeListener subscribes to property updates emitted when a
+// session property value changes.
+func (s *SessionContext) RegisterPropertyChangeListener(listener SessionPropertyChangeListener) {
+	s.propertyListeners = append(s.propertyListeners, listener)
 }
 
 // NewSessionContext creates a new context

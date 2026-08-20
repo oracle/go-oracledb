@@ -143,6 +143,52 @@ func TestHandleServerToClientPiggyback_ValidOCSSYNC(t *testing.T) {
 	}
 }
 
+// Test that the OCSSYNC callback preserves the raw sessionless GTRID sync
+// payload in session properties and, through the connection's session property
+// listener, unregisters the local transaction when the server reports the
+// sessionless transaction as unset.
+func TestHandleServerToClientPiggyback_SessionlessTransactionUnset(t *testing.T) {
+	t.Parallel()
+	shelf := newShelf[common.MessageType]()
+	sessionCtx := common.NewSessionContext()
+	conn := &Connection{shelf: shelf, sessCtx: sessionCtx}
+	conn.registerSessionPropertyListeners()
+	updater := serverToClientPiggybackUpdater{
+		shelf:      shelf,
+		sessionCtx: sessionCtx,
+	}
+
+	shelf.registerTransaction(newTransaction(&Connection{shelf: shelf}, context.Background()))
+
+	mockMsg := NewttiSPFOCSSync()
+	mockMsg.(*ttiSPFOCSSync).keyValueArr = &keywordValueArray{
+		{keyword: al8kwSessionlessGTRID, binaryValue: dynamicAllocatedArray{value: []byte{'x', 'y', sessionlessGTRIDSyncUnset, 1}}},
+	}
+
+	handled, err := updater.handleServerToClientPiggyback(mockMsg, nil)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if handled {
+		t.Fatal("Expected handled to be false")
+	}
+	if shelf.isInTransaction() {
+		t.Fatal("Expected sessionless transaction to be unregistered after server unset sync")
+	}
+
+	val := sessionCtx.GetSessionProperties().GetProperty(sessionlessGTRIDProperty)
+	got, ok := val.(SessionlessGTRIDSync)
+	if !ok {
+		t.Fatalf("Expected %s property to be a SessionlessGTRIDSync, got %T", sessionlessGTRIDProperty, val)
+	}
+	if !got.IsUnset() {
+		t.Fatal("Expected decoded sessionless sync payload to report unset")
+	}
+	if string(got.Raw()) != string([]byte{'x', 'y', sessionlessGTRIDSyncUnset, 1}) {
+		t.Fatalf("Unexpected raw GTRID sync payload: %v", []byte(got.Raw()))
+	}
+}
+
 // Test that the correct error is returned when the SPF message does not
 // implement the function interface
 func TestHandleServerToClientPiggyback_NotFunction(t *testing.T) {

@@ -386,6 +386,11 @@ func initMessagesEn() {
 	// Action:   Use an identifier with a supported length and characters.
 	// Comment:  N/A
 	message.SetString(language.English, string(InvalidIdentifier), "invalid SQL identifier")
+	// Document: No
+	// Cause:    The provided GTRID is empty or exceeds the maximum size accepted by the server.
+	// Action:   Provide a non-empty GTRID up to 64 bytes.
+	// Comment:  N/A
+	message.SetString(language.English, string(InvalidGTRIDValue), "invalid GTRID value")
 
 	// Document: No
 	message.SetString(language.English, string(CancelOperationError), "cancel operation failed")

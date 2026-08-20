@@ -48,6 +48,8 @@ type transaction struct {
 	_underlyingConnection *Connection
 	// the current transaction context
 	_transactionContext context.Context
+	// GTRID is set for sessionless transactions and empty for regular transactions.
+	GTRID string
 }
 
 // newTransaction creates a new transaction with the given context
@@ -66,6 +68,12 @@ func newTransaction(conn *Connection, ctx context.Context) *transaction {
 // the context is cancelled during the execution.
 func (t *transaction) getTransactionContext() context.Context {
 	return t._transactionContext
+}
+
+// IsSessionlessTx reports whether this transaction was started or resumed as a
+// sessionless transaction.
+func (t *transaction) IsSessionlessTx() bool {
+	return t.GTRID != ""
 }
 
 // Commit commits the transaction

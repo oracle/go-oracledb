@@ -352,6 +352,9 @@ const (
 	StatementParsingMissingValue             ErrorCode = "OGD-00161"
 	// InvalidIdentifier indicates a provided SQL identifier is invalid.
 	InvalidIdentifier ErrorCode = "OGD-00162"
+	// InvalidGTRIDValue indicates a provided global transaction identifier is empty
+	// or exceeds the server-supported size limit.
+	InvalidGTRIDValue ErrorCode = "OGD-00163"
 
 	// Driver Internal Error
 	InternalError ErrorCode = "OGD-00062"

@@ -1084,6 +1084,7 @@ func newTestConnection(
 		_isClosed: false,
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
+	conn.registerSessionPropertyListeners()
 	_registerHandleConnectionShouldBeDropped(shelf, conn)
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	return conn

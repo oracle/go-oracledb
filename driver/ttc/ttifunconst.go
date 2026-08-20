@@ -61,6 +61,8 @@ const (
 	oLobOps common.FunctionType = 96
 	// oExfen (OEXFEN) is the fast path execute+fetch function.
 	oExfen common.FunctionType = 78
+	// oTxSe (OTXSE) is used for transaction start, resume and detach operations.
+	oTxSe common.FunctionType = 103
 	// occa is the function code for close cursor/cancel,
 	occa common.FunctionType = 105
 )

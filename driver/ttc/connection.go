@@ -85,6 +85,7 @@ func NewConnection(
 		_isValid:  true,
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
+	conn.registerSessionPropertyListeners()
 	_registerHandleConnectionShouldBeDropped(shelf, conn)
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
@@ -215,6 +216,36 @@ func (c *Connection) String() string {
 func (c *Connection) registerEventListeners(service *eventService) {
 	service.register(c, streamerStaleEvent)
 	service.register(c, streamerOverFlowEvent)
+}
+
+func (c *Connection) registerSessionPropertyListeners() {
+	if c.sessCtx == nil {
+		return
+	}
+	c.sessCtx.RegisterPropertyChangeListener(c.handleSessionPropertyChange)
+}
+
+func (c *Connection) handleSessionPropertyChange(key string, oldValue any, newValue any) {
+	if key != sessionlessGTRIDProperty {
+		return
+	}
+	sync, ok := newValue.(SessionlessGTRIDSync)
+	if !ok {
+		return
+	}
+
+	currentTx := c.shelf.getTransaction()
+	switch {
+	case sync.IsUnset():
+		if currentTx != nil {
+			currentTx.GTRID = ""
+		}
+		c.shelf.unregisterTransaction()
+	case sync.IsSet():
+		if currentTx != nil {
+			currentTx.GTRID = sync.GlobalTransactionID()
+		}
+	}
 }
 
 // notify implements EventListener interface
