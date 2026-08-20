@@ -47,6 +47,7 @@ import (
 	"reflect"
 
 	"github.com/oracle/go-oracledb/v26/driver/common"
+	"github.com/oracle/go-oracledb/v26/driver/refcursor"
 )
 
 // Internal AL8I4 flags used in oall8Options[9]
@@ -188,6 +189,7 @@ type queryRunState struct {
 	// prevRow and prevLobColContext form the aligned previous-row state used by
 	// BVC carry.
 	prevRow           []common.B1Array
+	prevRefCursorRows []*ttcRows
 	prevLobColContext []*LobColumnContext
 	rows              *ttcRows
 }
@@ -954,6 +956,7 @@ func (e *statementExecutorPlSql) createRXD(t *messageHeader) (common.Message[com
 	rxd := msg.(*tTIrxd)
 	rxd.SetNumberofReturningArgs(len(e.outDestPtrs))
 	rxd.setColumnContexts(e.outColumnContexts)
+	e.configureRefCursorRXD(rxd)
 	return rxd, nil
 }
 
@@ -1125,8 +1128,10 @@ func (e *statementExecutorSelect) createRXD(state *queryRunState, t *messageHead
 	rxd.SetNumberOfColumns(e.resultMetadata.columnCount())
 	// Reuse the existing column metadata slice to avoid per-row datatype allocations.
 	rxd.setColumnContexts(e.resultMetadata.columns)
+	e.configureRefCursorRXD(rxd)
 	if state.prevRow != nil {
 		rxd.SetPrevRow(state.prevRow)
+		rxd.setPrevRefCursorRows(state.prevRefCursorRows)
 		rxd.setPrevLobColumnContext(state.prevLobColContext)
 	}
 	// Pass the character set to RXD so that it can be set in lobContext if
@@ -1166,7 +1171,21 @@ func (e *statementExecutorDML) createRXD(t *messageHeader) (common.Message[commo
 	rxd := msg.(*tTIrxd)
 	rxd.SetNumberofReturningArgs(len(e.outDestPtrs))
 	rxd.setDmlReturning()
+	rxd.setColumnContexts(e.outColumnContexts)
+	e.configureRefCursorRXD(rxd)
 	return rxd, nil
+}
+
+func (e *statementProcessor) configureRefCursorRXD(rxd *tTIrxd) {
+	rxd.setRefCursorFactories(func() (*tTIdcb, error) {
+		msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIDCB)
+		if err != nil {
+			return nil, err
+		}
+		return msg.(*tTIdcb), nil
+	}, func(columns []ColumnContext, cursorID common.SB4) *ttcRows {
+		return newRefCursorRows(e.shelf, e.sessCtx, cursorID, columns)
+	})
 }
 
 /*
@@ -1200,7 +1219,8 @@ func (e *statementExecutorExec) handleRXDRow(msg common.Message[common.MessageTy
 	for i, dest := range e.outDestPtrs {
 		// Skip destinations that have no matching returned value
 		// or no data received from server.
-		if i >= len(rxd.row) || len(rxd.row[i]) == 0 {
+		isRefCursor := i < len(e.outColumnContexts) && e.outColumnContexts[i].DataType == DtyCur
+		if i >= len(rxd.row) || (!isRefCursor && len(rxd.row[i]) == 0) {
 			continue
 		}
 
@@ -1211,12 +1231,17 @@ func (e *statementExecutorExec) handleRXDRow(msg common.Message[common.MessageTy
 		}
 
 		// Decode the TTC payload for this returned bind position into a Go value.
-		decoder, err := codecFactory.GetDecoder(columnContext.DataType)
-		if err != nil {
-			return err
+		var value sqldriver.Value
+		var err error
+		if columnContext.DataType == DtyCur && i < len(rxd.getRefCursorRows()) {
+			value = rxd.getRefCursorRows()[i]
+		} else {
+			decoder, decoderErr := codecFactory.GetDecoder(columnContext.DataType)
+			if decoderErr != nil {
+				return decoderErr
+			}
+			value, err = decoder.decodeToType(columnContext, rxd.row[i])
 		}
-
-		value, err := decoder.decodeToType(columnContext, rxd.row[i])
 		if err != nil {
 			return err
 		}
@@ -1224,6 +1249,12 @@ func (e *statementExecutorExec) handleRXDRow(msg common.Message[common.MessageTy
 			continue
 		}
 		if dest == nil {
+			continue
+		}
+		if cursor, ok := dest.(*refcursor.RefCursor); ok {
+			if rows, ok := value.(*ttcRows); ok {
+				cursor.SetRows(rows)
+			}
 			continue
 		}
 
@@ -1360,8 +1391,10 @@ func (s *queryRunState) handleRXDRow(msg common.Message[common.MessageType]) {
 		// after unmarshalling, so rows and BVC state can safely share this slice.
 		currLobColContext := rxd.getLobColumnContext()
 		s.rows.rowData = append(s.rows.rowData, currRow)
+		s.rows.refCursorData = append(s.rows.refCursorData, rxd.getRefCursorRows())
 		s.rows.lobColContext = append(s.rows.lobColContext, currLobColContext)
 		s.prevRow = currRow
+		s.prevRefCursorRows = rxd.getRefCursorRows()
 		common.Odl.Debug("handleRXDRow: appended RXD row", "len", len(rxd.row))
 		s.prevLobColContext = currLobColContext
 		common.Odl.Debug("handleRXDRow: appended RXD row", "len", len(rxd.row))

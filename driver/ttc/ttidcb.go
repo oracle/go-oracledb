@@ -148,6 +148,17 @@ func (p *tTIdcb) UnMarshalFrom(ctx context.Context, mar common.Marshaller) error
 	return nil
 }
 
+// unmarshalFromRefCursor reads the DCB embedded in a REF CURSOR RXD value.
+func (p *tTIdcb) unmarshalFromRefCursor(ctx context.Context, mar common.Marshaller) error {
+	if _, err := mar.UnmarshalUB1(ctx); err != nil {
+		return common.NewOracleError(common.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
+	}
+	if _, err := mar.UnmarshalUB4(ctx); err != nil {
+		return common.NewOracleError(common.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
+	}
+	return p.receiveCommon(ctx, mar, false)
+}
+
 // receiveCommon unmarshals column information.
 // If fromOdny is true, unmarshalling logic is adapted for ODNY sources.
 func (p *tTIdcb) receiveCommon(ctx context.Context, mar common.Marshaller, fromOdny bool) error {

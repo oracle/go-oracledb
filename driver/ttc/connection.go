@@ -50,6 +50,7 @@ import (
 	"reflect"
 
 	"github.com/oracle/go-oracledb/v26/driver/common"
+	"github.com/oracle/go-oracledb/v26/driver/refcursor"
 )
 
 // Connection implements database/sql/driver.Conn and holds negotiated session
@@ -243,6 +244,9 @@ func (c *Connection) CheckNamedValue(nv *driver.NamedValue) error {
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
 	if out, ok := nv.Value.(sql.Out); ok {
+		if isRefCursorDestination(out.Dest) {
+			return nil
+		}
 		// Destination must be provided for output binding.
 		if out.Dest == nil {
 			return common.NewOracleError(common.InvalidSqlOutParameter, errors.New("nil destination"))
@@ -269,6 +273,15 @@ func checkNamedValue(nv *driver.NamedValue) error {
 		return err
 	}
 	return driver.ErrSkip
+}
+
+func isRefCursorDestination(v any) bool {
+	switch v.(type) {
+	case *refcursor.RefCursor, *driver.Rows:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Connection) _registerServerTimezoneOffset(ctx context.Context) error {
