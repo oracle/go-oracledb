@@ -28,43 +28,55 @@ concurrency:
 jobs:
 
   functional_validate_driver:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
+    strategy:
+      matrix:
+        include:
+          - rdbms: base-database-service-26ai
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go-env
-      - uses: gvenzl/setup-oracle-free@v1
+      - name: Create test database
+        id: create_database
+        uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
         with:
-          app-user: ${{ env.VALIDATION_USER_NAME }}
-          app-user-password: ${{ secrets.test_user_password }}
-          container-name: oracledb
+          oci-service: ${{ matrix.rdbms }}
+          action: create
+          user: ${{ env.VALIDATION_USER_NAME }}
       - uses: ./.github/actions/setup-test-configuration
         with:
-          database-version: "26"
-          database-service: "FREEPDB1"
-          database-host: "localhost"
+          database-version: ${{ steps.create_database.outputs.database_version }}
+          database-service: ${{ steps.create_database.outputs.database_service }}
+          database-host: ${{ steps.create_database.outputs.database_host }}
           database-user: ${{ env.VALIDATION_USER_NAME }}
-          database-password: ${{ secrets.test_user_password }}
+          database-password: ${{ steps.create_database.outputs.database_password }}
       - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="functional"
 
   bench_driver:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
+    strategy:
+      matrix:
+        include:
+          - rdbms: base-database-service-26ai
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go-env
-      - uses: gvenzl/setup-oracle-free@v1
+      - name: Create test database
+        id: create_database
+        uses: oracle-actions/setup-testpilot@0e9d9b877bb35f65e3f1f1c54c6a425329dd7ece # v1.0.27
         with:
-          app-user: ${{ env.VALIDATION_USER_NAME }}
-          app-user-password: ${{ secrets.test_user_password }}
-          container-name: oracledb
+          oci-service: ${{ matrix.rdbms }}
+          action: create
+          user: ${{ env.VALIDATION_USER_NAME }}
       - uses: ./.github/actions/setup-test-configuration
         with:
-          database-version: "26"
-          database-service: "FREEPDB1"
-          database-host: "localhost"
+          database-version: ${{ steps.create_database.outputs.database_version }}
+          database-service: ${{ steps.create_database.outputs.database_service }}
+          database-host: ${{ steps.create_database.outputs.database_host }}
           database-user: ${{ env.VALIDATION_USER_NAME }}
-          database-password: ${{ secrets.test_user_password }}
+          database-password: ${{ steps.create_database.outputs.database_password }}
       - run: go test -parallel=10  -shuffle=on -v $(go list ${{ github.workspace }}/oracle/... | egrep -v /vendor/) -run=^$ -bench=. -benchmem -benchtime=10x -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test
 
 
