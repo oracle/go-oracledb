@@ -67,15 +67,15 @@ type tTIOexfen struct {
 	options          driverCommon.UB4          // options (used to derive commit-on-success)
 }
 
-// NewOexfen constructs an OEXFEN TTC function message (pre-18 protocol header).
-func NewOexfen() driverCommon.Message[driverCommon.MessageType] {
+// newOexfen constructs an OEXFEN TTC function message (pre-18 protocol header).
+func newOexfen() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIOexfen{
 		headerMarshaller: &ttiFunHeader{_funcType: oExfen},
 	}
 }
 
-// NewOexfen18 constructs an OEXFEN TTC function message (18+ protocol header).
-func NewOexfen18() driverCommon.Message[driverCommon.MessageType] {
+// newOexfen18 constructs an OEXFEN TTC function message (18+ protocol header).
+func newOexfen18() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIOexfen{
 		headerMarshaller: &ttiFunHeader18{ttiFunHeader: &ttiFunHeader{_funcType: oExfen}},
 	}

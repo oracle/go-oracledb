@@ -47,7 +47,6 @@ import (
 	"unicode/utf16"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -154,7 +153,7 @@ func TestTTILobd_MarshalTo_Success(t *testing.T) {
 
 	ctx := context.Background()
 	dataBuffer := NewArrayDataBuffer(1205)
-	engine := NewMarshalEngine(dataBuffer, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(dataBuffer, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	msg := newTTIlobd().(*tTIlobd)
 	msg.setBuffer(inputBuffer)
@@ -197,7 +196,7 @@ func TestTTILobd_MarshalTo_Fail(t *testing.T) {
 					ArrayBasedDataBuffer: NewArrayDataBuffer(64),
 					FailOnWriteBytesCall: 1,
 				}
-				return NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+				return NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			},
 			setupMsg: func(msg *tTIlobd) error {
 				payload := common.B1Array{0xAB, 0xCD, 0xEF}

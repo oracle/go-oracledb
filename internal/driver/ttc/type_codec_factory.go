@@ -75,23 +75,23 @@ Description:
 		// Bind/encode path: resolve OAC + encoder for a Go value.
 		bindValue := "hello"
 
-		enc, _ := f.GetEncoder(bindValue)
+		enc, _ := f.getEncoder(bindValue)
 		wireBytes, _ := enc.encodeToType(enc.encodeValue)
 		_ = wireBytes // send over TTC
 
-		oac, _ := f.GetBindOac(bindValue, common.UB4(len(wireBytes)))
+		oac, _ := f.getBindOac(bindValue, common.UB4(len(wireBytes)))
 		_ = oac // e.g. used to describe bind metadata (type/length) in TTC messages
 
 		// Row/scan path: resolve a decoder for an Oracle database type id.
-		decoder, _ := f.GetDecoder(DtyVCS)
-		v, _ := decoder.decodeToType(ColumnContext{Name: "C1", Index: 0}, wireBytes)
+		decoder, _ := f.getDecoder(DtyVCS)
+		v, _ := decoder.decodeToType(columnContext{Name: "C1", Index: 0}, wireBytes)
 		_ = v // decoded driver.Value (string, number, time.Time, etc.)
 */
 type codecFactory interface {
-	GetEncoder(normalizedBindValue) (encoderFunc, error)
-	GetDecoder(DtyType) (*typeDecoder, error)
-	GetBindOac(normalizedBindValue, driverCommon.UB4) (driverCommon.Marshallable, error)
-	GetDefineOac(DtyType, ColumnContext, driverCommon.DriverProperties) driverCommon.Marshallable
+	getEncoder(normalizedBindValue) (encoderFunc, error)
+	getDecoder(DtyType) (*typeDecoder, error)
+	getBindOac(normalizedBindValue, driverCommon.UB4) (driverCommon.Marshallable, error)
+	getDefineOac(DtyType, columnContext, driverCommon.DriverProperties) driverCommon.Marshallable
 }
 
 // encoderFunc defines the function signature of encoder functions.
@@ -102,7 +102,7 @@ type encoderFunc func(driver.Value) (driverCommon.B1Array, error)
 // decoderFunc defines the signature for TTC decoder implementors registered with the
 // codec factory. The function receives the column context and raw TTC data bytes and is
 // expected to return the decoded database value or an error.
-type decoderFunc func(ColumnContext, driverCommon.B1Array) (driver.Value, error)
+type decoderFunc func(columnContext, driverCommon.B1Array) (driver.Value, error)
 
 // bindOacFunc defines the signature for bind OAC constructor functions registered
 // with the codec factory. The function receives the requested maximum bind length
@@ -121,9 +121,9 @@ type bindOacType struct {
 // registered with the codec factory. The function receives the result-set column
 // context plus the effective LOB prefetch size and must return a TTC OAC
 // descriptor suitable for marshalling define/fetch metadata.
-type defineOacFunc func(ColumnContext, driverCommon.UB4) driverCommon.Marshallable
+type defineOacFunc func(columnContext, driverCommon.UB4) driverCommon.Marshallable
 
-type scanTypeFunc func(ColumnContext) reflect.Type
+type scanTypeFunc func(columnContext) reflect.Type
 
 type typeDecoder struct {
 	decodeToType decoderFunc
@@ -170,7 +170,7 @@ Parameters:
   - bindValue: the raw bind value supplied by statement execution code.
 
 Returns:
-  - normalizedBindValue: the normalized bind metadata used by GetEncoder and GetBindOac.
+  - normalizedBindValue: the normalized bind metadata used by getEncoder and getBindOac.
 */
 func normalizeBindValue(bindValue driver.Value) normalizedBindValue {
 	n := normalizedBindValue{
@@ -433,7 +433,7 @@ func NewCodecFactoryForProtocol(protocolVersion int8) codecFactory {
 }
 
 /*
-GetEncoder returns the encoder function for a normalized bind value.
+getEncoder returns the encoder function for a normalized bind value.
 
 Description:
 
@@ -451,7 +451,7 @@ Returns:
 Errors:
   - Returns a common.OracleError with code common.InternalError when no encoder candidate exists for the bind type.
 */
-func (f *CodecFactoryImpl) GetEncoder(normalized normalizedBindValue) (encoderFunc, error) {
+func (f *CodecFactoryImpl) getEncoder(normalized normalizedBindValue) (encoderFunc, error) {
 	if normalized.isOutOnly || normalized.value == nil {
 		return converters.EncodeNull, nil
 	}
@@ -470,7 +470,7 @@ func (f *CodecFactoryImpl) GetEncoder(normalized normalizedBindValue) (encoderFu
 }
 
 /*
-GetDecoder returns the typeDecoder for an Oracle database type id.
+getDecoder returns the typeDecoder for an Oracle database type id.
 
 Description:
 
@@ -488,7 +488,7 @@ Returns:
 Errors:
   - Returns a common.OracleError with code common.InternalError when no decoder candidate exists for dbType.
 */
-func (f *CodecFactoryImpl) GetDecoder(dbType DtyType) (*typeDecoder, error) {
+func (f *CodecFactoryImpl) getDecoder(dbType DtyType) (*typeDecoder, error) {
 	common.Odl.Debug("New decoder requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
 
 	candidates := f.decoders.getCandidates(dbType)
@@ -534,7 +534,7 @@ func getEntryFromRegistry[F any](protocolVersion int8, candidates []codecRegistr
 }
 
 /*
-GetBindOac returns the bind OAC for a bind value.
+getBindOac returns the bind OAC for a bind value.
 
 Description:
 
@@ -553,7 +553,7 @@ Returns:
 Errors:
   - Returns a common.OracleError with code common.InternalError when no OAC candidate exists for the bind type.
 */
-func (f *CodecFactoryImpl) GetBindOac(normalized normalizedBindValue, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
+func (f *CodecFactoryImpl) getBindOac(normalized normalizedBindValue, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
 	common.Odl.Debug("New bind OAC requested", "goType", normalized.goType, "maxLength", maxLength)
 
 	candidates := f.bindOacs.getCandidates(normalized.goType)
@@ -581,7 +581,7 @@ func (f *CodecFactoryImpl) GetBindOac(normalized normalizedBindValue, maxLength 
 }
 
 /*
-GetDefineOac returns the define/fetch OAC for an Oracle database type id.
+getDefineOac returns the define/fetch OAC for an Oracle database type id.
 
 Description:
 
@@ -597,9 +597,9 @@ Parameters:
 Returns:
   - common.Marshallable: The selected define OAC instance.
 */
-func (f *CodecFactoryImpl) GetDefineOac(
+func (f *CodecFactoryImpl) getDefineOac(
 	dbType DtyType,
-	columnContext ColumnContext,
+	columnContext columnContext,
 	connectionProperties driverCommon.DriverProperties,
 ) driverCommon.Marshallable {
 	common.Odl.Debug("New define OAC requested", "dbType", dbType, "ttcVersion", f.ttcVersion)

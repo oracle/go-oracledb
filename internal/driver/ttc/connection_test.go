@@ -46,7 +46,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -110,7 +109,7 @@ func TestNewConnectionReturnsServerTimezoneError(t *testing.T) {
 	})
 	shelf.RegisterLocalizationService(common.NewLocalizationService(language.English))
 
-	conn, err := NewConnection(context.Background(), shelf, driverCommon.NewSessionContext(), &mockNetworkSession{})
+	conn, err := newConnection(context.Background(), shelf, driverCommon.NewSessionContext(), &mockNetworkSession{})
 	if err == nil {
 		t.Fatal("expected server timezone initialization error")
 	}
@@ -178,7 +177,7 @@ func TestConnection_QueryContext_LocalizesError(t *testing.T) {
 
 func TestConnection_LocalizationStaysBoundToEachShelf(t *testing.T) {
 	t.Parallel()
-	newConn := func(lang language.Tag) *Connection {
+	newConn := func(lang language.Tag) *connection {
 		shelf := newShelf[driverCommon.MessageType]()
 		shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
 		shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{err: nil}})
@@ -232,7 +231,7 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 		currentReadPosition:  0,
 		currentWritePosition: 4,
 	}
-	marshaller := NewMarshalEngine(databuffer, session.BIG_ENDIAN, NewTypeRep().nativeTypesRepresentation)
+	marshaller := NewMarshalEngine(databuffer, driverCommon.BIG_ENDIAN, newTypeRep().nativeTypesRepresentation)
 	streamer := NewMessageStreamer(shelf)
 	shelf.RegisterMarshaller(marshaller)
 	shelf.RegisterMessageFactory(mockFactoryWithList)
@@ -437,7 +436,7 @@ type connInvalidationMsg struct {
 }
 
 func (m *connInvalidationMsg) GetMsgCode() driverCommon.MessageType { return m.msgType }
-func (m *connInvalidationMsg) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (m *connInvalidationMsg) UnMarshalFrom(_ context.Context, _ driverCommon.Marshaller) error {
 	return nil
 }
 func (m *connInvalidationMsg) isBeingDrainned() bool {

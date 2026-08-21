@@ -70,7 +70,7 @@ type lobExecutor struct {
 
 // newLobExecutor allocates a lobExecutor pre-configured with the default LOB operation codes
 // (open, close, and is-open). Callers typically embed the returned instance inside type-specific
-// executors such as ClobExecutor and rely on the TTC defaults unless a specialised verb is
+// executors such as clobExecutor and rely on the TTC defaults unless a specialised verb is
 // required.
 //
 // Outputs:

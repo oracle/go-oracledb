@@ -152,18 +152,18 @@ type testCodecFactory struct {
 	defineOac driverCommon.Marshallable
 }
 
-func (t *testCodecFactory) GetEncoder(_ normalizedBindValue) (encoderFunc, error) {
+func (t *testCodecFactory) getEncoder(_ normalizedBindValue) (encoderFunc, error) {
 	return func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }, nil
 }
-func (t *testCodecFactory) GetDecoder(_ DtyType) (*typeDecoder, error) {
-	return newTypeDecoder(func(ColumnContext, driverCommon.B1Array) (driver.Value, error) {
+func (t *testCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
+	return newTypeDecoder(func(columnContext, driverCommon.B1Array) (driver.Value, error) {
 		return t.decode, nil
 	}, nil), nil
 }
-func (t *testCodecFactory) GetBindOac(_ normalizedBindValue, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+func (t *testCodecFactory) getBindOac(_ normalizedBindValue, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
 	return t.bindOac, nil
 }
-func (t *testCodecFactory) GetDefineOac(_ DtyType, _ ColumnContext, _ driverCommon.DriverProperties) driverCommon.Marshallable {
+func (t *testCodecFactory) getDefineOac(_ DtyType, _ columnContext, _ driverCommon.DriverProperties) driverCommon.Marshallable {
 	return t.defineOac
 }
 

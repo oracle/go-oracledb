@@ -41,7 +41,7 @@ package transport
 // Test file for pkcs8_encrypted_private_key.go
 //
 // Strategy:
-//   - ParsePKCS8EncryptedPrivateKey: tested end-to-end using real PEM constants
+//   - parsePKCS8EncryptedPrivateKey: tested end-to-end using real PEM constants
 //     generated once via OpenSSL as per the below commands.
 //   - All helper functions (stripPKCS7Padding, hashForPBKDF2PRF, keyLengthForOID,
 //     decryptCBC) are tested directly with constructed inputs.
@@ -279,7 +279,7 @@ func blockWithPBKDF2Params(t *testing.T, pemStr string, update func(*pbkdf2Param
 }
 
 // ---------------------------------------------------------------------------
-// ParsePKCS8EncryptedPrivateKey — end-to-end tests using OpenSSL-generated PEMs
+// parsePKCS8EncryptedPrivateKey — end-to-end tests using OpenSSL-generated PEMs
 // ---------------------------------------------------------------------------
 
 func TestParsePKCS8EncryptedPrivateKey_HappyPath(t *testing.T) {
@@ -297,7 +297,7 @@ func TestParsePKCS8EncryptedPrivateKey_HappyPath(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			block := decodeBlock(t, tc.pemStr)
-			key, err := ParsePKCS8EncryptedPrivateKey(block, []byte(testKey))
+			key, err := parsePKCS8EncryptedPrivateKey(block, []byte(testKey))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -310,7 +310,7 @@ func TestParsePKCS8EncryptedPrivateKey_HappyPath(t *testing.T) {
 
 func TestParsePKCS8EncryptedPrivateKey_NilBlock(t *testing.T) {
 	t.Parallel()
-	_, err := ParsePKCS8EncryptedPrivateKey(nil, []byte(testKey))
+	_, err := parsePKCS8EncryptedPrivateKey(nil, []byte(testKey))
 	if err == nil {
 		t.Fatal("expected error for nil block, got nil")
 	}
@@ -319,7 +319,7 @@ func TestParsePKCS8EncryptedPrivateKey_NilBlock(t *testing.T) {
 func TestParsePKCS8EncryptedPrivateKey_WrongBlockType(t *testing.T) {
 	t.Parallel()
 	block := &pem.Block{Type: "CERTIFICATE", Bytes: []byte{0x30, 0x00}}
-	_, err := ParsePKCS8EncryptedPrivateKey(block, []byte(testKey))
+	_, err := parsePKCS8EncryptedPrivateKey(block, []byte(testKey))
 	if err == nil {
 		t.Fatal("expected error for wrong block type, got nil")
 	}
@@ -330,7 +330,7 @@ func TestParsePKCS8EncryptedPrivateKey_WrongKey(t *testing.T) {
 	// A wrong key should be caught early by padding validation,
 	// producing a clear padding validation error rather than a generic ASN.1 error.
 	block := decodeBlock(t, pemAES256)
-	_, err := ParsePKCS8EncryptedPrivateKey(block, []byte("wrongkey"))
+	_, err := parsePKCS8EncryptedPrivateKey(block, []byte("wrongkey"))
 	if err == nil {
 		t.Fatal("expected error for wrong key, got nil")
 	}
@@ -343,7 +343,7 @@ func TestParsePKCS8EncryptedPrivateKey_CorruptedBytes(t *testing.T) {
 	for i := 10; i < 20; i++ {
 		block.Bytes[i] ^= 0xFF
 	}
-	_, err := ParsePKCS8EncryptedPrivateKey(block, []byte(testKey))
+	_, err := parsePKCS8EncryptedPrivateKey(block, []byte(testKey))
 	if err == nil {
 		t.Fatal("expected error for corrupted block bytes, got nil")
 	}
@@ -355,7 +355,7 @@ func TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID(t *test
 	// so its top-level OID is not oidPBES2 and the parser must reject it
 	// at the outer algorithm OID check.
 	block := decodeBlock(t, pemPBES1)
-	_, err := ParsePKCS8EncryptedPrivateKey(block, []byte(testKey))
+	_, err := parsePKCS8EncryptedPrivateKey(block, []byte(testKey))
 	if err == nil {
 		t.Fatal("expected error for unsupported outer encryption algorithm OID, got nil")
 	}
@@ -401,7 +401,7 @@ func TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			block := blockWithPBKDF2Params(t, pemAES256, tc.edit)
-			_, err := ParsePKCS8EncryptedPrivateKey(block, []byte(testKey))
+			_, err := parsePKCS8EncryptedPrivateKey(block, []byte(testKey))
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -418,7 +418,7 @@ func TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength(t *testi
 		kdf.KeyLength = 32
 	})
 
-	key, err := ParsePKCS8EncryptedPrivateKey(block, []byte(testKey))
+	key, err := parsePKCS8EncryptedPrivateKey(block, []byte(testKey))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -110,14 +110,14 @@ const (
 	maxPBKDF2Iterations = 1000000
 )
 
-// ParsePKCS8EncryptedPrivateKey decrypts a PKCS#8 "ENCRYPTED PRIVATE KEY" PEM block
+// parsePKCS8EncryptedPrivateKey decrypts a PKCS#8 "ENCRYPTED PRIVATE KEY" PEM block
 // using the given password and returns the private key.
 //
 // Supports PBES2 + PBKDF2 with AES-128-CBC, AES-192-CBC, AES-256-CBC, and 3DES-CBC.
 //
 // The returned key is one of *rsa.PrivateKey or *ecdsa.PrivateKey
 // depending on what was stored in the wallet.
-func ParsePKCS8EncryptedPrivateKey(block *pem.Block, password []byte) (interface{}, error) {
+func parsePKCS8EncryptedPrivateKey(block *pem.Block, password []byte) (interface{}, error) {
 	if block == nil {
 		return nil, errors.New("pem_decrypt: pem block is nil")
 	}

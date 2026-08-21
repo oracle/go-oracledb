@@ -50,7 +50,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -65,7 +64,7 @@ func makeLobPayloadFromDump(dump []string) []byte {
 // streamer so tests exercise the same marshaling logic as production executors.
 func newLobTestShelf(bufSize int) (*driverCommon.Shelf[driverCommon.MessageType], *MessageStreamer, *ArrayBasedDataBuffer) {
 	buf := NewArrayDataBuffer(bufSize)
-	mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	ttiShelf := newShelf[driverCommon.MessageType]()
 	shelf := ttiShelf.Shelf
@@ -77,7 +76,7 @@ func newLobTestShelf(bufSize int) (*driverCommon.Shelf[driverCommon.MessageType]
 
 	msgReg := NewRegistry[driverCommon.MessageType]()
 	_ = msgReg.Register(TTILOBD, 1, newTTIlobd)
-	_ = msgReg.Register(TTIOER, 14, NewTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
 
 	factory := &SimpleFactory{
 		ttcVersion:   24,
@@ -141,8 +140,8 @@ func TestLobExecutor_GetChunkSize(t *testing.T) {
 		t.Fatalf("failed to build expected marshal payload: %v", err)
 	}
 
-	lobExec := NewClobExecutor(shelf, newTestSessionContext())
-	lobAmt, err := lobExec.GetChunkSize(ctx, locator)
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
+	lobAmt, err := lobExec.getChunkSize(ctx, locator)
 	if err != nil {
 		t.Fatalf("ExecContext GetChunkSize failed: %v", err)
 	}
@@ -181,8 +180,8 @@ func TestClobExecutor_CreateTemporaryLob(t *testing.T) {
 		t.Fatalf("failed to build expected marshal payload: %v", err)
 	}
 
-	lobExec := NewClobExecutor(shelf, newTestSessionContext())
-	gotLocator, err := lobExec.CreateTemporaryLob(ctx, true, 10, 1)
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
+	gotLocator, err := lobExec.createTemporaryLob(ctx, true, 10, 1)
 	if err != nil {
 		t.Fatalf("CreateTemporaryLob failed: %v", err)
 	}
@@ -221,11 +220,11 @@ func TestClobExecutor_Write(t *testing.T) {
 		t.Fatalf("failed to build expected marshal payload: %v", err)
 	}
 
-	lobExec := NewClobExecutor(shelf, newTestSessionContext())
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
 	inputText := strings.Repeat("This is a large text example. ", 20)
 	inputRunes := []rune(inputText)
 
-	written, err := lobExec.Write(ctx, newLocator(locator, driverCommon.UB8(1)), false, inputRunes, len(inputRunes))
+	written, err := lobExec.write(ctx, newLocator(locator, driverCommon.UB8(1)), false, inputRunes, len(inputRunes))
 	if err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}
@@ -257,11 +256,11 @@ func TestClobExecutor_Read(t *testing.T) {
 	ctx := context.Background()
 	wantMarshal, shelf, dbuf, marshalWritePosition := setUpReadScenario(t, clobReadMarshalGoldenPayload, clobReadResponseGoldenPayload, 131072)
 
-	lobExec := NewClobExecutor(shelf, newTestSessionContext())
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
 	totalRuneCapacity := int(clobReadNumChars)
 	charOutBuffer := make([]rune, totalRuneCapacity)
 
-	readAmt, err := lobExec.Read(ctx, newLocator(clobReadLocator, clobReadOffset), clobReadNumChars, clobReadIsNCLOB, charOutBuffer)
+	readAmt, err := lobExec.read(ctx, newLocator(clobReadLocator, clobReadOffset), clobReadNumChars, clobReadIsNCLOB, charOutBuffer)
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
@@ -329,8 +328,8 @@ func TestClobExecutor_IsOpen(t *testing.T) {
 		t.Fatalf("failed to build expected marshal payload: %v", err)
 	}
 
-	lobExec := NewClobExecutor(shelf, newTestSessionContext())
-	isOpen, err := lobExec.IsOpen(ctx, newLocator(locator, 0))
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
+	isOpen, err := lobExec.isOpen(ctx, newLocator(locator, 0))
 	if err != nil {
 		t.Fatalf("IsOpen failed: %v", err)
 	}
@@ -367,8 +366,8 @@ func TestClobExecutor_GetLength(t *testing.T) {
 		t.Fatalf("failed to build expected marshal payload: %v", err)
 	}
 
-	lobExec := NewClobExecutor(shelf, newTestSessionContext())
-	gotLength, err := lobExec.GetLength(ctx, newLocator(locator, 0))
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
+	gotLength, err := lobExec.getLength(ctx, newLocator(locator, 0))
 	if err != nil {
 		t.Fatalf("GetLength failed: %v", err)
 	}
@@ -405,9 +404,9 @@ func TestClobExecutor_Trim(t *testing.T) {
 		t.Fatalf("failed to build expected marshal payload: %v", err)
 	}
 
-	lobExec := NewClobExecutor(shelf, newTestSessionContext())
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
 	const newLength driverCommon.UB8 = 30
-	trimmedLength, err := lobExec.Trim(ctx, newLocator(locator, 0), newLength)
+	trimmedLength, err := lobExec.trim(ctx, newLocator(locator, 0), newLength)
 	if err != nil {
 		t.Fatalf("Trim failed: %v", err)
 	}
@@ -431,13 +430,13 @@ func TestClobExecutor_ReadErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name              string
-		setup             func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8, driverCommon.UB8, bool, []rune, int)
+		setup             func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8, driverCommon.UB8, bool, []rune, int)
 		expectErrContains string
 		expectErrCode     string
 	}{
 		{
 			name: "base read push error",
-			setup: func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8, driverCommon.UB8, bool, []rune, int) {
+			setup: func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8, driverCommon.UB8, bool, []rune, int) {
 				ts := newClobExecutorWithStub(lobExecutorScenario{pushErr: errors.New("push failed")})
 				return ts.clob, clobReadLocator, 0, 1, false, make([]rune, 1), 0
 			},
@@ -445,7 +444,7 @@ func TestClobExecutor_ReadErrors(t *testing.T) {
 		},
 		{
 			name: "decode error",
-			setup: func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8, driverCommon.UB8, bool, []rune, int) {
+			setup: func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8, driverCommon.UB8, bool, []rune, int) {
 				numChars := driverCommon.UB8(1)
 				locator := newTestLocator(true)
 				ts := newClobExecutorWithStub(lobExecutorScenario{
@@ -463,7 +462,7 @@ func TestClobExecutor_ReadErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			exec, locator, offset, numChars, isNCLOB, charBuf, _ := tc.setup()
-			_, err := exec.Read(ctx, newLocator(locator, offset), numChars, isNCLOB, charBuf)
+			_, err := exec.read(ctx, newLocator(locator, offset), numChars, isNCLOB, charBuf)
 			if err == nil {
 				t.Fatalf("expected error")
 			}
@@ -486,14 +485,14 @@ func TestClobExecutor_WriteErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name              string
-		setup             func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8, bool, []rune, int, int)
+		setup             func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8, bool, []rune, int, int)
 		expectErrContains string
 		expectErrCode     string
 	}{
 		{
 			name: "value based locator",
-			setup: func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8, bool, []rune, int, int) {
-				exec := NewClobExecutor(&driverCommon.Shelf[driverCommon.MessageType]{}, newTestSessionContext())
+			setup: func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8, bool, []rune, int, int) {
+				exec := newClobExecutor(&driverCommon.Shelf[driverCommon.MessageType]{}, newTestSessionContext())
 				locator := newTestLocator(false)
 				locator[koll1FlagOffset] = kolblValueBasedLocatorFlag
 				return exec, locator, 1, false, []rune("a"), 0, 1
@@ -503,8 +502,8 @@ func TestClobExecutor_WriteErrors(t *testing.T) {
 		},
 		{
 			name: "read only locator",
-			setup: func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8, bool, []rune, int, int) {
-				exec := NewClobExecutor(&driverCommon.Shelf[driverCommon.MessageType]{}, newTestSessionContext())
+			setup: func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8, bool, []rune, int, int) {
+				exec := newClobExecutor(&driverCommon.Shelf[driverCommon.MessageType]{}, newTestSessionContext())
 				locator := newTestLocator(false)
 				locator[koll3FlagOffset] = kolblReadOnlyFlag
 				return exec, locator, 1, false, []rune("a"), 0, 1
@@ -514,7 +513,7 @@ func TestClobExecutor_WriteErrors(t *testing.T) {
 		},
 		{
 			name: "base execute error",
-			setup: func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8, bool, []rune, int, int) {
+			setup: func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8, bool, []rune, int, int) {
 				scenario := lobExecutorScenario{flushErr: errors.New("flush failed")}
 				ts := newClobExecutorWithStub(scenario)
 				locator := newTestLocator(false)
@@ -527,7 +526,7 @@ func TestClobExecutor_WriteErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			exec, locator, offset, isNCLOB, inBuffer, _, numChars := tc.setup()
-			_, err := exec.Write(ctx, newLocator(locator, offset), isNCLOB, inBuffer, numChars)
+			_, err := exec.write(ctx, newLocator(locator, offset), isNCLOB, inBuffer, numChars)
 			if err == nil {
 				t.Fatalf("expected error")
 			}
@@ -550,13 +549,13 @@ func TestClobExecutor_CreateTemporaryLobErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name              string
-		setup             func() (*ClobExecutor, bool, driverCommon.UB4, driverCommon.UB2)
+		setup             func() (*clobExecutor, bool, driverCommon.UB4, driverCommon.UB2)
 		expectErrContains string
 		expectErrCode     string
 	}{
 		{
 			name: "base execute error",
-			setup: func() (*ClobExecutor, bool, driverCommon.UB4, driverCommon.UB2) {
+			setup: func() (*clobExecutor, bool, driverCommon.UB4, driverCommon.UB2) {
 				ts := newClobExecutorWithStub(lobExecutorScenario{flushErr: errors.New("flush failed")})
 				return ts.clob, true, 5, 1
 			},
@@ -567,7 +566,7 @@ func TestClobExecutor_CreateTemporaryLobErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			exec, cache, duration, formOfUse := tc.setup()
-			_, err := exec.CreateTemporaryLob(ctx, cache, duration, formOfUse)
+			_, err := exec.createTemporaryLob(ctx, cache, duration, formOfUse)
 			if err == nil {
 				t.Fatalf("expected error")
 			}
@@ -588,13 +587,13 @@ func TestClobExecutor_GetLengthErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name              string
-		setup             func() (*ClobExecutor, driverCommon.B1Array)
+		setup             func() (*clobExecutor, driverCommon.B1Array)
 		expectErrContains string
 		expectErrCode     string
 	}{
 		{
 			name: "base execute error",
-			setup: func() (*ClobExecutor, driverCommon.B1Array) {
+			setup: func() (*clobExecutor, driverCommon.B1Array) {
 				ts := newClobExecutorWithStub(lobExecutorScenario{flushErr: errors.New("flush failed")})
 				return ts.clob, newTestLocator(false)
 			},
@@ -605,7 +604,7 @@ func TestClobExecutor_GetLengthErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			exec, locator := tc.setup()
-			_, err := exec.GetLength(ctx, newLocator(locator, 0))
+			_, err := exec.getLength(ctx, newLocator(locator, 0))
 			if err == nil {
 				t.Fatalf("expected error")
 			}
@@ -626,13 +625,13 @@ func TestClobExecutor_IsOpenErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name              string
-		setup             func() (*ClobExecutor, driverCommon.B1Array)
+		setup             func() (*clobExecutor, driverCommon.B1Array)
 		expectErrContains string
 		expectErrCode     string
 	}{
 		{
 			name: "base execute error",
-			setup: func() (*ClobExecutor, driverCommon.B1Array) {
+			setup: func() (*clobExecutor, driverCommon.B1Array) {
 				locator := newTestLocator(false)
 				ts := newClobExecutorWithStub(lobExecutorScenario{flushErr: errors.New("flush failed")})
 				return ts.clob, locator
@@ -644,7 +643,7 @@ func TestClobExecutor_IsOpenErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			exec, locator := tc.setup()
-			_, err := exec.IsOpen(ctx, newLocator(locator, 0))
+			_, err := exec.isOpen(ctx, newLocator(locator, 0))
 			if err == nil {
 				t.Fatalf("expected error")
 			}
@@ -665,14 +664,14 @@ func TestClobExecutor_TrimErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name              string
-		setup             func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8)
+		setup             func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8)
 		expectErrContains string
 		expectErrCode     string
 	}{
 		{
 			name: "value based locator",
-			setup: func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8) {
-				exec := NewClobExecutor(&driverCommon.Shelf[driverCommon.MessageType]{}, newTestSessionContext())
+			setup: func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8) {
+				exec := newClobExecutor(&driverCommon.Shelf[driverCommon.MessageType]{}, newTestSessionContext())
 				locator := newTestLocator(false)
 				locator[koll1FlagOffset] = kolblValueBasedLocatorFlag
 				return exec, locator, 1
@@ -682,8 +681,8 @@ func TestClobExecutor_TrimErrors(t *testing.T) {
 		},
 		{
 			name: "read only locator",
-			setup: func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8) {
-				exec := NewClobExecutor(&driverCommon.Shelf[driverCommon.MessageType]{}, newTestSessionContext())
+			setup: func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8) {
+				exec := newClobExecutor(&driverCommon.Shelf[driverCommon.MessageType]{}, newTestSessionContext())
 				locator := newTestLocator(false)
 				locator[koll3FlagOffset] = kolblReadOnlyFlag
 				return exec, locator, 1
@@ -693,7 +692,7 @@ func TestClobExecutor_TrimErrors(t *testing.T) {
 		},
 		{
 			name: "base execute error",
-			setup: func() (*ClobExecutor, driverCommon.B1Array, driverCommon.UB8) {
+			setup: func() (*clobExecutor, driverCommon.B1Array, driverCommon.UB8) {
 				ts := newClobExecutorWithStub(lobExecutorScenario{flushErr: errors.New("flush failed")})
 				locator := newTestLocator(false)
 				return ts.clob, locator, 5
@@ -705,7 +704,7 @@ func TestClobExecutor_TrimErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			exec, locator, newLength := tc.setup()
-			_, err := exec.Trim(ctx, newLocator(locator, 0), newLength)
+			_, err := exec.trim(ctx, newLocator(locator, 0), newLength)
 			if err == nil {
 				t.Fatalf("expected error")
 			}
@@ -726,13 +725,13 @@ func TestClobExecutor_GetChunkSizeErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name              string
-		setup             func() (*ClobExecutor, driverCommon.B1Array)
+		setup             func() (*clobExecutor, driverCommon.B1Array)
 		expectErrContains string
 		expectErrCode     string
 	}{
 		{
 			name: "base execute error",
-			setup: func() (*ClobExecutor, driverCommon.B1Array) {
+			setup: func() (*clobExecutor, driverCommon.B1Array) {
 				ts := newClobExecutorWithStub(lobExecutorScenario{flushErr: errors.New("flush failed")})
 				return ts.clob, newTestLocator(false)
 			},
@@ -743,7 +742,7 @@ func TestClobExecutor_GetChunkSizeErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			exec, locator := tc.setup()
-			_, err := exec.GetChunkSize(ctx, newLocator(locator, 0))
+			_, err := exec.getChunkSize(ctx, newLocator(locator, 0))
 			if err == nil {
 				t.Fatalf("expected error")
 			}
@@ -928,7 +927,7 @@ func newClobExecutorWithStub(s lobExecutorScenario) testSetup {
 		pullHook:  s.pullHook,
 	}
 	shelf.RegisterMessageStreamer(stub)
-	clob := NewClobExecutor(shelf, newTestSessionContext())
+	clob := newClobExecutor(shelf, newTestSessionContext())
 	stub.executor = clob.lobExecutor
 
 	if len(s.events) == 0 {
@@ -951,7 +950,7 @@ func newClobExecutorWithStub(s lobExecutorScenario) testSetup {
 // specific lobExecutor execution paths under test.
 
 type testSetup struct {
-	clob  *ClobExecutor
+	clob  *clobExecutor
 	stub  *fakeStreamer
 	shelf *driverCommon.Shelf[driverCommon.MessageType]
 }

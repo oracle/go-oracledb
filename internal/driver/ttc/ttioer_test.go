@@ -47,13 +47,13 @@ import (
 // TestNewTTIoer ensures the constructor sets struct fields as expected.
 func TestNewTTIoer(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer()
+	oer := newTTIoer()
 	if oer == nil {
-		t.Fatal("NewTTIoer returned nil")
+		t.Fatal("newTTIoer returned nil")
 	}
 	ttioer, ok := oer.(*tTIoer)
 	if !ok {
-		t.Fatalf("NewTTIoer did not return *tTIoer, got %T", oer)
+		t.Fatalf("newTTIoer did not return *tTIoer, got %T", oer)
 	}
 	if ttioer.retCode != 0 || ttioer.curRowNumber != 0 {
 		t.Errorf("Initial fields should be zero, got retCode=%d, curRowNumber=%d", ttioer.retCode, ttioer.curRowNumber)
@@ -66,7 +66,7 @@ func TestNewTTIoer(t *testing.T) {
 // TestTTIoer_Init sets nonzero values, calls Init, and checks that all fields reset.
 func TestTTIoer_Init(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer().(*tTIoer)
+	oer := newTTIoer().(*tTIoer)
 	oer.retCode = 1234
 	oer.errorMsg = []byte("stuff")
 	oer.oerepa = []byte("x")
@@ -75,7 +75,7 @@ func TestTTIoer_Init(t *testing.T) {
 	oer.batchErrorOffsetArray = []int{99, 98}
 	oer.oerrcd2 = 77
 	oer.oercn2 = 88
-	oer.Init()
+	oer.init()
 	if oer.retCode != 0 {
 		t.Errorf("Init should reset retCode to zero; got %d", oer.retCode)
 	}
@@ -102,7 +102,7 @@ func TestTTIoer_Init(t *testing.T) {
 // TestTTIoer_GetMsgCode ensures GetMsgCode returns TTIOER.
 func TestTTIoer_GetMsgCode(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer().(*tTIoer)
+	oer := newTTIoer().(*tTIoer)
 	if code := oer.GetMsgCode(); code != TTIOER {
 		t.Errorf("GetMsgCode() = %v; want %v", code, TTIOER)
 	}
@@ -111,7 +111,7 @@ func TestTTIoer_GetMsgCode(t *testing.T) {
 // TestTTIoer_Getters validates GetCurRowNumber and GetRetCode on tTIoer.
 func TestTTIoer_Getters(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer().(*tTIoer)
+	oer := newTTIoer().(*tTIoer)
 	oer.oercn2 = 99999999
 	oer.oerrcd2 = 8888
 	if got := oer.GetCurRowNumber(); got != 99999999 {
@@ -165,7 +165,7 @@ func TestTTIoer_UnmarshalAttributes_Success(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := makeOerPayload(tc.dump)
-			oer := NewTTIoer().(*tTIoer)
+			oer := newTTIoer().(*tTIoer)
 			oer.setSupportsEndOfCallStatus(true)
 			mar := createMarshaller(buf, 0, 0)
 			err := oer._unmarshalAttributes(context.Background(), mar)
@@ -221,7 +221,7 @@ func TestTTIoer_UnmarshalAttributes_Fail(t *testing.T) {
 
 	for _, fp := range failpoints {
 		t.Run(fp.name, func(t *testing.T) {
-			oer := NewTTIoer().(*tTIoer)
+			oer := newTTIoer().(*tTIoer)
 			oer.setSupportsEndOfCallStatus(true)
 			buf := makeOerPayload(oerDumpElapsedTime)
 			mar := createMarshaller(buf, fp.failOn, fp.failCount)
@@ -281,7 +281,7 @@ func TestTTIoer_UnMarshalFrom(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			oer := NewTTIoer().(*tTIoer)
+			oer := newTTIoer().(*tTIoer)
 			oer.setSupportsEndOfCallStatus(true)
 			mar := createMarshaller(tc.fillBuffer(), failOnReadByte, tc.failRead)
 			err := oer.UnMarshalFrom(context.Background(), mar)
@@ -303,7 +303,7 @@ func TestTTIoer_UnMarshalFrom(t *testing.T) {
 // and the bytes of errorMsg in the calculation.
 func TestTTIoer_UpdateChecksum(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer().(*tTIoer)
+	oer := newTTIoer().(*tTIoer)
 	oer.retCode = 0x1234
 	oer.curRowNumber = 0xDEADBEEF
 	oer.errorPosition = 77
@@ -396,7 +396,7 @@ func TestTTIoer_UnmarshalWarning(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			oer := NewTTIoer().(*tTIoer)
+			oer := newTTIoer().(*tTIoer)
 			// Build buffer: retCode (2 bytes), warnLength (2 bytes), warnFlag (2 bytes), B1Array (warnLength bytes)
 			buf := []byte{}
 			// retCode

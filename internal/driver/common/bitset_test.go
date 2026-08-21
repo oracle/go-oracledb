@@ -61,12 +61,10 @@ func TestNewBitSet_SizeAlignment(t *testing.T) {
 	}
 }
 
-func TestSetAndGet(t *testing.T) {
+func TestGet(t *testing.T) {
 	t.Parallel()
 	bs := NewBitSet(10)
-	for i := 0; i < bs.Length(); i++ {
-		bs.Set(i, i%2 == 0)
-	}
+	bs.SetBytes(0, []byte{0x55, 0x55})
 	for i := 0; i < bs.Length(); i++ {
 		want := i%2 == 0
 		if got := bs.Get(i); got != want {
@@ -75,7 +73,7 @@ func TestSetAndGet(t *testing.T) {
 	}
 }
 
-func TestSetBytesAndSetByte(t *testing.T) {
+func TestSetBytes(t *testing.T) {
 	t.Parallel()
 	bs := NewBitSet(16)
 	data := []byte{0xAA, 0x55}
@@ -88,20 +86,12 @@ func TestSetBytesAndSetByte(t *testing.T) {
 	if bs.bits[1] != 0xFF {
 		t.Errorf("SetBytes(1, [0xFF]): bits[1] = %02x, want 0xFF", bs.bits[1])
 	}
-	// SetByte (should work and match SetBytes(1, [0xBC]))
-	bs.SetByte(1, 0xBC)
-	if bs.bits[1] != 0xBC {
-		t.Errorf("SetByte(1, 0xBC): bits[1] = %02x, want 0xBC", bs.bits[1])
-	}
 }
 
 func TestCardinality(t *testing.T) {
 	t.Parallel()
 	bs := NewBitSet(12)
-	// Set even bits
-	for i := 0; i < 12; i += 2 {
-		bs.Set(i, true)
-	}
+	bs.SetBytes(0, []byte{0x55, 0x05})
 	if n := bs.Cardinality(); n != 6 {
 		t.Errorf("Want 6 bits set, got %d", n)
 	}
@@ -150,28 +140,13 @@ func TestSetBytes_OutOfBounds(t *testing.T) {
 	}
 }
 
-func TestGetSet_OutOfBounds(t *testing.T) {
+func TestGet_OutOfBounds(t *testing.T) {
 	t.Parallel()
 	bs := NewBitSet(8)
 	defer func() {
 		if r := recover(); r == nil {
-			t.Errorf("Expected panic on out-of-bounds Get/Set")
+			t.Errorf("Expected panic on out-of-bounds Get")
 		}
 	}()
 	_ = bs.Get(10)
-	bs.Set(10, true)
-}
-
-func TestNewBitSetFromBytes(t *testing.T) {
-	t.Parallel()
-	data := []byte{0x12, 0x34}
-	bs := NewBitSetFromBytes(data)
-	if bs.bits[0] != 0x12 || bs.bits[1] != 0x34 {
-		t.Errorf("Expected bits to match input slice, got %x %x", bs.bits[0], bs.bits[1])
-	}
-	// Should not alias input
-	data[0] = 0xFF
-	if bs.bits[0] == 0xFF {
-		t.Errorf("BitSetFromBytes does not copy input, is aliased")
-	}
 }

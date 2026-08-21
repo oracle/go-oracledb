@@ -44,7 +44,7 @@ func TestGetIDFromZone_Found(t *testing.T) {
 	t.Parallel()
 	// Select a zone that is present in the seeded map
 	const zone = "America/Los_Angeles"
-	id, ok := GetIDFromZone(zone)
+	id, ok := getIDFromZone(zone)
 	if !ok {
 		t.Fatalf("expected zone %q to be found", zone)
 	}
@@ -56,7 +56,7 @@ func TestGetIDFromZone_Found(t *testing.T) {
 func TestGetIDFromZone_NotFound(t *testing.T) {
 	t.Parallel()
 	const zone = "Etc/NotAZone"
-	if id, ok := GetIDFromZone(zone); ok {
+	if id, ok := getIDFromZone(zone); ok {
 		t.Fatalf("expected zone %q to be not found, got id=%d", zone, id)
 	}
 }
@@ -66,7 +66,7 @@ func TestGetZoneFromID_Found(t *testing.T) {
 	// ID 103 is mapped to "America/Los_Angeles" in zoneIDFromName.
 	// Reverse map keeps the first encountered name for an ID.
 	const id = 103
-	name, ok := GetZoneFromID(id)
+	name, ok := getZoneFromID(id)
 	if !ok {
 		t.Fatalf("expected id %d to be found", id)
 	}
@@ -78,7 +78,7 @@ func TestGetZoneFromID_Found(t *testing.T) {
 func TestGetZoneFromID_NotFound(t *testing.T) {
 	t.Parallel()
 	const id = 999999
-	if name, ok := GetZoneFromID(id); ok {
+	if name, ok := getZoneFromID(id); ok {
 		t.Fatalf("expected id %d to be not found, got name=%q", id, name)
 	}
 }
@@ -98,7 +98,7 @@ func TestZoneMaps_Sanity(t *testing.T) {
 		{"Europe/London", 369},
 	}
 	for _, tc := range cases {
-		got, ok := GetIDFromZone(tc.zone)
+		got, ok := getIDFromZone(tc.zone)
 		if !ok {
 			t.Fatalf("expected zone %q to be found", tc.zone)
 		}

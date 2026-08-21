@@ -44,7 +44,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 // helper: slice off TTC header and return payload
@@ -70,7 +69,7 @@ func runTTIRPATest(t *testing.T, name string, dump []string) {
 	if err := buf.WriteBytesWithContext(context.Background(), payload); err != nil {
 		t.Fatalf("%s: failed to load payload into buffer: %v", name, err)
 	}
-	mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	// Use concrete type directly (same package) so we can assert fields
 	rpa := &ttioallrpa{}
@@ -155,7 +154,7 @@ func TestTTIOallRPA_UnmarshalFrom_Fail_Truncated(t *testing.T) {
 	if err := buf.WriteBytesWithContext(context.Background(), truncated); err != nil {
 		t.Fatalf("failed to load truncated payload: %v", err)
 	}
-	mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	rpa := &ttioallrpa{}
 	if err := rpa.UnMarshalFrom(context.Background(), mar); err == nil {
@@ -227,7 +226,7 @@ func TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues(t *testing.T) {
 			if err := buf.WriteBytesWithContext(context.Background(), tc.payload); err != nil {
 				t.Fatalf("failed to load modified payload into buffer: %v", err)
 			}
-			mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 			rpa := &ttioallrpa{}
 			if err := rpa.UnMarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "Failed to unmarshal message") {
@@ -253,7 +252,7 @@ func TestTTIOallRPA_UnmarshalDMLRows_FaultyBuffer(t *testing.T) {
 			}
 			buf := NewArrayDataBuffer(len(payload))
 			_ = buf.WriteBytesWithContext(context.Background(), payload)
-			mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			rpa := &ttioallrpa{}
 			if err := rpa.UnMarshalFrom(context.Background(), mar); err != nil {
 				t.Fatalf("unexpected UnMarshalFrom error: %v", err)
@@ -292,7 +291,7 @@ func TestTTIOallRPA_Unmarshal_TransactionContext(t *testing.T) {
 	if err := buf.WriteBytesWithContext(context.Background(), finalPayload); err != nil {
 		t.Fatalf("failed to load modified payload into buffer: %v", err)
 	}
-	mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	rpa := &ttioallrpa{}
 	if rpa.GetMsgCode() != TTIRPA {
@@ -344,7 +343,7 @@ func TestTTIOallRPA_Unmarshal_TransactionContext_Fail_Bytes(t *testing.T) {
 	if err := buf.WriteBytesWithContext(context.Background(), finalPayload); err != nil {
 		t.Fatalf("failed to load modified payload into buffer: %v", err)
 	}
-	mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	rpa := &ttioallrpa{}
 	if err := rpa.UnMarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "Failed to unmarshal message") {

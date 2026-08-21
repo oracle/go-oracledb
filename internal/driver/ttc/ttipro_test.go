@@ -46,26 +46,25 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
-// TestTTIproNew asserts that NewTTIpro returns a valid, non-nil object.
+// TestTTIproNew asserts that newTTIpro returns a valid, non-nil object.
 func TestTTIproNew(t *testing.T) {
 	t.Parallel()
-	pro := NewTTIpro()
+	pro := newTTIpro()
 	if pro == nil {
-		t.Fatal("NewTTIpro returned nil")
+		t.Fatal("newTTIpro returned nil")
 	}
 }
 
 // TestTTIproMarshalTo_Success checks success path marshaling.
 func TestTTIproMarshalTo_Success(t *testing.T) {
 	t.Parallel()
-	pro := NewTTIpro()
+	pro := newTTIpro()
 	buf := NewArrayDataBuffer(1500)
 	expected := append(append([]byte{}, 6, 5, 4, 3, 2, 1, 0), []byte("GO_TTC-8.2.0\x00")...)
 
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	marshallable, _ := pro.(common.Marshallable)
 	err := marshallable.MarshalTo(context.Background(), engine)
 
@@ -81,7 +80,7 @@ func TestTTIproMarshalTo_Success(t *testing.T) {
 // TestTTIproMarshalTo_Fail checks error marshaling.
 func TestTTIproMarshalTo_Fail(t *testing.T) {
 	t.Parallel()
-	pro := NewTTIpro()
+	pro := newTTIpro()
 	cases := []struct {
 		name      string
 		failByte  int
@@ -104,7 +103,7 @@ func TestTTIproMarshalTo_Fail(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			marshallable, _ := pro.(common.Marshallable)
 			err := marshallable.MarshalTo(context.Background(), engine)
 			if err == nil {
@@ -130,36 +129,36 @@ func TestTTIproGetters(t *testing.T) {
 	p := &tTIpro{
 		oVersion:           123,
 		proSvrVer:          456,
-		ClientCaps:         &Capability{runTimeCapabilities: runtime, compileTimeCapabilities: compile},
-		ServerCaps:         &Capability{runTimeCapabilities: runtime, compileTimeCapabilities: compile},
+		clientCaps:         &capability{runTimeCapabilities: runtime, compileTimeCapabilities: compile},
+		serverCaps:         &capability{runTimeCapabilities: runtime, compileTimeCapabilities: compile},
 		svrCharSet:         871,
-		NCharCharset:       775,
+		nCharCharset:       775,
 		svrFlags:           1,
 		svrPortDescription: (desc),
 	}
-	if p.GetOracleVersion() != 123 {
-		t.Errorf("GetOracleVersion = %d, want 123", p.GetOracleVersion())
+	if p.getOracleVersion() != 123 {
+		t.Errorf("getOracleVersion = %d, want 123", p.getOracleVersion())
 	}
-	if p.GetProtocolVersion() != 456 {
-		t.Errorf("GetProtocolVersion = %d, want 456", p.GetProtocolVersion())
+	if p.getProtocolVersion() != 456 {
+		t.Errorf("getProtocolVersion = %d, want 456", p.getProtocolVersion())
 	}
 	if p.GetMsgCode() != TTIPRO {
 		t.Errorf("GetMsgCode = %v, want %v", p.GetMsgCode(), TTIPRO)
 	}
-	if !bytes.Equal(*p.GetServerRuntimeCapabilities(), runtime) {
-		t.Error("GetServerRuntimeCapabilities mismatch")
+	if !bytes.Equal(*p.getServerRuntimeCapabilities(), runtime) {
+		t.Error("getServerRuntimeCapabilities mismatch")
 	}
-	if !bytes.Equal(*p.GetServerCompileTimeCapabilities(), compile) {
-		t.Error("GetServerCompileTimeCapabilities mismatch")
+	if !bytes.Equal(*p.getServerCompileTimeCapabilities(), compile) {
+		t.Error("getServerCompileTimeCapabilities mismatch")
 	}
-	if p.GetCharacterSet() != 871 {
-		t.Errorf("GetCharacterSet = %d, want 871", p.GetCharacterSet())
+	if p.getCharacterSet() != 871 {
+		t.Errorf("getCharacterSet = %d, want 871", p.getCharacterSet())
 	}
-	if p.GetNCharCharacterSet() != 775 {
-		t.Errorf("GetNCharCharacterSet = %d, want 775", p.GetNCharCharacterSet())
+	if p.getNCharCharacterSet() != 775 {
+		t.Errorf("getNCharCharacterSet = %d, want 775", p.getNCharCharacterSet())
 	}
-	if p.GetFlags() != 1 {
-		t.Errorf("GetFlags = %d, want 1", p.GetFlags())
+	if p.getFlags() != 1 {
+		t.Errorf("getFlags = %d, want 1", p.getFlags())
 	}
 }
 
@@ -241,10 +240,10 @@ func TestTTIproUnmarshalFrom_Success(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewTTIpro()
+			p := newTTIpro()
 			buf := NewArrayDataBuffer(1024)
 			buf.WriteBytesWithContext(context.Background(), tt.payload)
-			engine := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 			unmarshallable, _ := p.(common.UnMarshallable)
 			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
 			if err != nil {
@@ -255,17 +254,17 @@ func TestTTIproUnmarshalFrom_Success(t *testing.T) {
 			if ttipro.svrCharSet != tt.expectedSvrCharSet {
 				t.Errorf("svrCharSet = %d, want %d", ttipro.svrCharSet, tt.expectedSvrCharSet)
 			}
-			if ttipro.NCharCharset != tt.expectedNCharCharset {
-				t.Errorf("NCharCharset = %d, want %d", ttipro.NCharCharset, tt.expectedNCharCharset)
+			if ttipro.nCharCharset != tt.expectedNCharCharset {
+				t.Errorf("nCharCharset = %d, want %d", ttipro.nCharCharset, tt.expectedNCharCharset)
 			}
 			if ttipro.svrFlags != tt.expectedSvrFlags {
 				t.Errorf("svrFlags = %d, want %d", ttipro.svrFlags, tt.expectedSvrFlags)
 			}
-			if tt.expectedCompile != nil && (ttipro.ServerCaps == nil || !bytes.Equal(ttipro.ServerCaps.compileTimeCapabilities, tt.expectedCompile)) {
-				t.Errorf("compile = %v, want %v", ttipro.ServerCaps.compileTimeCapabilities, tt.expectedCompile)
+			if tt.expectedCompile != nil && (ttipro.serverCaps == nil || !bytes.Equal(ttipro.serverCaps.compileTimeCapabilities, tt.expectedCompile)) {
+				t.Errorf("compile = %v, want %v", ttipro.serverCaps.compileTimeCapabilities, tt.expectedCompile)
 			}
-			if tt.expectedRuntime != nil && (ttipro.ServerCaps == nil || !bytes.Equal(ttipro.ServerCaps.runTimeCapabilities, tt.expectedRuntime)) {
-				t.Errorf("runtime = %v, want %v", ttipro.ServerCaps.runTimeCapabilities, tt.expectedRuntime)
+			if tt.expectedRuntime != nil && (ttipro.serverCaps == nil || !bytes.Equal(ttipro.serverCaps.runTimeCapabilities, tt.expectedRuntime)) {
+				t.Errorf("runtime = %v, want %v", ttipro.serverCaps.runTimeCapabilities, tt.expectedRuntime)
 			}
 			if tt.expectedCharSetElem != 0 && ttipro.svrCharSetElem != tt.expectedCharSetElem {
 				t.Errorf("svrCharSetElem = %d, want %d", ttipro.svrCharSetElem, tt.expectedCharSetElem)
@@ -331,11 +330,11 @@ func TestTTIproUnmarshalFrom_FailInvalidData(t *testing.T) {
 
 	for _, tt := range failures {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewTTIpro()
+			p := newTTIpro()
 			payload := ttiProFailurePayload(tt.name)
 			buf := NewArrayDataBuffer(1024)
 			buf.WriteBytesWithContext(context.Background(), payload)
-			engine := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 			unmarshallable, _ := p.(common.UnMarshallable)
 			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
 			if err == nil {
@@ -371,7 +370,7 @@ func TestTTIproUnmarshalFrom_FailUnmarshal(t *testing.T) {
 	for _, rerr := range readErrs {
 		t.Run(rerr.name, func(t *testing.T) {
 			normalPayload := makeTTIproSuccessPayload(6, true, true)
-			p := NewTTIpro()
+			p := newTTIpro()
 			buf := NewArrayDataBuffer(1024)
 			buf.WriteBytesWithContext(context.Background(), normalPayload)
 			faulty := &FaultyArrayBasedDataBuffer{
@@ -379,7 +378,7 @@ func TestTTIproUnmarshalFrom_FailUnmarshal(t *testing.T) {
 				FailOnReadByteCall:   rerr.failByteCount,
 				FailOnReadBytesCall:  rerr.failBytesCount,
 			}
-			engine := NewNativeMarshalEngine(faulty, session.BIG_ENDIAN)
+			engine := NewNativeMarshalEngine(faulty, common.BIG_ENDIAN)
 			unmarshallable, _ := p.(common.UnMarshallable)
 			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
 			if err == nil || !regexp.MustCompile(rerr.wantErr).MatchString(err.Error()) {

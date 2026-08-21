@@ -61,12 +61,12 @@ func oexfenGoldenPayload(lines []string) []byte {
 func newOexfenEngine(capacity int) (*ArrayBasedDataBuffer, *MarshalEngine) {
 	buf := NewArrayDataBuffer(capacity)
 	// Match representation profile used by other TTC marshalling tests
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	return buf, engine
 }
 
 func buildOexfen(commit bool) *tTIOexfen {
-	m := NewOexfen18().(*tTIOexfen)
+	m := newOexfen18().(*tTIOexfen)
 	m.setCursorId(8) // as per dump
 	m.setFetchSize() // 2_000_000_000 = 0x77 35 94 00 per dump
 	if commit {
@@ -82,9 +82,9 @@ func buildOexfen(commit bool) *tTIOexfen {
 func TestOexfen_New_Getters(t *testing.T) {
 	t.Parallel()
 	// 18+ header variant
-	msg := NewOexfen18()
+	msg := newOexfen18()
 	if msg == nil {
-		t.Fatal("NewOexfen18 returned nil")
+		t.Fatal("newOexfen18 returned nil")
 	}
 	if msg.GetMsgCode() != TTIFUN {
 		t.Errorf("expected TTIFUN, got %v", msg.GetMsgCode())
@@ -94,9 +94,9 @@ func TestOexfen_New_Getters(t *testing.T) {
 	}
 
 	// pre-18 header variant (smoke)
-	msg2 := NewOexfen()
+	msg2 := newOexfen()
 	if msg2 == nil {
-		t.Fatal("NewOexfen returned nil")
+		t.Fatal("newOexfen returned nil")
 	}
 	if msg2.GetMsgCode() != TTIFUN {
 		t.Errorf("expected TTIFUN, got %v", msg2.GetMsgCode())
@@ -215,7 +215,7 @@ func TestOexfen_MarshalTo_Failures(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(64),
 			FailOnWriteByteCall:  1, // first WriteByte (func code) fails
 		}
-		engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(ctx, engine)
 		if err == nil {
 			t.Fatalf("expected error, got nil")
@@ -244,7 +244,7 @@ func TestOexfen_MarshalTo_Failures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := buildOexfen(true) // commit -> exeflg universal {0x01,0x01}
 			buf := NewArrayDataBuffer(tc.capacity)
-			engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(ctx, engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil (capacity=%d)", tc.capacity)

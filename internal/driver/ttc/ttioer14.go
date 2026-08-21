@@ -56,27 +56,27 @@ type tTIoer14 struct {
 	checksum       driverCommon.UB4
 }
 
-// NewTTIoer14 creates a new instance of tTIoer.
-func NewTTIoer14() driverCommon.Message[driverCommon.MessageType] {
+// newTTIoer14 creates a new instance of tTIoer.
+func newTTIoer14() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIoer14{
-		tTIoer:         NewTTIoer().(*tTIoer),
+		tTIoer:         newTTIoer().(*tTIoer),
 		sqlCommandType: 0,
 		checksum:       0,
 	}
 }
 
-// NewTTIoer14WithEndOfCallStatusSupport creates a new instance of tTIoer that supports end of call status.
-func NewTTIoer14WithEndOfCallStatusSupport() driverCommon.Message[driverCommon.MessageType] {
+// newTTIoer14WithEndOfCallStatusSupport creates a new instance of tTIoer that supports end of call status.
+func newTTIoer14WithEndOfCallStatusSupport() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIoer14{
-		tTIoer:         NewTTIoerWithEndOfCallStatusSupport().(*tTIoer),
+		tTIoer:         newTTIoerWithEndOfCallStatusSupport().(*tTIoer),
 		sqlCommandType: 0,
 		checksum:       0,
 	}
 }
 
 // Init resets the tTIoer14 and its embedded tTIoer fields to their zero values.
-func (t *tTIoer14) Init() {
-	t.tTIoer.Init()
+func (t *tTIoer14) init() {
+	t.tTIoer.init()
 	t.sqlCommandType = 0
 	t.checksum = 0
 }

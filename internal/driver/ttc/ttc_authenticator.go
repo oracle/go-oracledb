@@ -52,8 +52,8 @@ import (
 // server-side code.
 const maxPasswordBytes = 1024
 
-// PasswordAuthenticator authenticates using user/password O5 logon.
-type PasswordAuthenticator struct {
+// passwordAuthenticator authenticates using user/password O5 logon.
+type passwordAuthenticator struct {
 	_username                      driverCommon.B1Array
 	_password                      driverCommon.B1Array
 	_logonMode                     int64
@@ -64,13 +64,13 @@ type PasswordAuthenticator struct {
 	_logonHelper                   *o5Logon
 }
 
-// NewPasswordAuthenticator instantiates a new password authenticator.
+// newPasswordAuthenticator instantiates a new password authenticator.
 // Parameters:
 //   - username : the username
 //   - password : user password
 //   - connectString : connectionString
-func NewPasswordAuthenticator(username, password string, connectString string) *PasswordAuthenticator {
-	pa := PasswordAuthenticator{
+func newPasswordAuthenticator(username, password string, connectString string) *passwordAuthenticator {
+	pa := passwordAuthenticator{
 		_connectString: connectString,
 		_username:      driverCommon.StringToB1Array(sanitizeInputCredential(username)),
 		_password:      driverCommon.StringToB1Array(sanitizeInputCredential(password)),
@@ -79,20 +79,20 @@ func NewPasswordAuthenticator(username, password string, connectString string) *
 	return &pa
 }
 
-// NewPasswordAuthenticatorWithLogonMode instantiates a new password authenticator.
+// newPasswordAuthenticatorWithLogonMode instantiates a new password authenticator.
 // Parameters:
 //   - username : the username
 //   - password : user password
 //   - connectString : connectionString
 //   - mode : logonMode
-func NewPasswordAuthenticatorWithLogonMode(username, password string, mode common.LogonMode, connectString string) *PasswordAuthenticator {
-	pa := NewPasswordAuthenticator(username, password, connectString)
+func newPasswordAuthenticatorWithLogonMode(username, password string, mode common.LogonMode, connectString string) *passwordAuthenticator {
+	pa := newPasswordAuthenticator(username, password, connectString)
 	pa._logonMode = mode.Value()
 	return pa
 }
 
 // Authenticate performs authentication.
-func (pa *PasswordAuthenticator) Authenticate(ctx context.Context) error {
+func (pa *passwordAuthenticator) Authenticate(ctx context.Context) error {
 	common.Odl.Debug("Authenticate start for user", "userName", pa._username)
 
 	if err := pa.validatePasswordLength(); err != nil {
@@ -114,7 +114,7 @@ func (pa *PasswordAuthenticator) Authenticate(ctx context.Context) error {
 	return nil
 }
 
-func (pa *PasswordAuthenticator) validatePasswordLength() error {
+func (pa *passwordAuthenticator) validatePasswordLength() error {
 	if len(pa._password) > maxPasswordBytes {
 		return common.NewOracleError(oracleErrors.AuthenticatorError, nil, "password length")
 	}
@@ -122,16 +122,16 @@ func (pa *PasswordAuthenticator) validatePasswordLength() error {
 }
 
 // SetShelf sets the shelf to use within the authenticator.
-func (pa *PasswordAuthenticator) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
+func (pa *passwordAuthenticator) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
 	pa._shelf = *shelf
 }
 
 // SetSessionContext sets the session context to use within the authenticator.
-func (pa *PasswordAuthenticator) SetSessionContext(sessCtx *driverCommon.SessionContext) {
+func (pa *passwordAuthenticator) SetSessionContext(sessCtx *driverCommon.SessionContext) {
 	pa._sessionContext = sessCtx
 }
 
-func (pa *PasswordAuthenticator) _doOSESSKEY(ctx context.Context) error {
+func (pa *passwordAuthenticator) _doOSESSKEY(ctx context.Context) error {
 	common.Odl.Debug("_doOSESSKEY start")
 	shelf := pa._shelf
 	streamer := shelf.GetMessageStreamer().(MessageStreamerInterface)
@@ -227,7 +227,7 @@ func (pa *PasswordAuthenticator) _doOSESSKEY(ctx context.Context) error {
 
 }
 
-func (pa *PasswordAuthenticator) _doOAuth(ctx context.Context) error {
+func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 	common.Odl.Debug("Authenticator, starting oauthMsg")
 	shelf := pa._shelf
 	streamer := shelf.GetMessageStreamer().(MessageStreamerInterface)

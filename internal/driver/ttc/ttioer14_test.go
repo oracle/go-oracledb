@@ -47,13 +47,13 @@ import (
 // TestNewTTIoer14 ensures the constructor sets struct fields as expected.
 func TestNewTTIoer14(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer14()
+	oer := newTTIoer14()
 	if oer == nil {
-		t.Fatal("NewTTIoer14 returned nil")
+		t.Fatal("newTTIoer14 returned nil")
 	}
 	ttioer, ok := oer.(*tTIoer14)
 	if !ok {
-		t.Fatalf("NewTTIoer14 did not return *tTIoer14, got %T", oer)
+		t.Fatalf("newTTIoer14 did not return *tTIoer14, got %T", oer)
 	}
 	if ttioer.sqlCommandType != 0 || ttioer.checksum != 0 {
 		t.Errorf("Initial fields should be zero, got oertyp2=%d, oerchksm=%d", ttioer.sqlCommandType, ttioer.checksum)
@@ -66,11 +66,11 @@ func TestNewTTIoer14(t *testing.T) {
 // TestTTIoer14_Init sets nonzero values, calls Init, and checks that all fields reset.
 func TestTTIoer14_Init(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer14().(*tTIoer14)
+	oer := newTTIoer14().(*tTIoer14)
 	oer.sqlCommandType = 42
 	oer.checksum = 99
 	oer.tTIoer.oerrcd2 = 777
-	oer.Init()
+	oer.init()
 	if oer.sqlCommandType != 0 || oer.checksum != 0 {
 		t.Errorf("Init should reset oertyp2 and oerchksm to zero; got oertyp2=%d, oerchksm=%d", oer.sqlCommandType, oer.checksum)
 	}
@@ -82,7 +82,7 @@ func TestTTIoer14_Init(t *testing.T) {
 // TestTTIoer14_GetMsgCode ensures GetMsgCode returns TTIOER.
 func TestTTIoer14_GetMsgCode(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer14().(*tTIoer14)
+	oer := newTTIoer14().(*tTIoer14)
 	if code := oer.GetMsgCode(); code != TTIOER {
 		t.Errorf("GetMsgCode() = %v; want %v", code, TTIOER)
 	}
@@ -91,7 +91,7 @@ func TestTTIoer14_GetMsgCode(t *testing.T) {
 // TestTTIoer14_UnmarshalAttributes_Success unmarshals a valid payload and expects no error.
 func TestTTIoer14_UnmarshalAttributes_Success(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer14WithEndOfCallStatusSupport().(*tTIoer14)
+	oer := newTTIoer14WithEndOfCallStatusSupport().(*tTIoer14)
 	buf := makeOerPayload(oerDump)
 	mar := createMarshaller(buf, 0, 0)
 	err := oer._unmarshalAttributes(context.Background(), mar)
@@ -116,7 +116,7 @@ func TestTTIoer14_UnmarshalAttributes_Fail(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			oer := NewTTIoer14().(*tTIoer14)
+			oer := newTTIoer14().(*tTIoer14)
 			oer.setSupportsEndOfCallStatus(true)
 			buf := makeOerPayload(oerDump)
 			mar := createMarshaller(buf, tc.failOn, tc.failCount)
@@ -159,7 +159,7 @@ func TestTTIoer14_UnMarshalFrom_Success(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			oer := NewTTIoer14().(*tTIoer14)
+			oer := newTTIoer14().(*tTIoer14)
 			oer.setSupportsEndOfCallStatus(true)
 			buf := tc.fillBuffer()
 			mar := createMarshaller(buf, 0, 0)
@@ -215,7 +215,7 @@ func TestTTIoer14_UnMarshalFrom_Fail(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			oer := NewTTIoer14().(*tTIoer14)
+			oer := newTTIoer14().(*tTIoer14)
 			oer.setSupportsEndOfCallStatus(true)
 			buf := tc.fillBuffer()
 			mar := createMarshaller(buf, tc.failOn, tc.failCount)
@@ -229,7 +229,7 @@ func TestTTIoer14_UnMarshalFrom_Fail(t *testing.T) {
 // the base tTIoer checksum plus the tTIoer14-specific fields (sqlCommandType and checksum).
 func TestTTIoer14_UpdateChecksum(t *testing.T) {
 	t.Parallel()
-	oer := NewTTIoer14().(*tTIoer14)
+	oer := newTTIoer14().(*tTIoer14)
 	// Set fields to known values
 	oer.sqlCommandType = 0x12
 	oer.checksum = 0x34

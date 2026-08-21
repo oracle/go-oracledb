@@ -181,7 +181,7 @@ Parameters:
 func newTTIOAcDefine(
 	typ DtyType,
 	maxLength driverCommon.UB4,
-	colCtx ColumnContext,
+	colCtx columnContext,
 	flags driverCommon.UB8,
 	prefetchSize driverCommon.UB4,
 ) *tTIoac {
@@ -232,27 +232,27 @@ func newTTIOacTime() driverCommon.Marshallable {
 }
 
 // newTTIOacJSONDefine creates a define OAC descriptor for JSON values transported as LOBs with prefetch enabled.
-func newTTIOacJSONDefine(columnContext ColumnContext, lobPrefetchSize driverCommon.UB4) driverCommon.Marshallable {
+func newTTIOacJSONDefine(columnContext columnContext, lobPrefetchSize driverCommon.UB4) driverCommon.Marshallable {
 	return newTTIOAcDefine(DtyBlob, max_lob_length, columnContext, uacfsald, lobPrefetchSize)
 }
 
 // newTTIOacClobDefine creates a define OAC descriptor for CLOB values using column metadata and LOB prefetch settings.
-func newTTIOacClobDefine(columnContext ColumnContext, lobPrefetchSize driverCommon.UB4) driverCommon.Marshallable {
+func newTTIOacClobDefine(columnContext columnContext, lobPrefetchSize driverCommon.UB4) driverCommon.Marshallable {
 	return newTTIOAcDefine(columnContext.DataType, max_lob_length, columnContext, 0, lobPrefetchSize)
 }
 
 // newTTIOacBlobDefine creates a define OAC descriptor for BLOB values using column metadata and LOB prefetch settings.
-func newTTIOacBlobDefine(columnContext ColumnContext, lobPrefetchSize driverCommon.UB4) driverCommon.Marshallable {
+func newTTIOacBlobDefine(columnContext columnContext, lobPrefetchSize driverCommon.UB4) driverCommon.Marshallable {
 	return newTTIOAcDefine(columnContext.DataType, max_lob_length, columnContext, 0, lobPrefetchSize)
 }
 
 // newTTIOacVarcharDefine creates a define OAC descriptor for VARCHAR-like scalar columns.
-func newTTIOacVarcharDefine(columnContext ColumnContext) driverCommon.Marshallable {
+func newTTIOacVarcharDefine(columnContext columnContext) driverCommon.Marshallable {
 	return newTTIoac(columnContext.DataType, define_maxlength_varchar)
 }
 
 // newTTIOacScalarDefine creates a define OAC descriptor for fixed-size scalar column values.
-func newTTIOacScalarDefine(columnContext ColumnContext) driverCommon.Marshallable {
+func newTTIOacScalarDefine(columnContext columnContext) driverCommon.Marshallable {
 	return newTTIoac(columnContext.DataType, define_maxlength_scalar)
 }
 

@@ -59,7 +59,7 @@ func oall8GoldenPayload(lines []string) []byte {
 
 func newEngine(capacity int) (*ArrayBasedDataBuffer, common.Marshaller) {
 	buf := NewArrayDataBuffer(capacity)
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	return buf, engine
 }
 
@@ -430,7 +430,7 @@ func TestOall8_MarshalTo_Fail_DDL(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -473,7 +473,7 @@ func TestOall8_MarshalTo_Fail_BindPtr(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(4096),
 			FailOnWriteByteCall:  n,
 		}
-		engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -502,7 +502,7 @@ func TestOall8_MarshalTo_Fail_BindCount(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(4096),
 			FailOnWriteBytesCall: n,
 		}
-		engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -552,7 +552,7 @@ func TestOall8_MarshalTo_Fail_DefinePtr(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(4096),
 			FailOnWriteByteCall:  n,
 		}
-		engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -582,7 +582,7 @@ func TestOall8_MarshalTo_Fail_DefineCount(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(4096),
 			FailOnWriteBytesCall: n,
 		}
-		engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -622,7 +622,7 @@ func TestOall8_MarshalTo_Fail_AL8I4_DataWrite(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(8192),
 			FailOnWriteBytesCall: call,
 		}
-		engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -663,7 +663,7 @@ func TestOall8_MarshalTo_EmptySQL_EmptyAL8I4_Success(t *testing.T) {
 	t.Parallel()
 	m := buildOall8Empty()
 	buf := NewArrayDataBuffer(2048)
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	if err := m.MarshalTo(context.Background(), engine); err != nil {
 		t.Fatalf("MarshalTo (empty sql/oall8Options) failed: %v", err)
@@ -696,7 +696,7 @@ func TestOall8_MarshalTo_EmptySQL_EmptyAL8I4_Failures(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -772,7 +772,7 @@ func TestOall8_MarshalTo_Fail_DML(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -854,7 +854,7 @@ func TestOall8_MarshalTo_Fail_SELECT(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil")

@@ -58,14 +58,14 @@ import (
 )
 
 const (
-	// ZtvLenOrcl represents the length of Oracle verifier type
-	ZtvLenOrcl = 16
-	// FixedResponseLength represents the response length
-	FixedResponseLength = 16
-	// AuthFlagSha2 represents the auth flaf for SHA2
-	AuthFlagSha2 = 1
-	// AuthOraDebugJdwpEncSession represents the debug flag
-	AuthOraDebugJdwpEncSession byte = 1
+	// ztvLenOrcl represents the length of Oracle verifier type
+	ztvLenOrcl = 16
+	// fixedResponseLength represents the response length
+	fixedResponseLength = 16
+	// authFlagSha2 represents the auth flag for SHA2
+	authFlagSha2 = 1
+	// authOraDebugJdwpEncSession represents the debug flag
+	authOraDebugJdwpEncSession byte = 1
 
 	validationString = "SERVER_TO_CLIENT"
 )
@@ -201,7 +201,7 @@ func (o *o5Logon) GetDerivedKey(dhKey []byte, mode int) ([]byte, error) {
 	// secret key is o5Logon key
 	secretKey = o.o5logonKey
 
-	if (mode & AuthFlagSha2) != AuthFlagSha2 {
+	if (mode & authFlagSha2) != authFlagSha2 {
 		algorithm = "PBKDF2WithHmacSHA1"
 		keyLength = 160
 	}
@@ -462,8 +462,8 @@ func (o *o5Logon) generateOAuthResponse(
 	}
 
 	// Step #4: constructs O5logon key (concatenate Ka and Kb (Ka XOR Kb, and MD5 digest))
-	o.o5logonKey, err = o._buildO5LogonKey(verifierType, ka, FixedResponseLength,
-		kb, FixedResponseLength, PBKDF2SderCount, saltPBKDF2Nibbles)
+	o.o5logonKey, err = o._buildO5LogonKey(verifierType, ka, fixedResponseLength,
+		kb, fixedResponseLength, PBKDF2SderCount, saltPBKDF2Nibbles)
 	if err != nil {
 		return err
 	}

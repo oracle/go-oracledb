@@ -47,7 +47,7 @@ import (
 )
 
 type transaction struct {
-	_underlyingConnection *Connection
+	_underlyingConnection *connection
 	// the current transaction context
 	_transactionContext context.Context
 }
@@ -56,7 +56,7 @@ type transaction struct {
 //
 // Parameters
 //   - ctx: the transaction context
-func newTransaction(conn *Connection, ctx context.Context) *transaction {
+func newTransaction(conn *connection, ctx context.Context) *transaction {
 	return &transaction{
 		_underlyingConnection: conn,
 		_transactionContext:   ctx,

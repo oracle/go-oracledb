@@ -44,7 +44,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 // Helper functions for capabilities test data
@@ -71,25 +70,25 @@ func makeTestPayload(compile, run []byte) []byte {
 	return buf.Bytes()
 }
 
-// TestCapabilityNew verifies that NewCapability returns a non-nil struct and both caps are nil.
+// TestCapabilityNew verifies that newCapability returns a non-nil struct and both caps are nil.
 func TestCapabilityNew(t *testing.T) {
 	t.Parallel()
-	cap := NewCapability()
+	cap := newCapability()
 	if cap == nil {
 		t.Fatal("Expected NewCapability to return non-nil Capability")
 	}
-	if !bytes.Equal(cap.runTimeCapabilities, AssumedSrvRtCaps) {
-		t.Errorf("runTimeCapabilities: got %v, want %v", cap.runTimeCapabilities, AssumedSrvRtCaps)
+	if !bytes.Equal(cap.runTimeCapabilities, assumedSrvRtCaps) {
+		t.Errorf("runTimeCapabilities: got %v, want %v", cap.runTimeCapabilities, assumedSrvRtCaps)
 	}
-	if !bytes.Equal(cap.compileTimeCapabilities, AssumedSrvCtCaps) {
-		t.Errorf("compileTimeCapabilities: got %v, want %v", cap.compileTimeCapabilities, AssumedSrvCtCaps)
+	if !bytes.Equal(cap.compileTimeCapabilities, assumedSrvCtCaps) {
+		t.Errorf("compileTimeCapabilities: got %v, want %v", cap.compileTimeCapabilities, assumedSrvCtCaps)
 	}
 }
 
-// TestCapabilityNewDefault verifies that NewDefaultCapability returns a non-nil, initialized Capability object.
+// TestCapabilityNewDefault verifies that newDefaultCapability returns a non-nil, initialized capability object.
 func TestCapabilityNewDefault(t *testing.T) {
 	t.Parallel()
-	cap := NewDefaultCapability()
+	cap := newDefaultCapability()
 	if cap == nil {
 		t.Fatal("Expected NewCapability to return non-nil Capability")
 	}
@@ -104,13 +103,13 @@ func TestCapabilityNewDefault(t *testing.T) {
 // TestCapabilityMarshalTo_Success checks success path marshaling.
 func TestCapabilityMarshalTo_Success(t *testing.T) {
 	t.Parallel()
-	c := &Capability{
+	c := &capability{
 		compileTimeCapabilities: []byte{4, 5, 6},
 		runTimeCapabilities:     []byte{1, 2, 3},
 	}
 	expected := []byte{3, 4, 5, 6, 3, 1, 2, 3}
 	buf := NewArrayDataBuffer(1024)
-	engine := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 
 	err := c.MarshalTo(context.Background(), engine)
 	if err != nil {
@@ -125,7 +124,7 @@ func TestCapabilityMarshalTo_Success(t *testing.T) {
 // TestCapabilityMarshalTo_Fail checks error marshaling.
 func TestCapabilityMarshalTo_Fail(t *testing.T) {
 	t.Parallel()
-	cap := NewDefaultCapability()
+	cap := newDefaultCapability()
 	cases := []struct {
 		name      string
 		failByte  int
@@ -144,7 +143,7 @@ func TestCapabilityMarshalTo_Fail(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 			err := cap.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Errorf("expected error, got nil")
@@ -167,8 +166,8 @@ func TestCapabilityUnMarshalFrom_Success(t *testing.T) {
 	buf := NewArrayDataBuffer(1024)
 	buf.WriteBytesWithContext(context.Background(), payload)
 
-	cap := NewCapability()
-	engine := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+	cap := newCapability()
+	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 	err := cap.UnMarshalFrom(context.Background(), engine)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -200,8 +199,8 @@ func TestCapabilityUnMarshalFrom_Fail(t *testing.T) {
 			dbuf := NewArrayDataBuffer(10)
 			dbuf.WriteBytesWithContext(context.Background(), payload)
 			buf = &FaultyArrayBasedDataBuffer{ArrayBasedDataBuffer: dbuf, FailOnReadByteCall: ec.failPos}
-			cap := NewCapability()
-			engine := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+			cap := newCapability()
+			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 			err := cap.UnMarshalFrom(context.Background(), engine)
 			if err == nil {
 				t.Error("Expected error but got none")
@@ -214,11 +213,11 @@ func TestCapabilityUnMarshalFrom_Fail(t *testing.T) {
 func TestCapability_AdjustCapabilityFrom(t *testing.T) {
 	t.Parallel()
 	// Set up minimal lengths for relevant indices
-	client := &Capability{
+	client := &capability{
 		compileTimeCapabilities: make([]byte, 50),
 		runTimeCapabilities:     make([]byte, 10),
 	}
-	server := &Capability{
+	server := &capability{
 		compileTimeCapabilities: make([]byte, 50),
 		runTimeCapabilities:     make([]byte, 10),
 	}
@@ -247,7 +246,7 @@ func TestCapability_AdjustCapabilityFrom(t *testing.T) {
 	client.compileTimeCapabilities[index] = kpccapCtbTtc3.value
 	client.runTimeCapabilities[kpccapRtTz.index] = kpccapRtTz.value
 
-	client.AdjustCapabilityFrom(server)
+	client.adjustCapabilityFrom(server)
 
 	kpccapCtUb2dty := client.knownUsedCompileTimeCapabilities[kpccapCtUb2dty]
 	if client.compileTimeCapabilities[index] != 0 {
@@ -269,7 +268,7 @@ func TestCapability_AdjustCapabilityFrom(t *testing.T) {
 
 func TestCapability_toMap(t *testing.T) {
 	t.Parallel()
-	capabilities := NewDefaultCapability()
+	capabilities := newDefaultCapability()
 	capabilitiesMap := capabilities.toMap()
 	for key, value := range capabilities.knownUsedCompileTimeCapabilities {
 		if value.isDefault {

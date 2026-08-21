@@ -47,7 +47,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -162,7 +161,7 @@ func TestTTIlob_MarshalTo_Success(t *testing.T) {
 			msg := newTTIlob().(*tTIlob)
 			msg.SetDefinition(tc.def())
 
-			buf, mar := NewMarshalEngineTest(session.BIG_ENDIAN, Universal, Universal, 4096)
+			buf, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 4096)
 			if err := msg.MarshalTo(ctx, mar); err != nil {
 				t.Fatalf("MarshalTo returned error: %v", err)
 			}

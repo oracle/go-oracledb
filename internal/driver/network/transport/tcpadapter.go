@@ -56,28 +56,28 @@ const (
 	TCPCHA                   = 1<<1 | 1<<2 | 1<<3 | 1<<8 | 1<<9 | 1<<12
 )
 
-// NTTCP represents a TCP network transport adapter
-type NTTCP struct {
-	Cha        int
-	Connected  bool
-	Secure     bool
-	Host       string
-	Hostname   string
-	OriginHost string
-	Port       uint16
-	Stream     net.Conn
-	Atts       NTattributes
+// nttcp represents a TCP network transport adapter
+type nttcp struct {
+	cha        int
+	connected  bool
+	secure     bool
+	host       string
+	hostname   string
+	originHost string
+	port       uint16
+	stream     net.Conn
+	atts       NTattributes
 	_writerWG  sync.WaitGroup
 	_readerWG  sync.WaitGroup
 }
 
-func NewNTTCP(atts NTattributes, port uint16) *NTTCP {
-	return &NTTCP{
-		Cha:       TCPCHA,
-		Connected: false,
-		Secure:    false,
-		Atts:      atts,
-		Port:      port,
+func NewNTTCP(atts NTattributes, port uint16) *nttcp {
+	return &nttcp{
+		cha:       TCPCHA,
+		connected: false,
+		secure:    false,
+		atts:      atts,
+		port:      port,
 	}
 }
 
@@ -93,13 +93,13 @@ type ioOperationResult struct {
 //
 // returns :
 //   - error raised during read operation
-func (nt *NTTCP) Send(ctx context.Context, buf []byte) error {
+func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 
 	var ctxToBeUsed context.Context
 	var cancel context.CancelFunc
 	ctxToBeUsed = ctx
-	if nt.Atts.SendTimeout > 0 {
-		ctxToBeUsed, cancel = context.WithTimeout(ctx, time.Duration(nt.Atts.SendTimeout)*time.Millisecond)
+	if nt.atts.SendTimeout > 0 {
+		ctxToBeUsed, cancel = context.WithTimeout(ctx, time.Duration(nt.atts.SendTimeout)*time.Millisecond)
 		defer cancel()
 	}
 
@@ -110,7 +110,7 @@ func (nt *NTTCP) Send(ctx context.Context, buf []byte) error {
 		bufLen := len(buf)
 		for bytesWritten < bufLen {
 			chunk := buf[bytesWritten:]
-			n, err := nt.Stream.Write(chunk)
+			n, err := nt.stream.Write(chunk)
 			if err != nil {
 				// timeout is not handle here (it cannot be raised in this routine), as it is handled in the main thread.
 				resCh <- ioOperationResult{byteCount: bytesWritten, ioerr: err}
@@ -130,12 +130,12 @@ func (nt *NTTCP) Send(ctx context.Context, buf []byte) error {
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
 		common.Odl.Debug("context for Send() cancelled, cancelling writer")
-		nt.Stream.SetWriteDeadline(time.Now())
+		nt.stream.SetWriteDeadline(time.Now())
 		nt._writerWG.Wait()
 		common.Odl.Debug("Send() timed-out, writer is now joined")
 		// reset the deadline
-		nt.Stream.SetWriteDeadline(time.Time{})
-		return common.NewOracleError(oracleErrors.CtxTimeout, ctx.Err(), "send", fmt.Sprintf("%s:%d", nt.Host, nt.Port), nt.Atts.Connectionid)
+		nt.stream.SetWriteDeadline(time.Time{})
+		return common.NewOracleError(oracleErrors.CtxTimeout, ctx.Err(), "send", fmt.Sprintf("%s:%d", nt.host, nt.port), nt.atts.Connectionid)
 	}
 }
 
@@ -148,7 +148,7 @@ func (nt *NTTCP) Send(ctx context.Context, buf []byte) error {
 // returns :
 //   - read bytes count
 //   - error raised during read operation
-func (nt *NTTCP) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error) {
+func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error) {
 
 	if bytes2Read > len(buf) {
 		return 0, fmt.Errorf("buffer too small: have %d want %d", len(buf), bytes2Read)
@@ -157,10 +157,10 @@ func (nt *NTTCP) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 	var ctxToBeUsed context.Context
 	var cancel context.CancelFunc
 	ctxToBeUsed = ctx
-	if nt.Atts.RecvTimeout > 0 {
-		ctxToBeUsed, cancel = context.WithTimeoutCause(ctx, time.Duration(nt.Atts.RecvTimeout)*time.Millisecond,
-			common.NewCtxTimeoutCauseError("recv-timeout", uint(nt.Atts.RecvTimeout),
-				nt.Atts.Connectionid))
+	if nt.atts.RecvTimeout > 0 {
+		ctxToBeUsed, cancel = context.WithTimeoutCause(ctx, time.Duration(nt.atts.RecvTimeout)*time.Millisecond,
+			common.NewCtxTimeoutCauseError("recv-timeout", uint(nt.atts.RecvTimeout),
+				nt.atts.Connectionid))
 		defer cancel()
 	}
 
@@ -171,7 +171,7 @@ func (nt *NTTCP) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 		for bytesRead < bytes2Read {
 			remainder := bytes2Read - bytesRead
 			segment := buf[bytesRead : bytesRead+remainder]
-			n, err := nt.Stream.Read(segment)
+			n, err := nt.stream.Read(segment)
 			if err != nil {
 				// timeout is not handle here (it cannot be raised in this routine), as it is handled in the main thread.
 				resCh <- ioOperationResult{byteCount: bytesRead, ioerr: err}
@@ -191,17 +191,17 @@ func (nt *NTTCP) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
 		common.Odl.Debug("context for Receive() cancelled, cancelling reader")
-		nt.Stream.SetReadDeadline(time.Now())
+		nt.stream.SetReadDeadline(time.Now())
 		nt._readerWG.Wait()
 		common.Odl.Debug("Receive() timed-out, reader is now joined")
 		// reset the deadline
-		nt.Stream.SetReadDeadline(time.Time{})
+		nt.stream.SetReadDeadline(time.Time{})
 		return 0, context.Cause(ctxToBeUsed)
 	}
 }
 
-// NTConnect establishes a TCP connection
-func (nt *NTTCP) NTConnect(ctx context.Context, address Address) error {
+// nTConnect establishes a TCP connection
+func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 
 	var httpsProxy string
 	var httpsProxyPort int
@@ -209,8 +209,8 @@ func (nt *NTTCP) NTConnect(ctx context.Context, address Address) error {
 		httpsProxy = address.HTTPSProxy
 		httpsProxyPort = address.HTTPSProxyPort
 	} else {
-		httpsProxy = nt.Atts.HttpsProxy
-		httpsProxyPort = nt.Atts.HttpsProxyPort
+		httpsProxy = nt.atts.HttpsProxy
+		httpsProxyPort = nt.atts.HttpsProxyPort
 	}
 	if httpsProxyPort == 0 {
 		httpsProxyPort = DEFAULT_HTTPS_PROXY_PORT
@@ -225,14 +225,14 @@ func (nt *NTTCP) NTConnect(ctx context.Context, address Address) error {
 	var dialCtxToBeUsed context.Context
 	var dialCancelToBeUsed context.CancelFunc
 	dialCtxToBeUsed = ctx
-	if nt.Atts.Transportconnecttimeout > 0 {
+	if nt.atts.Transportconnecttimeout > 0 {
 		// take precedence over the passed context if it is a shorter timeout
 		dialCtxToBeUsed, dialCancelToBeUsed =
 			context.WithTimeoutCause(ctx,
-				time.Duration(nt.Atts.Transportconnecttimeout)*time.Millisecond,
+				time.Duration(nt.atts.Transportconnecttimeout)*time.Millisecond,
 				common.NewCtxTimeoutCauseError("TransportConnectTimeout",
-					uint(nt.Atts.Transportconnecttimeout),
-					nt.Atts.Connectionid))
+					uint(nt.atts.Transportconnecttimeout),
+					nt.atts.Connectionid))
 		defer dialCancelToBeUsed()
 	}
 	common.Odl.Debug("dialing remote host")
@@ -250,26 +250,26 @@ func (nt *NTTCP) NTConnect(ctx context.Context, address Address) error {
 			}
 			// deal with a context case now as we always want an oracleErrors
 			return common.NewOracleError(oracleErrors.CtxTimeout, nil, "CONNECT",
-				address.String(), nt.Atts.Connectionid)
+				address.String(), nt.atts.Connectionid)
 		}
 		if opError.Op == "dial" && errors.Is(opError.Err, syscall.ECONNREFUSED) {
 			return common.NewOracleError(oracleErrors.NoListenerAvailable, nil, address.String())
 		}
 		return err
 	}
-	nt.Stream = conn
-	nt.Connected = true
+	nt.stream = conn
+	nt.connected = true
 	return nil
 }
 
 // Connect establishes a network transport connection
-func (nt *NTTCP) Connect(ctx context.Context, address Address) error {
-	nt.OriginHost = address.OriginHost
-	nt.Host = address.Host
-	nt.Hostname = address.Hostname
-	nt.Port = address.Port
+func (nt *nttcp) Connect(ctx context.Context, address Address) error {
+	nt.originHost = address.OriginHost
+	nt.host = address.Host
+	nt.hostname = address.Hostname
+	nt.port = address.Port
 
-	if err := nt.NTConnect(ctx, address); err != nil {
+	if err := nt.nTConnect(ctx, address); err != nil {
 		return err
 	}
 	cleanupOnError := func(err error) error {
@@ -278,21 +278,21 @@ func (nt *NTTCP) Connect(ctx context.Context, address Address) error {
 		}
 		return err
 	}
-	if nt.Atts.ExpireTime > 0 || nt.Atts.EnabledDCD {
-		tcpConn, ok := nt.Stream.(*net.TCPConn)
+	if nt.atts.ExpireTime > 0 || nt.atts.EnabledDCD {
+		tcpConn, ok := nt.stream.(*net.TCPConn)
 		if ok {
 			if err := tcpConn.SetKeepAlive(true); err != nil {
 				return cleanupOnError(err)
 			}
-			if nt.Atts.ExpireTime > 0 {
-				if err := tcpConn.SetKeepAlivePeriod(time.Duration(nt.Atts.ExpireTime) * time.Millisecond); err != nil {
+			if nt.atts.ExpireTime > 0 {
+				if err := tcpConn.SetKeepAlivePeriod(time.Duration(nt.atts.ExpireTime) * time.Millisecond); err != nil {
 					return cleanupOnError(err)
 				}
 			}
 		}
 	}
-	if !nt.Atts.TCPNODelay {
-		if tcpConn, ok := nt.Stream.(*net.TCPConn); ok {
+	if !nt.atts.TCPNODelay {
+		if tcpConn, ok := nt.stream.(*net.TCPConn); ok {
 			if err := tcpConn.SetNoDelay(false); err != nil {
 				return cleanupOnError(err)
 			}
@@ -301,11 +301,11 @@ func (nt *NTTCP) Connect(ctx context.Context, address Address) error {
 	return nil
 }
 
-func (nt *NTTCP) Disconnect() error {
-	nt.Connected = false
-	if nt.Stream != nil {
-		err := nt.Stream.Close()
-		nt.Stream = nil
+func (nt *nttcp) Disconnect() error {
+	nt.connected = false
+	if nt.stream != nil {
+		err := nt.stream.Close()
+		nt.stream = nil
 		return err
 	}
 	return nil

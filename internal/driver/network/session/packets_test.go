@@ -47,8 +47,8 @@ import (
 
 func TestHeaderMarshalUnmarshal(t *testing.T) {
 	t.Parallel()
-	sAtts := &SessionAtts{LargeSDU: false}
-	h := &Header{
+	sAtts := &sessionAtts{LargeSDU: false}
+	h := &header{
 		PacketLength:   100,
 		PacketChecksum: 1234,
 		Type:           NSPTDA,
@@ -61,7 +61,7 @@ func TestHeaderMarshalUnmarshal(t *testing.T) {
 		t.Errorf("Marshal failed: %v", err)
 	}
 
-	var h2 Header
+	var h2 header
 	err = h2.Unmarshal(buf, sAtts, nil)
 	if err != nil {
 		t.Errorf("Unmarshal failed: %v", err)
@@ -78,7 +78,7 @@ func TestHeaderMarshalUnmarshal(t *testing.T) {
 		t.Errorf("Marshal large SDU failed: %v", err)
 	}
 
-	var h3 Header
+	var h3 header
 	err = h3.Unmarshal(bufLarge, sAtts, nil)
 	if err != nil {
 		t.Errorf("Unmarshal large SDU failed: %v", err)
@@ -97,7 +97,7 @@ func TestHeaderMarshalUnmarshal(t *testing.T) {
 
 func TestConnectPacketMarshal(t *testing.T) {
 	t.Parallel()
-	sAtts := &SessionAtts{
+	sAtts := &sessionAtts{
 		Version:                     TNS_VERSION_DESIRED,
 		SDU:                         512,
 		TDU:                         512,
@@ -107,7 +107,7 @@ func TestConnectPacketMarshal(t *testing.T) {
 		NetworkCompressionThreshold: 1024,
 	}
 	data := []byte("short data")
-	cp := &ConnectPacket{}
+	cp := &connectPacket{}
 	cp.Marshal(data, sAtts, 0)
 	if cp.Overflow {
 		t.Errorf("Expected no overflow for short data")
@@ -159,17 +159,17 @@ func TestConnectPacketMarshal(t *testing.T) {
 
 func TestConnectPacketUnmarshal(t *testing.T) {
 	t.Parallel()
-	cp := &ConnectPacket{}
-	err := cp.Unmarshal([]byte{}, SessionAtts{}, &Header{})
+	cp := &connectPacket{}
+	err := cp.Unmarshal([]byte{}, sessionAtts{}, &header{})
 	if err == nil || err.Error() != "not implemented" {
 		t.Errorf("Expected 'not implemented' error, got %v", err)
 	}
 }
 func TestDataPacketMarshal(t *testing.T) {
 	t.Parallel()
-	sAtts := &SessionAtts{LargeSDU: false}
+	sAtts := &sessionAtts{LargeSDU: false}
 	buf := make([]byte, 100)
-	dp := &DataPacket{}
+	dp := &dataPacket{}
 	err := dp.Marshal(buf, sAtts, 0)
 	if err != nil {
 		t.Errorf("Marshal failed: %v", err)
@@ -178,12 +178,12 @@ func TestDataPacketMarshal(t *testing.T) {
 		t.Errorf("Marshal state mismatch")
 	}
 	if dp.hdr.Type != NSPTDA {
-		t.Errorf("Header type mismatch")
+		t.Errorf("header type mismatch")
 	}
 }
 func TestDataPacketFillBuf(t *testing.T) {
 	t.Parallel()
-	dp := &DataPacket{Offset: NSPDADAT, BufLen: 20, Buf: make([]byte, 20)}
+	dp := &dataPacket{Offset: NSPDADAT, BufLen: 20, Buf: make([]byte, 20)}
 	userBuf := []byte("test")
 	copied := dp.FillBuf(userBuf, 0, len(userBuf), 0, false)
 	if copied != 4 || dp.Offset != NSPDADAT+4 || string(dp.Buf[NSPDADAT:NSPDADAT+4]) != "test" {
@@ -200,7 +200,7 @@ func TestDataPacketFillBuf(t *testing.T) {
 	}
 
 	// Large SDU
-	dp = &DataPacket{Offset: NSPDADAT, BufLen: 20, Buf: make([]byte, 20)}
+	dp = &dataPacket{Offset: NSPDADAT, BufLen: 20, Buf: make([]byte, 20)}
 	copied = dp.FillBuf(userBuf, 0, len(userBuf), 0, true)
 	if copied != 4 {
 		t.Errorf("FillBuf large SDU failed")
@@ -208,9 +208,9 @@ func TestDataPacketFillBuf(t *testing.T) {
 }
 func TestDataPacketPrepare2Send(t *testing.T) {
 	t.Parallel()
-	sAtts := &SessionAtts{LargeSDU: false}
-	dp := &DataPacket{Offset: 20, Buf: make([]byte, 20), BufLen: 20}
-	dp.hdr = &Header{}
+	sAtts := &sessionAtts{LargeSDU: false}
+	dp := &dataPacket{Offset: 20, Buf: make([]byte, 20), BufLen: 20}
+	dp.hdr = &header{}
 	err := dp.Prepare2Send(NSPDAFEOF, sAtts)
 	if err != nil {
 		t.Errorf("Prepare2Send failed")
@@ -232,7 +232,7 @@ func TestDataPacketPrepare2Send(t *testing.T) {
 
 func TestDataPacketReset(t *testing.T) {
 	t.Parallel()
-	dp := &DataPacket{Offset: 50}
+	dp := &dataPacket{Offset: 50}
 	dp.Reset()
 	if dp.Offset != NSPDADAT {
 		t.Errorf("Reset failed")
@@ -241,10 +241,10 @@ func TestDataPacketReset(t *testing.T) {
 
 func TestDataPacketUnmarshal(t *testing.T) {
 	t.Parallel()
-	sAtts := &SessionAtts{LargeSDU: false}
+	sAtts := &sessionAtts{LargeSDU: false}
 	buf := make([]byte, 50)
-	hdr := &Header{PacketLength: 50, Type: NSPTDA}
-	dp := &DataPacket{}
+	hdr := &header{PacketLength: 50, Type: NSPTDA}
+	dp := &dataPacket{}
 	err := dp.Unmarshal(buf, sAtts, hdr)
 	if err != nil {
 		t.Errorf("Unmarshal failed: %v", err)
@@ -261,7 +261,7 @@ func TestDataPacketUnmarshal(t *testing.T) {
 	}
 
 	for _, packetLen := range []uint32{8, 9} {
-		hdr := &Header{PacketLength: packetLen, Type: NSPTDA}
+		hdr := &header{PacketLength: packetLen, Type: NSPTDA}
 		err = dp.Unmarshal(buf[:packetLen], sAtts, hdr)
 		if err == nil || !strings.Contains(err.Error(), "data packet too short") {
 			t.Errorf("Expected data packet too short error for length %d, got %v", packetLen, err)
@@ -271,7 +271,7 @@ func TestDataPacketUnmarshal(t *testing.T) {
 
 func TestDataPacketReadByte(t *testing.T) {
 	t.Parallel()
-	dp := &DataPacket{Offset: 0, Len: 5, Buf: []byte{1, 2, 3, 4, 5}}
+	dp := &dataPacket{Offset: 0, Len: 5, Buf: []byte{1, 2, 3, 4, 5}}
 	b, err := dp.ReadByte()
 	if err != nil || b != 1 || dp.Offset != 1 {
 		t.Errorf("ReadByte failed")
@@ -286,7 +286,7 @@ func TestDataPacketReadByte(t *testing.T) {
 
 func TestDataPacketRead(t *testing.T) {
 	t.Parallel()
-	dp := &DataPacket{Offset: 0, Len: 5, Buf: []byte{1, 2, 3, 4, 5}}
+	dp := &dataPacket{Offset: 0, Len: 5, Buf: []byte{1, 2, 3, 4, 5}}
 	data, err := dp.Read(3)
 	if err != nil || !bytes.Equal(data, []byte{1, 2, 3}) || dp.Offset != 3 {
 		t.Errorf("Read failed")
@@ -300,7 +300,7 @@ func TestDataPacketRead(t *testing.T) {
 
 func TestDataPacketRemaining(t *testing.T) {
 	t.Parallel()
-	dp := &DataPacket{Offset: 2, Len: 5}
+	dp := &dataPacket{Offset: 2, Len: 5}
 	if dp.Remaining() != 3 {
 		t.Errorf("Remaining failed")
 	}
@@ -308,7 +308,7 @@ func TestDataPacketRemaining(t *testing.T) {
 
 func TestAcceptPacketUnmarshal(t *testing.T) {
 	t.Parallel()
-	sAtts := &SessionAtts{Version: 315, LargeSDU: true}
+	sAtts := &sessionAtts{Version: 315, LargeSDU: true}
 	buf := make([]byte, 100)
 	binary.BigEndian.PutUint16(buf[NSPACVSN:], 315)
 	binary.BigEndian.PutUint16(buf[NSPACOPT:], 1)
@@ -318,9 +318,9 @@ func TestAcceptPacketUnmarshal(t *testing.T) {
 	binary.BigEndian.PutUint32(buf[NSPACFL2:], TNS_ACCEPT_FLAG_HAS_END_OF_REQUEST|TNS_ACCEPT_FLAG_FAST_AUTH)
 	buf[NSPACFL0] = 10
 	buf[NSPACFL1] = 20
-	hdr := &Header{PacketLength: 100, Type: NSPTAC}
+	hdr := &header{PacketLength: 100, Type: NSPTAC}
 
-	ap := &AcceptPacket{}
+	ap := &acceptPacket{}
 	err := ap.Unmarshal(buf, sAtts, hdr)
 	if err != nil {
 		t.Errorf("Unmarshal failed: %v", err)
@@ -388,13 +388,13 @@ func TestAcceptPacketClampsOversizedValues(t *testing.T) {
 
 	t.Run("16bit fields", func(t *testing.T) {
 		buf := make([]byte, 100)
-		sAtts := &SessionAtts{}
+		sAtts := &sessionAtts{}
 		binary.BigEndian.PutUint16(buf[NSPACVSN:], 314)
 		binary.BigEndian.PutUint16(buf[NSPACOPT:], 1)
 		binary.BigEndian.PutUint16(buf[NSPACSDU:], sixteenBitMax)
 		binary.BigEndian.PutUint16(buf[NSPACTDU:], sixteenBitMax)
-		hdr := &Header{PacketLength: uint32(len(buf)), Type: NSPTAC}
-		ap := &AcceptPacket{}
+		hdr := &header{PacketLength: uint32(len(buf)), Type: NSPTAC}
+		ap := &acceptPacket{}
 		if err := ap.Unmarshal(buf, sAtts, hdr); err != nil {
 			t.Fatalf("unmarshal failed: %v", err)
 		}
@@ -408,15 +408,15 @@ func TestAcceptPacketClampsOversizedValues(t *testing.T) {
 
 	t.Run("32bit fields", func(t *testing.T) {
 		buf := make([]byte, 100)
-		sAtts := &SessionAtts{}
+		sAtts := &sessionAtts{}
 		binary.BigEndian.PutUint16(buf[NSPACVSN:], 315)
 		binary.BigEndian.PutUint16(buf[NSPACOPT:], 1)
 		binary.BigEndian.PutUint16(buf[NSPACSDU:], uint16(NSPMXSDULN))
 		binary.BigEndian.PutUint16(buf[NSPACTDU:], 0xFFFF)
 		binary.BigEndian.PutUint32(buf[NSPACLSD:], uint32(NSPABSSDULN*4))
 		binary.BigEndian.PutUint32(buf[NSPACLTD:], uint32(NSPMXTDULN*4))
-		hdr := &Header{PacketLength: uint32(len(buf)), Type: NSPTAC}
-		ap := &AcceptPacket{}
+		hdr := &header{PacketLength: uint32(len(buf)), Type: NSPTAC}
+		ap := &acceptPacket{}
 		if err := ap.Unmarshal(buf, sAtts, hdr); err != nil {
 			t.Fatalf("unmarshal failed: %v", err)
 		}
@@ -436,9 +436,9 @@ func TestRefusePacketUnmarshal(t *testing.T) {
 	buf[NSPRFSRS] = 2
 	binary.BigEndian.PutUint16(buf[NSPRFLEN:], 5)
 	copy(buf[NSPRFDAT:], "data!")
-	hdr := &Header{PacketLength: 17, Type: NSPTRF}
+	hdr := &header{PacketLength: 17, Type: NSPTRF}
 
-	rp := &RefusePacket{}
+	rp := &refusePacket{}
 	err := rp.Unmarshal(buf, nil, hdr)
 	if err != nil {
 		t.Errorf("Unmarshal failed: %v", err)
@@ -475,9 +475,9 @@ func TestRedirectPacketUnmarshal(t *testing.T) {
 	buf := make([]byte, NSPRDDAT+4)
 	binary.BigEndian.PutUint16(buf[NSPRDLEN:], 4)
 	copy(buf[NSPRDDAT:], "data")
-	hdr := &Header{PacketLength: uint32(NSPRDDAT + 4), Type: NSPTRD}
+	hdr := &header{PacketLength: uint32(NSPRDDAT + 4), Type: NSPTRD}
 
-	rp := &RedirectPacket{}
+	rp := &redirectPacket{}
 	err := rp.Unmarshal(buf, nil, hdr)
 	if err != nil {
 		t.Errorf("Unmarshal failed: %v", err)
@@ -511,8 +511,8 @@ func TestRedirectPacketUnmarshal(t *testing.T) {
 
 func TestMarkerPacket(t *testing.T) {
 	t.Parallel()
-	sAtts := &SessionAtts{}
-	mp := &MarkerPacket{}
+	sAtts := &sessionAtts{}
+	mp := &markerPacket{}
 	err := mp.Marshal(nil, sAtts, NIQRMARK)
 	if err != nil {
 		t.Errorf("Marshal failed: %v", err)
@@ -522,7 +522,7 @@ func TestMarkerPacket(t *testing.T) {
 	}
 
 	// Unmarshal
-	var hdr Header
+	var hdr header
 	hdr.Type = NSPTMK
 	hdr.PacketLength = uint32(len(mp.Buf))
 	err = mp.Unmarshal(mp.Buf, sAtts, &hdr)
@@ -534,7 +534,7 @@ func TestMarkerPacket(t *testing.T) {
 	}
 
 	// Test different marker type
-	mp = &MarkerPacket{}
+	mp = &markerPacket{}
 	buf := make([]byte, NSPMKDAT+1)
 	buf[NSPMKTYP] = NSPMKTD0
 	hdr.PacketLength = uint32(len(buf))
@@ -571,9 +571,9 @@ func TestControlPacketUnmarshal(t *testing.T) {
 	binary.BigEndian.PutUint32(buf[NSPCTLDAT+4:], 12573)
 	binary.BigEndian.PutUint32(buf[NSPCTLDAT+8:], 5)
 	copy(buf[NSPCTLDAT+12:], "notif")
-	hdr := &Header{PacketLength: 30, Type: NSPTCNL}
+	hdr := &header{PacketLength: 30, Type: NSPTCNL}
 
-	cp := &ControlPacket{}
+	cp := &controlPacket{}
 	err := cp.Unmarshal(buf, nil, hdr)
 	if err != nil {
 		t.Errorf("Unmarshal failed: %v", err)
@@ -619,7 +619,7 @@ func TestControlPacketUnmarshal(t *testing.T) {
 		t.Errorf("Expected error for short buffer data")
 	}
 
-	// Header shorter than command field
+	// header shorter than command field
 	err = cp.Unmarshal(buf[:NSPCTLCMD+1], nil, hdr)
 	if err == nil {
 		t.Errorf("Expected error for short control packet header")
@@ -660,9 +660,9 @@ func TestControlPacketUnmarshal(t *testing.T) {
 func TestResendPacketUnmarshal(t *testing.T) {
 	t.Parallel()
 	buf := make([]byte, NSPSIZHD)
-	hdr := &Header{PacketLength: NSPSIZHD, Type: NSPTRS}
+	hdr := &header{PacketLength: NSPSIZHD, Type: NSPTRS}
 
-	rp := &ResendPacket{}
+	rp := &resendPacket{}
 	err := rp.Unmarshal(buf, nil, hdr)
 	if err != nil {
 		t.Errorf("Unmarshal failed: %v", err)

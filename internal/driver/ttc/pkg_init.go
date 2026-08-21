@@ -140,7 +140,7 @@ func init() {
 	// Registers all TTC messages. All TTC Message implementors must be registered
 	// here.
 	// Register MessageType → Message implementations in the TTCRegistry
-	err := MessageRegistry.Register(TTIPRO, -1, NewTTIpro)
+	err := MessageRegistry.Register(TTIPRO, -1, newTTIpro)
 	if err != nil {
 		// Handle error appropriately, e.g., log or panic
 		common.Odl.Warn("Failed to register message TTIPro", "error", err)
@@ -151,12 +151,12 @@ func init() {
 		common.Odl.Warn("Failed to register message tTIdty", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIOER, 14, NewTTIoer14)
+	err = MessageRegistry.Register(TTIOER, 14, newTTIoer14)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIOER version 2", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIOER, MinTTCProtocolVersion, NewTTIoer)
+	err = MessageRegistry.Register(TTIOER, MinTTCProtocolVersion, newTTIoer)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIOER version 1", "error", err)
 	}
@@ -256,11 +256,11 @@ func init() {
 	}
 
 	// Register OEXFEN fast-path execute+fetch function
-	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, MinTTCProtocolVersion, NewOexfen)
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, MinTTCProtocolVersion, newOexfen)
 	if err != nil {
 		common.Odl.Warn("Failed to register function oExfen", "error", err)
 	}
-	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, NewOexfen18)
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 	if err != nil {
 		common.Odl.Warn("Failed to register function oExfen", "error", err)
 	}
@@ -276,7 +276,7 @@ func init() {
 		common.Odl.Warn("Failed to register oSessionKey function reply", "error", err)
 	}
 
-	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTISPF, functionType: driverCommon.FunctionType(ocssync)}, -1, NewttiSPFOCSSync)
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTISPF, functionType: driverCommon.FunctionType(ocssync)}, -1, newttiSPFOCSSync)
 	if err != nil {
 		common.Odl.Warn("Failed to register SPF function", "error", err)
 	}
@@ -982,7 +982,7 @@ func init() {
 		common.Odl.Warn("Failed to register BLOB define OAC", "error", err)
 	}
 
-	if err := DefineOacRegistry.Register(DtyVCS, MinTTCProtocolVersion, func(columnContext ColumnContext, _ driverCommon.UB4) driverCommon.Marshallable {
+	if err := DefineOacRegistry.Register(DtyVCS, MinTTCProtocolVersion, func(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
 		return newTTIOacVarcharDefine(columnContext)
 	}); err != nil {
 		common.Odl.Warn("Failed to register VARCHAR define OAC", "error", err)

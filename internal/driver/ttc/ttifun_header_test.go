@@ -43,7 +43,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 func TestTTIFunNoPayload_MarshalTo(t *testing.T) {
@@ -76,7 +75,7 @@ func TestTTIFunNoPayload_MarshalTo(t *testing.T) {
 			msg := &ttiFunHeader{_funcType: tt.funcType}
 
 			dataBuffer := NewArrayDataBuffer(tt.bufSize)
-			engine := NewMarshalEngine(dataBuffer, session.BIG_ENDIAN, [5]byte{Native, Native, Native, Native, Native})
+			engine := NewMarshalEngine(dataBuffer, common.BIG_ENDIAN, [5]byte{Native, Native, Native, Native, Native})
 
 			err := msg.MarshalTo(context.Background(), engine)
 			if (err != nil) != tt.wantErr {
@@ -108,7 +107,7 @@ func TestNewLogOff(t *testing.T) {
 		t.Errorf("newLogOff() did not return *ttiFunNoPayload")
 	}
 	dataBuffer := NewArrayDataBuffer(2)
-	engine := NewMarshalEngine(dataBuffer, session.BIG_ENDIAN, [5]byte{Native, Native, Native, Native, Native})
+	engine := NewMarshalEngine(dataBuffer, common.BIG_ENDIAN, [5]byte{Native, Native, Native, Native, Native})
 	err := noPayloadMsg.MarshalTo(context.Background(), engine)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
@@ -129,7 +128,7 @@ func TestNewLogOff18(t *testing.T) {
 		t.Errorf("newLogOff() did not return *ttiFunNoPayload18")
 	}
 	dataBuffer := NewArrayDataBuffer(3)
-	engine := NewMarshalEngine(dataBuffer, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(dataBuffer, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	err := noPayloadMsg.MarshalTo(context.Background(), engine)
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)

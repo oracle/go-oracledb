@@ -51,13 +51,13 @@ const (
 	NSPCNL        = 74
 )
 
-type Packet interface {
-	Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error
-	Marshal(buffer []byte, sAtts *SessionAtts, flags uint8) error
+type packet interface {
+	Unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header) error
+	Marshal(buffer []byte, sAtts *sessionAtts, flags uint8) error
 }
 
-// Header represents a packet header
-type Header struct {
+// header represents a packet header
+type header struct {
 	PacketLength   uint32
 	PacketChecksum uint16
 	Type           int
@@ -66,7 +66,7 @@ type Header struct {
 }
 
 // Marshal serializes the header into a buffer
-func (h *Header) Marshal(buffer []byte, sAtts *SessionAtts, flags uint8) error {
+func (h *header) Marshal(buffer []byte, sAtts *sessionAtts, flags uint8) error {
 	if sAtts.LargeSDU {
 		binary.BigEndian.PutUint32(buffer[0:], h.PacketLength)
 	} else {
@@ -80,7 +80,7 @@ func (h *Header) Marshal(buffer []byte, sAtts *SessionAtts, flags uint8) error {
 }
 
 // Unmarshal deserializes the header from a buffer
-func (h *Header) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error {
+func (h *header) Unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header) error {
 	if len(buffer) < 8 {
 		return fmt.Errorf("buffer too short for header")
 	}
@@ -96,22 +96,22 @@ func (h *Header) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error
 	return nil
 }
 
-// ConnectPacket represents an NSPTCN connect packet
-type ConnectPacket struct {
-	hdr            Header
+// connectPacket represents an NSPTCN connect packet
+type connectPacket struct {
+	hdr            header
 	ConnectData    []byte
 	ConnectDataLen int
 	Overflow       bool
 	Buf            []byte
 }
 
-// Marshal creates a new ConnectPacket
-func (cp *ConnectPacket) Marshal(connectData []byte, sAtts *SessionAtts, flags uint8) error {
+// Marshal creates a new connectPacket
+func (cp *connectPacket) Marshal(connectData []byte, sAtts *sessionAtts, flags uint8) error {
 	cp.ConnectData = connectData
 	cp.ConnectDataLen = len(connectData)
 
 	var size int
-	//The Overflow field in ConnectPacket is a boolean flag that indicates whether the connect data exceeds the maximum
+	//The Overflow field in connectPacket is a boolean flag that indicates whether the connect data exceeds the maximum
 	// allowed length (MAX_CDATA_LEN = 230 bytes) for inclusion in a single connect packet.
 	//If the length of ConnectData is greater than 230 bytes, Overflow is set to true, and the packet is created with a
 	//fixed size (NSPCNL = 74 bytes) without copying the full data into the buffer. This suggests that the data will overflow
@@ -125,7 +125,7 @@ func (cp *ConnectPacket) Marshal(connectData []byte, sAtts *SessionAtts, flags u
 		cp.Overflow = true
 	}
 	cp.Buf = make([]byte, size)
-	cp.hdr = Header{
+	cp.hdr = header{
 		PacketLength: uint32(size),
 		Type:         NSPTCN,
 		Flags:        flags,
@@ -182,13 +182,13 @@ func (cp *ConnectPacket) Marshal(connectData []byte, sAtts *SessionAtts, flags u
 	return nil
 }
 
-func (cp *ConnectPacket) Unmarshal(buffer []byte, sAtts SessionAtts, hdr *Header) error {
+func (cp *connectPacket) Unmarshal(buffer []byte, sAtts sessionAtts, hdr *header) error {
 	return fmt.Errorf("not implemented")
 }
 
-// DataPacket represents an NSPTDA data packet
-type DataPacket struct {
-	hdr    *Header
+// dataPacket represents an NSPTDA data packet
+type dataPacket struct {
+	hdr    *header
 	Offset int
 	Len    int
 	BufLen int
@@ -196,21 +196,21 @@ type DataPacket struct {
 }
 
 // Remaining calculates and returns the number of bytes left to read in the current data packet
-func (dp *DataPacket) Remaining() int {
+func (dp *dataPacket) Remaining() int {
 	return dp.Len - dp.Offset
 }
 
-func (dp *DataPacket) ReadByte() (byte, error) {
+func (dp *dataPacket) ReadByte() (byte, error) {
 	if dp.Offset < dp.Len {
 		retByte := dp.Buf[dp.Offset]
 		dp.Offset++
 		return retByte, nil
 	}
-	common.Odl.Debug("DataPacket.ReadByte EOF")
+	common.Odl.Debug("dataPacket.ReadByte EOF")
 	return 0, io.EOF
 }
 
-func (dp *DataPacket) Read(numBytes int) ([]byte, error) {
+func (dp *dataPacket) Read(numBytes int) ([]byte, error) {
 	if (dp.Offset + numBytes) <= dp.Len {
 		retBytes := dp.Buf[dp.Offset : dp.Offset+numBytes]
 		dp.Offset += numBytes
@@ -220,11 +220,11 @@ func (dp *DataPacket) Read(numBytes int) ([]byte, error) {
 }
 
 // MarshalPacket initializes the data packet
-func (dp *DataPacket) Marshal(buf []byte, sAtts *SessionAtts, flags uint8) error {
+func (dp *dataPacket) Marshal(buf []byte, sAtts *sessionAtts, flags uint8) error {
 	dp.Buf = buf
 	dp.BufLen = len(buf)
 	dp.Len = dp.BufLen
-	dp.hdr = &Header{
+	dp.hdr = &header{
 		Type:  NSPTDA,
 		Flags: 0,
 	}
@@ -233,7 +233,7 @@ func (dp *DataPacket) Marshal(buf []byte, sAtts *SessionAtts, flags uint8) error
 }
 
 // FillBuf populates the data packet
-func (dp *DataPacket) FillBuf(userBuf []byte, offset, len int, flags uint16, isLargeSDU bool) int {
+func (dp *dataPacket) FillBuf(userBuf []byte, offset, len int, flags uint16, isLargeSDU bool) int {
 	bytes2Copy := len
 	//limit the bytes to copy to the remaining buffer space to avoid overflow;
 	if len > dp.BufLen-dp.Offset {
@@ -247,7 +247,7 @@ func (dp *DataPacket) FillBuf(userBuf []byte, offset, len int, flags uint16, isL
 }
 
 // Prepare2Send prepares the data packet for sending
-func (dp *DataPacket) Prepare2Send(flags uint16, sAtts *SessionAtts) error {
+func (dp *dataPacket) Prepare2Send(flags uint16, sAtts *sessionAtts) error {
 	dp.hdr.PacketLength = uint32(dp.Offset)
 	if err := dp.hdr.Marshal(dp.Buf, sAtts, 0); err != nil {
 		return err
@@ -257,12 +257,12 @@ func (dp *DataPacket) Prepare2Send(flags uint16, sAtts *SessionAtts) error {
 }
 
 // Reset the send Packet
-func (dp *DataPacket) Reset() {
+func (dp *dataPacket) Reset() {
 	dp.Offset = NSPDADAT
 }
 
 // Unmarshal constructs a data packet from received data
-func (dp *DataPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error {
+func (dp *dataPacket) Unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header) error {
 	if int(hdr.PacketLength) < NSPDADAT {
 		return fmt.Errorf("data packet too short: got %d, need >= %d", hdr.PacketLength, NSPDADAT)
 	}
@@ -273,9 +273,9 @@ func (dp *DataPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) 
 	return nil
 }
 
-// AcceptPacket represents an NSPTAC accept packet
-type AcceptPacket struct {
-	hdr   *Header
+// acceptPacket represents an NSPTAC accept packet
+type acceptPacket struct {
+	hdr   *header
 	Buf   []byte
 	Len   int
 	Cflag uint8
@@ -283,8 +283,8 @@ type AcceptPacket struct {
 	Flag1 uint8
 }
 
-// Unmarshal creates an AcceptPacket from a buffer
-func (ap *AcceptPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error {
+// Unmarshal creates an acceptPacket from a buffer
+func (ap *acceptPacket) Unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header) error {
 	const (
 		minAcceptBaseLen     = NSPACFL1 + 1
 		minAcceptLargeSDULen = NSPACLTD + 4
@@ -335,13 +335,13 @@ func (ap *AcceptPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header
 	return nil
 }
 
-func (ap *AcceptPacket) Marshal(buffer []byte, sAtts *SessionAtts, flags uint8) error {
+func (ap *acceptPacket) Marshal(buffer []byte, sAtts *sessionAtts, flags uint8) error {
 	return fmt.Errorf("not implemented")
 }
 
-// RefusePacket represents an NSPTRF refuse packet
-type RefusePacket struct {
-	hdr          *Header
+// refusePacket represents an NSPTRF refuse packet
+type refusePacket struct {
+	hdr          *header
 	Buf          []byte
 	UserReason   uint8
 	SystemReason uint8
@@ -351,8 +351,8 @@ type RefusePacket struct {
 	Overflow     bool
 }
 
-// Unmarshal creates a RefusePacket from a buffer
-func (rp *RefusePacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error {
+// Unmarshal creates a refusePacket from a buffer
+func (rp *refusePacket) Unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header) error {
 	const minRefuseLen = NSPRFDAT
 	if len(buffer) < minRefuseLen {
 		return fmt.Errorf("refuse packet too short: got %d, need >= %d", len(buffer), minRefuseLen)
@@ -372,13 +372,13 @@ func (rp *RefusePacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header
 	return nil
 }
 
-func (ap *RefusePacket) Marshal(buffer []byte, sAtts *SessionAtts, flags uint8) error {
+func (ap *refusePacket) Marshal(buffer []byte, sAtts *sessionAtts, flags uint8) error {
 	return fmt.Errorf("not implemented")
 }
 
-// RedirectPacket represents an NSPTRD redirect packet
-type RedirectPacket struct {
-	hdr      *Header
+// redirectPacket represents an NSPTRD redirect packet
+type redirectPacket struct {
+	hdr      *header
 	Buf      []byte
 	DataLen  int
 	DataOff  int
@@ -386,8 +386,8 @@ type RedirectPacket struct {
 	Overflow bool
 }
 
-// Unmarshal creates a RedirectPacket from a buffer
-func (rp *RedirectPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error {
+// Unmarshal creates a redirectPacket from a buffer
+func (rp *redirectPacket) Unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header) error {
 	const minRedirectLen = NSPRDDAT
 	if len(buffer) < minRedirectLen {
 		return fmt.Errorf("redirect packet too short: got %d, need >= %d", len(buffer), minRedirectLen)
@@ -405,13 +405,13 @@ func (rp *RedirectPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Head
 	return nil
 }
 
-func (ap *RedirectPacket) Marshal(buffer []byte, sAtts *SessionAtts, flags uint8) error {
+func (ap *redirectPacket) Marshal(buffer []byte, sAtts *sessionAtts, flags uint8) error {
 	return fmt.Errorf("not implemented")
 }
 
-// MarkerPacket represents an NSPTMK marker packet
-type MarkerPacket struct {
-	hdr        *Header
+// markerPacket represents an NSPTMK marker packet
+type markerPacket struct {
+	hdr        *header
 	Buf        []byte
 	MarkerType uint8
 	MarkerODT  uint8
@@ -419,9 +419,9 @@ type MarkerPacket struct {
 }
 
 // MarshalPrepare prepares the marker packet for sending
-func (mp *MarkerPacket) Marshal(buf []byte, sAtts *SessionAtts, data uint8) error {
+func (mp *markerPacket) Marshal(buf []byte, sAtts *sessionAtts, data uint8) error {
 	mp.Buf = make([]byte, NSPMKDAT+1)
-	mp.hdr = &Header{
+	mp.hdr = &header{
 		PacketLength: uint32(NSPMKDAT + 1),
 		Type:         NSPTMK,
 		Flags:        0,
@@ -438,7 +438,7 @@ func (mp *MarkerPacket) Marshal(buf []byte, sAtts *SessionAtts, data uint8) erro
 }
 
 // Unmarshal constructs a marker packet from received data
-func (mp *MarkerPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error {
+func (mp *markerPacket) Unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header) error {
 	const minMarkerLen = NSPMKDAT + 1
 	if len(buffer) < minMarkerLen {
 		return fmt.Errorf("marker packet too short: got %d, need >= %d", len(buffer), minMarkerLen)
@@ -450,9 +450,9 @@ func (mp *MarkerPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header
 	return nil
 }
 
-// ControlPacket represents an NSPTCTL control packet
-type ControlPacket struct {
-	hdr            *Header
+// controlPacket represents an NSPTCTL control packet
+type controlPacket struct {
+	hdr            *header
 	Buf            []byte
 	Errno          uint32
 	Notif          []byte
@@ -461,13 +461,13 @@ type ControlPacket struct {
 	IsNotification bool
 }
 
-// Marshal creates a new ControlPacket
-func (ap *ControlPacket) Marshal(buffer []byte, sAtts *SessionAtts, flags uint8) error {
+// Marshal creates a new controlPacket
+func (ap *controlPacket) Marshal(buffer []byte, sAtts *sessionAtts, flags uint8) error {
 	return fmt.Errorf("not implemented")
 }
 
 // Clear resets the control packet
-func (cp *ControlPacket) Clear() {
+func (cp *controlPacket) Clear() {
 	cp.Errno = 0
 	cp.Notif = nil
 	cp.NotifLen = 0
@@ -476,7 +476,7 @@ func (cp *ControlPacket) Clear() {
 }
 
 // Unmarshal constructs a control packet from received data
-func (cp *ControlPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error {
+func (cp *controlPacket) Unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header) error {
 	const (
 		NSECMANSHUT           = 12572
 		NSESENDMESG           = 12573
@@ -522,19 +522,19 @@ func (cp *ControlPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Heade
 	return nil
 }
 
-// ResendPacket represents an NSPTRS resend packet
-type ResendPacket struct {
-	hdr *Header
+// resendPacket represents an NSPTRS resend packet
+type resendPacket struct {
+	hdr *header
 	Buf []byte
 }
 
 // Marshal prepares the resend packet for sending
-func (rp *ResendPacket) Marshal(buffer []byte, sAtts *SessionAtts, flags uint8) error {
+func (rp *resendPacket) Marshal(buffer []byte, sAtts *sessionAtts, flags uint8) error {
 	return nil
 }
 
 // Unmarshal constructs a resend packet from received data
-func (rp *ResendPacket) Unmarshal(buffer []byte, sAtts *SessionAtts, hdr *Header) error {
+func (rp *resendPacket) Unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header) error {
 	if len(buffer) < NSPSIZHD {
 		return fmt.Errorf("buffer too short for resend packet")
 	}

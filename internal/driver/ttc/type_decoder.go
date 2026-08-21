@@ -79,7 +79,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded for the given metadata.
 */
-func DecodeNumberColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeNumberColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	// Prefer int64 for integer values; fallback to decimal string otherwise.
 	if columnContext.Scale == 0 {
 		v, err := converters.DecodeInt(data)
@@ -113,7 +113,7 @@ func DecodeNumberColumn(columnContext ColumnContext, data driverCommon.B1Array) 
 	return val, nil
 }
 
-func GetScanTypeForNumberColumn(colCtx ColumnContext) reflect.Type {
+func GetScanTypeForNumberColumn(colCtx columnContext) reflect.Type {
 	// Prefer int64 for integer values; fallback to decimal string otherwise.
 	if colCtx.Scale == 0 {
 		return reflect.TypeFor[int64]()
@@ -146,7 +146,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeVarcharColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeVarcharColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	if columnContext.CharsetForm == 2 {
 		switch columnContext.CharsetID {
 		case uint16(al16Utf16CharSet):
@@ -192,7 +192,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeCharColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeCharColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	if columnContext.CharsetForm == 2 {
 		switch columnContext.CharsetID {
 		case uint16(al16Utf16CharSet):
@@ -235,7 +235,7 @@ Returns:
 Errors:
   - None.
 */
-func DecodeBooleanColumn(_ ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBooleanColumn(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	return data[0] != 0, nil
 }
 
@@ -258,7 +258,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeBinaryFloatColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBinaryFloatColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	fv, err := converters.DecodeBinaryFloat(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "BINARY_FLOAT")
@@ -285,7 +285,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeBinaryDoubleColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBinaryDoubleColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	fv, err := converters.DecodeBinaryDouble(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "BINARY_DOUBLE")
@@ -312,7 +312,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeIntervalYearToMonthColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeIntervalYearToMonthColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	s, err := converters.DecodeIntervalYearToMonth(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "INTERVAL YEAR TO MONTH")
@@ -339,7 +339,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeIntervalDayToSecondColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeIntervalDayToSecondColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	s, err := converters.DecodeIntervalDayToSecond(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "INTERVAL DAY TO SECOND")
@@ -367,7 +367,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeDateColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeDateColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	tm, err := converters.DecodeDate(driverCommon.B1Array(data))
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "DATE")
@@ -394,7 +394,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeTimestampColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeTimestampColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	tm, err := converters.DecodeTimestamp(driverCommon.B1Array(data))
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "TIMESTAMP")
@@ -421,7 +421,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeTimestampWithTimeZoneColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeTimestampWithTimeZoneColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	tm, err := converters.DecodeTimestampWithTimeZone(driverCommon.B1Array(data))
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "TIMESTAMP WITH TIME ZONE")
@@ -448,7 +448,7 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeTimestampWithLocalTimeZoneColumn(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeTimestampWithLocalTimeZoneColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	tm, err := converters.DecodeTimestampWithLocalTimeZone(driverCommon.B1Array(data), columnContext.serverTimeZoneOffset)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "TIMESTAMP WITH LOCAL TIME ZONE")
@@ -476,7 +476,7 @@ Returns:
 Errors:
   - None.
 */
-func DecodeClob(columnContext ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeClob(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	// LOB columns supply their own charset metadata via LobContext.
 	if columnContext.LobContext.CharsetID == al16Utf16CharSet {
 		return converters.DecodeUTF16BEToString(data)
@@ -506,7 +506,7 @@ Returns:
 Errors:
   - None.
 */
-func DecodeJson(_ ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeJson(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	// Default path: assume payload is UTF-8 compatible.
 	return string(data), nil
 }
@@ -530,7 +530,7 @@ Returns:
 Errors:
   - None.
 */
-func DecodeBlob(_ ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBlob(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	// LOB columns supply their own charset metadata via LobContext.
 	return data, nil
 }
@@ -554,7 +554,7 @@ Returns:
 Errors:
   - None (this function always returns an error value wrapping the provided err).
 */
-func rowDecodeError(columnContext ColumnContext, err error, typeName string) error {
+func rowDecodeError(columnContext columnContext, err error, typeName string) error {
 	return common.NewOracleError(oracleErrors.RowDecodeError, err, typeName, columnContext.Name, columnContext.Index)
 }
 
@@ -562,7 +562,7 @@ func rowDecodeError(columnContext ColumnContext, err error, typeName string) err
 DecodeBinaryColumn returns the binary data as driver.Value
 
 Parameters:
-- ColumnContext: not used for binary
+- columnContext: not used for binary
 - data: []byte received in the wire.
 
 Returns:
@@ -571,66 +571,66 @@ Returns:
 Errors:
 - None
 */
-func DecodeBinaryColumn(_ ColumnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBinaryColumn(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	return []byte(data), nil
 }
 
-func GetScanTypeForVarcharColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForVarcharColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
 
-func GetScanTypeForCharColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForCharColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
 
-func GetScanTypeForBooleanColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForBooleanColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[bool]()
 }
 
-func GetScanTypeForBinaryFloatColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForBinaryFloatColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[float64]()
 }
 
-func GetScanTypeForDoubleColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForDoubleColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[float64]()
 }
 
-func GetScanTypeForBinaryColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForBinaryColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[[]byte]()
 }
 
-func GetScanTypeForTimestampWithLocalTimeZonColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForTimestampWithLocalTimeZonColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[time.Time]()
 }
 
-func GetScanTypeForTimestampWithTimeZoneColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForTimestampWithTimeZoneColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[time.Time]()
 }
 
-func GetScanTypeForTimestampColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForTimestampColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[time.Time]()
 }
 
-func GetScanTypeForDateColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForDateColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[time.Time]()
 }
 
-func GetScanTypeForIntervalDayToSecondColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForIntervalDayToSecondColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
 
-func GetScanTypeForIntervalYearToMonthColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForIntervalYearToMonthColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
 
-func GetScanTypeForJsonColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForJsonColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
 
-func GetScanTypeForCLOBColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForCLOBColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
 
-func GetScanTypeForBLOBColumn(_ ColumnContext) reflect.Type {
+func GetScanTypeForBLOBColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[[]byte]()
 }

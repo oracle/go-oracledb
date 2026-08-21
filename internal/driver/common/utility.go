@@ -43,48 +43,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 )
-
-// splitOnSpace keeps quoted segments together and strips the wrapping quotes.
-func splitOnSpace(input string) []string {
-	var (
-		tokens    []string
-		current   strings.Builder
-		inQuote   bool
-		quoteChar rune
-	)
-
-	flush := func() {
-		if current.Len() == 0 {
-			return
-		}
-		tokens = append(tokens, current.String())
-		current.Reset()
-	}
-
-	for _, r := range input {
-		switch {
-		case unicode.IsSpace(r) && !inQuote:
-			flush()
-		case r == '"' || r == '\'':
-			if inQuote && r == quoteChar {
-				inQuote = false
-			} else if !inQuote {
-				inQuote = true
-				quoteChar = r
-			} else {
-				current.WriteRune(r)
-			}
-		default:
-			current.WriteRune(r)
-		}
-	}
-	flush()
-
-	return tokens
-}
 
 // StripSpacesOutsideQuotes removes ASCII spaces that appear outside of double-quoted
 // strings. Spaces inside quotes are preserved.

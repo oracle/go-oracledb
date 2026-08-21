@@ -47,14 +47,32 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 )
 
-// ConnectionOption represents a single connection attempt with all necessary information
+// ConnectionOption represents a single connection attempt with all necessary information.
 type ConnectionOption struct {
-	Address         Address      // The address ctx to connect to
-	Description     *Description // Parent description ctx (nil for simple ADDRESS strings)
-	ConnectData     ConnectData  // ConnectData ctx
-	ConnectDataNode *Node        // CONNECT_DATA node for further manipulation
-	ConnectDataStr  string       // Serialized CONNECT_DATA as string
-	ConnectString   string       // Full (DESCRIPTION=...) connection string
+	Address         Address
+	Description     *Description
+	ConnectData     ConnectData
+	ConnectDataNode *Node
+	ConnectDataStr  string
+	ConnectString   string
+}
+
+func NewConnectionOption(
+	address Address,
+	description *Description,
+	connectData ConnectData,
+	connectDataNode *Node,
+	connectDataStr string,
+	connectString string,
+) *ConnectionOption {
+	return &ConnectionOption{
+		Address:         address,
+		Description:     description,
+		ConnectData:     connectData,
+		ConnectDataNode: connectDataNode,
+		ConnectDataStr:  connectDataStr,
+		ConnectString:   connectString,
+	}
 }
 
 // DescriptionAttempts holds all connection attempts for a single description
@@ -103,7 +121,7 @@ func NewConnectionIterator(ctx context.Context, rootNode *Node, connCtx *Connect
 	return iter
 }
 
-// Next returns the next ConnectionOption, or nil if exhausted.
+// Next returns the next connection option, or nil if exhausted.
 // Handles retry cycles and retry delays automatically.
 func (ci *ConnectionIterator) Next() *ConnectionOption {
 	if ci.exhausted {
@@ -464,32 +482,25 @@ func (ci *ConnectionIterator) extractConnectDataNode(descNode *Node) *Node {
 	return &Node{Name: "CONNECT_DATA"}
 }
 
-// buildOptionFromDesc creates a ConnectionOption from description attempts(called from Next())
+// buildOptionFromDesc creates a connection option from description attempts(called from Next())
 // Uses ResolvedIP in the connection string instead of hostname
 func (ci *ConnectionIterator) buildOptionFromDesc(desc *DescriptionAttempts) *ConnectionOption {
 	addr := &desc.Addresses[desc.CurrentAddrIndex]
 
 	if desc.Description == nil {
 		// Simple ADDRESS without DESCRIPTION wrapper
-		return &ConnectionOption{
-			Address:         *addr,
-			Description:     nil,
-			ConnectData:     ConnectData{},
-			ConnectDataNode: nil,
-			ConnectDataStr:  "",
-			ConnectString:   ci.buildDescriptionWithAddress(addr),
-		}
+		return NewConnectionOption(*addr, nil, ConnectData{}, nil, "", ci.buildDescriptionWithAddress(addr))
 	}
 
 	// Full DESCRIPTION with CONNECT_DATA
-	return &ConnectionOption{
-		Address:         *addr,
-		Description:     desc.Description,
-		ConnectData:     desc.Description.ConnectData,
-		ConnectDataNode: desc.ConnectDataNode,
-		ConnectDataStr:  desc.ConnectDataStr,
-		ConnectString:   ci.buildConnectString(addr, desc.ConnectDataNode),
-	}
+	return NewConnectionOption(
+		*addr,
+		desc.Description,
+		desc.Description.ConnectData,
+		desc.ConnectDataNode,
+		desc.ConnectDataStr,
+		ci.buildConnectString(addr, desc.ConnectDataNode),
+	)
 }
 
 // buildConnectString creates the full (DESCRIPTION=(ADDRESS=...)(CONNECT_DATA=...)) string

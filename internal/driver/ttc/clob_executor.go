@@ -50,14 +50,14 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// ClobExecutor orchestrates CLOB operations on top of the shared lobExecutor while capturing
+// clobExecutor orchestrates CLOB operations on top of the shared lobExecutor while capturing
 // session-specific charset metadata required for amount calculations.
-type ClobExecutor struct {
+type clobExecutor struct {
 	*lobExecutor
 	policy lobAmtPolicy
 }
 
-// NewClobExecutor wires a ClobExecutor with the supplied base executor and initialises the
+// newClobExecutor wires a clobExecutor with the supplied base executor and initialises the
 // LOB amount policy based on the negotiated character sets stored in the session context.
 //
 // Inputs:
@@ -65,24 +65,24 @@ type ClobExecutor struct {
 //   - sessionCtx: negotiated session metadata used to derive character-set aware policies.
 //
 // Outputs:
-//   - *ClobExecutor: executor backed by the shared lobExecutor.
+//   - *clobExecutor: executor backed by the shared lobExecutor.
 //
 // Errors:
 //   - None.
-func NewClobExecutor(shelf *driverCommon.Shelf[driverCommon.MessageType], sessionCtx *driverCommon.SessionContext) *ClobExecutor {
+func newClobExecutor(shelf *driverCommon.Shelf[driverCommon.MessageType], sessionCtx *driverCommon.SessionContext) *clobExecutor {
 	base := newLobExecutor()
 	base.SetShelf(shelf)
 
 	driverCS := sessionCtx.DriverCharacterSet()
 	ncharCS := sessionCtx.SessionNCharCharacterSet()
 
-	clob := &ClobExecutor{lobExecutor: base}
+	clob := &clobExecutor{lobExecutor: base}
 	clob.policy = newLobAmtPolicy(driverCS, ncharCS)
 
 	return clob
 }
 
-// Open invokes the shared open helper with the supplied locator and mode, ensuring the mode is
+// open invokes the shared open helper with the supplied locator and mode, ensuring the mode is
 // correctly translated to the expected lobMarshalingMode for the base executor.
 //
 // Inputs:
@@ -96,7 +96,7 @@ func NewClobExecutor(shelf *driverCommon.Shelf[driverCommon.MessageType], sessio
 // Errors:
 //   - Returns InvalidLOBBuffer when attempting to open with BFILE-only read mode.
 //   - Propagates failures from the underlying lobExecutor open call.
-func (c *ClobExecutor) Open(ctx context.Context, lobLocator *locator, mode LobOpenMode) (bool, error) {
+func (c *clobExecutor) open(ctx context.Context, lobLocator *locator, mode LobOpenMode) (bool, error) {
 	if mode == BfileOpenModeReadOnly {
 		err := common.NewOracleError(oracleErrors.InvalidLOBBuffer, nil, "open", "clob", "unsupported BFILE open mode")
 		common.Odl.Error("ClobExecutor.Open: invalid open mode", "mode", mode, "error", err)
@@ -106,7 +106,7 @@ func (c *ClobExecutor) Open(ctx context.Context, lobLocator *locator, mode LobOp
 	return c.lobExecutor.open(ctx, lobLocator, mode)
 }
 
-// Close closes the locator and clears client side flags via the base executor.
+// close closes the locator and clears client side flags via the base executor.
 //
 // Inputs:
 //   - ctx: request-scoped context for cancellation and deadlines.
@@ -117,7 +117,7 @@ func (c *ClobExecutor) Open(ctx context.Context, lobLocator *locator, mode LobOp
 //
 // Errors:
 //   - Propagates failures from the underlying lobExecutor close call.
-func (c *ClobExecutor) Close(ctx context.Context, lobLocator *locator) error {
+func (c *clobExecutor) close(ctx context.Context, lobLocator *locator) error {
 	return c.lobExecutor.close(ctx, lobLocator)
 }
 
@@ -134,11 +134,11 @@ func (c *ClobExecutor) Close(ctx context.Context, lobLocator *locator) error {
 //
 // Errors:
 //   - Propagates failures from the underlying lobExecutor.
-func (c *ClobExecutor) GetChunkSize(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
+func (c *clobExecutor) getChunkSize(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
 	return c.lobExecutor.GetChunkSize(ctx, lobLocator)
 }
 
-// GetLength retrieves the server-reported length for the supplied locator.
+// getLength retrieves the server-reported length for the supplied locator.
 //
 // Inputs:
 //   - ctx: request-scoped context for cancellation and deadlines.
@@ -150,11 +150,11 @@ func (c *ClobExecutor) GetChunkSize(ctx context.Context, lobLocator *locator) (d
 //
 // Errors:
 //   - Propagates failures from the underlying lobExecutor.
-func (c *ClobExecutor) GetLength(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
+func (c *clobExecutor) getLength(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
 	return c.lobExecutor.GetLength(ctx, lobLocator)
 }
 
-// Trim truncates or extends the LOB to the provided length.
+// trim truncates or extends the LOB to the provided length.
 //
 // Inputs:
 //   - ctx: request-scoped context for cancellation and deadlines.
@@ -166,12 +166,12 @@ func (c *ClobExecutor) GetLength(ctx context.Context, lobLocator *locator) (driv
 //   - error: nil on success.
 //
 // Errors:
-//   - Propagates failures from the underlying lobExecutor Trim call.
-func (c *ClobExecutor) Trim(ctx context.Context, lobLocator *locator, newLength driverCommon.UB8) (driverCommon.UB8, error) {
+//   - Propagates failures from the underlying lobExecutor trim call.
+func (c *clobExecutor) trim(ctx context.Context, lobLocator *locator, newLength driverCommon.UB8) (driverCommon.UB8, error) {
 	return c.lobExecutor.Trim(ctx, lobLocator, newLength)
 }
 
-// IsOpen interrogates the locator open state using the base executor helper.
+// isOpen interrogates the locator open state using the base executor helper.
 //
 // Inputs:
 //   - ctx: request-scoped context for cancellation and deadlines.
@@ -182,8 +182,8 @@ func (c *ClobExecutor) Trim(ctx context.Context, lobLocator *locator, newLength 
 //   - error: nil on success.
 //
 // Errors:
-//   - Propagates failures from the underlying lobExecutor IsOpen call.
-func (c *ClobExecutor) IsOpen(ctx context.Context, lobLocator *locator) (bool, error) {
+//   - Propagates failures from the underlying lobExecutor isOpen call.
+func (c *clobExecutor) isOpen(ctx context.Context, lobLocator *locator) (bool, error) {
 	return c.lobExecutor.IsOpen(ctx, lobLocator)
 }
 
@@ -205,7 +205,7 @@ func (c *ClobExecutor) IsOpen(ctx context.Context, lobLocator *locator) (bool, e
 // Note:
 //   - Temporary CLOBs are always created first and then assigned to table columns, at which point
 //     the database promotes them to persistent LOBs.
-func (c *ClobExecutor) CreateTemporaryLob(ctx context.Context, cache bool, duration driverCommon.UB4, formOfUse driverCommon.UB2) (driverCommon.B1Array, error) {
+func (c *clobExecutor) createTemporaryLob(ctx context.Context, cache bool, duration driverCommon.UB4, formOfUse driverCommon.UB2) (driverCommon.B1Array, error) {
 	tempSize := kolllTempWithSignature
 
 	// FormChar LOBs inherit the session database character set advertised by the driver
@@ -272,7 +272,7 @@ func (c *ClobExecutor) CreateTemporaryLob(ctx context.Context, cache bool, durat
 //   - Callers hand over locators that are eligible for writes. The defensive guard remains until
 //     higher-level APIs enforce capability screening, and surfacing InvalidLOBBuffer early when
 //     a read-only or value-based locator bypasses those layers.
-func (c *ClobExecutor) Write(
+func (c *clobExecutor) write(
 	ctx context.Context,
 	lobLocator *locator,
 	isNCLOB bool,
@@ -398,7 +398,7 @@ func (c *ClobExecutor) Write(
 // Errors:
 //   - Propagates read errors from the underlying lobExecutor.
 //   - Propagates conversion errors from decodeLobCharPayload.
-func (c *ClobExecutor) Read(
+func (c *clobExecutor) read(
 	ctx context.Context,
 	lobLocator *locator,
 	numChars driverCommon.UB8,
@@ -508,7 +508,7 @@ func getByteBufferSizeForConversion(variableWidth bool, numChars int) int {
 //   - int: number of bytes written into destinationBuffer (-1 when the buffer lacks capacity.)
 //   - int: number of UTF-16 code units generated (or -1 when not applicable).
 //   - int: number of Unicode code points processed from source.
-func (c *ClobExecutor) encodeLobCharPayload(
+func (c *clobExecutor) encodeLobCharPayload(
 	source []rune,
 	offset int,
 	numChars int,
@@ -557,7 +557,7 @@ func (c *ClobExecutor) encodeLobCharPayload(
 //   - int: number of bytes copied into destinationBuffer, or -1 when the buffer lacks capacity.
 //   - int: number of UTF-16 code units produced, or -1 when emission fails.
 //   - int: number of Unicode code points consumed from runes.
-func (c *ClobExecutor) encodeVariableWidthCharSet(
+func (c *clobExecutor) encodeVariableWidthCharSet(
 	runes []rune,
 	destinationBuffer []byte,
 	littleEndian bool,
@@ -597,7 +597,7 @@ func (c *ClobExecutor) encodeVariableWidthCharSet(
 //   - int: number of bytes copied into destinationBuffer, or -1 when the buffer lacks capacity.
 //   - int: amount value corresponding to the emitted payload (code units or code points), or -1 when
 //     amount computation is unsupported for the negotiated charset.
-func (c *ClobExecutor) encodeFixedWidthCharSet(
+func (c *clobExecutor) encodeFixedWidthCharSet(
 	runes []rune,
 	destinationBuffer []byte,
 	isNCLOB bool,
@@ -673,7 +673,7 @@ func (c *ClobExecutor) encodeFixedWidthCharSet(
 // Errors:
 //   - Returns InvalidLOBBuffer when charOutBuffer cannot hold the decoded runes.
 //   - Propagates errors from decodeVariableWidthCharSet and decodeFixedWidthCharSet.
-func (c *ClobExecutor) decodeLobCharPayload(
+func (c *clobExecutor) decodeLobCharPayload(
 	source []byte,
 	charOutBuffer []rune,
 	offsetInOutBuffer int,
@@ -710,7 +710,7 @@ func (c *ClobExecutor) decodeLobCharPayload(
 // Errors:
 //   - Returns InvalidLOBBuffer when the output slice cannot accommodate the decoded runes.
 //   - Propagates readUTF16CodeUnits errors for odd byte lengths or malformed UTF-16 payloads.
-func (c *ClobExecutor) decodeVariableWidthCharSet(
+func (c *clobExecutor) decodeVariableWidthCharSet(
 	source []byte,
 	charOutBuffer []rune,
 	offsetInOutBuffer int,
@@ -753,7 +753,7 @@ func (c *ClobExecutor) decodeVariableWidthCharSet(
 // Errors:
 //   - Returns InvalidLOBBuffer when charOutBuffer cannot hold the decoded runes.
 //   - Propagates errors from decodeVariableWidthCharSet for NCLOB payloads.
-func (c *ClobExecutor) decodeFixedWidthCharSet(
+func (c *clobExecutor) decodeFixedWidthCharSet(
 	source []byte,
 	charOutBuffer []rune,
 	offsetInOutBuffer int,

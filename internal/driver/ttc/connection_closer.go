@@ -55,7 +55,7 @@ const (
 
 // Close closes the TTC connection. A timeout context is used to prevent this
 // method from blocking indefinitely
-func (c *Connection) Close() error {
+func (c *connection) Close() error {
 	var nsDisconnectErr error
 	common.Odl.Debug("Closing connection")
 	// Create a context with timeout, this context will prevent this action from
@@ -105,6 +105,6 @@ func (c *Connection) Close() error {
 }
 
 // _closeTTCConnection sends the logOff message to disconnect form the database
-func (c *Connection) _closeTTCConnection(ctx context.Context) error {
+func (c *connection) _closeTTCConnection(ctx context.Context) error {
 	return c.runFunctionWithFunHeader(ctx, logOff)
 }

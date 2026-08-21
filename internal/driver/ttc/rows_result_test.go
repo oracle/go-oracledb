@@ -216,7 +216,7 @@ func buildTestTTCRows(nullable bool, dtype DtyType, scale int8, strictNull *bool
 	}
 
 	rows := &ttcRows{
-		columnContexts: []ColumnContext{
+		columnContexts: []columnContext{
 			{
 				Index:    0,
 				Name:     common.StringToB1Array("col0"),

@@ -43,13 +43,12 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 // Marshals and unmarshals a keywordValueArray and checks that the sizes and values match
 func TestMarshalKeywordValuePairs(t *testing.T) {
 	t.Parallel()
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 
 	kva := make(keywordValueArray, 2)
 	kva[0].textValue.value = []byte{'T', 'e', 's', 't', ' ', 'm', 'a', 'r', 's', 'h', 'a', 'l', ' ', 'D', 'A', 'L', 'C', '1'}
@@ -99,7 +98,7 @@ func TestMarshalKeywordValuePairs(t *testing.T) {
 // Marshals and unmarshals a keywordValueArray and checks that the sizes and values match
 func TestMarshalKeywordValuePairsWithEmptyValues(t *testing.T) {
 	t.Parallel()
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 
 	kva := make(keywordValueArray, 2)
 	kva[0].textValue.value = []byte{'T', 'e', 's', 't', ' ', 'm', 'a', 'r', 's', 'h', 'a', 'l', ' ', 'D', 'A', 'L', 'C', '1'}
@@ -156,7 +155,7 @@ func TestKeywordValueArrayRejectsOversizedPairCount(t *testing.T) {
 
 func TestKeywordValueArrayRejectsOversizedDynamicValue(t *testing.T) {
 	t.Parallel()
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	if err := engine.MarshalUB4(context.Background(), maxKeywordValueArrayValueLength+1); err != nil {
 		t.Fatalf("MarshalUB4 failed: %v", err)
 	}
@@ -172,8 +171,8 @@ func TestKeywordValueArrayRejectsOversizedDynamicValue(t *testing.T) {
 	}
 }
 
-func _newKeyValPairs() *KeyValueList {
-	l := NewKeyValueList()
+func _newKeyValPairs() *keyValueList {
+	l := newKeyValueList()
 	l.PushBack(&common.KeyValue{
 		Key:   []byte("key1"),
 		Value: []byte("value1"),
@@ -186,8 +185,8 @@ func _newKeyValPairs() *KeyValueList {
 	})
 	return l
 }
-func _newEmptyKeyValPairs() *KeyValueList {
-	l := NewKeyValueList()
+func _newEmptyKeyValPairs() *keyValueList {
+	l := newKeyValueList()
 	l.PushBack(&common.KeyValue{
 		Key:   []byte{},
 		Value: []byte{},
@@ -200,8 +199,8 @@ func _newEmptyKeyValPairs() *KeyValueList {
 	})
 	return l
 }
-func _newNilKeyValPairs() *KeyValueList {
-	l := NewKeyValueList()
+func _newNilKeyValPairs() *keyValueList {
+	l := newKeyValueList()
 	l.PushBack(&common.KeyValue{
 		Key:   nil,
 		Value: nil,
@@ -278,7 +277,7 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, 0, 0, 1000)
+			dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, 0, 0, 1000)
 			ctx := context.Background()
 			if err := engine.MarshalUB2(ctx, tt.pairCount); err != nil {
 				t.Fatalf("failed to marshal pair count: %v", err)
@@ -300,7 +299,7 @@ func TestMarshalKeyValue(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
-		keyValuePairs *KeyValueList
+		keyValuePairs *keyValueList
 	}{
 		{
 			name:          "valid key-value pairs",
@@ -318,7 +317,7 @@ func TestMarshalKeyValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, 0, 0, 150000)
+			dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, 0, 0, 150000)
 			err := ((common.Marshallable)(tt.keyValuePairs)).MarshalTo(context.Background(), engine)
 			if err != nil {
 				t.Errorf("MarshalKeyValue failed: %v", err)

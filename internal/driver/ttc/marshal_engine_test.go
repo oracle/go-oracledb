@@ -47,7 +47,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -56,7 +55,7 @@ import (
 func TestNewMarshalEngine(t *testing.T) {
 	t.Parallel()
 	dataBuffer := NewArrayDataBuffer(1) // Assuming DataBuffer is properly initialized
-	byteOrder := session.BIG_ENDIAN
+	byteOrder := common.BIG_ENDIAN
 	engine := NewNativeMarshalEngine(dataBuffer, byteOrder)
 	if engine == nil {
 		t.Errorf("NewMarshalEngine returned nil")
@@ -72,7 +71,7 @@ func TestNewMarshalEngine(t *testing.T) {
 func TestMarshalUB1(t *testing.T) {
 	t.Parallel()
 	dataBuffer := NewArrayDataBuffer(1024)
-	byteOrder := session.BIG_ENDIAN
+	byteOrder := common.BIG_ENDIAN
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
 	for i := 0; i < 256; i++ {
 		err := engine.MarshalUB1(context.Background(), common.UB1(i))
@@ -98,7 +97,7 @@ func TestMarshalUB2(t *testing.T) {
 		0x01F4: {0x01, 0xF4},
 		0xF3F4: {0xF3, 0xF4},
 	}
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Native, 150000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Native, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB2, t)
 
 	fmt.Printf("--------- Testing NATIVE and LITTLE_ENDIAN \n")
@@ -109,7 +108,7 @@ func TestMarshalUB2(t *testing.T) {
 		0x01F4: {0xF4, 0x01},
 		0xF3F4: {0xF4, 0xF3},
 	}
-	dataBuffer, engine = newMarshalEngine(session.LITTLE_ENDIAN, B2, Native, 150000)
+	dataBuffer, engine = newMarshalEngine(common.LITTLE_ENDIAN, B2, Native, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB2, t)
 
 	fmt.Printf("--------- Testing UNIVERSAL and BIG_ENDIAN \n")
@@ -120,12 +119,12 @@ func TestMarshalUB2(t *testing.T) {
 		0x01F4: {0x02, 0x01, 0xF4},
 		0xF3F4: {0x02, 0xF3, 0xF4},
 	}
-	dataBuffer, engine = newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 150000)
+	dataBuffer, engine = newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB2, t)
 
 	fmt.Printf("--------- Testing UNIVERSAL and LITTLE_ENDIAN \n")
 	// UNIVERSAL representation is always BIG_ENDIAN
-	dataBuffer, engine = newMarshalEngine(session.LITTLE_ENDIAN, B2, Universal, 150000)
+	dataBuffer, engine = newMarshalEngine(common.LITTLE_ENDIAN, B2, Universal, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB2, t)
 }
 
@@ -145,7 +144,7 @@ func TestMarshalSB4(t *testing.T) {
 		0x5544F3F4: {0x55, 0x44, 0xF3, 0xF4},
 		-12258316:  {0xFF, 0x44, 0xF3, 0xF4}, //0xFF44F3F4
 	}
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B4, Native, 150000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B4, Native, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalSB4, t)
 
 	fmt.Printf("--------- Testing SB4 NATIVE and LITTLE_ENDIAN \n")
@@ -159,7 +158,7 @@ func TestMarshalSB4(t *testing.T) {
 		0x5544F3F4: {0xF4, 0xF3, 0x44, 0x55},
 		-12258316:  {0xF4, 0xF3, 0x44, 0xFF}, //0xFF44F3F4
 	}
-	dataBuffer, engine = newMarshalEngine(session.LITTLE_ENDIAN, B4, Native, 150000)
+	dataBuffer, engine = newMarshalEngine(common.LITTLE_ENDIAN, B4, Native, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalSB4, t)
 
 	fmt.Printf("--------- Testing SB4 UNIVERSAL and BIG_ENDIAN \n")
@@ -178,12 +177,12 @@ func TestMarshalSB4(t *testing.T) {
 		-14939124:   {0x83, 0xE3, 0xF3, 0xF4},
 		-1430582260: {0x84, 0x55, 0x44, 0xF3, 0xF4},
 	}
-	dataBuffer, engine = newMarshalEngine(session.BIG_ENDIAN, B4, Universal, 150000)
+	dataBuffer, engine = newMarshalEngine(common.BIG_ENDIAN, B4, Universal, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalSB4, t)
 
 	fmt.Printf("--------- Testing SB4 UNIVERSAL and LITTLE_ENDIAN \n")
 	// UNIVERSAL representation is always BIG_ENDIAN
-	dataBuffer, engine = newMarshalEngine(session.LITTLE_ENDIAN, B4, Universal, 150000)
+	dataBuffer, engine = newMarshalEngine(common.LITTLE_ENDIAN, B4, Universal, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalSB4, t)
 }
 
@@ -203,7 +202,7 @@ func TestMarshalUB4(t *testing.T) {
 		0x5544F3F4: {0x55, 0x44, 0xF3, 0xF4},
 		0xFF44F3F4: {0xFF, 0x44, 0xF3, 0xF4},
 	}
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B4, Native, 150000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B4, Native, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB4, t)
 
 	fmt.Printf("--------- Testing UB4 NATIVE and LITTLE_ENDIAN \n")
@@ -217,7 +216,7 @@ func TestMarshalUB4(t *testing.T) {
 		0x5544F3F4: {0xF4, 0xF3, 0x44, 0x55},
 		0xFF44F3F4: {0xF4, 0xF3, 0x44, 0xFF},
 	}
-	dataBuffer, engine = newMarshalEngine(session.LITTLE_ENDIAN, B4, Native, 150000)
+	dataBuffer, engine = newMarshalEngine(common.LITTLE_ENDIAN, B4, Native, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB4, t)
 
 	fmt.Printf("--------- Testing UB4 UNIVERSAL and BIG_ENDIAN \n")
@@ -231,12 +230,12 @@ func TestMarshalUB4(t *testing.T) {
 		0x5544F3F4: {0x04, 0x55, 0x44, 0xF3, 0xF4},
 		0xFF44F3F4: {0x04, 0xFF, 0x44, 0xF3, 0xF4},
 	}
-	dataBuffer, engine = newMarshalEngine(session.BIG_ENDIAN, B4, Universal, 150000)
+	dataBuffer, engine = newMarshalEngine(common.BIG_ENDIAN, B4, Universal, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB4, t)
 
 	fmt.Printf("--------- Testing UB4 UNIVERSAL and LITTLE_ENDIAN \n")
 	// UNIVERSAL representation is always BIG_ENDIAN
-	dataBuffer, engine = newMarshalEngine(session.LITTLE_ENDIAN, B4, Universal, 150000)
+	dataBuffer, engine = newMarshalEngine(common.LITTLE_ENDIAN, B4, Universal, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB4, t)
 }
 
@@ -260,7 +259,7 @@ func TestMarshalUB8(t *testing.T) {
 		0x00100525FF44F3F4: {0x00, 0x10, 0x05, 0x25, 0xFF, 0x44, 0xF3, 0xF4},
 		0xD2100525FF44F3F4: {0xD2, 0x10, 0x05, 0x25, 0xFF, 0x44, 0xF3, 0xF4},
 	}
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B4, Native, 150000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B4, Native, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB8, t)
 
 	fmt.Printf("--------- Testing UB4 NATIVE and LITTLE_ENDIAN \n")
@@ -278,7 +277,7 @@ func TestMarshalUB8(t *testing.T) {
 		0x00100525FF44F3F4: {0xF4, 0xF3, 0x44, 0xFF, 0x25, 0x05, 0x10, 0x00},
 		0xD2100525FF44F3F4: {0xF4, 0xF3, 0x44, 0xFF, 0x25, 0x05, 0x10, 0xD2},
 	}
-	dataBuffer, engine = newMarshalEngine(session.LITTLE_ENDIAN, B4, Native, 150000)
+	dataBuffer, engine = newMarshalEngine(common.LITTLE_ENDIAN, B4, Native, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB8, t)
 
 	fmt.Printf("--------- Testing UB4 UNIVERSAL and BIG_ENDIAN \n")
@@ -296,12 +295,12 @@ func TestMarshalUB8(t *testing.T) {
 		0x00100525FF44F3F4: {0x07, 0x10, 0x05, 0x25, 0xFF, 0x44, 0xF3, 0xF4},
 		0xD2100525FF44F3F4: {0x08, 0xD2, 0x10, 0x05, 0x25, 0xFF, 0x44, 0xF3, 0xF4},
 	}
-	dataBuffer, engine = newMarshalEngine(session.BIG_ENDIAN, B4, Universal, 150000)
+	dataBuffer, engine = newMarshalEngine(common.BIG_ENDIAN, B4, Universal, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB8, t)
 
 	fmt.Printf("--------- Testing UB4 UNIVERSAL and LITTLE_ENDIAN \n")
 	// UNIVERSAL representation is always BIG_ENDIAN
-	dataBuffer, engine = newMarshalEngine(session.LITTLE_ENDIAN, B4, Universal, 150000)
+	dataBuffer, engine = newMarshalEngine(common.LITTLE_ENDIAN, B4, Universal, 150000)
 	runMarshalTest(dataBuffer, values, engine.MarshalUB8, t)
 }
 
@@ -315,7 +314,7 @@ func TestMarshalByteArray(t *testing.T) {
 		{0x06, 0x55, 0x44, 0xF3, 0xF4, 0x01, 0xF4},
 		{0x08, 0x85, 0x44, 0xF3, 0xF4, 0x01, 0xF4, 0x62, 0xD3},
 	}
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B8, Universal, 150000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B8, Universal, 150000)
 	for _, value := range values {
 		engine.MarshalB1Array(context.Background(), value)
 		length := len(value)
@@ -337,7 +336,7 @@ func TestMarshalChar(t *testing.T) {
 		{0x06, 0x55, 0x44, 0xF3, 0xF4, 0x01, 0xF4},
 		{0x08, 0x85, 0x44, 0xF3, 0xF4, 0x01, 0xF4, 0x62, 0xD3},
 	}
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B8, Universal, 150000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B8, Universal, 150000)
 	for _, value := range values {
 		engine.MarshalChar(context.Background(), value)
 		length := len(value)
@@ -352,7 +351,7 @@ func TestMarshalChar(t *testing.T) {
 // Tests that PTR is correctly encoded in both UNIVERSAL and NATIVE encoding.
 func TestMarshalPTR(t *testing.T) {
 	t.Parallel()
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, PTR, Universal, 150000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, PTR, Universal, 150000)
 	engine.MarshalPTR(context.Background())
 	value, err := engine.UnmarshalUB1(context.Background())
 	if err != nil {
@@ -361,7 +360,7 @@ func TestMarshalPTR(t *testing.T) {
 	if value != 0x01 {
 		t.Errorf("Wrong pointer value")
 	}
-	_, engine = newMarshalEngine(session.BIG_ENDIAN, PTR, Native, 150000)
+	_, engine = newMarshalEngine(common.BIG_ENDIAN, PTR, Native, 150000)
 	engine.MarshalPTR(context.Background())
 	b1Array, err2 := engine.UnmarshalB1Array(context.Background(), 4)
 	if err2 != nil {
@@ -378,7 +377,7 @@ func TestMarshalPTR(t *testing.T) {
 // encoding.
 func TestMarshalNullPTR(t *testing.T) {
 	t.Parallel()
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, PTR, Universal, 150000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, PTR, Universal, 150000)
 	engine.MarshalNullPTR(context.Background())
 	dataBuffer.currentReadPosition = 0
 	value, err := engine.UnmarshalUB1(context.Background())
@@ -388,7 +387,7 @@ func TestMarshalNullPTR(t *testing.T) {
 	if value != 0x00 {
 		t.Errorf("Wrong null pointer value")
 	}
-	_, engine = newMarshalEngine(session.BIG_ENDIAN, PTR, Native, 150000)
+	_, engine = newMarshalEngine(common.BIG_ENDIAN, PTR, Native, 150000)
 	engine.MarshalNullPTR(context.Background())
 	b1Array, err2 := engine.UnmarshalB1Array(context.Background(), 4)
 	if err2 != nil {
@@ -418,7 +417,7 @@ func TestMarshalCLR(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.LITTLE_ENDIAN, B4, Native, 150000)
+			dataBuffer, engine := newMarshalEngine(common.LITTLE_ENDIAN, B4, Native, 150000)
 			value := make(common.B1Array, tt.length)
 			for i := range value {
 				value[i] = byte(i % 256) // Fill with some data
@@ -486,7 +485,7 @@ func TestMarshalCLR(t *testing.T) {
 // is called
 func TestFlush(t *testing.T) {
 	t.Parallel()
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 10)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 10)
 	dataBuffer.Flush(context.Background())
 	err := engine.Flush(context.Background())
 	if !dataBuffer.hasBeenFlushed {
@@ -515,7 +514,7 @@ func TestUnmarshalUB1(t *testing.T) {
 	t.Parallel()
 	fmt.Printf("--------- Testing BIG_ENDIAN \n")
 	dataBuffer := NewArrayDataBuffer(1024)
-	byteOrder := session.BIG_ENDIAN
+	byteOrder := common.BIG_ENDIAN
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
 	for i := 0; i < 256; i++ {
 		err := engine.MarshalUB1(context.Background(), common.UB1(i))
@@ -544,35 +543,35 @@ func TestUnmarshalUB2(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		byteOrder      session.ByteOrder
+		byteOrder      common.ByteOrder
 		valueType      byte
 		representation byte
 		size           int
 	}{
 		{
 			name:           "Testing NATIVE and BIG_ENDIAN",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B2,
 			representation: Native,
 			size:           150000,
 		},
 		{
 			name:           "Testing NATIVE and LITTLE_ENDIAN",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B2,
 			representation: Native,
 			size:           150000,
 		},
 		{
 			name:           "Testing UNIVERSAL and BIG_ENDIAN",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B2,
 			representation: Universal,
 			size:           150000,
 		},
 		{
 			name:           "Testing UNIVERSAL and LITTLE_ENDIAN",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B2,
 			representation: Universal,
 			size:           150000,
@@ -611,35 +610,35 @@ func TestUnmarshalSB4(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		byteOrder      session.ByteOrder
+		byteOrder      common.ByteOrder
 		valueType      byte
 		representation byte
 		size           int
 	}{
 		{
 			name:           "Testing NATIVE and BIG_ENDIAN",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B4,
 			representation: Native,
 			size:           150000,
 		},
 		{
 			name:           "Testing NATIVE and LITTLE_ENDIAN",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B4,
 			representation: Native,
 			size:           150000,
 		},
 		{
 			name:           "Testing UNIVERSAL and BIG_ENDIAN",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B4,
 			representation: Universal,
 			size:           150000,
 		},
 		{
 			name:           "Testing UNIVERSAL and LITTLE_ENDIAN",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B4,
 			representation: Universal,
 			size:           150000,
@@ -672,7 +671,7 @@ func TestUnmarshalSB1(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name           string
-		byteOrder      session.ByteOrder
+		byteOrder      common.ByteOrder
 		valueType      byte
 		representation byte
 		wire           common.B1Array
@@ -680,7 +679,7 @@ func TestUnmarshalSB1(t *testing.T) {
 	}{
 		{
 			name:           "native big endian wraps from SB2",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B2,
 			representation: Native,
 			wire:           common.B1Array{0x00, 0xFF},
@@ -688,7 +687,7 @@ func TestUnmarshalSB1(t *testing.T) {
 		},
 		{
 			name:           "native little endian wraps from SB2",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B2,
 			representation: Native,
 			wire:           common.B1Array{0xFF, 0x00},
@@ -696,7 +695,7 @@ func TestUnmarshalSB1(t *testing.T) {
 		},
 		{
 			name:           "universal casts from signed path",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B2,
 			representation: Universal,
 			wire:           common.B1Array{0x01, 0xFF},
@@ -704,7 +703,7 @@ func TestUnmarshalSB1(t *testing.T) {
 		},
 		{
 			name:           "universal negative flag",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B2,
 			representation: Universal,
 			wire:           common.B1Array{0x81, 0x01},
@@ -734,7 +733,7 @@ func TestUnmarshalSB2(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name           string
-		byteOrder      session.ByteOrder
+		byteOrder      common.ByteOrder
 		valueType      byte
 		representation byte
 		wire           common.B1Array
@@ -742,7 +741,7 @@ func TestUnmarshalSB2(t *testing.T) {
 	}{
 		{
 			name:           "native big endian",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B2,
 			representation: Native,
 			wire:           common.B1Array{0xFF, 0xFE},
@@ -750,7 +749,7 @@ func TestUnmarshalSB2(t *testing.T) {
 		},
 		{
 			name:           "native little endian",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B2,
 			representation: Native,
 			wire:           common.B1Array{0xFE, 0xFF},
@@ -758,7 +757,7 @@ func TestUnmarshalSB2(t *testing.T) {
 		},
 		{
 			name:           "universal negative flag",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B2,
 			representation: Universal,
 			wire:           common.B1Array{0x81, 0x02},
@@ -812,7 +811,7 @@ func TestUnmarshalSB2UniversalRangeValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+			_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 			if err := engine.MarshalB1Array(ctx, test.wire); err != nil {
 				t.Fatalf("MarshalB1Array failed: %v", err)
 			}
@@ -869,7 +868,7 @@ func TestUnmarshalUnsignedUniversalRejectsNegativeFlag(t *testing.T) {
 	wire := common.B1Array{0x81, 0x01}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, engine := newMarshalEngine(session.BIG_ENDIAN, test.valueType, Universal, 1000)
+			_, engine := newMarshalEngine(common.BIG_ENDIAN, test.valueType, Universal, 1000)
 			if err := engine.MarshalB1Array(ctx, wire); err != nil {
 				t.Fatalf("MarshalB1Array failed: %v", err)
 			}
@@ -893,35 +892,35 @@ func TestUnmarshalUB4(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		byteOrder      session.ByteOrder
+		byteOrder      common.ByteOrder
 		valueType      byte
 		representation byte
 		size           int
 	}{
 		{
 			name:           "Testing NATIVE and BIG_ENDIAN",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B4,
 			representation: Native,
 			size:           150000,
 		},
 		{
 			name:           "Testing NATIVE and LITTLE_ENDIAN",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B4,
 			representation: Native,
 			size:           150000,
 		},
 		{
 			name:           "Testing UNIVERSAL and BIG_ENDIAN",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B4,
 			representation: Universal,
 			size:           150000,
 		},
 		{
 			name:           "Testing UNIVERSAL and LITTLE_ENDIAN",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B4,
 			representation: Universal,
 			size:           150000,
@@ -964,35 +963,35 @@ func TestUnmarshalUB8(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		byteOrder      session.ByteOrder
+		byteOrder      common.ByteOrder
 		valueType      byte
 		representation byte
 		size           int
 	}{
 		{
 			name:           "Testing NATIVE and BIG_ENDIAN",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B8,
 			representation: Native,
 			size:           150000,
 		},
 		{
 			name:           "Testing NATIVE and LITTLE_ENDIAN",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B8,
 			representation: Native,
 			size:           150000,
 		},
 		{
 			name:           "Testing UNIVERSAL and BIG_ENDIAN",
-			byteOrder:      session.BIG_ENDIAN,
+			byteOrder:      common.BIG_ENDIAN,
 			valueType:      B8,
 			representation: Universal,
 			size:           150000,
 		},
 		{
 			name:           "Testing UNIVERSAL and LITTLE_ENDIAN",
-			byteOrder:      session.LITTLE_ENDIAN,
+			byteOrder:      common.LITTLE_ENDIAN,
 			valueType:      B8,
 			representation: Universal,
 			size:           150000,
@@ -1039,7 +1038,7 @@ func TestUnmarshalCLR(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.LITTLE_ENDIAN, B4, Native, 150000)
+			dataBuffer, engine := newMarshalEngine(common.LITTLE_ENDIAN, B4, Native, 150000)
 			value := make([]byte, tt.length)
 			for i := range value {
 				value[i] = byte(i % 256) // Fill with some data
@@ -1083,7 +1082,7 @@ func TestUnmarshalCLRColumnData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.LITTLE_ENDIAN, B4, Native, 150000)
+			dataBuffer, engine := newMarshalEngine(common.LITTLE_ENDIAN, B4, Native, 150000)
 			value := make([]byte, tt.length)
 			for i := range value {
 				value[i] = byte(i % 256) // Fill with some data
@@ -1123,7 +1122,7 @@ func TestUnmarshalCLRColumnDataRejectsInvalidLongChunkLengths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B4, Native, 16)
+			dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B4, Native, 16)
 			if err := engine.MarshalUB1(context.Background(), common.UB1(_longLengthIndicator)); err != nil {
 				t.Fatalf("MarshalUB1 failed: %v", err)
 			}
@@ -1156,7 +1155,7 @@ func TestUnmarshalCLRColumnDataRejectsAggregateLengthAboveMaximum(t *testing.T) 
 		fullChunks:  fullChunks,
 		finalLength: finalLength,
 	}
-	engine := NewMarshalEngine(dataBuffer, session.BIG_ENDIAN, [5]byte{Native, Native, Native, Native, Native})
+	engine := NewMarshalEngine(dataBuffer, common.BIG_ENDIAN, [5]byte{Native, Native, Native, Native, Native})
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -1240,7 +1239,7 @@ func TestUnmarshalByteArray(t *testing.T) {
 	}
 	// write and read one by one
 	for _, value := range values {
-		dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B8, Universal, 150000)
+		dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B8, Universal, 150000)
 		engine.MarshalB1Array(context.Background(), value)
 		length := len(value)
 		dataBuffer.currentReadPosition = 0
@@ -1257,7 +1256,7 @@ func TestUnmarshalByteArray(t *testing.T) {
 	}
 
 	// write all values
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B8, Universal, 150000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B8, Universal, 150000)
 	for _, value := range values {
 		engine.MarshalB1Array(context.Background(), value)
 	}
@@ -1316,7 +1315,7 @@ func TestUnmarshalText(t *testing.T) {
 				t.Errorf("WriteBytes failed: %v", err)
 			}
 			dataBuffer.currentReadPosition = 0
-			byteOrder := session.BIG_ENDIAN
+			byteOrder := common.BIG_ENDIAN
 			engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
 
 			result, err := engine.UnmarshalText(context.Background(), tt.length)
@@ -1336,7 +1335,7 @@ func TestUnmarshalKeyValue(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
-		keyValuePairs *KeyValueList
+		keyValuePairs *keyValueList
 	}{
 		{
 			name:          "valid key-value pairs",
@@ -1354,7 +1353,7 @@ func TestUnmarshalKeyValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, 0, 0, 150000)
+			dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, 0, 0, 150000)
 
 			err := ((common.Marshallable)(tt.keyValuePairs)).MarshalTo(context.Background(), engine)
 			if err != nil {
@@ -1362,7 +1361,7 @@ func TestUnmarshalKeyValue(t *testing.T) {
 			}
 
 			dataBuffer.currentReadPosition = 0
-			returnedKeyValuePairs := NewPreallocatedKeyValueList(tt.keyValuePairs.Len())
+			returnedKeyValuePairs := newPreallocatedKeyValueList(tt.keyValuePairs.Len())
 			err = ((common.UnMarshallable)(returnedKeyValuePairs)).UnMarshalFrom(context.Background(), engine)
 			if err != nil {
 				t.Errorf("Error unmarshalling key value %v", err)
@@ -1391,7 +1390,7 @@ func TestMarshalUB1NoSpace(t *testing.T) {
 	t.Parallel()
 	fmt.Printf("--------- Testing BIG_ENDIAN \n")
 	dataBuffer := NewArrayDataBuffer(0)
-	byteOrder := session.BIG_ENDIAN
+	byteOrder := common.BIG_ENDIAN
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
 	for i := 0; i < 256; i++ {
 		err := engine.MarshalUB1(context.Background(), common.UB1(i))
@@ -1427,7 +1426,7 @@ func TestMarshalCLRNoSpace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.LITTLE_ENDIAN, B4, Native, tt.bufferLength)
+			dataBuffer, engine := newMarshalEngine(common.LITTLE_ENDIAN, B4, Native, tt.bufferLength)
 			value := make(common.B1Array, tt.length)
 			for i := range value {
 				value[i] = byte(i % 256) // Fill with some data
@@ -1459,7 +1458,7 @@ func TestMarshalKeyValueNoSpace(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
-		keyValuePairs *KeyValueList
+		keyValuePairs *keyValueList
 		numOfPairs    int
 		bufferSize    int
 	}{
@@ -1515,7 +1514,7 @@ func TestMarshalKeyValueNoSpace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, 0, 0, tt.bufferSize)
+			dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, 0, 0, tt.bufferSize)
 			err := ((common.Marshallable)(tt.keyValuePairs)).MarshalTo(context.Background(), engine)
 
 			dataBuffer.currentWritePosition = 0
@@ -1543,7 +1542,7 @@ func TestUnmarshalKeyValueNoSpace(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name          string
-		keyValuePairs *KeyValueList
+		keyValuePairs *keyValueList
 		numOfPairs    int
 		writePosition int
 	}{
@@ -1599,14 +1598,14 @@ func TestUnmarshalKeyValueNoSpace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, 0, 0, 1000)
+			dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, 0, 0, 1000)
 			err := ((common.Marshallable)(tt.keyValuePairs)).MarshalTo(context.Background(), engine)
 			if err != nil {
 				t.Errorf("Failed to marshal")
 			}
 			dataBuffer.currentWritePosition = tt.writePosition
 			dataBuffer.currentReadPosition = 0
-			keyvalFlags := NewPreallocatedKeyValueList(tt.keyValuePairs.Len())
+			keyvalFlags := newPreallocatedKeyValueList(tt.keyValuePairs.Len())
 			err = ((common.UnMarshallable)(keyvalFlags)).UnMarshalFrom(context.Background(), engine)
 			if err == nil {
 				t.Errorf("UnmarshalKeyValue should have failed")
@@ -1630,7 +1629,7 @@ func TestUnmarshalKeyValueNoSpace(t *testing.T) {
 func TestUnmarshalUB2NoSpace(t *testing.T) {
 	t.Parallel()
 	var value common.UB2 = 1056
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	engine.MarshalUB2(context.Background(), value)
 	dataBuffer.currentWritePosition = 1
 	_, err := engine.UnmarshalUB2(context.Background())
@@ -1638,7 +1637,7 @@ func TestUnmarshalUB2NoSpace(t *testing.T) {
 		t.Errorf("UnmarshalUB2 should have failed")
 	}
 	checkSQLErrorCodeContains(t, err, string(oracleErrors.MarshalEngineError), "UB2")
-	dataBuffer, engine = newMarshalEngine(session.BIG_ENDIAN, B2, Native, 1000)
+	dataBuffer, engine = newMarshalEngine(common.BIG_ENDIAN, B2, Native, 1000)
 	engine.MarshalUB2(context.Background(), value)
 	dataBuffer.currentWritePosition = 1
 	_, err = engine.UnmarshalUB2(context.Background())
@@ -1653,7 +1652,7 @@ func TestUnmarshalUB2NoSpace(t *testing.T) {
 func TestUnmarshalUB4NoSpace(t *testing.T) {
 	t.Parallel()
 	var value common.UB4 = 1056
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B4, Universal, 1000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B4, Universal, 1000)
 	engine.MarshalUB4(context.Background(), value)
 	dataBuffer.currentWritePosition = 2
 	_, err := engine.UnmarshalUB4(context.Background())
@@ -1661,7 +1660,7 @@ func TestUnmarshalUB4NoSpace(t *testing.T) {
 		t.Errorf("UnmarshalUB4 should have failed")
 	}
 	checkSQLErrorCodeContains(t, err, string(oracleErrors.MarshalEngineError), "UB4")
-	dataBuffer, engine = newMarshalEngine(session.BIG_ENDIAN, B4, Native, 1000)
+	dataBuffer, engine = newMarshalEngine(common.BIG_ENDIAN, B4, Native, 1000)
 	engine.MarshalUB4(context.Background(), value)
 	dataBuffer.currentWritePosition = 2
 	_, err = engine.UnmarshalUB4(context.Background())
@@ -1675,7 +1674,7 @@ func TestUnmarshalUB4NoSpace(t *testing.T) {
 func TestUnmarshalUB4WithNegativeZeroLength(t *testing.T) {
 	t.Parallel()
 	value := common.B1Array{0x80, 0x00, 0x01, 0x02}
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B4, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B4, Universal, 1000)
 	engine.MarshalB1Array(context.Background(), value)
 	_, err := engine.UnmarshalUB4(context.Background())
 	if err == nil {
@@ -1738,7 +1737,7 @@ func TestUnmarshalUniversalRejectsByteCountsOverTargetWidth(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, engine := newMarshalEngine(session.BIG_ENDIAN, test.typ, Universal, 1000)
+			_, engine := newMarshalEngine(common.BIG_ENDIAN, test.typ, Universal, 1000)
 			if err := engine.MarshalB1Array(ctx, test.value); err != nil {
 				t.Fatalf("MarshalB1Array failed: %v", err)
 			}
@@ -1793,7 +1792,7 @@ func TestUnmarshalUniversalUnsignedRejectsNegativeEncodings(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, engine := newMarshalEngine(session.BIG_ENDIAN, test.typ, Universal, 1000)
+			_, engine := newMarshalEngine(common.BIG_ENDIAN, test.typ, Universal, 1000)
 			if err := engine.MarshalB1Array(ctx, value); err != nil {
 				t.Fatalf("MarshalB1Array failed: %v", err)
 			}
@@ -1835,7 +1834,7 @@ func TestUnmarshalSB4UniversalRangeValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, engine := newMarshalEngine(session.BIG_ENDIAN, B4, Universal, 1000)
+			_, engine := newMarshalEngine(common.BIG_ENDIAN, B4, Universal, 1000)
 			if err := engine.MarshalB1Array(ctx, test.value); err != nil {
 				t.Fatalf("MarshalB1Array failed: %v", err)
 			}
@@ -1861,7 +1860,7 @@ func TestUnmarshalSB4UniversalRangeValidation(t *testing.T) {
 func TestDynamicAllocatedArrayRejectsNegativeUniversalLength(t *testing.T) {
 	t.Parallel()
 	value := common.B1Array{0x81, 0x01}
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B4, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B4, Universal, 1000)
 	if err := engine.MarshalB1Array(context.Background(), value); err != nil {
 		t.Fatalf("MarshalB1Array failed: %v", err)
 	}
@@ -1879,7 +1878,7 @@ func TestMarshalUnmarshalUB8UsesB8Representation(t *testing.T) {
 	ctx := context.Background()
 	t.Run("B8 universal with B4 native", func(t *testing.T) {
 		dataBuffer := NewArrayDataBuffer(1000)
-		engine := NewMarshalEngine(dataBuffer, session.BIG_ENDIAN, [5]byte{Native, Native, Native, Universal, Native})
+		engine := NewMarshalEngine(dataBuffer, common.BIG_ENDIAN, [5]byte{Native, Native, Native, Universal, Native})
 
 		err := engine.MarshalUB8(ctx, 255)
 		if err != nil {
@@ -1900,7 +1899,7 @@ func TestMarshalUnmarshalUB8UsesB8Representation(t *testing.T) {
 
 	t.Run("B8 native with B4 universal", func(t *testing.T) {
 		dataBuffer := NewArrayDataBuffer(1000)
-		engine := NewMarshalEngine(dataBuffer, session.BIG_ENDIAN, [5]byte{Native, Native, Universal, Native, Native})
+		engine := NewMarshalEngine(dataBuffer, common.BIG_ENDIAN, [5]byte{Native, Native, Universal, Native, Native})
 
 		err := engine.MarshalUB8(ctx, 255)
 		if err != nil {
@@ -1925,7 +1924,7 @@ func TestMarshalUnmarshalUB8UsesB8Representation(t *testing.T) {
 func TestUnmarshalUB1ArrayNoSpace(t *testing.T) {
 	t.Parallel()
 	var value common.B1Array = common.B1Array{128, 10, 12, 20}
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	engine.MarshalB1Array(context.Background(), value)
 	dataBuffer.currentWritePosition = 2
 	_, err := engine.UnmarshalB1Array(context.Background(), len(value))
@@ -1940,7 +1939,7 @@ func TestUnmarshalUB1ArrayNoSpace(t *testing.T) {
 func TestUnmarshalTextNoSpace(t *testing.T) {
 	t.Parallel()
 	value := common.B1Array("test")
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	engine.MarshalB1Array(context.Background(), value)
 	dataBuffer.currentWritePosition = 1
 	_, err := engine.UnmarshalText(context.Background(), len(value))
@@ -1954,7 +1953,7 @@ func TestUnmarshalTextNoSpace(t *testing.T) {
 func TestUnmarshalCLREscapeValue(t *testing.T) {
 	t.Parallel()
 	value := common.B1Array{_espapeValue, 0x00, 0x01, 0x02}
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	engine.MarshalB1Array(context.Background(), value)
 	readValue := make(common.B1Array, 4)
 	_, err := engine.UnmarshalCLR(context.Background(), readValue, len(value))
@@ -1968,7 +1967,7 @@ func TestUnmarshalCLREscapeValue(t *testing.T) {
 func TestUnmarshalCLRZeroLength(t *testing.T) {
 	t.Parallel()
 	value := common.B1Array{0x00, 0x00, 0x01, 0x02}
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	engine.MarshalB1Array(context.Background(), value)
 	readValue := make(common.B1Array, 4)
 	length, err := engine.UnmarshalCLR(context.Background(), readValue, len(value))
@@ -1985,7 +1984,7 @@ func TestUnmarshalCLRZeroLength(t *testing.T) {
 func TestUnmarshalCLRNullLengthIndicator(t *testing.T) {
 	t.Parallel()
 	value := common.B1Array{_nullLengthIndicator, 0x00, 0x01, 0x02}
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	engine.MarshalB1Array(context.Background(), value)
 	readValue := make(common.B1Array, 4)
 	readLength, err := engine.UnmarshalCLR(context.Background(), readValue, len(value))
@@ -2000,7 +1999,7 @@ func TestUnmarshalCLRNullLengthIndicator(t *testing.T) {
 // Error case: unmarshalls CLR with negative length value and expects error
 func TestUnmarshalCLRNegativeLength(t *testing.T) {
 	t.Parallel()
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	engine.MarshalUB1(context.Background(), common.UB1(_longLengthIndicator))
 	engine.MarshalSB4(context.Background(), common.SB4(-1))
 	readValue := make(common.B1Array, 10)
@@ -2015,7 +2014,7 @@ func TestUnmarshalCLRNegativeLength(t *testing.T) {
 // expects error
 func TestUnmarshalCLRNotEnoughBytesForLength(t *testing.T) {
 	t.Parallel()
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	engine.MarshalUB1(context.Background(), common.UB1(_longLengthIndicator))
 	value := common.B1Array{0x04, 0x77} // Invalid UB4
 	engine.MarshalB1Array(context.Background(), value)
@@ -2031,7 +2030,7 @@ func TestUnmarshalCLRNotEnoughBytesForLength(t *testing.T) {
 // expects error
 func TestUnmarshalCLRBufferToSmallForLength(t *testing.T) {
 	t.Parallel()
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	value := make(common.B1Array, 300)
 	for i := 0; i < len(value); i++ {
 		value[i] = byte(i % 256)
@@ -2049,7 +2048,7 @@ func TestUnmarshalCLRBufferToSmallForLength(t *testing.T) {
 // Checks that correct length is returned.
 func TestUnmarshalCLRReadLessThatTotalLength(t *testing.T) {
 	t.Parallel()
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	value := make(common.B1Array, 300)
 	for i := 0; i < len(value); i++ {
 		value[i] = byte(i % 256)
@@ -2069,7 +2068,7 @@ func TestUnmarshalCLRReadLessThatTotalLength(t *testing.T) {
 // the data. Check for expected errors.
 func TestUnmarshalCLRReadLessThatTotalLengthNoSpace(t *testing.T) {
 	t.Parallel()
-	dataBuffer, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	value := make(common.B1Array, 300)
 	for i := 0; i < len(value); i++ {
 		value[i] = byte(i % 256)
@@ -2085,9 +2084,9 @@ func TestUnmarshalCLRReadLessThatTotalLengthNoSpace(t *testing.T) {
 }
 
 // Creates a marshal ending for testing
-func newMarshalEngine(byteOrder session.ByteOrder, typ byte, rep byte, bufSize int) (*ArrayBasedDataBuffer, *MarshalEngine) {
+func newMarshalEngine(byteOrder common.ByteOrder, typ byte, rep byte, bufSize int) (*ArrayBasedDataBuffer, *MarshalEngine) {
 	dataBuffer := NewArrayDataBuffer(bufSize)
-	typeRep := NewTypeRep()
+	typeRep := newTypeRep()
 	typeRep.setRep(typ, rep)
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{rep, rep, rep, rep, rep})
 	return dataBuffer, engine
@@ -2114,7 +2113,7 @@ func runMarshalTest[T common.UB1 | common.UB2 | common.UB4 | common.SB4 | common
 // Marshals and unmarshals a DALC and checks that the sizes and values match
 func TestMarshalDALC(t *testing.T) {
 	t.Parallel()
-	_, engine := newMarshalEngine(session.BIG_ENDIAN, B2, Universal, 1000)
+	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	var dalc dynamicAllocatedArray
 	dalc.value = []byte{'T', 'e', 's', 't', ' ', 'm', 'a', 'r', 's', 'h', 'a', 'l', ' ', 'D', 'A', 'L', 'C'}
 	dalc.MarshalTo(context.Background(), engine)
@@ -2138,7 +2137,7 @@ func TestMarshalDALC(t *testing.T) {
 func TestMarshalSequenceNumber(t *testing.T) {
 	t.Parallel()
 	dataBuffer := NewArrayDataBuffer(1024)
-	byteOrder := session.BIG_ENDIAN
+	byteOrder := common.BIG_ENDIAN
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
 	for i := 1; i <= math.MaxInt8; i++ {
 		num, err := engine.marshalSeqNo(context.Background())
@@ -2156,7 +2155,7 @@ func TestMarshalSequenceNumber(t *testing.T) {
 func TestMarshalSequenceNumberRotation(t *testing.T) {
 	t.Parallel()
 	dataBuffer := NewArrayDataBuffer(1024)
-	byteOrder := session.BIG_ENDIAN
+	byteOrder := common.BIG_ENDIAN
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
 	for i := 1; i <= math.MaxInt8; i++ {
 		_, err := engine.marshalSeqNo(context.Background())
@@ -2175,7 +2174,7 @@ func TestMarshalSequenceNumberRotation(t *testing.T) {
 func TestMarshalTokenNumber(t *testing.T) {
 	t.Parallel()
 	dataBuffer := NewArrayDataBuffer(1024)
-	byteOrder := session.BIG_ENDIAN
+	byteOrder := common.BIG_ENDIAN
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
 	for i := 1; i <= 5; i++ {
 		num, err := engine.marshalTokenNo(context.Background())

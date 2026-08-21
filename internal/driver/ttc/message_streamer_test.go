@@ -46,12 +46,11 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 func newMockMarshaller() common.Marshaller {
-	return NewNativeMarshalEngine(NewArrayDataBuffer(2048), session.BIG_ENDIAN)
+	return NewNativeMarshalEngine(NewArrayDataBuffer(2048), common.BIG_ENDIAN)
 }
 
 type errorMarshaller struct{}
@@ -191,7 +190,7 @@ func TestMessageStreamer_Flush(t *testing.T) {
 
 	var fakeBuffer = NewArrayDataBuffer(2048)
 	marshaller := NewNativeMarshalEngine(fakeBuffer,
-		session.LITTLE_ENDIAN)
+		common.LITTLE_ENDIAN)
 
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMarshaller(marshaller)
@@ -494,7 +493,7 @@ func TestMessageStreamer_Drain(t *testing.T) {
 
 	aData := NewArrayDataBuffer(2048)
 
-	marshaller := NewNativeMarshalEngine(aData, session.BIG_ENDIAN)
+	marshaller := NewNativeMarshalEngine(aData, common.BIG_ENDIAN)
 
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMarshaller(marshaller)

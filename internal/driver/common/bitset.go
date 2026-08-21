@@ -50,16 +50,8 @@ func NewBitSet(size int) *BitSet {
 	return &BitSet{bits: make([]byte, (size+7)/8)}
 }
 
-// NewBitSetFromBytes returns a new BitSet whose bits array is initialized
-// from a copy of the provided byte slice.
-func NewBitSetFromBytes(data []byte) *BitSet {
-	newBits := make([]byte, len(data))
-	copy(newBits, data)
-	return &BitSet{bits: newBits}
-}
-
 // SetBytes copies data into the bits slice starting at the given byte index.
-// If data would exceed bounds, it copies as much as will fit.
+// If data exceeded bounds, it copies as much as will fit.
 func (bs *BitSet) SetBytes(start int, data []byte) {
 	if start < 0 || start >= len(bs.bits) {
 		return
@@ -68,31 +60,10 @@ func (bs *BitSet) SetBytes(start int, data []byte) {
 	_ = n // Copy operation suffices; nothing to return
 }
 
-// bitIndexAndMask takes a bit index and returns the byte index in the bits slice
-// and a mask identifying the specific bit within that byte.
-func bitIndexAndMask(index int) (int, byte) {
-	return index / 8, byte(1 << (index % 8))
-}
-
-// Set assigns value to the bit at the given position (index).
-func (bs *BitSet) Set(index int, value bool) {
-	byteIdx, bitMask := bitIndexAndMask(index)
-	if value {
-		bs.bits[byteIdx] |= bitMask
-	} else {
-		bs.bits[byteIdx] &^= bitMask
-	}
-}
-
 // Get returns true if the bit at the given index is set.
 func (bs *BitSet) Get(index int) bool {
-	byteIdx, bitMask := bitIndexAndMask(index)
+	byteIdx, bitMask := index/8, byte(1<<(index%8))
 	return bs.bits[byteIdx]&bitMask != 0
-}
-
-// SetByte writes a raw byte at a given byte index (for efficient bulk bit set).
-func (bs *BitSet) SetByte(index int, value byte) {
-	bs.bits[index] = value
 }
 
 // ClearAll resets all bits to 0 (false).

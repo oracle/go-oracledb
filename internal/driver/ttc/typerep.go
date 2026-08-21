@@ -496,9 +496,9 @@ const (
 	_maxReceivedReps int16 = 1024
 )
 
-// RepresentationTable manages type representations and conversion flags for Oracle data types.
+// representationTable manages type representations and conversion flags for Oracle data types.
 // It provides methods to set and get type representations, conversion flags, and server conversion state.
-type RepresentationTable struct {
+type representationTable struct {
 	representations  []int16
 	conversionFlags  byte
 	serverConversion bool
@@ -508,11 +508,11 @@ type RepresentationTable struct {
 }
 
 // this is filled in in package Init()
-var typeRepresentationTable *RepresentationTable = NewTypeRep()
+var typeRepresentationTable *representationTable = newTypeRep()
 
-// NewTypeRep makes a new blank TypeRep table
-func NewTypeRep() *RepresentationTable {
-	var t = &RepresentationTable{
+// newTypeRep makes a new blank TypeRep table
+func newTypeRep() *representationTable {
+	var t = &representationTable{
 		conversionFlags:  0,
 		serverConversion: false,
 		representations:  make([]int16, MaxReps*4+1),
@@ -530,12 +530,12 @@ func NewTypeRep() *RepresentationTable {
 	return t
 }
 
-func (t *RepresentationTable) isNativeTypeAsUniversal(typ byte) bool {
+func (t *representationTable) isNativeTypeAsUniversal(typ byte) bool {
 	return t.nativeTypesRepresentation[typ] == Universal
 }
 
 // MarshalTo marshalTypeReps marshals the type representations based on capabilities.
-func (t *RepresentationTable) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) error {
+func (t *representationTable) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) error {
 	// send dty and rep as UB2
 	for i := 1; i < int(t.representations[0]); i++ {
 		if err := mar.MarshalUB2(ctx, driverCommon.UB2(t.representations[i])); err != nil { // LSB is false
@@ -549,7 +549,7 @@ func (t *RepresentationTable) MarshalTo(ctx context.Context, mar driverCommon.Ma
 }
 
 // UnMarshalFrom unmarshal the type representations.
-func (t *RepresentationTable) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (t *representationTable) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	var b driverCommon.UB2
 	var err error
 
@@ -618,7 +618,7 @@ func (t *RepresentationTable) UnMarshalFrom(ctx context.Context, mar driverCommo
 }
 
 // addTypeRepToTable registers a data type with its type code, network type, and representation in the typeAndRep map.
-func (t *RepresentationTable) addTypeRepToTable(dty, ndty, rep int16) {
+func (t *representationTable) addTypeRepToTable(dty, ndty, rep int16) {
 	if len(t.representations) < int(t.representations[0])+4 {
 		typeAndRep2 := make([]int16, len(t.representations)*2)
 		copy(typeAndRep2[0:], t.representations[0:t.representations[0]+1])
@@ -640,22 +640,22 @@ func (t *RepresentationTable) addTypeRepToTable(dty, ndty, rep int16) {
 
 // setRep sets the type representation for the given type.
 // Returns an error if the type or representation is invalid.
-func (t *RepresentationTable) setRep(typ byte, rep byte) {
+func (t *representationTable) setRep(typ byte, rep byte) {
 	t.nativeTypesRepresentation[typ] = rep
 }
 
 // getRep returns the representation for the given type.
 // Returns an error if the type is invalid.
-func (t *RepresentationTable) getRep(typ byte) byte {
+func (t *representationTable) getRep(typ byte) byte {
 	return t.nativeTypesRepresentation[typ]
 }
 
 // SetFlags sets the conversion flags for the TypeRepresentationTable.
-func (t *RepresentationTable) SetFlags(flags byte) {
+func (t *representationTable) SetFlags(flags byte) {
 	t.conversionFlags = flags
 }
 
 // getFlags returns the current conversion flags value.
-func (t *RepresentationTable) getFlags() byte {
+func (t *representationTable) getFlags() byte {
 	return t.conversionFlags
 }

@@ -50,11 +50,11 @@ const (
 )
 
 type eventService struct {
-	listeners map[eventType][]EventListener
+	listeners map[eventType][]eventListener
 }
 
-// EventListener handles posted connection events.
-type EventListener interface {
+// eventListener handles posted connection events.
+type eventListener interface {
 	// notify is called when a registered event type is posted.
 	//
 	// Parameters:
@@ -72,7 +72,7 @@ type EventListener interface {
 //   - *eventService: an initialized event dispatcher.
 func newEventService() *eventService {
 	return &eventService{
-		listeners: make(map[eventType][]EventListener),
+		listeners: make(map[eventType][]eventListener),
 	}
 }
 
@@ -83,7 +83,7 @@ func newEventService() *eventService {
 //   - event: the event type to subscribe to.
 //
 // Returns: none.
-func (s *eventService) register(listener EventListener, event eventType) {
+func (s *eventService) register(listener eventListener, event eventType) {
 	if listener == nil {
 		// nothing else we can do and this does not deserves to add error case
 		common.Odl.Warn("Event listener is nil")

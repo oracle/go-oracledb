@@ -45,7 +45,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -56,13 +55,13 @@ type connectionInstantiator struct {
 	dataBuffer           driverCommon.DataBuffer
 	ns                   driverCommon.NetworkSession
 	connectionProperties *oracleconfig.OracleDriverProperties
-	newConnection        func(context.Context, *ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext, driverCommon.NetworkSession) (*Connection, error)
+	newConnectionFunc    func(context.Context, *ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext, driverCommon.NetworkSession) (*connection, error)
 	localizationService  common.LocalizationService
 }
 
 // NewTTCConnectionInstantiator creates a new TTC connection instantiator
-func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns *session.NetworkSession) (driverCommon.ConnectionInstantiator, error) {
-	dataBuffer := driverCommon.DataBuffer(ns)
+func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession) (driverCommon.ConnectionInstantiator, error) {
+	dataBuffer := ns.(driverCommon.DataBuffer)
 	negotiator := GetNegotiator(dataBuffer)
 	localizationService := common.NewLocalizationService(config.Locale.ClientLanguage)
 
@@ -76,7 +75,7 @@ func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns *s
 		dataBuffer:           dataBuffer,
 		ns:                   ns,
 		connectionProperties: &config.DriverProperties,
-		newConnection:        NewConnection,
+		newConnectionFunc:    newConnection,
 		localizationService:  localizationService,
 	}, nil
 }
@@ -117,13 +116,9 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 	// snapshot session
 	sessCtx.GetSessionProperties().Snapshot()
 
-	// conn = drv.NewConnection(ctx, *c.config, sessCtx, shelf)
+	// conn = drv.newConnection(ctx, *c.config, sessCtx, shelf)
 	common.Odl.Debug("Connect end")
-	newConnection := connInstantiator.newConnection
-	if newConnection == nil {
-		newConnection = NewConnection
-	}
-	return newConnection(ctx, shelf, sessCtx, connInstantiator.ns)
+	return connInstantiator.newConnectionFunc(ctx, shelf, sessCtx, connInstantiator.ns)
 }
 
 // *** Authenticator Factory ***
@@ -157,12 +152,12 @@ func createPasswordAuthenticator(parameters *oracleconfig.OracleDriverConfig) (A
 	if len(parameters.Credentials.LogonMode) > 0 {
 		var mode, _ = common.GetLogonModeFromString(parameters.Credentials.LogonMode)
 		common.Odl.Debug(fmt.Sprintf("logonMode set to [%s]", mode))
-		return NewPasswordAuthenticatorWithLogonMode(parameters.Credentials.User,
+		return newPasswordAuthenticatorWithLogonMode(parameters.Credentials.User,
 			parameters.Credentials.Password,
 			mode,
 			parameters.ConnectDescriptor), nil
 	}
-	return NewPasswordAuthenticator(parameters.Credentials.User,
+	return newPasswordAuthenticator(parameters.Credentials.User,
 		parameters.Credentials.Password,
 		parameters.ConnectDescriptor), nil
 }
@@ -172,7 +167,7 @@ func createPasswordAuthenticator(parameters *oracleconfig.OracleDriverConfig) (A
 // GetNegotiator returns the default Negotiator implementation.
 // TODO : we should not have to pass the buffer here...
 func GetNegotiator(transport driverCommon.DataBuffer) Negotiator {
-	n := NewConnectionNegotiator()
+	n := newConnectionNegotiator()
 	n.SetDataBuffer(transport)
 	return n
 }

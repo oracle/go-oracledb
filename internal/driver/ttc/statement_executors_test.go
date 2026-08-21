@@ -47,7 +47,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -71,11 +70,11 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, NewOall)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, NewOall18)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, NewOexfen)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, NewOexfen18)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, newOexfen)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 
 	msgReg := NewRegistry[common.MessageType]()
-	_ = msgReg.Register(TTIOER, 14, NewTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	_ = msgReg.Register(TTIRXD, 0, newTTIrxd)
@@ -109,7 +108,7 @@ func makeVersatilePullShelf(failCode common.MessageType, errMsg string) *ttiShel
 // newExecTestShelf wires a Shelf with an in-memory marshaller and real MessageStreamer.
 func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStreamer, *ArrayBasedDataBuffer) {
 	buf := NewArrayDataBuffer(bufSize)
-	mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMarshaller(mar)
@@ -122,11 +121,11 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	// OALL8 response
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
 
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, NewOexfen)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, NewOexfen18)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, newOexfen)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 
 	msgReg := NewRegistry[common.MessageType]()
-	_ = msgReg.Register(TTIOER, 14, NewTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	_ = msgReg.Register(TTIRXD, 0, newTTIrxd)
@@ -181,7 +180,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(ColumnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil),
 	); err != nil {
@@ -200,7 +199,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 			shelf: shelf,
 		},
 		outDestPtrs: []any{dest},
-		outColumnContexts: []ColumnContext{
+		outColumnContexts: []columnContext{
 			{DataType: DtyVCS},
 		},
 	}
@@ -228,7 +227,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(ColumnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil),
 	); err != nil {
@@ -247,7 +246,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 			shelf: shelf,
 		},
 		outDestPtrs: []any{dest},
-		outColumnContexts: []ColumnContext{
+		outColumnContexts: []columnContext{
 			{DataType: DtyVCS},
 		},
 	}
@@ -753,11 +752,11 @@ func TestStatementExecutor_Select_Callback_GetMessage_RXD_Error_Integration(t *t
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, NewOall)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, NewOall18)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, NewOexfen)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, NewOexfen18)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, newOexfen)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 
 	msgReg := NewRegistry[common.MessageType]()
-	_ = msgReg.Register(TTIOER, 14, NewTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	// Intentionally omit TTIRXD registration
@@ -808,11 +807,11 @@ func TestStatementExecutor_Select_Callback_GetMessage_BVC_Error_Integration(t *t
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, NewOall)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, NewOall18)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, NewOexfen)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, NewOexfen18)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, newOexfen)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 
 	msgReg := NewRegistry[common.MessageType]()
-	_ = msgReg.Register(TTIOER, 14, NewTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	_ = msgReg.Register(TTIRXD, 0, newTTIrxd)
@@ -951,7 +950,7 @@ func TestStatementExecutor_Others_Factory_GetMessageForFunction_Error(t *testing
 
 	shelf := newShelf[common.MessageType]()
 	// Register a basic marshaller to satisfy downstream interfaces (won't be used due to early failure).
-	mar := NewMarshalEngine(NewArrayDataBuffer(256), session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(NewArrayDataBuffer(256), common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	shelf.RegisterMarshaller(mar)
 
 	f := &factoryForOall8{returnErr: errors.New("boom")}
@@ -978,7 +977,7 @@ func TestStatementExecutor_DML_Factory_GetMessageForFunction_Error(t *testing.T)
 	ctx := context.Background()
 
 	shelf := newShelf[common.MessageType]()
-	mar := NewMarshalEngine(NewArrayDataBuffer(256), session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(NewArrayDataBuffer(256), common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	shelf.RegisterMarshaller(mar)
 
 	f := &factoryForOall8{returnErr: errors.New("boom")}
@@ -1004,7 +1003,7 @@ func TestStatementExecutor_Select_Factory_GetMessageForFunction_Error(t *testing
 	ctx := context.Background()
 
 	shelf := newShelf[common.MessageType]()
-	mar := NewMarshalEngine(NewArrayDataBuffer(256), session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(NewArrayDataBuffer(256), common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	shelf.RegisterMarshaller(mar)
 
 	f := &factoryForOall8{returnErr: errors.New("boom")}
@@ -1030,7 +1029,7 @@ func TestStatementExecutor_PLSQL_Factory_GetMessageForFunction_Error(t *testing.
 	ctx := context.Background()
 
 	shelf := newShelf[common.MessageType]()
-	mar := NewMarshalEngine(NewArrayDataBuffer(256), session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(NewArrayDataBuffer(256), common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	shelf.RegisterMarshaller(mar)
 
 	f := &factoryForOall8{returnErr: errors.New("boom")}

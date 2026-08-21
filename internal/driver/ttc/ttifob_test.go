@@ -44,14 +44,13 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 func TestTTIFOB_MessageStreamerFlushesOnlyMessageCode(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	buf := NewArrayDataBuffer(8)
-	mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMarshaller(mar)
 	streamer := NewMessageStreamer(shelf)

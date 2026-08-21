@@ -74,11 +74,11 @@ func TestClobExecutor_ReadNCLOB(t *testing.T) {
 	ctx := context.Background()
 	wantMarshal, shelf, dbuf, marshalWritePosition := setUpReadScenario(t, nclobReadMarshalGoldenPayload, nclobReadResponseGoldenPayload, 131072)
 
-	lobExec := NewClobExecutor(shelf, newTestSessionContext())
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
 	totalRuneCapacity := int(nclobReadNumChars)
 	charOutBuffer := make([]rune, totalRuneCapacity)
 
-	readAmt, err := lobExec.Read(ctx, newLocator(nclobReadLocator, nclobReadOffset), nclobReadNumChars, nclobReadIsNCLOB, charOutBuffer)
+	readAmt, err := lobExec.read(ctx, newLocator(nclobReadLocator, nclobReadOffset), nclobReadNumChars, nclobReadIsNCLOB, charOutBuffer)
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
@@ -127,10 +127,10 @@ func TestClobExecutor_WriteNCLOB(t *testing.T) {
 		t.Fatalf("failed to build expected marshal payload: %v", err)
 	}
 
-	lobExec := NewClobExecutor(shelf, newTestSessionContext())
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
 	inputRunes := []rune(nclobExpectedString)
 
-	written, err := lobExec.Write(ctx, newLocator(locator, driverCommon.UB8(1)), true, inputRunes, len(inputRunes))
+	written, err := lobExec.write(ctx, newLocator(locator, driverCommon.UB8(1)), true, inputRunes, len(inputRunes))
 	if err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}

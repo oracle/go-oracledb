@@ -413,7 +413,7 @@ func TestHandleRXDRow_AssignsDecodedValue(t *testing.T) {
 
 	var dest string
 	exec.outDestPtrs = []any{&dest}
-	exec.outColumnContexts = []ColumnContext{
+	exec.outColumnContexts = []columnContext{
 		{Index: 0, DataType: DtyVCS},
 	}
 
@@ -443,7 +443,7 @@ func TestHandleRXDRow_NilDestinationSkipped(t *testing.T) {
 	}
 
 	exec.outDestPtrs = []any{nil} // nil destination
-	exec.outColumnContexts = []ColumnContext{
+	exec.outColumnContexts = []columnContext{
 		{Index: 0, DataType: DtyVCS},
 	}
 
@@ -472,7 +472,7 @@ func TestHandleRXDRow_MoreDestsThanReturnedValues(t *testing.T) {
 	var dest1 string = "sentinel1"
 	var dest2 string = "sentinel2"
 	exec.outDestPtrs = []any{&dest1, &dest2}
-	exec.outColumnContexts = []ColumnContext{
+	exec.outColumnContexts = []columnContext{
 		{Index: 0, DataType: DtyVCS},
 		{Index: 1, DataType: DtyVCS},
 	}
@@ -508,7 +508,7 @@ func TestHandleRXDRow_NilWireValue_SkipsAssignment(t *testing.T) {
 	}
 
 	exec.outDestPtrs = []any{new("original")}
-	exec.outColumnContexts = []ColumnContext{
+	exec.outColumnContexts = []columnContext{
 		{Index: 0, DataType: DtyVCS},
 	}
 
@@ -540,7 +540,7 @@ func TestHandleRXDRow_RawBytes_AssignedToByteSlice(t *testing.T) {
 
 	var dest []byte
 	exec.outDestPtrs = []any{&dest}
-	exec.outColumnContexts = []ColumnContext{
+	exec.outColumnContexts = []columnContext{
 		{Index: 0, DataType: DtyBin},
 	}
 

@@ -45,7 +45,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -133,7 +132,7 @@ var lobRpaWriteGoldenPayload = []string{
 func newLobRPAMarshaller(payload []byte) common.Marshaller {
 	buf := NewArrayDataBuffer(len(payload))
 	_ = buf.WriteBytesWithContext(context.Background(), payload)
-	return NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	return NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 }
 
 // -----------------------------------------------------------------------------

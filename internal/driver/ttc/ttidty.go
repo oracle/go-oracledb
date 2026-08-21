@@ -63,7 +63,7 @@ var _emptyTimeZoneBytes = []byte{0, 0, 0, 0}
 type tTIdty struct {
 	cliRIN                driverCommon.UB2 // Input character set code
 	cliROUT               driverCommon.UB2 // Output character set code
-	negotiatedCaps        *Capability
+	negotiatedCaps        *capability
 	negotiatedCapsMap     map[string]driverCommon.Capability
 	timeZoneVersionNumber byte
 }
@@ -82,7 +82,7 @@ func NewTTIdty() driverCommon.Message[driverCommon.MessageType] {
 
 // SetNegotiatedCapabilities sets client capabilities
 // must be set be for marshaling attemps
-func (p *tTIdty) SetNegotiatedCapabilities(caps *Capability) {
+func (p *tTIdty) SetNegotiatedCapabilities(caps *capability) {
 	// TODO : remove negotiatedCaps as it is not used
 	// TODO : it seems that we enter twice here
 	p.negotiatedCaps = caps

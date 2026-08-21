@@ -128,15 +128,15 @@ func (e *endOfCallStatus) String() string {
 		e.connectionShouldBeDropped)
 }
 
-// NewTTIoer creates a new instance of tTIoer.
-func NewTTIoer() driverCommon.Message[driverCommon.MessageType] {
+// newTTIoer creates a new instance of tTIoer.
+func newTTIoer() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIoer{
 		_supportsEndOfCallStatus: false,
 	}
 }
 
-// NewTTIoerWithEndOfCallStatusSupport creates a new instance of tTIoer that supports end of call status.
-func NewTTIoerWithEndOfCallStatusSupport() driverCommon.Message[driverCommon.MessageType] {
+// newTTIoerWithEndOfCallStatusSupport creates a new instance of tTIoer that supports end of call status.
+func newTTIoerWithEndOfCallStatusSupport() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIoer{
 		_supportsEndOfCallStatus: true,
 	}
@@ -148,7 +148,7 @@ func (o *tTIoer) GetMsgCode() driverCommon.MessageType {
 }
 
 // Init initializes or resets the tTIoer fields.
-func (o *tTIoer) Init() {
+func (o *tTIoer) init() {
 	o.retCode = 0
 	o.errorMsg = nil
 	o.oerepa = nil
@@ -511,7 +511,7 @@ func unmarshalEndOfCallStatus(ctx context.Context, mar driverCommon.Marshaller) 
 	return retVal, nil
 }
 
-// SetEocsCap sets End Of Call Status Capability
+// SetEocsCap sets End Of Call Status capability
 func (o *tTIoer) setSupportsEndOfCallStatus(supportsEndOfCallStatus bool) {
 	o._supportsEndOfCallStatus = supportsEndOfCallStatus
 }
@@ -580,12 +580,12 @@ func CRC64UpdateChecksumWithBytes(cs uint64, b []byte) uint64 {
 // RegisterOerWithCapability register OER messages that support end of call status on
 // message registry. Replaces the existing messages
 func RegisterOerWithCapability() {
-	err := MessageRegistry.Register(TTIOER, 14, NewTTIoer14WithEndOfCallStatusSupport)
+	err := MessageRegistry.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
 	if err != nil {
 		common.Odl.Debug("Failed to register message TTIOER version 2", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIOER, MinTTCProtocolVersion, NewTTIoerWithEndOfCallStatusSupport)
+	err = MessageRegistry.Register(TTIOER, MinTTCProtocolVersion, newTTIoerWithEndOfCallStatusSupport)
 	if err != nil {
 		common.Odl.Debug("Failed to register message TTIOER version 1", "error", err)
 	}

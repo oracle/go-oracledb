@@ -176,12 +176,12 @@ func TestOAuth_MarshalTo_Success(t *testing.T) {
 	t.Parallel()
 	oauth := NewOAuth().(*oAuth)
 	buf := NewArrayDataBuffer(1500)
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	// Set up minimal oAuth data
 	oauth.user = common.B1Array("testuser")
 	oauth.logonMode = KpzLogon
-	k := NewKeyValueList()
+	k := newKeyValueList()
 	k.PushBack(&common.KeyValue{Key: common.StringToB1Array("key"), Value: common.StringToB1Array("value")})
 	oauth.keyValList = k
 
@@ -205,7 +205,7 @@ func TestOAuth_MarshalTo_WithOSESSKEYRPA_Success(t *testing.T) {
 	rpa := NewOSesskeyRPA()
 	rpaBuf := NewArrayDataBuffer(8192)
 	_ = rpaBuf.WriteBytesWithContext(context.Background(), payload)
-	rpaEngine := NewMarshalEngine(rpaBuf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	rpaEngine := NewMarshalEngine(rpaBuf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	unmarshallable, _ := rpa.(common.UnMarshallable)
 	if err := unmarshallable.UnMarshalFrom(context.Background(), rpaEngine); err != nil {
 		t.Fatalf("UnMarshalFrom oSesskeyRPA failed: %v", err)
@@ -238,7 +238,7 @@ func TestOAuth_MarshalTo_WithOSESSKEYRPA_Success(t *testing.T) {
 
 	// 4) Marshal oAuth and assert bytes were produced
 	buf := NewArrayDataBuffer(8192)
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	if err := oauth.MarshalTo(context.Background(), engine); err != nil {
 		t.Fatalf("MarshalTo failed: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestOAuthMarshalTo_Fail(t *testing.T) {
 		{"Error Writing authovl PTR", 7, 0, "simulated write error", true},
 		{"Error Writing authovln PTR", 0, 3, "simulated write error", true},
 		{"Error Writing user bytes (WriteBytes)", 0, 4, "simulated write error", true},
-		{"Error Writing KeyValueList (WriteBytes)", 0, 5, "simulated write error", true},
+		{"Error Writing keyValueList (WriteBytes)", 0, 5, "simulated write error", true},
 	}
 
 	for _, tc := range cases {
@@ -290,7 +290,7 @@ func TestOAuthMarshalTo_Fail(t *testing.T) {
 			oauth := NewOAuth().(*oAuth)
 			oauth.user = common.StringToB1Array("testuser")
 			oauth.logonMode = KpzLogon
-			k := NewKeyValueList()
+			k := newKeyValueList()
 			k.PushBack(&common.KeyValue{Key: common.StringToB1Array("key"), Value: common.StringToB1Array("value")})
 
 			oauth.keyValList = k
@@ -300,7 +300,7 @@ func TestOAuthMarshalTo_Fail(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := oauth.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -328,7 +328,7 @@ func TestOAuth_prepareForOAUTH(t *testing.T) {
 		t.Errorf("Expected logonMode %d, got %d", KpzLogon|KpzPasswdEncrypted, oauth.logonMode)
 	}
 	if oauth.keyValList == nil || oauth.keyValList.Len() == 0 {
-		t.Error("KeyValueList not initialized")
+		t.Error("keyValueList not initialized")
 	}
 }
 
@@ -362,7 +362,7 @@ func TestOAuth_initializeLogonModeForOAUTH(t *testing.T) {
 func TestOAuth_setPasswordKeyValsForOAUTH(t *testing.T) {
 	t.Parallel()
 	oauth := NewOAuth().(*oAuth)
-	k := NewKeyValueList()
+	k := newKeyValueList()
 	oauth.keyValList = k
 
 	password := common.StringToB1Array("testpass")
@@ -404,7 +404,7 @@ func TestOAuth_setPasswordKeyValsForOAUTH(t *testing.T) {
 func TestOAuth_setPasswordKeyValsForOAUTH_WithEncryptedKB(t *testing.T) {
 	t.Parallel()
 	oauth := NewOAuth().(*oAuth)
-	k := NewKeyValueList()
+	k := newKeyValueList()
 	oauth.keyValList = k
 	oauth.encryptedKB = []byte("encryptedKB")
 
@@ -436,7 +436,7 @@ func TestOAuth_setPasswordKeyValsForOAUTH_WithEncryptedKB(t *testing.T) {
 func TestOAuth_setDriverIdentityKeyValsForOAUTH(t *testing.T) {
 	t.Parallel()
 	oauth := NewOAuth().(*oAuth)
-	k := NewKeyValueList()
+	k := newKeyValueList()
 	oauth.keyValList = k
 
 	edition := common.StringToB1Array("edition")
@@ -485,7 +485,7 @@ func TestOAuth_setDriverIdentityKeyValsForOAUTH(t *testing.T) {
 func TestOAuth_setAlterSessionKeyValsForOAUTH(t *testing.T) {
 	t.Parallel()
 	oauth := NewOAuth().(*oAuth)
-	k := NewKeyValueList()
+	k := newKeyValueList()
 	oauth.keyValList = k
 
 	oauth.alterSession = common.StringToB1Array("ALTER SESSION SET something")
@@ -596,7 +596,7 @@ func TestPasswordAuthenticatorValidatePasswordLength(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pa := NewPasswordAuthenticator("user", strings.Repeat("a", tc.length), "connect")
+			pa := newPasswordAuthenticator("user", strings.Repeat("a", tc.length), "connect")
 			err := pa.validatePasswordLength()
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("validatePasswordLength error = %v, wantErr %v", err, tc.wantErr)
@@ -704,7 +704,7 @@ func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
 	rpa := NewOAuthRPA()
 	buf := NewArrayDataBuffer(8192)
 	_ = buf.WriteBytesWithContext(context.Background(), payload)
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	unmarshallable, _ := rpa.(common.UnMarshallable)
 	if err := unmarshallable.UnMarshalFrom(context.Background(), engine); err != nil {
@@ -784,9 +784,9 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 					FailOnReadByteCall:   tc.failByte,
 					FailOnReadBytesCall:  tc.failBytes,
 				}
-				engine = NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+				engine = NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			} else {
-				engine = NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+				engine = NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			}
 			session.PrintPacket(payload, 0, len(payload))
 			rpa := NewOAuthRPA()
@@ -813,7 +813,7 @@ func TestOAuthRPA_UnMarshalFrom_Fail(t *testing.T) {
 	payload := []byte{0, 0, 0, 0} // nbPairs = 0
 	_ = buf.WriteBytesWithContext(context.Background(), payload)
 
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	err := rpa.UnMarshalFrom(context.Background(), engine)
 	if err == nil {
@@ -831,7 +831,7 @@ func TestOAuthRPA_UnMarshalFrom_Failure(t *testing.T) {
 	payload := []byte{1, 0} // nbPairs = 1, but no data
 	_ = buf.WriteBytesWithContext(context.Background(), payload)
 
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	err := rpa.UnMarshalFrom(context.Background(), engine)
 	if err == nil {

@@ -308,9 +308,9 @@ var (
 	zoneNameFromIDCache   = make(map[int]string)
 )
 
-// GetZoneFromID returns the IANA time zone name for a given Oracle region id.
+// getZoneFromID returns the IANA time zone name for a given Oracle region id.
 // The boolean indicates whether a mapping was found.
-func GetZoneFromID(id int) (string, bool) {
+func getZoneFromID(id int) (string, bool) {
 	zoneNameFromIDCacheMu.RLock()
 	if n, exists := zoneNameFromIDCache[id]; exists {
 		zoneNameFromIDCacheMu.RUnlock()
@@ -334,10 +334,10 @@ func GetZoneFromID(id int) (string, bool) {
 	return "", false
 }
 
-// GetIDFromZone returns the Oracle region id for a given IANA time zone name.
+// getIDFromZone returns the Oracle region id for a given IANA time zone name.
 // The boolean indicates whether a mapping was found. Matching is case sensitive to
 // honor canonical names; pass the exact zone string (e.g., "America/Los_Angeles").
-func GetIDFromZone(zone string) (int, bool) {
+func getIDFromZone(zone string) (int, bool) {
 	if id, exists := zoneIDFromName[zone]; exists {
 		return id, exists
 	}

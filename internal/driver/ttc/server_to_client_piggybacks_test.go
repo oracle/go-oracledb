@@ -44,7 +44,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -79,13 +78,13 @@ func TestRegisterServerToClientPiggybacks(t *testing.T) {
 	data.WriteByteWithContext(context.Background(), byte(TTIPRO))
 	data.WriteBytesWithContext(context.Background(), []byte{0x01, 0x0B, 0x01, 0x0C, 0x01, 0x0D})
 	// Register mock message for TTIRPRO
-	engine := NewMarshalEngine(data, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(data, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	// create factory and register messages
 	messageRegistry := NewRegistry[common.MessageType]()
 	messageRegistry.Register(TTIPRO, -1, NewMockTTIpro)
 	functionRegistry := NewRegistry[functionRegistryKey]()
-	functionRegistry.Register(functionRegistryKey{messageType: TTISPF, functionType: common.FunctionType(ocssync)}, -1, NewttiSPFOCSSync)
+	functionRegistry.Register(functionRegistryKey{messageType: TTISPF, functionType: common.FunctionType(ocssync)}, -1, newttiSPFOCSSync)
 	messageFactory := &SimpleFactory{msgregistry: messageRegistry, funcregistry: functionRegistry, ttcVersion: 25}
 
 	shelf := newShelf[common.MessageType]()
@@ -123,7 +122,7 @@ func TestHandleServerToClientPiggyback_ValidOCSSYNC(t *testing.T) {
 		sessionCtx: sessionCtx,
 	}
 
-	mockMsg := NewttiSPFOCSSync()
+	mockMsg := newttiSPFOCSSync()
 	mockMsg.(*ttiSPFOCSSync).keyValueArr = &keywordValueArray{
 		{keyword: 0, binaryValue: dynamicAllocatedArray{value: []byte("USD")}},
 	}

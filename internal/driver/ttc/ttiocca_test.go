@@ -45,7 +45,6 @@ import (
 	"testing"
 
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -120,7 +119,7 @@ func TestOcca_MarshalTo_Success(t *testing.T) {
 	}
 
 	buf := NewArrayDataBuffer(64)
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	if err := m.MarshalTo(context.Background(), engine); err != nil {
 		t.Fatalf("MarshalTo failed: %v", err)
@@ -148,7 +147,7 @@ func TestOcca_MarshalTo_EmptyCursorIDs(t *testing.T) {
 	}
 
 	buf := NewArrayDataBuffer(16)
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	if err := m.MarshalTo(context.Background(), engine); err != nil {
 		t.Fatalf("MarshalTo failed: %v", err)
@@ -191,7 +190,7 @@ func TestOcca_MarshalTo_Failures(t *testing.T) {
 		}
 
 		buf := NewArrayDataBuffer(16)
-		engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 		assertFailMarshal(t, m.MarshalTo(ctx, engine))
 	})
@@ -206,7 +205,7 @@ func TestOcca_MarshalTo_Failures(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(16),
 			FailOnWriteByteCall:  1, // MarshalPTR writes the first byte after the stub header
 		}
-		engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 		assertFailMarshal(t, m.MarshalTo(ctx, engine))
 	})
@@ -221,7 +220,7 @@ func TestOcca_MarshalTo_Failures(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(16),
 			FailOnWriteBytesCall: 1, // first WriteBytes call is the offset UB4
 		}
-		engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 		assertFailMarshal(t, m.MarshalTo(ctx, engine))
 	})
@@ -236,7 +235,7 @@ func TestOcca_MarshalTo_Failures(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(16),
 			FailOnWriteBytesCall: 2, // second WriteBytes call is the first cursor ID UB4
 		}
-		engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 		assertFailMarshal(t, m.MarshalTo(ctx, engine))
 	})

@@ -46,7 +46,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 func TestTTIdtyNew(t *testing.T) {
@@ -72,7 +71,7 @@ func TestTTIdtyMarshalTo_Success(t *testing.T) {
 		cliROUT = 0x5678
 	)
 	// Initialize with the correct sizes
-	caps := NewDefaultCapability()
+	caps := newDefaultCapability()
 	// Overwrite a few known bytes (at the front of the slices) for test
 	caps.compileTimeCapabilities[0] = 0xDE
 	caps.runTimeCapabilities[0] = 0xAC
@@ -84,7 +83,7 @@ func TestTTIdtyMarshalTo_Success(t *testing.T) {
 	}
 
 	tdb := NewArrayDataBuffer(16384)
-	mar := NewNativeMarshalEngine(tdb, session.BIG_ENDIAN)
+	mar := NewNativeMarshalEngine(tdb, common.BIG_ENDIAN)
 
 	err := dty.MarshalTo(context.Background(), mar)
 	written := tdb.bytes[:tdb.currentWritePosition]
@@ -114,7 +113,7 @@ func TestTTIdtyMarshalTo_Success(t *testing.T) {
 }
 
 func newTTIdtyWithCaps() *tTIdty {
-	caps := NewCapability()
+	caps := newCapability()
 	ttidty := NewTTIdty().(*tTIdty)
 	ttidty.SetNegotiatedCapabilities(caps)
 	ttidty.cliRIN = al32Utf8CharSet
@@ -164,10 +163,10 @@ func TestTTIdtyMarshalTo_Fail(t *testing.T) {
 			}
 
 			if tt.faulty != nil {
-				mar = NewNativeMarshalEngine(newFaultyBuffer(tt.faulty), session.BIG_ENDIAN)
+				mar = NewNativeMarshalEngine(newFaultyBuffer(tt.faulty), common.BIG_ENDIAN)
 			} else {
 				tdb := NewArrayDataBuffer(8192)
-				mar = NewNativeMarshalEngine(tdb, session.BIG_ENDIAN)
+				mar = NewNativeMarshalEngine(tdb, common.BIG_ENDIAN)
 			}
 			err := obj.MarshalTo(context.Background(), mar)
 			if tt.expectedErr != "" {
@@ -187,7 +186,7 @@ func TestTTIdtyMarshalTo_Fail(t *testing.T) {
 func TestTTIdtyGetters(t *testing.T) {
 	t.Parallel()
 	// Use real capability initialization to prevent slice out of range errors
-	caps := NewCapability()
+	caps := newCapability()
 	const ttcVer byte = 42
 	index := caps.knownUsedCompileTimeCapabilities[kpccapCtTtcFldVsn].index
 	caps.compileTimeCapabilities[index] = ttcVer
@@ -216,7 +215,7 @@ func TestTTIdtyUnmarshalFrom_Success(t *testing.T) {
 	ctx := context.Background()
 	buf := NewArrayDataBuffer(16)
 	u := &tTIdty{}
-	cap := NewCapability()
+	cap := newCapability()
 	// This test only works with kpccapRtTzEx not set
 	cap.runTimeCapabilities[cap.knownUsedRuntimeCapabilities[kpccapRtTzEx].index] = 0
 	u.SetNegotiatedCapabilities(cap) // Ensure capabilities are set before unmarshalling
@@ -225,7 +224,7 @@ func TestTTIdtyUnmarshalFrom_Success(t *testing.T) {
 	testBytes := []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x00}
 	_ = buf.WriteBytesWithContext(ctx, testBytes)
 
-	mar := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+	mar := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 
 	err := u.UnMarshalFrom(ctx, mar)
 	if err != nil {
@@ -258,7 +257,7 @@ func TestTTIdtyUnmarshalFrom_Failure(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u := &tTIdty{}
 			if tc.setCaps {
-				u.SetNegotiatedCapabilities(NewCapability())
+				u.SetNegotiatedCapabilities(newCapability())
 			}
 
 			var buf common.DataBuffer
@@ -278,7 +277,7 @@ func TestTTIdtyUnmarshalFrom_Failure(t *testing.T) {
 				_ = buf.WriteBytesWithContext(ctx, []byte{0x02, 0x00})
 			}
 
-			mar := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+			mar := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 
 			err := u.UnMarshalFrom(ctx, mar)
 			if err == nil {

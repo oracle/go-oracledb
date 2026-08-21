@@ -43,7 +43,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 // authPacketDump is the decoded, comparison-oriented representation of an
@@ -96,7 +95,7 @@ func parseLegacyAuthPacketDump(t *testing.T, payload []byte) authPacketDump {
 //
 // The decoder reads the function header and PISDEF metadata first, consumes the
 // optional username using the length declared by PISDEF, and then unmarshals the
-// declared number of key/value pairs with the production KeyValueList decoder.
+// declared number of key/value pairs with the production keyValueList decoder.
 // Username bytes are consumed but discarded because they are runtime-specific.
 // All other decoded fields are returned in wire order, and trailing bytes are
 // rejected so a malformed or partially decoded packet cannot pass silently.
@@ -114,7 +113,7 @@ func parseAuthPacketDump(t *testing.T, payload []byte) authPacketDump {
 		currentReadPosition:  0,
 	}
 
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, defaultAuthMarshallerTypes)
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, defaultAuthMarshallerTypes)
 	ctx := context.Background()
 
 	funcCode, err := engine.UnmarshalUB1(ctx)
@@ -192,8 +191,8 @@ func parseAuthPacketDump(t *testing.T, payload []byte) authPacketDump {
 		currentWritePosition: len(keyValueBytes),
 		currentReadPosition:  0,
 	}
-	engineKV := NewMarshalEngine(payloadBuf, session.BIG_ENDIAN, defaultAuthMarshallerTypes)
-	list := NewPreallocatedKeyValueList(keyValueCount)
+	engineKV := NewMarshalEngine(payloadBuf, common.BIG_ENDIAN, defaultAuthMarshallerTypes)
+	list := newPreallocatedKeyValueList(keyValueCount)
 	if err := list.UnMarshalFrom(ctx, engineKV); err != nil {
 		t.Fatalf("unmarshal key-value list failed: %v", err)
 	}

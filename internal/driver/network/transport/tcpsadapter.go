@@ -51,9 +51,9 @@ import (
 	"unicode/utf8"
 )
 
-// NTTCPS represents a TCPS network transport adapter
-type NTTCPS struct {
-	NTTCP
+// nttcps represents a TCPS network transport adapter
+type nttcps struct {
+	nttcp
 	config          *tls.Config
 	tcpStream       net.Conn
 	doDNMatch       bool
@@ -62,19 +62,19 @@ type NTTCPS struct {
 	rootCAs         *x509.CertPool
 }
 
-func NewNTTCPS(atts NTattributes) *NTTCPS {
-	return &NTTCPS{
-		NTTCP: NTTCP{Atts: atts},
+func NewNTTCPS(atts NTattributes) *nttcps {
+	return &nttcps{
+		nttcp: nttcp{atts: atts},
 	}
 }
 
 // Connect establishes a TLS connection
-func (nt *NTTCPS) Connect(ctx context.Context, address Address) error {
-	nt.OriginHost = address.OriginHost
-	if err := nt.NTTCP.Connect(ctx, address); err != nil { // Establish a TCP connection
+func (nt *nttcps) Connect(ctx context.Context, address Address) error {
+	nt.originHost = address.OriginHost
+	if err := nt.nttcp.Connect(ctx, address); err != nil { // Establish a TCP connection
 		return err
 	}
-	nt.tcpStream = nt.Stream
+	nt.tcpStream = nt.stream
 	cleanupOnError := func() {
 		nt.Clear()
 		_ = nt.Disconnect()
@@ -109,7 +109,7 @@ func (nt *NTTCPS) Connect(ctx context.Context, address Address) error {
 
 		rootCAs := nt.rootCAs
 		if rootCAs == nil {
-			if !nt.Atts.UseSystemTrust {
+			if !nt.atts.UseSystemTrust {
 				return fmt.Errorf("no trusted CA certificates configured")
 			}
 
@@ -134,7 +134,7 @@ func (nt *NTTCPS) Connect(ctx context.Context, address Address) error {
 			return fmt.Errorf("unauthorized server certificate: %w", err)
 		}
 
-		if nt.Atts.SSLServerDNMatch && nt.doDNMatch {
+		if nt.atts.SSLServerDNMatch && nt.doDNMatch {
 			if err := nt.verifyServerDN(certs[0]); err != nil {
 				return fmt.Errorf("DN match failed: %w", err)
 			}
@@ -143,22 +143,22 @@ func (nt *NTTCPS) Connect(ctx context.Context, address Address) error {
 		return nil
 	}
 
-	if nt.Atts.SSLAllowWeakDNMatch {
+	if nt.atts.SSLAllowWeakDNMatch {
 		nt.doDNMatch = false
 	} else {
 		nt.doDNMatch = true
 	}
 
-	nt.Stream = tls.Client(nt.tcpStream, nt.config)
+	nt.stream = tls.Client(nt.tcpStream, nt.config)
 
 	return nil
 }
 
-func (nt *NTTCPS) VerifyPostAcceptDNMatch() error {
-	if !nt.Atts.SSLServerDNMatch || !nt.Atts.SSLAllowWeakDNMatch || nt.doDNMatch {
+func (nt *nttcps) VerifyPostAcceptDNMatch() error {
+	if !nt.atts.SSLServerDNMatch || !nt.atts.SSLAllowWeakDNMatch || nt.doDNMatch {
 		return nil
 	}
-	tlsConn, ok := nt.Stream.(*tls.Conn)
+	tlsConn, ok := nt.stream.(*tls.Conn)
 	if !ok {
 		return fmt.Errorf("TCPS stream is not TLS")
 	}
@@ -178,28 +178,28 @@ func (nt *NTTCPS) VerifyPostAcceptDNMatch() error {
 	return nil
 }
 
-func (nt *NTTCPS) verifyServerDN(cert *x509.Certificate) error {
-	if nt.Atts.SSLServerCertDN != "" {
-		return verifyDN(cert, nt.Atts.SSLServerCertDN)
+func (nt *nttcps) verifyServerDN(cert *x509.Certificate) error {
+	if nt.atts.SSLServerCertDN != "" {
+		return verifyDN(cert, nt.atts.SSLServerCertDN)
 	}
 
-	err := cert.VerifyHostname(nt.Hostname)
-	if err != nil && nt.OriginHost != "" {
-		err = cert.VerifyHostname(nt.OriginHost)
+	err := cert.VerifyHostname(nt.hostname)
+	if err != nil && nt.originHost != "" {
+		err = cert.VerifyHostname(nt.originHost)
 	}
-	if err != nil && nt.Atts.SSLAllowWeakDNMatch && nt.Atts.Servicename == cert.Subject.CommonName {
+	if err != nil && nt.atts.SSLAllowWeakDNMatch && nt.atts.Servicename == cert.Subject.CommonName {
 		return nil
 	}
 	return err
 }
 
 // Perform TLS Handshake to establish a TLS connection
-func (nt *NTTCPS) TLSReneg() {
-	nt.Stream = tls.Client(nt.tcpStream, nt.config)
+func (nt *nttcps) TLSReneg() {
+	nt.stream = tls.Client(nt.tcpStream, nt.config)
 }
 
 // Clear out sensitive data
-func (nt *NTTCPS) Clear() {
+func (nt *nttcps) Clear() {
 	if nt.config != nil && len(nt.config.Certificates) > 0 {
 		nt.config.Certificates[0].PrivateKey = nil
 		nt.config.Certificates = nil
@@ -213,14 +213,14 @@ func (nt *NTTCPS) Clear() {
 	nt.rootCAs = nil
 }
 
-func (nt *NTTCPS) Disconnect() error {
-	err := nt.NTTCP.Disconnect()
+func (nt *nttcps) Disconnect() error {
+	err := nt.nttcp.Disconnect()
 	nt.tcpStream = nil
 	return err
 }
 
 // Process the PEM wallet
-func (nt *NTTCPS) processWallet() error {
+func (nt *nttcps) processWallet() error {
 	if nt.walletProcessed {
 		return nil
 	}
@@ -229,8 +229,8 @@ func (nt *NTTCPS) processWallet() error {
 	var clientCert tls.Certificate
 	var rootCAs *x509.CertPool
 	var err error
-	walletContent := nt.Atts.WalletContent
-	password := nt.Atts.WalletPassword
+	walletContent := nt.atts.WalletContent
+	password := nt.atts.WalletPassword
 
 	rest := walletContent
 	for {
@@ -268,7 +268,7 @@ func (nt *NTTCPS) processWallet() error {
 				return fmt.Errorf("missing wallet password for encrypted private key; set oracle.go.wallet_password")
 			}
 			// Pass the *pem.Block directly
-			privateKey, err := ParsePKCS8EncryptedPrivateKey(block, []byte(password))
+			privateKey, err := parsePKCS8EncryptedPrivateKey(block, []byte(password))
 			if err != nil {
 				return fmt.Errorf("decrypt encrypted private key: %w", err)
 			}
@@ -315,7 +315,7 @@ func (nt *NTTCPS) processWallet() error {
 	rootCAPEM = nil
 	nt.rootCAs = rootCAs
 	nt.walletProcessed = true
-	nt.Atts.WalletContent = nil
+	nt.atts.WalletContent = nil
 	return nil
 }
 

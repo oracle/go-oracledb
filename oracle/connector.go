@@ -54,8 +54,8 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns *session.NetworkSession) (driverCommon.ConnectionInstantiator, error)
-type ConnCreator func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (*session.NetworkSession, error)
+type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession) (driverCommon.ConnectionInstantiator, error)
+type ConnCreator func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error)
 
 // connector implements the database/sql/driver.connector interface for Oracle databases,
 // allowing connections to Oracle via Go's standard database/sql package.
@@ -95,7 +95,7 @@ func newOracleConnector(cfg *naming.ParsedConfig, drvConfig *oracleconfig.Oracle
 // It opens a wire-level Oracle connection, performs authentication, and configures the session.
 func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	var err error
-	var ns *session.NetworkSession
+	var ns driverCommon.NetworkSession
 	var savedErr error                       // last error raised during attempt loop
 	var savedOption *naming.ConnectionOption // last option tried during attempt loop
 	isNsConnected := false
@@ -141,18 +141,19 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 				"option",
 				option)
 		}
-		if option.Description != nil && option.Description.ConnectTimeout > 0 {
+		desc := option.Description
+		if desc != nil && desc.ConnectTimeout > 0 {
 			// take precedence over the passed context if it is a shorter timeout
 			tctxToBeUsed, tCancelToBeUsed =
-				context.WithTimeoutCause(tctxToBeUsed, time.Duration(option.Description.ConnectTimeout)*time.Millisecond,
-					common.NewCtxTimeoutCauseError("ConnectTimeout", uint(option.Description.ConnectTimeout),
+				context.WithTimeoutCause(tctxToBeUsed, time.Duration(desc.ConnectTimeout)*time.Millisecond,
+					common.NewCtxTimeoutCauseError("ConnectTimeout", uint(desc.ConnectTimeout),
 						sessionUid))
 			defer tCancelToBeUsed()
 		}
 		ns, err = c.connCreator(tctxToBeUsed, option, sessionUid)
 		if err == nil {
 			// the network session has successfully connected, it should be
-			// disconnected the the connection establishment fails.
+			// disconnected the connection establishment fails.
 			isNsConnected = true
 			savedErr = nil
 			savedOption = nil

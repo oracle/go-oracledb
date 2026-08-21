@@ -55,7 +55,7 @@ import (
 func TestTransactionCommitSuccess(t *testing.T) {
 	t.Parallel()
 	messageRegistry := NewRegistry[common.MessageType]()
-	messageRegistry.Register(TTIOER, 1, NewTTIoer)
+	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: commit}, 1, newCommit)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
@@ -173,7 +173,7 @@ func TestTransactionCommitSuccess(t *testing.T) {
 func TestTransactionRollbackSuccess(t *testing.T) {
 	t.Parallel()
 	messageRegistry := NewRegistry[common.MessageType]()
-	messageRegistry.Register(TTIOER, 1, NewTTIoer)
+	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 1, newRollback)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
@@ -279,7 +279,7 @@ func TestCallBeginTxTwice(t *testing.T) {
 	t.Parallel()
 	mockNs := &mockNetworkSession{disconnectCalls: 0, disconnectErr: nil, sleepDuration: 0}
 	messageRegistry := NewRegistry[common.MessageType]()
-	messageRegistry.Register(TTIOER, 1, NewTTIoer)
+	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: logOff}, 1, newLogOff)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 1, newRollback)

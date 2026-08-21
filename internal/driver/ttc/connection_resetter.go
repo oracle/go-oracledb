@@ -49,7 +49,7 @@ import (
 // - Closes statements that have been left open
 // - Resets session properties
 // - Flushes piggyback messages
-func (c *Connection) ResetSession(ctx context.Context) error {
+func (c *connection) ResetSession(ctx context.Context) error {
 	common.Odl.Debug("ResetSession called", "cnx", (*c).String())
 
 	if c._isClosed || !c._isValid {

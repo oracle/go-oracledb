@@ -50,8 +50,8 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// KeyValueList Key-Value pair list. a list.List of *common.KeyValue
-type KeyValueList struct {
+// keyValueList Key-Value pair list. a list.List of *common.KeyValue
+type keyValueList struct {
 	*list.List
 }
 
@@ -60,7 +60,7 @@ const (
 	maxAuthKeyValueValueLength = 1024 * 10
 )
 
-func (kvl KeyValueList) String() string {
+func (kvl keyValueList) String() string {
 	res := strings.Builder{}
 	res.WriteString("(")
 	for kv := kvl.Front(); kv != nil; kv = kv.Next() {
@@ -71,7 +71,7 @@ func (kvl KeyValueList) String() string {
 	return res.String()
 }
 
-func (kvl KeyValueList) Equals(okvl *KeyValueList) bool {
+func (kvl keyValueList) Equals(okvl *keyValueList) bool {
 	if okvl == nil {
 		return false
 	}
@@ -88,11 +88,11 @@ func (kvl KeyValueList) Equals(okvl *KeyValueList) bool {
 	return true
 }
 
-func NewKeyValueList() *KeyValueList {
-	return &KeyValueList{List: list.New()}
+func newKeyValueList() *keyValueList {
+	return &keyValueList{List: list.New()}
 }
-func NewPreallocatedKeyValueList(count int) *KeyValueList {
-	result := &KeyValueList{List: list.New()}
+func newPreallocatedKeyValueList(count int) *keyValueList {
+	result := &keyValueList{List: list.New()}
 	if count > 0 {
 		for range count {
 			result.PushFront(nil)
@@ -120,7 +120,7 @@ func validateAuthKeyValueLength(field string, length driverCommon.SB4, limit int
 //
 // Returns:
 //   - An error if the marshaling operation fails.
-func (keyValueList *KeyValueList) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
+func (keyValueList *keyValueList) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
 	var size int
 	for kv := keyValueList.Front(); kv != nil; kv = kv.Next() {
 		size = len(kv.Value.(*driverCommon.KeyValue).Key)
@@ -159,7 +159,7 @@ func (keyValueList *KeyValueList) MarshalTo(ctx context.Context, engine driverCo
 	return nil
 }
 
-// UnMarshalFrom unmarshals a KeyValueList. Key-value pairs are decoded as
+// UnMarshalFrom unmarshals a keyValueList. Key-value pairs are decoded as
 // follows for each key-value pair:
 //   - the length of the kay is unmarshalled (SB4)
 //   - if the length of the key is greater than zero, the key is unmarshalled
@@ -172,7 +172,7 @@ func (keyValueList *KeyValueList) MarshalTo(ctx context.Context, engine driverCo
 //
 // Returns:
 //   - An error if the unmarshalling operation fails.
-func (keyValueList *KeyValueList) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (keyValueList *keyValueList) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 
 	for e := keyValueList.Front(); e != nil; e = e.Next() {
 		// Unmarshal key length
@@ -346,7 +346,7 @@ func (dalc *dynamicAllocatedArray) UnMarshalFrom(ctx context.Context, engine dri
 	return nil
 }
 
-// GetKeyValueFromKeyword translates a TTISPF OCSSYNC keyword/value pair into a session
+// getKeyValueFromKeyword translates a TTISPF OCSSYNC keyword/value pair into a session
 // property key and a decoded value that can be placed into Properties.
 //
 // Returned tuple:
@@ -354,7 +354,7 @@ func (dalc *dynamicAllocatedArray) UnMarshalFrom(ctx context.Context, engine dri
 //   - value: the decoded value (usually string), ready to be stored as a property value
 //
 // Any unhandled keyword returns ("", nil).
-func GetKeyValueFromKeyword(nlsKeys [64]string, keyword keywordValuePair) (string, any) {
+func getKeyValueFromKeyword(nlsKeys [64]string, keyword keywordValuePair) (string, any) {
 	intValue := keyword.keyword
 	binaryValue := keyword.binaryValue
 	textValue := keyword.textValue
@@ -377,7 +377,7 @@ func GetKeyValueFromKeyword(nlsKeys [64]string, keyword keywordValuePair) (strin
 				// then 6 low bits from v[3] (mask 0xFC) shifted down by 2
 				regid := (int(v[2]) & 0x7F) << 6
 				regid += (int(v[3]) & 0xFC) >> 2
-				if name, ok := GetZoneFromID(regid); ok {
+				if name, ok := getZoneFromID(regid); ok {
 					regionName = name
 				}
 

@@ -58,7 +58,7 @@ const (
 
 // Begin starts and returns a new transaction with isolation level read
 // committed.
-func (c *Connection) Begin() (driver.Tx, error) {
+func (c *connection) Begin() (driver.Tx, error) {
 	context := context.Background()
 	opts := driver.TxOptions{
 		Isolation: driver.IsolationLevel(sql.LevelReadCommitted),
@@ -68,7 +68,7 @@ func (c *Connection) Begin() (driver.Tx, error) {
 }
 
 // BeginTx starts and returns a new transaction.
-func (c *Connection) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+func (c *connection) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
 	common.Odl.Debug("Starting transaction")
 
 	if c.shelf.isInTransaction() {

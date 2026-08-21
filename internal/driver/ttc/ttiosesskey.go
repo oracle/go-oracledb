@@ -72,7 +72,7 @@ func isValidPBKDF2SderCount(count int) bool {
 type oSessionKey struct {
 	// header is the TTC-compatible envelope that emits the oSesskey function metadata.
 	header              driverCommon.Marshallable
-	keyValList          *KeyValueList
+	keyValList          *keyValueList
 	currentTTCSeqNumber uint8
 	sessionTimeZone     string
 
@@ -226,7 +226,7 @@ func (sess *oSessionKey) buildKeyValueList() {
 
 	sess.logonMode = sess.logonMode | KpzLogon
 
-	sess.keyValList = NewKeyValueList()
+	sess.keyValList = newKeyValueList()
 	sess.keyValList.PushBackList(_keyValStaticInfoForOsesskey)
 
 }
@@ -265,7 +265,7 @@ func (rpa *oSesskeyRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.M
 	if err = validateAuthKeyValueLength("pairs", driverCommon.SB4(outNbPairs), maxAuthKeyValuePairs); err != nil {
 		return err
 	}
-	keyValueList := NewPreallocatedKeyValueList(int(outNbPairs))
+	keyValueList := newPreallocatedKeyValueList(int(outNbPairs))
 
 	err = keyValueList.UnMarshalFrom(ctx, engine)
 	if err != nil {

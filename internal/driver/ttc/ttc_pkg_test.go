@@ -54,7 +54,6 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 // TestCategory category of tests to be un
@@ -429,8 +428,8 @@ var testCases = []struct {
 	{"TestGetZoneFromID_Found", "unitary", false, TestGetZoneFromID_Found},
 	{"TestGetZoneFromID_NotFound", "unitary", false, TestGetZoneFromID_NotFound},
 	{"TestZoneMaps_Sanity", "unitary", false, TestZoneMaps_Sanity},
-	{"TestCodecFactory_GetEncoder", "unitary", false, TestCodecFactory_GetEncoder},
-	{"TestCodecFactory_GetDecoder", "unitary", false, TestCodecFactory_GetDecoder},
+	{"TestCodecFactory_getEncoder", "unitary", false, TestCodecFactory_getEncoder},
+	{"TestCodecFactory_getDecoder", "unitary", false, TestCodecFactory_getDecoder},
 	{"TestCodecFactory_RegisterEncoderGeneric", "unitary", false, TestCodecFactory_RegisterEncoderGeneric},
 	{"TestTTIShelf_NewShelf", "unitary", false, TestTTIShelf_NewShelf},
 	{"TestTTIShelf_RegisterCodecFactoryAndGetter", "unitary", false, TestTTIShelf_RegisterCodecFactoryAndGetter},
@@ -486,8 +485,8 @@ var testCases = []struct {
 	{"TestNeedToSendOACs_CountChanged", "unitary", false, TestNeedToSendOACs_CountChanged},
 
 	{"TestAuthRPARejectsOversizedKeyValueListAllocations", "unitary", false, TestAuthRPARejectsOversizedKeyValueListAllocations},
-	{"TestCodecFactory_GetBindOac", "unitary", false, TestCodecFactory_GetBindOac},
-	{"TestCodecFactory_GetDefineOac", "unitary", false, TestCodecFactory_GetDefineOac},
+	{"TestCodecFactory_getBindOac", "unitary", false, TestCodecFactory_getBindOac},
+	{"TestCodecFactory_getDefineOac", "unitary", false, TestCodecFactory_getDefineOac},
 	{"TestConnectionResetter_Reset", "unitary", false, TestConnectionResetter_Reset},
 	{"TestConnection_ExecContext_LocalizesError", "unitary", false, TestConnection_ExecContext_LocalizesError},
 	{"TestConnection_LocalizationStaysBoundToEachShelf", "unitary", false, TestConnection_LocalizationStaysBoundToEachShelf},
@@ -750,9 +749,9 @@ func (f *FaultyArrayBasedDataBuffer) ReadByteWithContext(ctx context.Context) (b
 }
 
 // NewMarshalEngineTest creates a new MarshalEngine for testing purposes.
-func NewMarshalEngineTest(byteOrder session.ByteOrder, typ byte, rep byte, bufSize int) (*ArrayBasedDataBuffer, *MarshalEngine) {
+func NewMarshalEngineTest(byteOrder common.ByteOrder, typ byte, rep byte, bufSize int) (*ArrayBasedDataBuffer, *MarshalEngine) {
 	dataBuffer := NewArrayDataBuffer(bufSize)
-	typeRep := NewTypeRep()
+	typeRep := newTypeRep()
 	typeRep.setRep(typ, rep)
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{rep, rep, rep, rep, rep})
 	return dataBuffer, engine
@@ -838,11 +837,11 @@ func createMarshaller(buf []byte, failOn FailOn, callCount int) common.Marshalle
 		case failOnWriteBytes:
 			faulty.FailOnWriteBytesCall = callCount
 		}
-		return NewMarshalEngine(faulty, session.BIG_ENDIAN, rep)
+		return NewMarshalEngine(faulty, common.BIG_ENDIAN, rep)
 	}
 	tdb := NewTestDataBuffer()
 	tdb.WriteBytesWithContext(context.Background(), buf)
-	mar := NewMarshalEngine(tdb, session.BIG_ENDIAN, rep)
+	mar := NewMarshalEngine(tdb, common.BIG_ENDIAN, rep)
 	return mar
 }
 
@@ -1080,8 +1079,8 @@ func newTestConnection(
 	shelf *ttiShelf[common.MessageType],
 	sessCtx *common.SessionContext,
 	ns common.NetworkSession,
-) *Connection {
-	conn := &Connection{
+) *connection {
+	conn := &connection{
 		shelf:     shelf,
 		sessCtx:   sessCtx,
 		ns:        ns,

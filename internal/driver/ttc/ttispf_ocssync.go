@@ -86,10 +86,10 @@ func (spf *ttiSPFOCSSync) GetNlsKeys() [64]string {
 	return _lsKeys
 }
 
-// NewttiSPFOCSSync allocates a new receiver for TTISPF/OCSSYNC payloads.
+// newttiSPFOCSSync allocates a new receiver for TTISPF/OCSSYNC payloads.
 // The returned value implements common.Message and is intended to be populated
 // via UnMarshalFrom by the MessageStreamer.
-func NewttiSPFOCSSync() driverCommon.Message[driverCommon.MessageType] {
+func newttiSPFOCSSync() driverCommon.Message[driverCommon.MessageType] {
 	return &ttiSPFOCSSync{}
 }
 
@@ -165,11 +165,11 @@ func (spf *ttiSPFOCSSync) getKeyValueArr() *driverCommon.Properties[string] {
 
 	// Build a Properties view from the keyword/value array.
 	for _, kv := range *spf.keyValueArr {
-		key, value := GetKeyValueFromKeyword(spf.GetNlsKeys(), kv)
+		key, value := getKeyValueFromKeyword(spf.GetNlsKeys(), kv)
 		if key != "" {
 			props.SetProperty(key, value)
 		} else {
-			common.Odl.Debug("For keyword %d GetKeyValueFromKeyword returned empty string",
+			common.Odl.Debug("For keyword %d getKeyValueFromKeyword returned empty string",
 				"key", kv.keyword)
 		}
 

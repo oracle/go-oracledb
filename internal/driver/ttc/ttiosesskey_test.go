@@ -46,7 +46,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 // TestOSesskeyNew asserts that NewOSesskey returns a valid, non-nil object.
@@ -80,7 +79,7 @@ func TestOSesskeyMarshalTo_Success(t *testing.T) {
 			}
 			sess.(*oSessionKey).logonMode = tc.logonMode
 			buf := NewArrayDataBuffer(1024)
-			engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			marshallable, _ := sess.(common.Marshallable)
 			err := marshallable.MarshalTo(context.Background(), engine)
 			if err != nil {
@@ -106,7 +105,7 @@ func TestOSesskeyMarshalTo_GoldenMatch(t *testing.T) {
 
 	// Marshal using specified engine configuration
 	buf := NewArrayDataBuffer(1024)
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	marshallable, _ := want.(common.Marshallable)
 	if err := marshallable.MarshalTo(context.Background(), engine); err != nil {
 		t.Fatalf("MarshalTo failed: %v", err)
@@ -161,7 +160,7 @@ func TestOSesskeyMarshalTo_Fail(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			marshallable, _ := sess.(common.Marshallable)
 			err := marshallable.MarshalTo(context.Background(), engine)
 			if err == nil {
@@ -248,7 +247,7 @@ func TestOSesskeyRPAUnMarshalFrom_Success(t *testing.T) {
 	rpa := NewOSesskeyRPA()
 	buf := NewArrayDataBuffer(1024)
 	buf.WriteBytesWithContext(context.Background(), payload)
-	engine := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 	unmarshallable, _ := rpa.(common.UnMarshallable)
 	err := unmarshallable.UnMarshalFrom(context.Background(), engine)
 	if err != nil {
@@ -332,7 +331,7 @@ func TestOSesskeyRPAUnMarshalFrom_Fail(t *testing.T) {
 				FailOnReadBytesCall:  tc.failBytes,
 			}
 
-			engine := NewMarshalEngine(faulty, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			unmarshallable, _ := rpa.(common.UnMarshallable)
 
 			// zsession.PrintPacket(tc.payload, 0, len(tc.payload))
@@ -411,7 +410,7 @@ func TestOSesskeyRPAGetters(t *testing.T) {
 	rpa := NewOSesskeyRPA()
 	buf := NewArrayDataBuffer(1024)
 	buf.WriteBytesWithContext(context.Background(), payload)
-	engine := NewNativeMarshalEngine(buf, session.BIG_ENDIAN)
+	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 	unmarshallable, _ := rpa.(common.UnMarshallable)
 	err := unmarshallable.UnMarshalFrom(context.Background(), engine)
 	if err != nil {
@@ -462,7 +461,7 @@ func TestOSesskeyRPAUnMarshalFrom_Golden(t *testing.T) {
 	rpa := NewOSesskeyRPA()
 	buf := NewArrayDataBuffer(4096)
 	buf.WriteBytesWithContext(context.Background(), payload)
-	engine := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	unmarshallable, _ := rpa.(common.UnMarshallable)
 	if err := unmarshallable.UnMarshalFrom(context.Background(), engine); err != nil {

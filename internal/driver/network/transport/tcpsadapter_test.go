@@ -33,7 +33,7 @@ func TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared(t *testing.
 	if !nt.walletProcessed {
 		t.Fatal("expected wallet to be marked processed")
 	}
-	if nt.Atts.WalletContent != nil {
+	if nt.atts.WalletContent != nil {
 		t.Fatal("expected raw wallet content to be cleared after processing")
 	}
 	if nt.rootCAs == nil {
@@ -91,8 +91,8 @@ func TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate(t *testing.T) {
 		SSLServerDNMatch:    true,
 		SSLAllowWeakDNMatch: true,
 	})
-	nt.Stream = tlsConn
-	nt.Hostname = "db.example.com"
+	nt.stream = tlsConn
+	nt.hostname = "db.example.com"
 
 	if err := nt.VerifyPostAcceptDNMatch(); err != nil {
 		t.Fatalf("post-accept DN match failed: %v", err)
@@ -108,8 +108,8 @@ func TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate(t *testi
 		SSLServerDNMatch:    true,
 		SSLAllowWeakDNMatch: true,
 	})
-	nt.Stream = tlsConn
-	nt.Hostname = "other.example.com"
+	nt.stream = tlsConn
+	nt.hostname = "other.example.com"
 
 	err := nt.VerifyPostAcceptDNMatch()
 	if err == nil {
@@ -130,8 +130,8 @@ func TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback(t *testing.T) 
 		SSLAllowWeakDNMatch: true,
 		Servicename:         "service-name",
 	})
-	nt.Stream = tlsConn
-	nt.Hostname = "other.example.com"
+	nt.stream = tlsConn
+	nt.hostname = "other.example.com"
 
 	if err := nt.VerifyPostAcceptDNMatch(); err != nil {
 		t.Fatalf("expected post-accept weak service-name fallback to pass, got %v", err)
@@ -234,15 +234,15 @@ func TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse(t *testing.T) 
 
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()
-	nt.Stream = clientConn
+	nt.stream = clientConn
 	nt.tcpStream = clientConn
-	nt.Connected = true
+	nt.connected = true
 
 	if err := nt.Disconnect(); err != nil {
 		t.Fatalf("disconnect failed: %v", err)
 	}
 
-	if nt.Stream != nil {
+	if nt.stream != nil {
 		t.Fatal("expected stream to be cleared after disconnect.")
 	}
 	if nt.tcpStream != nil {
@@ -264,16 +264,16 @@ func TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()
 
-	nt := &NTTCP{Stream: clientConn}
+	nt := &nttcp{stream: clientConn}
 
 	if err := nt.Disconnect(); err != nil {
 		t.Fatalf("disconnect failed: %v", err)
 	}
 
-	if nt.Stream != nil {
+	if nt.stream != nil {
 		t.Fatal("expected stream to be cleared")
 	}
-	if nt.Connected {
+	if nt.connected {
 		t.Fatal("expected connected flag to be false")
 	}
 }

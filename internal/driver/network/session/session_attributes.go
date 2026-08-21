@@ -56,8 +56,8 @@ const walletPasswordEnvVar = "oracle.go.wallet_password"
 const walletPasswordEnvVarAlt = "ORACLE_GO_WALLET_PASSWORD"
 const systemWalletLocation = "SYSTEM"
 
-// SessionAtts represents network session attributes
-type SessionAtts struct {
+// sessionAtts represents network session attributes
+type sessionAtts struct {
 	LargeSDU                           bool
 	SDU                                int
 	TDU                                int
@@ -70,7 +70,7 @@ type SessionAtts struct {
 	RecvTimeout                        int
 	SendTimeout                        int
 	NAFlags                            int
-	CDataNVPair                        interface{} // Placeholder for nvStrToNvPair data
+	cDataNVPair                        interface{} // Placeholder for nvStrToNvPair data
 	NegotiatedNetworkCompressionScheme int
 	NetworkCompressionEnabled          bool
 	FirstRecvCompressedPacket          bool
@@ -89,9 +89,9 @@ func GenUUID() (string, error) {
 	return base64.StdEncoding.EncodeToString(buf), nil
 }
 
-// NewSessionAtts creates a new SessionAtts instance
-func NewSessionAtts(uuid string) *SessionAtts {
-	return &SessionAtts{
+// newSessionAtts creates a new sessionAtts instance
+func newSessionAtts(uuid string) *sessionAtts {
+	return &sessionAtts{
 		LargeSDU:                    false,
 		SDU:                         NSPDFSDULN,
 		TDU:                         NSPDFTDULN,
@@ -102,7 +102,7 @@ func NewSessionAtts(uuid string) *SessionAtts {
 	}
 }
 
-func (sa *SessionAtts) SetFrom(source interface{}) {
+func (sa *sessionAtts) setFrom(source interface{}) {
 	if source == nil {
 		return
 	}
@@ -213,14 +213,14 @@ func (sa *SessionAtts) SetFrom(source interface{}) {
 
 }
 
-// ReadWalletFile reads the wallet file
-func (sa *SessionAtts) ReadWalletFile() ([]byte, error) {
+// readWalletFile reads the wallet file
+func (sa *sessionAtts) readWalletFile() ([]byte, error) {
 	path := filepath.Join(sa.NT.WalletLocation, PEM_WALLET_FILE_NAME)
 	return os.ReadFile(path)
 }
 
-// Prepare prepares attributes for connection
-func (sa *SessionAtts) Prepare(protocol driverCommon.Protocol) error {
+// prepare prepares attributes for connection
+func (sa *sessionAtts) prepare(protocol driverCommon.Protocol) error {
 	sa.SDU = clamp(sa.SDU, NSPMNSDULN, NSPABSSDULN)
 
 	if sa.UUID == "" {
@@ -240,7 +240,7 @@ func (sa *SessionAtts) Prepare(protocol driverCommon.Protocol) error {
 	sa.NT.UseSystemTrust = protocol == driverCommon.ProtocolTCPS &&
 		(walletLocation == "" || strings.EqualFold(walletLocation, systemWalletLocation))
 	if protocol == driverCommon.ProtocolTCPS && sa.NT.WalletContent == nil && !sa.NT.UseSystemTrust {
-		data, err := sa.ReadWalletFile()
+		data, err := sa.readWalletFile()
 		if err != nil {
 			return err
 		}
@@ -253,6 +253,6 @@ func (sa *SessionAtts) Prepare(protocol driverCommon.Protocol) error {
 	common.Odl.Debug("connection timeout set", "tm",
 		sa.NT.Transportconnecttimeout)
 
-	//sa.NT.Atts = sa // Set the reference back to SessionAtts
+	//sa.NT.Atts = sa // Set the reference back to sessionAtts
 	return nil
 }

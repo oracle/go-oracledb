@@ -165,7 +165,7 @@ func (msg *ttiFunHeader18) MarshalTo(ctx context.Context, engine driverCommon.Ma
 // runFunctionWithFunHeader runs a function with no token that expects TTIOER as response.
 //
 // Returns: error if an error occurs otherwise nil
-func (c *Connection) runFunctionWithFunHeader(ctx context.Context, functiontype driverCommon.FunctionType) error {
+func (c *connection) runFunctionWithFunHeader(ctx context.Context, functiontype driverCommon.FunctionType) error {
 	common.Odl.Debug("Running function of type", "function type", functiontype)
 	msg, err := c.shelf.GetMessageFactory().GetMessageForFunction(TTIFUN, functiontype)
 	if err != nil {

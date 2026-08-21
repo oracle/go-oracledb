@@ -60,6 +60,16 @@ import (
 // In go we only have the first 3 values V.RU.RUR, Inc and Ext will be 0.
 var NumericDriverVersion = StringToB1Array("436207616") // 26<<24 | 0<<16 | 0<<12 | 0<<4 | 0
 
+// ByteOrder defines endianness for multi-byte reads/writes.
+type ByteOrder struct {
+	name string
+}
+
+var (
+	BIG_ENDIAN    = ByteOrder{name: "BIG_ENDIAN"}
+	LITTLE_ENDIAN = ByteOrder{name: "LITTLE_ENDIAN"}
+)
+
 type Protocol int
 
 const (

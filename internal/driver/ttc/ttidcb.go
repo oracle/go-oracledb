@@ -85,17 +85,17 @@ func (p *tTIdcb) getNumberOfColumns() driverCommon.UB4 {
 }
 
 // getColumnContexts returns column contexts extracted from DCB.
-func (p *tTIdcb) getColumnContexts() ([]ColumnContext, error) {
+func (p *tTIdcb) getColumnContexts() ([]columnContext, error) {
 	if p.numUDS == 0 || p.udsArr == nil {
 		common.Odl.Error("populateColumnMetaData: invalid DCB", "error", nil, "stage", "invalid-dcb", "cols", p.numUDS, "udsArrNil", p.udsArr == nil)
 		return nil, common.NewOracleError(oracleErrors.RunQueryError, nil, "populateColumnMetaData failed ", p.numUDS, p.udsArr == nil)
 	}
-	metaData := make([]ColumnContext, p.numUDS)
+	metaData := make([]columnContext, p.numUDS)
 	for i := 0; i < int(p.numUDS); i++ {
 		udsProv := p.udsArr[i].(udsProvider)
 		if udsProv != nil {
 			oac := udsProv.getOac()
-			metaData[i] = ColumnContext{
+			metaData[i] = columnContext{
 				Index:          i,
 				Name:           udsProv.getColumnName(),
 				SchemaName:     udsProv.getSchemaName(),

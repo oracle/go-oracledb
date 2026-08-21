@@ -53,7 +53,7 @@ import (
 // Returns: driver.ErrBadConn if the connection is not in a valid state,
 //
 //	otherwise nil
-func (c *Connection) Ping(ctx context.Context) error {
+func (c *connection) Ping(ctx context.Context) error {
 	err := c.runFunctionWithFunHeader(ctx, ping)
 	if err != nil {
 		return driver.ErrBadConn
@@ -71,7 +71,7 @@ const (
 // IsValid checks if the connection is valid
 //
 // Returns: true if the connection is valid otherwise false
-func (c *Connection) IsValid() bool {
+func (c *connection) IsValid() bool {
 
 	// Check if inband notification has been received.
 	c._isValid = c._isValid && !c.ns.CheckInbandNotification()

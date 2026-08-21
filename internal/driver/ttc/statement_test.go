@@ -227,7 +227,7 @@ func TestStatementExecContextTransactionCancellationBeforeSetup(t *testing.T) {
 	shelf.RegisterMessageStreamer(&mockStreamer{})
 	txCtx, cancelTx := context.WithCancel(context.Background())
 	cancelTx()
-	shelf.registerTransaction(newTransaction(&Connection{shelf: shelf}, txCtx))
+	shelf.registerTransaction(newTransaction(&connection{shelf: shelf}, txCtx))
 	defer shelf.unregisterTransaction()
 
 	query, err := newQualifiedSQLStatement("insert into t values(1)")

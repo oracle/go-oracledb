@@ -50,12 +50,12 @@ import (
 )
 
 /*
-LobColumnContext captures LOB-specific metadata needed to decode pre-fetched
+lobColumnContext captures LOB-specific metadata needed to decode pre-fetched
 LOB payloads.
 
 Description:
 
-	LOB columns carry additional metadata beyond the generic ColumnContext fields.
+	LOB columns carry additional metadata beyond the generic columnContext fields.
 	This metadata describes the LOB character set for text-based LOBs and the
 	server-provided prefetch details used when the row already includes LOB data.
 
@@ -67,7 +67,7 @@ Fields:
   - PrefetchChunkSize: Suggested chunk size for subsequent LOB reads when additional data must be fetched.
   - LobLocator: Opaque locator bytes that identify the server-side LOB and allow follow-up read operations.
 */
-type LobColumnContext struct {
+type lobColumnContext struct {
 	CharsetForm       driverCommon.UB1
 	CharsetID         driverCommon.UB2
 	LobLength         driverCommon.UB4
@@ -76,15 +76,15 @@ type LobColumnContext struct {
 	LobLocator        driverCommon.B1Array
 }
 
-// ColumnContext aggregates the metadata required to interpret a column's value
+// columnContext aggregates the metadata required to interpret a column's value
 // at runtime. The TTC protocol delivers column descriptors separately from row
-// payloads, so ColumnContext instances are constructed on-demand while scanning
+// payloads, so columnContext instances are constructed on-demand while scanning
 // rows.
 //
 // Only the fields required by the decode helpers are surfaced here. Additional
 // metadata can be appended without impacting existing decode helpers because
 // the struct is passed by value.
-type ColumnContext struct {
+type columnContext struct {
 	Index                int
 	Name                 driverCommon.B1Array
 	SchemaName           driverCommon.B1Array
@@ -99,7 +99,7 @@ type ColumnContext struct {
 	CharsetForm          uint8
 	CharsetID            uint16
 	Nullable             bool
-	LobContext           *LobColumnContext
+	LobContext           *lobColumnContext
 	serverTimeZoneOffset int16
 }
 
@@ -122,8 +122,8 @@ type ttcRows struct {
 	numOfRows     int
 
 	// metadata caches for ColumnType* interfaces
-	columnContexts []ColumnContext
-	lobColContext  [][]*LobColumnContext
+	columnContexts []columnContext
+	lobColContext  [][]*lobColumnContext
 	shelf          *ttiShelf[driverCommon.MessageType]
 
 	strictNullHandlingValue bool
@@ -192,7 +192,7 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 		return r.handleNull(i, dtype, scale), nil
 	}
 
-	decoder, err := r.shelf.GetCodecFactory().GetDecoder(dtype)
+	decoder, err := r.shelf.GetCodecFactory().getDecoder(dtype)
 	if err != nil || decoder == nil {
 		// Preserve unknown types as raw bytes
 		return data, nil
@@ -345,18 +345,18 @@ func (r *ttcRows) Close() error {
 // newTTCRows constructs a ttcRows instance from decoded column metadata.
 // It precomputes and caches fields backing the RowsColumnType* interfaces
 // for fast access during scanning and introspection.
-func newTTCRows(columnContexts []ColumnContext) *ttcRows {
+func newTTCRows(columnContexts []columnContext) *ttcRows {
 	n := len(columnContexts)
 	if n == 0 {
 		return &ttcRows{strictNullHandlingValue: true}
 	}
 	rows := &ttcRows{strictNullHandlingValue: true}
 
-	rows.columnContexts = make([]ColumnContext, n)
+	rows.columnContexts = make([]columnContext, n)
 	for i := 0; i < n; i++ {
 		rows.columnContexts[i] = columnContexts[i]
 	}
-	rows.lobColContext = make([][]*LobColumnContext, 0)
+	rows.lobColContext = make([][]*lobColumnContext, 0)
 
 	return rows
 }
@@ -466,7 +466,7 @@ func (r *ttcRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
 // columns, matching the raw protocol representation returned by Next.
 func (r *ttcRows) ColumnTypeScanType(index int) reflect.Type {
 	if r.columnContexts[index].ScanType == nil {
-		decoder, err := r.shelf.GetCodecFactory().GetDecoder(r.columnContexts[index].DataType)
+		decoder, err := r.shelf.GetCodecFactory().getDecoder(r.columnContexts[index].DataType)
 		if err != nil {
 			common.Odl.Warn("Do not have decode mapping", "type", r.columnContexts[index].DataType)
 			return reflect.TypeOf([]byte(nil))

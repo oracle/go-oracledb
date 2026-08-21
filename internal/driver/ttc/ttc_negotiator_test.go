@@ -252,7 +252,7 @@ func TestConnectionNegotiator_Negotiate_Fail(t *testing.T) {
 				failWhere: tc.failWhere,
 				failErr:   errors.New(tc.expectedErr),
 			}
-			negotiator := NewConnectionNegotiator()
+			negotiator := newConnectionNegotiator()
 			var err error
 			switch tc.step {
 			case stepProtocol:
@@ -263,7 +263,7 @@ func TestConnectionNegotiator_Negotiate_Fail(t *testing.T) {
 				if tc.failWhere == whereGet {
 					pro = nil
 				} else {
-					pro = &tTIpro{ClientCaps: &Capability{}}
+					pro = &tTIpro{clientCaps: &capability{}}
 					pro.svrCharSet = al32Utf8CharSet
 				}
 				_, err = negotiator._negotiateDatatype(ctx, streamer, factory, pro)
@@ -343,7 +343,7 @@ func TestConnectionNegotiator_Negotiate_Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			negotiator := NewConnectionNegotiator()
+			negotiator := newConnectionNegotiator()
 			ctx := context.Background()
 			data := tc.buffer()
 			negotiator.SetDataBuffer(data)

@@ -53,25 +53,25 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// NetworkSession represents a network session for communication with the server
-type NetworkSession struct {
-	Connected           bool
-	IsBreak             bool
-	IsReset             bool
-	BreakPosted         bool
-	CompressionEnabled  bool
-	EndOfRequestSupport bool
-	SupportsFastAuth    bool
-	RedirectCount       int
-	ResendCount         int
-	SAtts               *SessionAtts
-	NTAdapter           transport.NTAdapter
-	CData               []byte
-	CDataNVPair         interface{}
-	SndDatapkt          *DataPacket
-	RcvDatapkt          *DataPacket
-	ControlPkt          *ControlPacket
-	byteOrder           ByteOrder
+// networkSession represents a network session for communication with the server
+type networkSession struct {
+	connected           bool
+	isBreak             bool
+	isReset             bool
+	breakPosted         bool
+	compressionEnabled  bool
+	endOfRequestSupport bool
+	supportsFastAuth    bool
+	redirectCount       int
+	resendCount         int
+	sAtts               *sessionAtts
+	ntAdapter           transport.NTAdapter
+	cData               []byte
+	cDataNVPair         interface{}
+	sndDatapkt          *dataPacket
+	rcvDatapkt          *dataPacket
+	controlPkt          *controlPacket
+	byteOrder           driverCommon.ByteOrder
 	rcvBuf              []byte
 	sndBuf              []byte
 	pendingPacket       []byte // to store pushed back packet from CheckinbandNotification
@@ -83,58 +83,58 @@ const (
 	maxResendCount   = 4
 )
 
-// NewNetworkSession creates a new NetworkSession instance
-func NewNetworkSession() *NetworkSession {
-	return &NetworkSession{
-		Connected:          false,
-		IsBreak:            false,
-		IsReset:            false,
-		BreakPosted:        false,
-		CompressionEnabled: false,
-		SndDatapkt:         &DataPacket{},
-		RcvDatapkt:         &DataPacket{},
-		ControlPkt:         &ControlPacket{},
-		byteOrder:          BIG_ENDIAN,
+// newNetworkSession creates a new networkSession instance
+func newNetworkSession() *networkSession {
+	return &networkSession{
+		connected:          false,
+		isBreak:            false,
+		isReset:            false,
+		breakPosted:        false,
+		compressionEnabled: false,
+		sndDatapkt:         &dataPacket{},
+		rcvDatapkt:         &dataPacket{},
+		controlPkt:         &controlPacket{},
+		byteOrder:          driverCommon.BIG_ENDIAN,
 	}
 }
 
 // transportConnect establishes the transport-level connection
-func (ns *NetworkSession) transportConnect(ctx context.Context, address transport.Address) error {
+func (ns *networkSession) transportConnect(ctx context.Context, address transport.Address) error {
 	if address.Protocol == driverCommon.ProtocolTCP && address.HTTPSProxy != "" {
 		return fmt.Errorf("https proxy requires protocol as tcps")
 	}
-	if ns.NTAdapter == nil {
+	if ns.ntAdapter == nil {
 		if address.Protocol == driverCommon.ProtocolTCP {
-			ns.NTAdapter = transport.NewNTTCP(ns.SAtts.NT, TCP_DEFAULT_PORT)
+			ns.ntAdapter = transport.NewNTTCP(ns.sAtts.NT, TCP_DEFAULT_PORT)
 		} else if address.Protocol == driverCommon.ProtocolTCPS {
-			ns.NTAdapter = transport.NewNTTCPS(ns.SAtts.NT)
+			ns.ntAdapter = transport.NewNTTCPS(ns.sAtts.NT)
 		}
 	}
-	err := ns.NTAdapter.Connect(ctx, address)
+	err := ns.ntAdapter.Connect(ctx, address)
 	if err != nil {
 		return err
 	}
-	//initializes SndDatapkt with SDU size
-	ns.sndBuf = make([]byte, ns.SAtts.SDU)
-	ns.rcvBuf = make([]byte, ns.SAtts.SDU)
+	//initializes sndDatapkt with SDU size
+	ns.sndBuf = make([]byte, ns.sAtts.SDU)
+	ns.rcvBuf = make([]byte, ns.sAtts.SDU)
 
-	err = ns.SndDatapkt.Marshal(ns.sndBuf, ns.SAtts, 0)
+	err = ns.sndDatapkt.Marshal(ns.sndBuf, ns.sAtts, 0)
 	if err != nil {
 		return err
 	}
-	ns.RcvDatapkt = &DataPacket{}
+	ns.rcvDatapkt = &dataPacket{}
 	return nil
 }
-func (ns *NetworkSession) handleAccept(ctx context.Context, p *AcceptPacket) error {
-	if ns.SAtts.Version < TNS_VERSION_MINIMUM {
+func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) error {
+	if ns.sAtts.Version < TNS_VERSION_MINIMUM {
 		err := ns.Disconnect(ctx, 0)
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("unsupported TNS version: %d (minimum required: %d)", ns.SAtts.Version, TNS_VERSION_MINIMUM)
+		return fmt.Errorf("unsupported TNS version: %d (minimum required: %d)", ns.sAtts.Version, TNS_VERSION_MINIMUM)
 	}
 
-	if ns.SAtts.Version >= TNS_VERSION_MIN_DATA_FLAGS {
+	if ns.sAtts.Version >= TNS_VERSION_MIN_DATA_FLAGS {
 		// sanity
 		if len(p.Buf) < NSPACFL2+4 { // we gonna read an Uint32
 			msg := fmt.Sprintf("Unexpected buffer length (%d) in accept packet", len(p.Buf))
@@ -142,23 +142,26 @@ func (ns *NetworkSession) handleAccept(ctx context.Context, p *AcceptPacket) err
 			return common.NewOracleError(oracleErrors.InternalError, nil, msg)
 		}
 		acceptFlag2 := binary.BigEndian.Uint32(p.Buf[NSPACFL2:])
-		ns.EndOfRequestSupport = (acceptFlag2&TNS_ACCEPT_FLAG_HAS_END_OF_REQUEST != 0)
-		ns.SupportsFastAuth = (acceptFlag2&TNS_ACCEPT_FLAG_FAST_AUTH != 0)
+		ns.endOfRequestSupport = (acceptFlag2&TNS_ACCEPT_FLAG_HAS_END_OF_REQUEST != 0)
+		ns.supportsFastAuth = (acceptFlag2&TNS_ACCEPT_FLAG_FAST_AUTH != 0)
 	}
 
-	tlsadapter, ok := ns.NTAdapter.(*transport.NTTCPS)
+	tlsadapter, ok := ns.ntAdapter.(interface {
+		VerifyPostAcceptDNMatch() error
+		Clear()
+	})
 	if ok {
 		if err := tlsadapter.VerifyPostAcceptDNMatch(); err != nil {
 			return err
 		}
 		tlsadapter.Clear()
 	}
-	ns.Connected = true
-	ns.CData = nil
-	ns.sndBuf = make([]byte, ns.SAtts.SDU)
-	ns.rcvBuf = make([]byte, ns.SAtts.SDU)
-	ns.ControlPkt = &ControlPacket{}
-	err := ns.SndDatapkt.Marshal(ns.sndBuf, ns.SAtts, 0)
+	ns.connected = true
+	ns.cData = nil
+	ns.sndBuf = make([]byte, ns.sAtts.SDU)
+	ns.rcvBuf = make([]byte, ns.sAtts.SDU)
+	ns.controlPkt = &controlPacket{}
+	err := ns.sndDatapkt.Marshal(ns.sndBuf, ns.sAtts, 0)
 	if err != nil {
 		ns.Disconnect(ctx, 0)
 		return err
@@ -168,9 +171,9 @@ func (ns *NetworkSession) handleAccept(ctx context.Context, p *AcceptPacket) err
 
 // refuseArgs collects the placeholder values needed to format the
 // localized message for a specific ORA code.
-func (ns *NetworkSession) refuseArgs(errCode string, address transport.Address) ([]any, error) {
-	// Parse ns.CData to extract service_name, host, port
-	cDataStr := string(ns.CData)
+func (ns *networkSession) refuseArgs(errCode string, address transport.Address) ([]any, error) {
+	// Parse ns.cData to extract service_name, host, port
+	cDataStr := string(ns.cData)
 	cDataNode, err := naming.Parse(cDataStr)
 	if err != nil {
 		return nil, err
@@ -181,7 +184,7 @@ func (ns *NetworkSession) refuseArgs(errCode string, address transport.Address) 
 		if err != nil {
 			return nil, err
 		}
-		return []any{serviceName, address.Host, address.Port, ns.SAtts.NT.Connectionid}, nil
+		return []any{serviceName, address.Host, address.Port, ns.sAtts.NT.Connectionid}, nil
 	case "12520":
 		serverType, err := cDataNode.GetValue("DESCRIPTION/CONNECT_DATA/SERVER")
 		if err != nil {
@@ -191,7 +194,7 @@ func (ns *NetworkSession) refuseArgs(errCode string, address transport.Address) 
 		if err != nil {
 			return nil, err
 		}
-		return []any{serverType, serviceName, address.Host, address.Port, ns.SAtts.NT.Connectionid}, nil
+		return []any{serverType, serviceName, address.Host, address.Port, ns.sAtts.NT.Connectionid}, nil
 	case "12521":
 		instanceName, err := cDataNode.GetValue("DESCRIPTION/CONNECT_DATA/INSTANCE_NAME")
 		if err != nil {
@@ -201,25 +204,25 @@ func (ns *NetworkSession) refuseArgs(errCode string, address transport.Address) 
 		if err != nil {
 			return nil, err
 		}
-		return []any{instanceName, serviceName, address.Host, address.Port, ns.SAtts.NT.Connectionid}, nil
+		return []any{instanceName, serviceName, address.Host, address.Port, ns.sAtts.NT.Connectionid}, nil
 	case "12505":
 		sid, err := cDataNode.GetValue("DESCRIPTION/CONNECT_DATA/SID")
 		if err != nil {
 			return nil, err
 		}
-		return []any{sid, address.Host, address.Port, ns.SAtts.NT.Connectionid}, nil
+		return []any{sid, address.Host, address.Port, ns.sAtts.NT.Connectionid}, nil
 	default:
 		return nil, nil
 	}
 }
-func (ns *NetworkSession) handleRefuse(ctx context.Context, p *RefusePacket, address transport.Address) error {
+func (ns *networkSession) handleRefuse(ctx context.Context, p *refusePacket, address transport.Address) error {
 	if p.Overflow {
 		_, err := ns.recvPacket(ctx)
 		if err != nil {
 			common.Odl.Error("An error occurred while receiving packet", "error", err)
 			return err
 		}
-		p.DataBuf = string(ns.RcvDatapkt.Buf[ns.RcvDatapkt.Offset:ns.RcvDatapkt.Len])
+		p.DataBuf = string(ns.rcvDatapkt.Buf[ns.rcvDatapkt.Offset:ns.rcvDatapkt.Len])
 	}
 	refuseNode, err := naming.Parse(p.DataBuf)
 	if err != nil {
@@ -241,16 +244,16 @@ func (ns *NetworkSession) handleRefuse(ctx context.Context, p *RefusePacket, add
 	return common.NewOracleError(mappedCode, nil, args...)
 }
 
-func (ns *NetworkSession) handleRedirect(ctx context.Context, p *RedirectPacket, address transport.Address) error {
-	ns.RedirectCount++
-	if ns.RedirectCount > maxRedirectCount {
+func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket, address transport.Address) error {
+	ns.redirectCount++
+	if ns.redirectCount > maxRedirectCount {
 		return fmt.Errorf("too many redirects: exceeded maximum of %d", maxRedirectCount)
 	}
 	if p.Overflow {
 		if _, err := ns.recvPacket(ctx); err != nil {
 			return err
 		}
-		p.DataBuf = ns.RcvDatapkt.Buf[ns.RcvDatapkt.Offset:ns.RcvDatapkt.Len]
+		p.DataBuf = ns.rcvDatapkt.Buf[ns.rcvDatapkt.Offset:ns.rcvDatapkt.Len]
 	}
 	var addrStr string
 	var redirectConnectData []byte
@@ -264,7 +267,7 @@ func (ns *NetworkSession) handleRedirect(ctx context.Context, p *RedirectPacket,
 		}
 	} else {
 		addrStr = string(p.DataBuf)
-		redirectConnectData = ns.CData
+		redirectConnectData = ns.cData
 	}
 	redirAddressNode, err := naming.Parse(addrStr)
 	if err != nil {
@@ -294,18 +297,18 @@ func (ns *NetworkSession) handleRedirect(ctx context.Context, p *RedirectPacket,
 			},
 			Hostname: redirOption.Address.Host,
 		}
-		ns.NTAdapter.Disconnect()
-		ns.Connected = false
+		ns.ntAdapter.Disconnect()
+		ns.connected = false
 		err = ns.transportConnect(ctx, newAddress)
 		if err != nil {
 			return err
 		}
-		ns.Connected = true
-		connectPkt := &ConnectPacket{}
-		//initializes SndDatapkt with SDU size
-		ns.sndBuf = make([]byte, ns.SAtts.SDU)
-		ns.SndDatapkt.Marshal(ns.sndBuf, ns.SAtts, 0)
-		connectPkt.Marshal(redirectConnectData, ns.SAtts, NSPFRDR)
+		ns.connected = true
+		connectPkt := &connectPacket{}
+		//initializes sndDatapkt with SDU size
+		ns.sndBuf = make([]byte, ns.sAtts.SDU)
+		ns.sndDatapkt.Marshal(ns.sndBuf, ns.sAtts, 0)
+		connectPkt.Marshal(redirectConnectData, ns.sAtts, NSPFRDR)
 		err = ns.sendConnect(ctx, connectPkt)
 		if err != nil {
 			return err
@@ -315,9 +318,9 @@ func (ns *NetworkSession) handleRedirect(ctx context.Context, p *RedirectPacket,
 	return fmt.Errorf("no redirect option available")
 }
 
-func (ns *NetworkSession) handleResend(ctx context.Context, p *ResendPacket, connectPkt *ConnectPacket) error {
+func (ns *networkSession) handleResend(ctx context.Context, p *resendPacket, connectPkt *connectPacket) error {
 	if p.hdr.Flags&NSPFSRN != 0 {
-		tlsAdapter, ok := ns.NTAdapter.(interface{ TLSReneg() })
+		tlsAdapter, ok := ns.ntAdapter.(interface{ TLSReneg() })
 		/*
 			Oracle uses that flag on resend packets (NSPTRS) to tell the client
 			"please renegotiate the TLS session" essentially a server-side TLS renegotiation request.
@@ -339,14 +342,14 @@ func (ns *NetworkSession) handleResend(ctx context.Context, p *ResendPacket, con
 	return nil // continue the loop
 }
 
-func (ns *NetworkSession) connect(ctx context.Context, address transport.Address) error {
+func (ns *networkSession) connect(ctx context.Context, address transport.Address) error {
 	var err error
 	err = ns.transportConnect(ctx, address)
 	if err != nil {
 		return err
 	}
-	connectPkt := &ConnectPacket{}
-	connectPkt.Marshal(ns.CData, ns.SAtts, NO_HEADER_FLAGS)
+	connectPkt := &connectPacket{}
+	connectPkt.Marshal(ns.cData, ns.sAtts, NO_HEADER_FLAGS)
 	err = ns.sendConnect(ctx, connectPkt)
 	if err != nil {
 		if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
@@ -363,7 +366,7 @@ func (ns *NetworkSession) connect(ctx context.Context, address transport.Address
 			return err
 		}
 		switch p := pkt.(type) {
-		case *AcceptPacket:
+		case *acceptPacket:
 			err = ns.handleAccept(ctx, p)
 			if err != nil {
 				if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
@@ -372,13 +375,13 @@ func (ns *NetworkSession) connect(ctx context.Context, address transport.Address
 				return err
 			}
 			return nil
-		case *RefusePacket:
+		case *refusePacket:
 			err = ns.handleRefuse(ctx, p, address)
 			if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
 				return disconnectErr
 			}
 			return err
-		case *RedirectPacket:
+		case *redirectPacket:
 			err = ns.handleRedirect(ctx, p, address)
 			if err != nil {
 				if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
@@ -386,9 +389,9 @@ func (ns *NetworkSession) connect(ctx context.Context, address transport.Address
 				}
 				return err
 			}
-		case *ResendPacket:
-			ns.ResendCount++
-			if ns.ResendCount > maxResendCount {
+		case *resendPacket:
+			ns.resendCount++
+			if ns.resendCount > maxResendCount {
 				if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
 					return disconnectErr
 				}
@@ -409,23 +412,25 @@ func (ns *NetworkSession) connect(ctx context.Context, address transport.Address
 		}
 	}
 }
-func ConnectToOption(ctx context.Context, option *naming.ConnectionOption) (*NetworkSession, error) {
+func ConnectToOption(ctx context.Context, option *naming.ConnectionOption) (driverCommon.NetworkSession, error) {
 	return ConnectToOptionWithConnectionID(ctx, option, "")
 }
-func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.ConnectionOption, connectionID string) (*NetworkSession, error) {
-	ns := NewNetworkSession()
+func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
+	ns := newNetworkSession()
+	addressOption := option.Address
+	description := option.Description
 
-	portToBeUsed := option.Address.Port
-	if option.Address.Port == 0 {
+	portToBeUsed := addressOption.Port
+	if addressOption.Port == 0 {
 		common.Odl.Debug("no port specified, fall-back to default", "port", TCP_DEFAULT_PORT)
 		portToBeUsed = TCP_DEFAULT_PORT
 	}
 
-	ns.SAtts = NewSessionAtts(connectionID)
-	if option.Description != nil {
-		ns.SAtts.SetFrom(option.Description)
+	ns.sAtts = newSessionAtts(connectionID)
+	if description != nil {
+		ns.sAtts.setFrom(description)
 	}
-	err := ns.SAtts.Prepare(option.Address.Protocol)
+	err := ns.sAtts.prepare(addressOption.Protocol)
 	if err != nil {
 		return nil, err
 	}
@@ -439,23 +444,23 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 		connectData = &naming.Node{Name: "CONNECT_DATA"}
 		root.Children = append(root.Children, *connectData)
 	}
-	connIDNode := naming.Node{Name: "CONNECTION_ID", Value: ns.SAtts.NT.Connectionid}
+	connIDNode := naming.Node{Name: "CONNECTION_ID", Value: ns.sAtts.NT.Connectionid}
 	connectData.Children = append(connectData.Children, connIDNode)
 	newConnectStr := root.ToString()
-	ns.CData = []byte(newConnectStr)
+	ns.cData = []byte(newConnectStr)
 
-	hostToBeUsed := option.Address.Host
-	if option.Address.ResolvedIP != "" {
-		hostToBeUsed = option.Address.ResolvedIP
+	hostToBeUsed := addressOption.Host
+	if addressOption.ResolvedIP != "" {
+		hostToBeUsed = addressOption.ResolvedIP
 	}
 	address := transport.Address{
 		Address: naming.Address{
 			Host:       hostToBeUsed,
 			Port:       portToBeUsed,
-			Protocol:   option.Address.Protocol,
-			ResolvedIP: option.Address.ResolvedIP,
+			Protocol:   addressOption.Protocol,
+			ResolvedIP: addressOption.ResolvedIP,
 		},
-		Hostname: option.Address.Host,
+		Hostname: addressOption.Host,
 	}
 
 	err = ns.connect(ctx, address)
@@ -467,7 +472,7 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 }
 
 // SendConnect sends the NSPTCN connect packet
-func (ns *NetworkSession) sendConnect(ctx context.Context, connectPkt *ConnectPacket) error {
+func (ns *networkSession) sendConnect(ctx context.Context, connectPkt *connectPacket) error {
 
 	err := ns.SendPacket(ctx, connectPkt.Buf)
 	if err != nil {
@@ -483,39 +488,39 @@ func (ns *NetworkSession) sendConnect(ctx context.Context, connectPkt *ConnectPa
 }
 
 // recvPacket receives a packet from the network and returns its unmarshaled struct
-func (ns *NetworkSession) recvPacket(ctx context.Context) (any, error) {
+func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
 	// Handle pending packet from inband notification check
 	if ns.pendingPacket != nil {
 		buf := ns.pendingPacket
 		ns.pendingPacket = nil
-		hdr := &Header{}
-		err := hdr.Unmarshal(buf, ns.SAtts, nil)
+		hdr := &header{}
+		err := hdr.Unmarshal(buf, ns.sAtts, nil)
 		if err != nil {
 			return nil, err
 		}
 		return ns.processPacket(buf, hdr)
 	}
 
-	if ns.SndDatapkt.Offset > NSPDADAT { /* Flush any data left in send buffer */
-		err := ns.SndDatapkt.Prepare2Send(0, ns.SAtts)
+	if ns.sndDatapkt.Offset > NSPDADAT { /* Flush any data left in send buffer */
+		err := ns.sndDatapkt.Prepare2Send(0, ns.sAtts)
 		if err != nil {
 			return nil, err
 		}
-		err = ns.SendPacket(ctx, ns.SndDatapkt.Buf[:ns.SndDatapkt.Offset])
+		err = ns.SendPacket(ctx, ns.sndDatapkt.Buf[:ns.sndDatapkt.Offset])
 		if err != nil {
 			return nil, err
 		}
-		ns.SndDatapkt.Reset()
+		ns.sndDatapkt.Reset()
 	}
 	const PACKET_HEADER_SIZE = 8
 	var packetLen int
 	//read packet header first
-	n, err := ns.NTAdapter.Receive(ctx, ns.rcvBuf, PACKET_HEADER_SIZE)
+	n, err := ns.ntAdapter.Receive(ctx, ns.rcvBuf, PACKET_HEADER_SIZE)
 	if err != nil {
 		return nil, err
 	}
 	// get packetLen
-	if ns.SAtts.LargeSDU {
+	if ns.sAtts.LargeSDU {
 		packetLen = int(binary.BigEndian.Uint32(ns.rcvBuf[0:4]))
 	} else {
 		packetLen = int(binary.BigEndian.Uint16(ns.rcvBuf[0:2]))
@@ -526,7 +531,7 @@ func (ns *NetworkSession) recvPacket(ctx context.Context) (any, error) {
 	}
 	bodyLen := packetLen - PACKET_HEADER_SIZE
 	if bodyLen > 0 {
-		n, err = ns.NTAdapter.Receive(ctx, ns.rcvBuf[PACKET_HEADER_SIZE:packetLen], bodyLen)
+		n, err = ns.ntAdapter.Receive(ctx, ns.rcvBuf[PACKET_HEADER_SIZE:packetLen], bodyLen)
 		if err != nil {
 			return nil, err
 		}
@@ -537,8 +542,8 @@ func (ns *NetworkSession) recvPacket(ctx context.Context) (any, error) {
 	buf := ns.rcvBuf[:packetLen]
 	PrintPacket(buf, 0, packetLen)
 
-	hdr := &Header{}
-	err = hdr.Unmarshal(buf, ns.SAtts, nil)
+	hdr := &header{}
+	err = hdr.Unmarshal(buf, ns.sAtts, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -548,7 +553,7 @@ func (ns *NetworkSession) recvPacket(ctx context.Context) (any, error) {
 	}
 
 	// Handle reset when break is received and reset has not yet been received.
-	if hdr.Type == NSPTMK && ns.IsBreak && !ns.IsReset {
+	if hdr.Type == NSPTMK && ns.isBreak && !ns.isReset {
 		common.Odl.Debug("Received break packet from server")
 		if ns.resetInProgress {
 			// Reset is already draining packets until NIQRMARK is received.
@@ -566,40 +571,40 @@ func (ns *NetworkSession) recvPacket(ctx context.Context) (any, error) {
 }
 
 // processPacket processes a packet and returns its unmarshaled struct
-func (ns *NetworkSession) processPacket(buf []byte, hdr *Header) (any, error) {
-	var packet Packet
+func (ns *networkSession) processPacket(buf []byte, hdr *header) (any, error) {
+	var packet packet
 	switch hdr.Type {
 	case NSPTAC:
-		packet = &AcceptPacket{}
+		packet = &acceptPacket{}
 	case NSPTRF:
-		packet = &RefusePacket{}
+		packet = &refusePacket{}
 	case NSPTRD:
-		packet = &RedirectPacket{}
+		packet = &redirectPacket{}
 	case NSPTRS:
-		packet = &ResendPacket{}
+		packet = &resendPacket{}
 	case NSPTMK:
-		packet = &MarkerPacket{}
+		packet = &markerPacket{}
 	case NSPTCNL:
-		packet = ns.ControlPkt
+		packet = ns.controlPkt
 	case NSPTDA:
-		packet = ns.RcvDatapkt
+		packet = ns.rcvDatapkt
 	default:
 		return nil, fmt.Errorf("unsupported packet type: %d", hdr.Type)
 	}
-	err := packet.Unmarshal(buf, ns.SAtts, hdr)
+	err := packet.Unmarshal(buf, ns.sAtts, hdr)
 	if err != nil {
 		return nil, err
 	}
 	if hdr.Type == NSPTMK {
-		p := packet.(*MarkerPacket)
+		p := packet.(*markerPacket)
 		common.Odl.Debug("marker packet received", "marker-type", p.MarkerType, "data", p.Data)
 		switch p.MarkerType {
 		case NSPMKTD0:
-			ns.IsBreak = true
+			ns.isBreak = true
 		case NSPMKTD1:
-			ns.IsBreak = true
+			ns.isBreak = true
 			if p.Data == NIQRMARK {
-				ns.IsReset = true
+				ns.isReset = true
 			}
 		}
 	}
@@ -607,18 +612,18 @@ func (ns *NetworkSession) processPacket(buf []byte, hdr *Header) (any, error) {
 }
 
 // SendPacket sends a packet with optional compression
-func (ns *NetworkSession) SendPacket(ctx context.Context, buf []byte) error {
+func (ns *networkSession) SendPacket(ctx context.Context, buf []byte) error {
 	PrintPacket(buf, 0, len(buf))
 	if len(buf) < PACKET_HEADER_SIZE {
 		return fmt.Errorf("buffer too short: %d bytes, need at least %d", len(buf), PACKET_HEADER_SIZE)
 	}
-	return ns.NTAdapter.Send(ctx, buf)
+	return ns.ntAdapter.Send(ctx, buf)
 }
 
 // Send transmits the provided user data (userBuf) starting from the given offset for the specified length.
-// It handles breaking the data into packets if necessary, using the send data packet (SndDatapkt) for buffering.
-func (ns *NetworkSession) Send(ctx context.Context, userBuf []byte, offset, len int) error {
-	if ns.IsBreak {
+// It handles breaking the data into packets if necessary, using the send data packet (sndDatapkt) for buffering.
+func (ns *networkSession) Send(ctx context.Context, userBuf []byte, offset, len int) error {
+	if ns.isBreak {
 		return nil
 	}
 	if len <= 0 {
@@ -628,25 +633,25 @@ func (ns *NetworkSession) Send(ctx context.Context, userBuf []byte, offset, len 
 	// Check if the current send packet has available space (offset < BufLen) to accommodate more data
 	// without needing to send the packet immediately. If true, fill the buffer with as much user data
 	// as possible, update lengths and offsets, and continue processing any remaining data in subsequent iterations.
-	if ns.SndDatapkt.Offset < ns.SndDatapkt.BufLen {
-		bytesCopied = ns.SndDatapkt.FillBuf(userBuf, offset, len, 0, ns.SAtts.LargeSDU)
+	if ns.sndDatapkt.Offset < ns.sndDatapkt.BufLen {
+		bytesCopied = ns.sndDatapkt.FillBuf(userBuf, offset, len, 0, ns.sAtts.LargeSDU)
 		len -= bytesCopied
 		offset += bytesCopied
 	}
 	for len > 0 {
-		err := ns.SndDatapkt.Prepare2Send(0, ns.SAtts)
+		err := ns.sndDatapkt.Prepare2Send(0, ns.sAtts)
 		if err != nil {
 			return err
 		}
-		err = ns.SendPacket(ctx, ns.SndDatapkt.Buf)
-		ns.SndDatapkt.Reset()
+		err = ns.SendPacket(ctx, ns.sndDatapkt.Buf)
+		ns.sndDatapkt.Reset()
 		if err != nil {
 			return err
 		}
-		if ns.IsBreak {
+		if ns.isBreak {
 			return nil
 		}
-		bytesCopied = ns.SndDatapkt.FillBuf(userBuf, offset, len, 0, ns.SAtts.LargeSDU)
+		bytesCopied = ns.sndDatapkt.FillBuf(userBuf, offset, len, 0, ns.sAtts.LargeSDU)
 		len -= bytesCopied
 		offset += bytesCopied
 	}
@@ -654,7 +659,7 @@ func (ns *NetworkSession) Send(ctx context.Context, userBuf []byte, offset, len 
 }
 
 // Reset resets the connection
-func (ns *NetworkSession) Reset(ctx context.Context) error {
+func (ns *networkSession) Reset(ctx context.Context) error {
 	if ns.resetInProgress {
 		return nil
 	}
@@ -663,9 +668,9 @@ func (ns *NetworkSession) Reset(ctx context.Context) error {
 		ns.resetInProgress = false
 	}()
 
-	var markerPkt = &MarkerPacket{}
-	if ns.BreakPosted {
-		err := markerPkt.Marshal(nil, ns.SAtts, NIQBMARK)
+	var markerPkt = &markerPacket{}
+	if ns.breakPosted {
+		err := markerPkt.Marshal(nil, ns.sAtts, NIQBMARK)
 		if err != nil {
 			return err
 		}
@@ -673,9 +678,9 @@ func (ns *NetworkSession) Reset(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		ns.BreakPosted = false
+		ns.breakPosted = false
 	}
-	err := markerPkt.Marshal(nil, ns.SAtts, NIQRMARK)
+	err := markerPkt.Marshal(nil, ns.sAtts, NIQRMARK)
 	if err != nil {
 		return err
 	}
@@ -685,69 +690,66 @@ func (ns *NetworkSession) Reset(ctx context.Context) error {
 		common.Odl.Error("An error occurred while sending reset", "error", err)
 		return err
 	}
-	for !ns.IsReset {
+	for !ns.isReset {
 		_, err := ns.recvPacket(ctx)
 		if err != nil {
 			common.Odl.Error("An error occurred while receiving packet", "error", err)
 			return err
 		}
-		common.Odl.Debug("Packet received", "IsReset", ns.IsReset)
+		common.Odl.Debug("Packet received", "isReset", ns.isReset)
 	}
 	//reset sndDatapkt
-	ns.SndDatapkt.Reset()
-	ns.RcvDatapkt.Offset = NSPDADAT
-	ns.RcvDatapkt.Len = ns.RcvDatapkt.Offset
+	ns.sndDatapkt.Reset()
+	ns.rcvDatapkt.Offset = NSPDADAT
+	ns.rcvDatapkt.Len = ns.rcvDatapkt.Offset
 	//set break/reset as false
-	ns.IsBreak = false
-	ns.IsReset = false
+	ns.isBreak = false
+	ns.isReset = false
 	common.Odl.Debug("End of break-reset")
 	return nil
 }
 
 // Disconnect
-func (ns *NetworkSession) Disconnect(ctx context.Context, flags int) error {
-	if !ns.Connected {
-		if ns.NTAdapter != nil {
-			if cleaner, ok := ns.NTAdapter.(interface{ Clear() }); ok {
+func (ns *networkSession) Disconnect(ctx context.Context, flags int) error {
+	if !ns.connected {
+		if ns.ntAdapter != nil {
+			if cleaner, ok := ns.ntAdapter.(interface{ Clear() }); ok {
 				cleaner.Clear()
 			}
-			disconnectErr := ns.NTAdapter.Disconnect()
-			ns.NTAdapter = nil
+			disconnectErr := ns.ntAdapter.Disconnect()
+			ns.ntAdapter = nil
 			return disconnectErr
 		}
 		return nil
 	}
-	ns.Connected = false
+	ns.connected = false
 	var err error
 	if flags&driverCommon.NSFIMM == 0 {
-		if prepareErr := ns.SndDatapkt.Prepare2Send(NSPDAFEOF, ns.SAtts); prepareErr != nil {
+		if prepareErr := ns.sndDatapkt.Prepare2Send(NSPDAFEOF, ns.sAtts); prepareErr != nil {
 			err = prepareErr
-		} else if sendErr := ns.SendPacket(ctx, ns.SndDatapkt.Buf); sendErr != nil {
+		} else if sendErr := ns.SendPacket(ctx, ns.sndDatapkt.Buf); sendErr != nil {
 			err = sendErr
 		}
 	}
-	if cleaner, ok := ns.NTAdapter.(interface{ Clear() }); ok {
+	if cleaner, ok := ns.ntAdapter.(interface{ Clear() }); ok {
 		cleaner.Clear()
 	}
-	disconnectErr := ns.NTAdapter.Disconnect()
-	ns.NTAdapter = nil
+	disconnectErr := ns.ntAdapter.Disconnect()
+	ns.ntAdapter = nil
 	if err != nil {
 		return err
 	}
 	return disconnectErr
 }
-func (ns *NetworkSession) IsLittleEndian() bool {
-	return ns.byteOrder == LITTLE_ENDIAN
-}
 
-func (ns *NetworkSession) CheckInbandNotification() bool {
+func (ns *networkSession) CheckInbandNotification() bool {
 	// Control packet already read
-	if ns.ControlPkt.Errno != 0 {
-		if ns.ControlPkt.IsNotification {
-			ns.ControlPkt.Clear() //reset
+	if ns.controlPkt.Errno != 0 {
+		if ns.controlPkt.IsNotification {
+			ns.controlPkt.Clear() //reset
 			return true
 		}
-		ns.ControlPkt.Clear() //reset
+		ns.controlPkt.Clear() //reset
 		return false
 
 	}
@@ -755,13 +757,13 @@ func (ns *NetworkSession) CheckInbandNotification() bool {
 	ctxHeader, cancelHeader := context.WithTimeout(common.BackgroundContext, 50*time.Microsecond)
 	defer cancelHeader()
 	// Read header
-	n, err := ns.NTAdapter.Receive(ctxHeader, ns.rcvBuf, PACKET_HEADER_SIZE)
+	n, err := ns.ntAdapter.Receive(ctxHeader, ns.rcvBuf, PACKET_HEADER_SIZE)
 	if err != nil || n != PACKET_HEADER_SIZE {
 		return false // Timeout
 	}
 	// Get packet length
 	var packetLen int
-	if ns.SAtts.LargeSDU {
+	if ns.sAtts.LargeSDU {
 		packetLen = int(binary.BigEndian.Uint32(ns.rcvBuf[0:4]))
 	} else {
 		packetLen = int(binary.BigEndian.Uint16(ns.rcvBuf[0:2]))
@@ -772,7 +774,7 @@ func (ns *NetworkSession) CheckInbandNotification() bool {
 	if bodyLen > 0 {
 		ctxBody, cancelBody := context.WithTimeout(common.BackgroundContext, 10*time.Second)
 		defer cancelBody()
-		n, errBody := ns.NTAdapter.Receive(ctxBody, ns.rcvBuf[PACKET_HEADER_SIZE:], bodyLen)
+		n, errBody := ns.ntAdapter.Receive(ctxBody, ns.rcvBuf[PACKET_HEADER_SIZE:], bodyLen)
 		if errBody != nil || n < bodyLen {
 			return false
 		}
@@ -780,18 +782,18 @@ func (ns *NetworkSession) CheckInbandNotification() bool {
 
 	// Full packet; unmarshal header
 	buf := ns.rcvBuf[:packetLen]
-	hdr := &Header{}
-	if err := hdr.Unmarshal(buf, ns.SAtts, nil); err != nil {
+	hdr := &header{}
+	if err := hdr.Unmarshal(buf, ns.sAtts, nil); err != nil {
 		return false
 	}
 
 	if hdr.Type == NSPTCNL {
-		ns.ControlPkt.Unmarshal(buf, ns.SAtts, hdr)
-		if ns.ControlPkt.IsNotification {
-			ns.ControlPkt.Clear() //reset
+		ns.controlPkt.Unmarshal(buf, ns.sAtts, hdr)
+		if ns.controlPkt.IsNotification {
+			ns.controlPkt.Clear() //reset
 			return true
 		}
-		ns.ControlPkt.Clear()
+		ns.controlPkt.Clear()
 		return false
 	} else {
 		// Push back

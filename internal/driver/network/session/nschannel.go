@@ -54,29 +54,16 @@ type NSChannel interface {
 	CancelOperation(ctx context.Context) error
 	SendInterrupt(ctx context.Context) error
 	SendReset(ctx context.Context) error
-	SendZDP(ctx context.Context) error
-	SendZeroCopy(ctx context.Context, buf []byte)
-	ReceiveZeroCopy(ctx context.Context, buf []byte)
 	Flush(ctx context.Context) error
 	IsInBreakReset() bool
 }
 
-// ByteOrder defines endianness for multi-byte reads/writes
-type ByteOrder struct {
-	name string
-}
-
-var (
-	BIG_ENDIAN    = ByteOrder{name: "BIG_ENDIAN"}
-	LITTLE_ENDIAN = ByteOrder{name: "LITTLE_ENDIAN"}
-)
-
 // PrepareReadBuffer ensures that the receive buffer has data available for reading
-func (ns *NetworkSession) PrepareReadBuffer(ctx context.Context) error {
+func (ns *networkSession) PrepareReadBuffer(ctx context.Context) error {
 	//If the current receive packet has no remaining data, it resets
-	if ns.RcvDatapkt.Len-ns.RcvDatapkt.Offset == 0 {
-		ns.RcvDatapkt.Offset = NSPDADAT
-		ns.RcvDatapkt.Len = ns.RcvDatapkt.BufLen
+	if ns.rcvDatapkt.Len-ns.rcvDatapkt.Offset == 0 {
+		ns.rcvDatapkt.Offset = NSPDADAT
+		ns.rcvDatapkt.Len = ns.rcvDatapkt.BufLen
 		// fillReadBuffer to populate the buffer with new data from the network.
 		return ns.fillReadBuffer(ctx)
 	}
@@ -84,9 +71,9 @@ func (ns *NetworkSession) PrepareReadBuffer(ctx context.Context) error {
 }
 
 // fillReadBuffer to populate the buffer with new data from the network.
-func (ns *NetworkSession) fillReadBuffer(ctx context.Context) error {
+func (ns *networkSession) fillReadBuffer(ctx context.Context) error {
 	_, err := ns.recvPacket(ctx)
-	if ns.IsBreak {
+	if ns.isBreak {
 		return fmt.Errorf("break-packet received")
 	}
 	if err != nil {
@@ -96,30 +83,30 @@ func (ns *NetworkSession) fillReadBuffer(ctx context.Context) error {
 
 }
 
-func (ns *NetworkSession) ReadByteWithContext(ctx context.Context) (byte, error) {
+func (ns *networkSession) ReadByteWithContext(ctx context.Context) (byte, error) {
 	return ns.ReadUI8(ctx)
 }
 
-func (ns *NetworkSession) ReadBytesWithContext(ctx context.Context, length int32) (*[]byte, error) {
+func (ns *networkSession) ReadBytesWithContext(ctx context.Context, length int32) (*[]byte, error) {
 	if length < 0 {
 		return nil, fmt.Errorf("invalid byte length: %d", length)
 	}
 	return ns.readNBytes(ctx, int(length))
 }
 
-func (ns *NetworkSession) ReadNBytes(ctx context.Context, n uint16) (*[]byte, error) {
+func (ns *networkSession) ReadNBytes(ctx context.Context, n uint16) (*[]byte, error) {
 	return ns.readNBytes(ctx, int(n))
 }
 
-func (ns *NetworkSession) readNBytes(ctx context.Context, n int) (*[]byte, error) {
+func (ns *networkSession) readNBytes(ctx context.Context, n int) (*[]byte, error) {
 	err := ns.PrepareReadBuffer(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var b []byte
 	// Remaining  returns the number of bytes left to read in the current data packet
-	if ns.RcvDatapkt.Remaining() >= n {
-		b, err = ns.RcvDatapkt.Read(n)
+	if ns.rcvDatapkt.Remaining() >= n {
+		b, err = ns.rcvDatapkt.Read(n)
 	} else {
 		b = make([]byte, n)
 		err = ns.readMultiPacket(ctx, b, n)
@@ -130,23 +117,23 @@ func (ns *NetworkSession) readNBytes(ctx context.Context, n int) (*[]byte, error
 	return &b, nil
 }
 
-func (ns *NetworkSession) ReadUI8(ctx context.Context) (uint8, error) {
+func (ns *networkSession) ReadUI8(ctx context.Context) (uint8, error) {
 	err := ns.PrepareReadBuffer(ctx)
 	if err != nil {
 		return 0, err
 	}
-	rByte, err := ns.RcvDatapkt.ReadByte()
+	rByte, err := ns.rcvDatapkt.ReadByte()
 	return rByte, err
 }
 
-func (ns *NetworkSession) ReadNativeUI16(ctx context.Context, isLSB bool) (uint16, error) {
+func (ns *networkSession) ReadNativeUI16(ctx context.Context, isLSB bool) (uint16, error) {
 	err := ns.PrepareReadBuffer(ctx)
 	if err != nil {
 		return 0, err
 	}
 	var b []byte
-	if ns.RcvDatapkt.Remaining() >= 2 {
-		b, err = ns.RcvDatapkt.Read(2)
+	if ns.rcvDatapkt.Remaining() >= 2 {
+		b, err = ns.rcvDatapkt.Read(2)
 	} else {
 		b = make([]byte, 2)
 		err = ns.readMultiPacket(ctx, b, 2)
@@ -161,14 +148,14 @@ func (ns *NetworkSession) ReadNativeUI16(ctx context.Context, isLSB bool) (uint1
 	}
 }
 
-func (ns *NetworkSession) ReadUI16(ctx context.Context) (uint16, error) {
+func (ns *networkSession) ReadUI16(ctx context.Context) (uint16, error) {
 	err := ns.PrepareReadBuffer(ctx)
 	if err != nil {
 		return 0, err
 	}
 	var b []byte
-	if ns.RcvDatapkt.Remaining() >= 2 {
-		b, err = ns.RcvDatapkt.Read(2)
+	if ns.rcvDatapkt.Remaining() >= 2 {
+		b, err = ns.rcvDatapkt.Read(2)
 	} else {
 		b = make([]byte, 2)
 		err = ns.readMultiPacket(ctx, b, 2)
@@ -183,13 +170,13 @@ func (ns *NetworkSession) ReadUI16(ctx context.Context) (uint16, error) {
 // spanning multiple packets if necessary. It continues reading from the current receive packet until
 // the requested amount is fulfilled, fetching new packets via recvPacket when the current packet's
 // remaining data is exhausted
-func (ns *NetworkSession) readMultiPacket(ctx context.Context, buf []byte, numBytes int) error {
+func (ns *networkSession) readMultiPacket(ctx context.Context, buf []byte, numBytes int) error {
 	bytesRead := 0
 	for bytesRead < numBytes {
-		remaining := ns.RcvDatapkt.Remaining()
+		remaining := ns.rcvDatapkt.Remaining()
 		if remaining == 0 {
 			_, err := ns.recvPacket(ctx)
-			if ns.IsBreak {
+			if ns.isBreak {
 				return fmt.Errorf("break-packet received")
 			}
 			if err != nil {
@@ -202,7 +189,7 @@ func (ns *NetworkSession) readMultiPacket(ctx context.Context, buf []byte, numBy
 		if bytesToRead > remaining {
 			bytesToRead = remaining
 		}
-		data, err := ns.RcvDatapkt.Read(bytesToRead)
+		data, err := ns.rcvDatapkt.Read(bytesToRead)
 		if err != nil {
 			return fmt.Errorf("failed to read from current packet: %w", err)
 		}
@@ -215,18 +202,14 @@ func (ns *NetworkSession) readMultiPacket(ctx context.Context, buf []byte, numBy
 
 }
 
-func (ns *NetworkSession) GetRemainingByteCount(ctx context.Context) int {
-	return ns.RcvDatapkt.Remaining()
-}
-
-func (ns *NetworkSession) ReadUI32(ctx context.Context) (uint32, error) {
+func (ns *networkSession) ReadUI32(ctx context.Context) (uint32, error) {
 	err := ns.PrepareReadBuffer(ctx)
 	if err != nil {
 		return 0, err
 	}
 	var b []byte
-	if ns.RcvDatapkt.Remaining() >= 4 {
-		b, err = ns.RcvDatapkt.Read(4)
+	if ns.rcvDatapkt.Remaining() >= 4 {
+		b, err = ns.rcvDatapkt.Read(4)
 	} else {
 		b = make([]byte, 4)
 		err = ns.readMultiPacket(ctx, b, 4)
@@ -237,37 +220,20 @@ func (ns *NetworkSession) ReadUI32(ctx context.Context) (uint32, error) {
 	return binary.BigEndian.Uint32(b), nil
 }
 
-func (ns *NetworkSession) ReadI64(ctx context.Context) (int64, error) {
-	err := ns.PrepareReadBuffer(ctx)
-	if err != nil {
-		return 0, err
-	}
-	var b []byte
-	if ns.RcvDatapkt.Remaining() >= 8 {
-		b, err = ns.RcvDatapkt.Read(8)
-	} else {
-		b = make([]byte, 8)
-		err = ns.readMultiPacket(ctx, b, 8)
-	}
-	if err != nil {
-		return 0, err
-	}
-	return int64(binary.BigEndian.Uint64(b)), nil
-}
-func (ns *NetworkSession) ReadText(ctx context.Context, length int) (*[]byte, error) {
+func (ns *networkSession) ReadText(ctx context.Context, length int) (*[]byte, error) {
 
 	offset := 0
 	tmpBuffer := make([]byte, length)
 	for offset < length {
 		//It reads byte by byte,
 		// stopping early if a null byte (0) is encountered
-		b, err := ns.RcvDatapkt.ReadByte()
+		b, err := ns.rcvDatapkt.ReadByte()
 		if err == io.EOF {
 			err = ns.PrepareReadBuffer(ctx)
 			if err != nil {
 				return nil, err
 			}
-			b, err = ns.RcvDatapkt.ReadByte()
+			b, err = ns.rcvDatapkt.ReadByte()
 			if err != nil {
 				return nil, err
 			}
@@ -281,7 +247,7 @@ func (ns *NetworkSession) ReadText(ctx context.Context, length int) (*[]byte, er
 	offset--
 	return new(tmpBuffer[:offset]), nil
 }
-func (ns *NetworkSession) ReadBA(ctx context.Context, n uint16) ([]byte, error) {
+func (ns *networkSession) ReadBA(ctx context.Context, n uint16) ([]byte, error) {
 	err := ns.PrepareReadBuffer(ctx)
 	if err != nil {
 		return nil, err
@@ -293,101 +259,50 @@ func (ns *NetworkSession) ReadBA(ctx context.Context, n uint16) ([]byte, error) 
 	return *buf, nil
 }
 
-func (ns *NetworkSession) ReadBA2(ctx context.Context, n1, n2 uint16) ([]byte, []byte, error) {
-	ba1, err := ns.ReadNBytes(ctx, n1)
-	if err != nil {
-		return nil, nil, err
-	}
-	ba2, err := ns.ReadNBytes(ctx, n2)
-	if err != nil {
-		return nil, nil, err
-	}
-	return *ba1, *ba2, nil
-}
-
 // Write helper methods for writing multi-byte values
-func (ns *NetworkSession) WriteUI8(ctx context.Context, value uint8) error {
+func (ns *networkSession) WriteUI8(ctx context.Context, value uint8) error {
 	return ns.WriteByteWithContext(ctx, byte(value))
 }
 
-func (ns *NetworkSession) WriteBytesWithContext(ctx context.Context, bytes []byte) error {
+func (ns *networkSession) WriteBytesWithContext(ctx context.Context, bytes []byte) error {
 	return ns.Write(ctx, bytes)
 }
 
-func (ns *NetworkSession) Write(ctx context.Context, bytes []byte) error {
+func (ns *networkSession) Write(ctx context.Context, bytes []byte) error {
 	if len(bytes) <= 0 {
 		return nil
 	}
 	return ns.Send(ctx, bytes, 0, len(bytes))
 }
-func (ns *NetworkSession) WriteUI16(ctx context.Context, value int16, isLSB bool) error {
-	if ns.SndDatapkt.Len-ns.SndDatapkt.Offset < 2 {
+func (ns *networkSession) WriteUI16(ctx context.Context, value int16, isLSB bool) error {
+	if ns.sndDatapkt.Len-ns.sndDatapkt.Offset < 2 {
 		if err := ns.Flush(ctx); err != nil {
 			return err
 		}
 	}
-	buf := ns.SndDatapkt.Buf[ns.SndDatapkt.Offset:]
+	buf := ns.sndDatapkt.Buf[ns.sndDatapkt.Offset:]
 
 	if isLSB {
 		binary.LittleEndian.PutUint16(buf, uint16(value))
 	} else {
 		binary.BigEndian.PutUint16(buf, uint16(value))
 	}
-	ns.SndDatapkt.Offset += 2
+	ns.sndDatapkt.Offset += 2
 	return nil
 }
 
-func (ns *NetworkSession) WriteI64(ctx context.Context, value int64, isLSB bool) error {
-	// Check if there's enough space in the current send packet buffer for writing an int64 (8 bytes).
-	// If not, flush the current packet to send it and prepare a new one for the write operation.
-	if ns.SndDatapkt.Len-ns.SndDatapkt.Offset < 8 {
-		if err := ns.Flush(ctx); err != nil {
-			return err
-		}
-	}
-	buf := ns.SndDatapkt.Buf[ns.SndDatapkt.Offset:]
-	if isLSB {
-		binary.LittleEndian.PutUint64(buf, uint64(value))
-	} else {
-		binary.BigEndian.PutUint64(buf, uint64(value))
-	}
-	ns.SndDatapkt.Offset += 8
-	return nil
-}
-
-func (ns *NetworkSession) WriteText(ctx context.Context, text string) error {
-	bytes := []byte(text)
-	return ns.Send(ctx, bytes, 0, len(bytes))
-}
-
-func (ns *NetworkSession) WriteB(ctx context.Context, b byte) error {
-	panic("same as writeByte")
-}
-
-func (ns *NetworkSession) WriteBA(ctx context.Context, ba *[]byte) error {
+func (ns *networkSession) WriteBA(ctx context.Context, ba *[]byte) error {
 	return ns.Send(ctx, *ba, 0, len(*ba))
 }
 
-func (ns *NetworkSession) WriteBA2(ctx context.Context, ba *[]byte, n1, n2 int) error {
-	panic("implement me")
-}
+func (ns *networkSession) WriteI32(ctx context.Context, value int32, isLSB bool) error {
 
-func (ns *NetworkSession) SetByteOrder(ctx context.Context, bo ByteOrder) {
-	ns.byteOrder = bo
-}
-
-func (ns *NetworkSession) GetByteOrder(ctx context.Context) ByteOrder {
-	return ns.byteOrder
-}
-
-func (ns *NetworkSession) WriteI32(ctx context.Context, value int32, isLSB bool) error {
-
-	if ns.SndDatapkt.Len-ns.SndDatapkt.Offset < 4 {
+	if ns.sndDatapkt.Len-ns.sndDatapkt.Offset < 4 {
 		if err := ns.Flush(ctx); err != nil {
 			return err
 		}
 	}
-	buf := ns.SndDatapkt.Buf[ns.SndDatapkt.Offset:]
+	buf := ns.sndDatapkt.Buf[ns.sndDatapkt.Offset:]
 	if isLSB {
 		binary.LittleEndian.PutUint32(buf, uint32(value))
 
@@ -395,40 +310,25 @@ func (ns *NetworkSession) WriteI32(ctx context.Context, value int32, isLSB bool)
 		binary.BigEndian.PutUint32(buf, uint32(value))
 
 	}
-	ns.SndDatapkt.Offset += 4
+	ns.sndDatapkt.Offset += 4
 	return nil
 
 }
 
-func (ns *NetworkSession) WriteByteWithContext(ctx context.Context, value byte) error {
+func (ns *networkSession) WriteByteWithContext(ctx context.Context, value byte) error {
 
-	if ns.SndDatapkt.Len-ns.SndDatapkt.Offset < 1 {
+	if ns.sndDatapkt.Len-ns.sndDatapkt.Offset < 1 {
 		if err := ns.Flush(ctx); err != nil {
 			return err
 		}
 	}
-	b := ns.SndDatapkt.Buf[ns.SndDatapkt.Offset:]
+	b := ns.sndDatapkt.Buf[ns.sndDatapkt.Offset:]
 	b[0] = value
-	ns.SndDatapkt.Offset++
+	ns.sndDatapkt.Offset++
 	return nil
 }
 
-func (ns *NetworkSession) WritePartial(ctx context.Context, src []byte, offset int, length int) error {
-	if offset < 0 || length < 0 || offset+length > len(src) {
-		return fmt.Errorf("invalid offset or length")
-	}
-	if ns.SndDatapkt.Remaining() < length {
-		if err := ns.Flush(ctx); err != nil {
-			return err
-		}
-		if ns.SndDatapkt.Remaining() < length {
-			return fmt.Errorf("buffer overflow: insufficient space after flush")
-		}
-	}
-	return ns.Write(ctx, src[offset:offset+length])
-}
-
-func (ns *NetworkSession) SkipNBytes(ctx context.Context, n int) error {
+func (ns *networkSession) SkipNBytes(ctx context.Context, n int) error {
 	bytesSkipped := 0
 
 	for bytesSkipped < n {
@@ -437,12 +337,12 @@ func (ns *NetworkSession) SkipNBytes(ctx context.Context, n int) error {
 			return err
 		}
 
-		remaining := ns.RcvDatapkt.Remaining()
+		remaining := ns.rcvDatapkt.Remaining()
 		needToSkip := n - bytesSkipped
 
 		if remaining >= needToSkip {
 			// Skip what we need and exit
-			_, err := ns.RcvDatapkt.Read(needToSkip)
+			_, err := ns.rcvDatapkt.Read(needToSkip)
 			if err != nil {
 				return err
 			}
@@ -450,7 +350,7 @@ func (ns *NetworkSession) SkipNBytes(ctx context.Context, n int) error {
 		} else {
 			// Skip all available and loop again
 			if remaining > 0 {
-				_, err := ns.RcvDatapkt.Read(remaining)
+				_, err := ns.rcvDatapkt.Read(remaining)
 				if err != nil {
 					return err
 				}
@@ -467,20 +367,20 @@ func (ns *NetworkSession) SkipNBytes(ctx context.Context, n int) error {
 //
 // Sends Break marker packet followed by reset and ignores all packets received
 // from the server until a reset packet is received.
-func (ns *NetworkSession) CancelOperation(ctx context.Context) error {
-	if ns.IsBreak {
+func (ns *networkSession) CancelOperation(ctx context.Context) error {
+	if ns.isBreak {
 		return nil
 	}
-	if !ns.Connected {
-		ns.IsBreak = true
-		ns.BreakPosted = true
+	if !ns.connected {
+		ns.isBreak = true
+		ns.breakPosted = true
 		return nil
 	}
 
 	// Build and send break packet
-	ns.IsBreak = true
-	var markerPkt = &MarkerPacket{}
-	err := markerPkt.Marshal(nil, ns.SAtts, NIQIMARK)
+	ns.isBreak = true
+	var markerPkt = &markerPacket{}
+	err := markerPkt.Marshal(nil, ns.sAtts, NIQIMARK)
 	if err != nil {
 		return err
 	}
@@ -499,52 +399,37 @@ func (ns *NetworkSession) CancelOperation(ctx context.Context) error {
 	return nil
 }
 
-func (ns *NetworkSession) SendInterrupt(ctx context.Context) error {
+func (ns *networkSession) SendInterrupt(ctx context.Context) error {
 	// Placeholder: Implement interrupt logic if needed
 	return fmt.Errorf("SendInterrupt not implemented")
 }
 
-func (ns *NetworkSession) SendReset(ctx context.Context) error {
+func (ns *networkSession) SendReset(ctx context.Context) error {
 	return ns.Reset(ctx) // Reuse existing Reset method
 }
 
-func (ns *NetworkSession) SendZDP(ctx context.Context) error {
-	// Placeholder: Zero Data Packet logic
-	return fmt.Errorf("SendZDP not implemented")
-}
-
-func (ns *NetworkSession) SendZeroCopy(ctx context.Context, bytes []byte) {
-	// Placeholder: Zero-copy send logic
-	panic("SendZeroCopy not implemented")
-}
-
-func (ns *NetworkSession) ReceiveZeroCopy(ctx context.Context, bytes []byte) {
-	// Placeholder: Zero-copy receive logic
-	panic("ReceiveZeroCopy not implemented")
-}
-
-func (ns *NetworkSession) Flush(ctx context.Context) error {
-	if ns.IsBreak {
+func (ns *networkSession) Flush(ctx context.Context) error {
+	if ns.isBreak {
 		return nil
 	}
-	if ns.SndDatapkt.Offset <= NSPDADAT {
+	if ns.sndDatapkt.Offset <= NSPDADAT {
 		return nil
 	}
-	err := ns.SndDatapkt.Prepare2Send(0, ns.SAtts)
+	err := ns.sndDatapkt.Prepare2Send(0, ns.sAtts)
 	if err != nil {
 		return err
 	}
-	err = ns.SendPacket(ctx, ns.SndDatapkt.Buf[:ns.SndDatapkt.Offset])
+	err = ns.SendPacket(ctx, ns.sndDatapkt.Buf[:ns.sndDatapkt.Offset])
 	if err != nil {
 		if err == io.EOF {
 			return fmt.Errorf("connection closed during flush")
 		}
 		return err
 	}
-	ns.SndDatapkt.Reset()
+	ns.sndDatapkt.Reset()
 	return nil
 }
 
-func (ns *NetworkSession) IsInBreakReset() bool {
-	return ns.IsBreak || ns.IsReset
+func (ns *networkSession) IsInBreakReset() bool {
+	return ns.isBreak || ns.isReset
 }

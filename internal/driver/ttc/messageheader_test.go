@@ -43,14 +43,13 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 func TestMessageHeader_UnMarshalFrom(t *testing.T) {
 	t.Parallel()
 	size := 1024
 	dataBuffer := NewArrayDataBuffer(size) //DataBuffer is properly initialized
-	byteOrder := session.BIG_ENDIAN
+	byteOrder := common.BIG_ENDIAN
 	engine := NewNativeMarshalEngine(dataBuffer, byteOrder)
 
 	// Marshal a message type

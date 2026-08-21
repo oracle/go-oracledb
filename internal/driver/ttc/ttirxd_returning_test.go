@@ -46,7 +46,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -127,7 +126,7 @@ func buildReturningWire(positions ...[][]byte) []byte {
 
 func newDMLReturningRXD(numberOfReturningPositions int) *tTIrxd {
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.SetNumberofReturningArgs(numberOfReturningPositions)
+	rxd.setNumberofReturningArgs(numberOfReturningPositions)
 	rxd.setDmlReturning()
 	return rxd
 }
@@ -401,7 +400,7 @@ func TestTTIrxd_MarshalTo_LargeCLR(t *testing.T) {
 	}
 	rxd.setBindValues([]common.B1Array{large})
 
-	buf, eng := NewMarshalEngineTest(session.BIG_ENDIAN, B2, Universal, 1024)
+	buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 1024)
 
 	if err := rxd.MarshalTo(context.Background(), eng); err != nil {
 		t.Fatalf("MarshalTo returned error for large CLR: %v", err)

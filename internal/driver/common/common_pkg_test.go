@@ -60,14 +60,12 @@ var testCases = []struct {
 	f          func(t *testing.T)
 }{
 	{"TestNewBitSet_SizeAlignment", "unitary", false, TestNewBitSet_SizeAlignment},
-	{"TestSetAndGet", "unitary", false, TestSetAndGet},
-	{"TestSetBytesAndSetByte", "unitary", false, TestSetBytesAndSetByte},
+	{"TestGet", "unitary", false, TestGet},
+	{"TestSetBytes", "unitary", false, TestSetBytes},
 	{"TestCardinality", "unitary", false, TestCardinality},
 	{"TestClearAllAndLength", "unitary", false, TestClearAllAndLength},
 	{"TestStringFormat", "unitary", false, TestStringFormat},
 	{"TestSetBytes_OutOfBounds", "unitary", false, TestSetBytes_OutOfBounds},
-	{"TestGetSet_OutOfBounds", "unitary", false, TestGetSet_OutOfBounds},
-	{"TestNewBitSetFromBytes", "unitary", false, TestNewBitSetFromBytes},
 	{"TestShelf_NewShelfTest", "unitary", false, TestShelf_NewShelfTest},
 	{"TestShelf_GetMarshaller", "unitary", false, TestShelf_GetMarshaller},
 	{"TestShelf_GetMessageFactory", "unitary", false, TestShelf_GetMessageFactory},

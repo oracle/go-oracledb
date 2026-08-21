@@ -48,7 +48,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -58,7 +57,7 @@ import (
 // - Message streamer registered on the shelf
 func newAuthTestShelf(bufSize int) (*ttiShelf[driverCommon.MessageType], *MessageStreamer, *ArrayBasedDataBuffer) {
 	buf := NewArrayDataBuffer(bufSize)
-	mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMarshaller(mar)
@@ -79,10 +78,10 @@ func newAuthTestShelf(bufSize int) (*ttiShelf[driverCommon.MessageType], *Messag
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oauth}, -1, func() driverCommon.Message[driverCommon.MessageType] {
 		return NewOAuthRPA()
 	})
-	_ = funcReg.Register(functionRegistryKey{messageType: TTISPF, functionType: driverCommon.FunctionType(ocssync)}, -1, NewttiSPFOCSSync)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTISPF, functionType: driverCommon.FunctionType(ocssync)}, -1, newttiSPFOCSSync)
 
 	msgReg := NewRegistry[driverCommon.MessageType]()
-	_ = msgReg.Register(TTIOER, 14, NewTTIoer14)
+	_ = msgReg.Register(TTIOER, 14, newTTIoer14)
 	_ = msgReg.Register(TTIWRN, -1, newTTIwrn)
 
 	// Simple factory over our function registry.
@@ -122,7 +121,7 @@ func TestPasswordAuthenticator_doOSESSKEY_Golden(t *testing.T) {
 	}
 
 	// Initialize authenticator with requested capability = 239
-	pa := NewPasswordAuthenticator("username_test", "username_test",
+	pa := newPasswordAuthenticator("username_test", "username_test",
 		"(DESCRIPTION=(ADDRESS=(HOST=localhost)(PORT=1521)(PROTOCOL=tcp))(CONNECT_DATA=(SERVICE_NAME=freepdb1)))")
 	pa.SetShelf(shelf)
 	pa.SetSessionContext(driverCommon.NewSessionContext())
@@ -167,7 +166,7 @@ func TestPasswordAuthenticator_doOAuth_Golden(t *testing.T) {
 	if err := rpaBuf.WriteBytesWithContext(ctx, makeOSesskeyRPAPayload()); err != nil {
 		t.Fatalf("write oSesskeyRPA payload to temp buffer failed: %v", err)
 	}
-	rpaEngine := NewMarshalEngine(rpaBuf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	rpaEngine := NewMarshalEngine(rpaBuf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	unmarshallable, _ := osrpaMsg.(driverCommon.UnMarshallable)
 	if err := unmarshallable.UnMarshalFrom(ctx, rpaEngine); err != nil {
 		t.Fatalf("UnMarshalFrom(oSesskeyRPA) failed: %v", err)
@@ -185,7 +184,7 @@ func TestPasswordAuthenticator_doOAuth_Golden(t *testing.T) {
 		t.Fatalf("write oAuth RPA payload failed: %v", err)
 	}
 
-	pa := NewPasswordAuthenticator(
+	pa := newPasswordAuthenticator(
 		"username_test",
 		"username_test",
 		"(DESCRIPTION=(ADDRESS=(HOST=localhost)(PORT=1521)(PROTOCOL=tcp))(CONNECT_DATA=(SERVICE_NAME=freepdb1)))")
@@ -209,7 +208,7 @@ func writeAuthWarning(t *testing.T, ctx context.Context, buf *ArrayBasedDataBuff
 	if err := buf.WriteByteWithContext(ctx, byte(TTIWRN)); err != nil {
 		t.Fatalf("write TTIWRN header failed: %v", err)
 	}
-	mar := NewMarshalEngine(buf, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	mar := NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	if err := mar.MarshalUB2(ctx, number); err != nil {
 		t.Fatalf("write warning number failed: %v", err)
 	}

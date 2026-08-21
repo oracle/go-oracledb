@@ -44,7 +44,6 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 // TestTTIoac_NewTTIoac checks correct field setup for different input types.
@@ -237,7 +236,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 			if tc.toid != nil {
 				obj.toid = (*common.B1Array)(&tc.toid)
 			}
-			_, mar := NewMarshalEngineTest(session.BIG_ENDIAN, Universal, Universal, 1024)
+			_, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
 			err := obj.MarshalTo(ctx, mar)
 			if err != nil {
 				t.Fatalf("MarshalTo failed for %s case: %v", tc.name, err)

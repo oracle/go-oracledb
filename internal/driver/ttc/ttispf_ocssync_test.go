@@ -43,14 +43,13 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
 
 func TestTTISPF_New(t *testing.T) {
 	t.Parallel()
-	msg := NewttiSPFOCSSync()
+	msg := newttiSPFOCSSync()
 	if msg == nil {
-		t.Fatal("NewttiSPFOCSSync returned nil")
+		t.Fatal("newttiSPFOCSSync returned nil")
 	}
 	if msg.GetMsgCode() != TTISPF {
 		t.Errorf("GetMsgCode = %v, want %v", msg.GetMsgCode(), TTISPF)
@@ -77,9 +76,9 @@ func TestTTISPF_Unmarshal_Success(t *testing.T) {
 	if werr := data.WriteBytesWithContext(context.Background(), buf); werr != nil {
 		t.Fatalf("failed to seed buffer: %v", werr)
 	}
-	engine := NewMarshalEngine(data, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(data, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	msg := NewttiSPFOCSSync()
+	msg := newttiSPFOCSSync()
 	unmarshallable, _ := msg.(common.UnMarshallable)
 	if err := unmarshallable.UnMarshalFrom(context.Background(), engine); err != nil {
 		t.Fatalf("UnMarshalFrom failed: %v", err)
@@ -142,9 +141,9 @@ func TestTTISPF_Unmarshal_Fail_TruncatedPayloads(t *testing.T) {
 
 			data := NewArrayDataBuffer(len(payload) + 16)
 			_ = data.WriteBytesWithContext(context.Background(), payload)
-			engine := NewMarshalEngine(data, session.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(data, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-			msg := NewttiSPFOCSSync()
+			msg := newttiSPFOCSSync()
 			unmarshallable, _ := msg.(common.UnMarshallable)
 			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
 			if err == nil {
@@ -179,7 +178,7 @@ func TestTTISPF_Unmarshal_Fail_FaultyBuffer(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			mar := createMarshaller(full, c.failOn, c.call)
-			msg := NewttiSPFOCSSync()
+			msg := newttiSPFOCSSync()
 			unmarshallable, _ := msg.(common.UnMarshallable)
 			err := unmarshallable.UnMarshalFrom(context.Background(), mar)
 			if err == nil {
@@ -214,8 +213,8 @@ func TestGetKeyValueFromKeyword_Timezone_WithRegionID_NameUsed(t *testing.T) {
 		keyword:     al8kwTimezone,
 	}
 
-	sync := NewttiSPFOCSSync()
-	key, val := GetKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
+	sync := newttiSPFOCSSync()
+	key, val := getKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
 	if key != SessionTimeZone {
 		t.Fatalf("key = %q, want %q", key, SessionTimeZone)
 	}
@@ -223,7 +222,7 @@ func TestGetKeyValueFromKeyword_Timezone_WithRegionID_NameUsed(t *testing.T) {
 	if !ok {
 		t.Fatalf("value type = %T, want string", val)
 	}
-	want, ok := GetZoneFromID(regid)
+	want, ok := getZoneFromID(regid)
 	if !ok {
 		t.Fatalf("regid %d not found in zone map", regid)
 	}
@@ -251,8 +250,8 @@ func TestGetKeyValueFromKeyword_Timezone_WithRegionID_FallbackGMT(t *testing.T) 
 		keyword:     al8kwTimezone,
 	}
 
-	sync := NewttiSPFOCSSync()
-	key, val := GetKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
+	sync := newttiSPFOCSSync()
+	key, val := getKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
 	if key != SessionTimeZone {
 		t.Fatalf("key = %q, want %q", key, SessionTimeZone)
 	}
@@ -275,8 +274,8 @@ func TestGetKeyValueFromKeyword_Nls_TextValueBranch(t *testing.T) {
 		keyword:     common.UB2(8),
 	}
 
-	sync := NewttiSPFOCSSync()
-	key, val := GetKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
+	sync := newttiSPFOCSSync()
+	key, val := getKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
 	if key != authNlsLxcDateLang {
 		t.Fatalf("key = %q, want %q", key, authNlsLxcDateLang)
 	}
@@ -298,8 +297,8 @@ func TestGetKeyValueFromKeyword_PdbElasticPoolLdr_True(t *testing.T) {
 		binaryValue: dynamicAllocatedArray{value: payload},
 		keyword:     al8kwPdbElasticPoolLdr,
 	}
-	sync := NewttiSPFOCSSync()
-	key, val := GetKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
+	sync := newttiSPFOCSSync()
+	key, val := getKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
 	if key != al8kwPdbElasticPoolLdrStr {
 		t.Fatalf("key = %q, want %q", key, al8kwPdbElasticPoolLdrStr)
 	}
@@ -320,8 +319,8 @@ func TestGetKeyValueFromKeyword_PdbAppRoot_True(t *testing.T) {
 		binaryValue: dynamicAllocatedArray{value: payload},
 		keyword:     al8kwPdbAppRoot,
 	}
-	sync := NewttiSPFOCSSync()
-	key, val := GetKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
+	sync := newttiSPFOCSSync()
+	key, val := getKeyValueFromKeyword(sync.(*ttiSPFOCSSync).GetNlsKeys(), kv)
 	if key != al8kwPdbAppRootStr {
 		t.Fatalf("key = %q, want %q", key, al8kwPdbAppRootStr)
 	}

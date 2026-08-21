@@ -45,7 +45,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -88,7 +87,7 @@ type MarshalEngine struct {
 	// data buffer
 	_dataBuffer driverCommon.DataBuffer
 	// byte order
-	_byteOrder session.ByteOrder
+	_byteOrder driverCommon.ByteOrder
 	// sequence number maintained by its marshaller.
 	// a sequence number is value from 1 to max int8 encoded on a UB1.
 	// Each time it is fetched the value is incremented by 1.
@@ -214,7 +213,7 @@ var (
 //
 // Returns:
 //   - A pointer to a new MarshalEngine instance.
-func NewNativeMarshalEngine(dataBuffer driverCommon.DataBuffer, byteOrder session.ByteOrder) *MarshalEngine {
+func NewNativeMarshalEngine(dataBuffer driverCommon.DataBuffer, byteOrder driverCommon.ByteOrder) *MarshalEngine {
 	engine := MarshalEngine{
 		_PTRTypeRep:     _defaultPTRTypeRep,
 		_dataBuffer:     dataBuffer,
@@ -234,7 +233,7 @@ func NewNativeMarshalEngine(dataBuffer driverCommon.DataBuffer, byteOrder sessio
 //
 // Returns:
 //   - A pointer to a new MarshalEngine instance.
-func NewMarshalEngine(dataBuffer driverCommon.DataBuffer, byteOrder session.ByteOrder, types [5]byte) *MarshalEngine {
+func NewMarshalEngine(dataBuffer driverCommon.DataBuffer, byteOrder driverCommon.ByteOrder, types [5]byte) *MarshalEngine {
 	engine := MarshalEngine{
 		_PTRTypeRep:     types[PTR],
 		_dataBuffer:     dataBuffer,
@@ -1281,7 +1280,7 @@ func _validateUniversalByteCount(firstByte byte, numberOfBytes byte, maxBytes ui
 //   - An error if the value cannot be written.
 func _writeNative[T unmarshalTypes](ctx context.Context, value T, m *MarshalEngine, numTypeRep numericTypeRepresentation, littleEndianFunc func([]byte, T), bigEndianFunc func([]byte, T)) error {
 	buffer := make([]byte, numTypeRep.nbBytes)
-	if m._byteOrder == session.LITTLE_ENDIAN {
+	if m._byteOrder == driverCommon.LITTLE_ENDIAN {
 		littleEndianFunc(buffer, value)
 	} else {
 		bigEndianFunc(buffer, value)
@@ -1305,13 +1304,13 @@ func _writeNative[T unmarshalTypes](ctx context.Context, value T, m *MarshalEngi
 // Returns:
 //   - The decoded numeric value.
 //   - An error if the value cannot be read or decoded.
-func _readNative[T unmarshalTypes, V unmarshalTypes](ctx context.Context, dataBuffer driverCommon.DataBuffer, byteOrder session.ByteOrder, typeName string, maxBytes uint8,
+func _readNative[T unmarshalTypes, V unmarshalTypes](ctx context.Context, dataBuffer driverCommon.DataBuffer, byteOrder driverCommon.ByteOrder, typeName string, maxBytes uint8,
 	littleEndianFunc func([]byte) V, bigEndianFunc func([]byte) V) (T, error) {
 	buffer, err := dataBuffer.ReadBytesWithContext(ctx, int32(maxBytes))
 	if err != nil {
 		return 0, _wrapError(err, "unmarshal "+typeName)
 	}
-	if byteOrder == session.LITTLE_ENDIAN {
+	if byteOrder == driverCommon.LITTLE_ENDIAN {
 		return T(littleEndianFunc(*buffer)), nil
 	}
 	return T(bigEndianFunc(*buffer)), nil

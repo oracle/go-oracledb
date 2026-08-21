@@ -158,7 +158,7 @@ type oAuth struct {
 	isSessionTZ     bool
 	sessionTimeZone string
 
-	keyValList *KeyValueList
+	keyValList *keyValueList
 	user       driverCommon.B1Array
 	logonMode  int64
 
@@ -181,7 +181,7 @@ func NewOAuth() driverCommon.Message[driverCommon.MessageType] {
 		header:           &ttiFunHeader{_funcType: oauth},
 		_hasO5LNPSupport: false,
 		_hasO7LMRSupport: false,
-		keyValList:       NewKeyValueList(),
+		keyValList:       newKeyValueList(),
 	}
 	t._oauthInit()
 	return t
@@ -195,7 +195,7 @@ func NewOAuth18() driverCommon.Message[driverCommon.MessageType] {
 		header:           &ttiFunHeader18{ttiFunHeader: &ttiFunHeader{_funcType: oauth}},
 		_hasO5LNPSupport: false,
 		_hasO7LMRSupport: false,
-		keyValList:       NewKeyValueList(),
+		keyValList:       newKeyValueList(),
 	}
 	t._oauthInit()
 	return t
@@ -652,7 +652,7 @@ func (rpa *OAuthRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Mars
 	}
 
 	//for o5logon, the flag is the verifier type
-	keyValueList := NewPreallocatedKeyValueList(int(rpa.outNbPairs))
+	keyValueList := newPreallocatedKeyValueList(int(rpa.outNbPairs))
 	err = ((driverCommon.UnMarshallable)(keyValueList)).UnMarshalFrom(ctx, engine)
 	if err != nil {
 		common.Odl.Warn("Unable to unmarshal oAuth RPA, cant' unmarshal key/value pairs", "error", err)
