@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+	"crypto"
 	"errors"
 	"fmt"
 	"math"
@@ -92,6 +93,10 @@ const (
 	authPbkdf2SderCount    = "AUTH_PBKDF2_SDER_COUNT"
 	driverNameDefault      = "oracledb"
 	authOraEdition         = "AUTH_ORA_EDITION"
+
+	authToken     = "AUTH_TOKEN"
+	authHeader    = "AUTH_HEADER"
+	authSignature = "AUTH_SIGNATURE"
 
 	passwordBufferLength = 2112
 	kolrugEnable         = 0x0001
@@ -395,6 +400,15 @@ func (o *oAuth) prepareForOAUTH(luser driverCommon.B1Array,
 	return nil
 }
 
+func (o *oAuth) prepareForTokenOAUTH(luser driverCommon.B1Array) error {
+	o.initializeLogonModeForOAUTH(luser, o.logonMode, nil)
+	o.setVSessionKeyValsForOAUTH()
+	o.setAlterSessionKeyValsForOAUTH()
+	o.setDriverIdentityKeyValsForOAUTH()
+
+	return nil
+}
+
 // Initializes logonMode before executing an oauth call.
 // llogonMode Logon mode specified by an external caller.
 // for instance.
@@ -411,6 +425,9 @@ func (o *oAuth) initializeLogonModeForOAUTH(luser driverCommon.B1Array, llogonMo
 var _authPasswordKey = driverCommon.StringToB1Array(authPassword)
 var _authPbkdf2SpeedyKey = driverCommon.StringToB1Array(authPbkdf2SpeedyKey)
 var _authSesskey = driverCommon.StringToB1Array(authSesskey)
+var _authTokenKey = driverCommon.StringToB1Array(authToken)
+var _authHeaderKey = driverCommon.StringToB1Array(authHeader)
+var _authSignatureKey = driverCommon.StringToB1Array(authSignature)
 
 // Adds password-related key-value pairs to the authentication request, including encrypted password and speedy key if provided.
 func (o *oAuth) setPasswordKeyValsForOAUTH(lpassword []byte, speedyKey []byte) {
@@ -425,6 +442,33 @@ func (o *oAuth) setPasswordKeyValsForOAUTH(lpassword []byte, speedyKey []byte) {
 	if o.encryptedKB != nil { /* o5logon: send AUTH_SESSKEY */
 		o.keyValList.PushBack(&driverCommon.KeyValue{Key: _authSesskey, Value: o.encryptedKB, Flag: 1})
 	}
+}
+
+func (o *oAuth) setTokenKeyValsForOAUTH(token string, header string, signer crypto.Signer) error {
+	o.keyValList.PushBack(&driverCommon.KeyValue{
+		Key:   _authTokenKey,
+		Value: driverCommon.StringToB1Array(token),
+	})
+
+	if signer == nil {
+		return nil
+	}
+
+	signature, err := signTokenHeader(header, signer)
+	if err != nil {
+		return err
+	}
+
+	o.keyValList.PushBack(&driverCommon.KeyValue{
+		Key:   _authHeaderKey,
+		Value: driverCommon.StringToB1Array(header),
+	})
+	o.keyValList.PushBack(&driverCommon.KeyValue{
+		Key:   _authSignatureKey,
+		Value: driverCommon.StringToB1Array(signature),
+	})
+
+	return nil
 }
 
 var _authProxyClientNameKey = driverCommon.StringToB1Array(authProxyClientName)

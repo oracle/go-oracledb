@@ -44,6 +44,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log/slog"
+	"net"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -96,6 +97,21 @@ func NewNetworkSession() *NetworkSession {
 		ControlPkt:         &ControlPacket{},
 		byteOrder:          BIG_ENDIAN,
 	}
+}
+
+// GetRemoteAddress returns the connected remote TCP endpoint as "ip:port"
+// when the session is using a TCPS transport, or an empty string if the
+// remote address is not available.
+func (ns *NetworkSession) GetRemoteAddress() string {
+	tlsAdapter, ok := ns.NTAdapter.(*transport.NTTCPS)
+	if !ok || tlsAdapter.Stream == nil {
+		return ""
+	}
+	remoteAddr, ok := tlsAdapter.Stream.RemoteAddr().(*net.TCPAddr)
+	if !ok || remoteAddr == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d", remoteAddr.IP, remoteAddr.Port)
 }
 
 // transportConnect establishes the transport-level connection

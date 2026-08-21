@@ -482,6 +482,12 @@ type OracleCredentials struct {
 	LogonMode string `propertyName:"logon_mode" default:"" validator:"validateLogonMode" help:"specifies the logon mode for the connection"`
 	// Password stores the database password configuration.
 	Password string `cliVisible:"false" sensitive:"true"`
+	// TokenAuthentication selects token-based authentication.
+	TokenAuthentication TokenAuthenticationType `propertyName:"token_authentication" default:"" validator:"validateTokenAuthentication" help:"selects token-based authentication such as OCI_TOKEN"`
+	// AccessToken stores a token-based authentication token directly in memory.
+	AccessToken string `propertyName:"access_token" default:"" cliVisible:"false" sensitive:"true" help:"sets the token directly for token-based authentication instead of reading it from token_location"`
+	// TokenLocation points to a token file or token directory used for token-based authentication.
+	TokenLocation string `propertyName:"token_location" default:"" help:"points to a token file or token directory used for token-based authentication"`
 }
 
 func (config OracleCredentials) String() string {
@@ -948,6 +954,7 @@ func init() {
 	_fieldsValidators["validateZeroOrPositive"] = validateZeroOrPositive
 	_fieldsValidators["validateLoggingLevel"] = validateLoggingLevel
 	_fieldsValidators["validateUserName"] = validateUserName
+	_fieldsValidators["validateTokenAuthentication"] = validateTokenAuthenticationValue
 
 	// populates flags for each driver config items
 	NewOracleDriverConfig().populateFlags()
@@ -1177,6 +1184,20 @@ func validateLogonModeValue(value reflect.Value, valueName string) (any, error) 
 		valueName,
 		[]string{common.KpzLogonSysdba.String(), common.KpzLogonSysoper.String()},
 	)
+}
+
+func validateTokenAuthenticationValue(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() != reflect.String {
+		return nil, common.NewOracleError(
+			oracleErrors.InvalidConnectionParameter,
+			nil,
+			value,
+			valueName,
+			AllTokenAuthenticationTypeNames,
+		)
+	}
+
+	return ParseTokenAuthenticationType(value.String(), valueName)
 }
 
 // validateBooleanValue normalizes a string property value into a

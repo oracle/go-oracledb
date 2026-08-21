@@ -44,11 +44,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	"github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -156,4 +158,86 @@ func TestDriver_Authentication_TTIWRN(t *testing.T) {
 func isInsufficientPrivilegeError(err error) bool {
 	return err != nil && (strings.Contains(err.Error(), string(oracleErrors.InsufficientPrivilege)) ||
 		strings.Contains(err.Error(), "ORA-01031"))
+}
+
+// TestDriver_Authentication_OCIToken verifies OCI IAM token authentication by
+// connecting to an Autonomous Database and querying DUAL. Set
+// ORACLE_GO_OCI_TOKEN_CONNECT_DESCRIPTOR, ORACLE_GO_OCI_TOKEN_LOCATION (optional)
+// and ORACLE_GO_OCI_TOKEN_EXPECTED_USER to run this integration test.
+func TestDriver_Authentication_OCIToken(t *testing.T) {
+	connectDescriptor := os.Getenv("ORACLE_GO_OCI_TOKEN_CONNECT_DESCRIPTOR")
+	tokenLocation := os.Getenv("ORACLE_GO_OCI_TOKEN_LOCATION")
+	expectedUser := os.Getenv("ORACLE_GO_OCI_TOKEN_EXPECTED_USER")
+
+	if connectDescriptor == "" || expectedUser == "" {
+		t.Skip("OCI token authentication requires ORACLE_GO_OCI_TOKEN_CONNECT_DESCRIPTOR and ORACLE_GO_OCI_TOKEN_EXPECTED_USER")
+	}
+
+	cfg := NewOracleDriverConfig()
+	cfg.ConnectDescriptor = connectDescriptor
+	cfg.Credentials.TokenAuthentication = config.TokenAuthenticationOCI
+	cfg.Credentials.TokenLocation = tokenLocation
+
+	connector, err := NewOracleConnector(cfg)
+	if err != nil {
+		t.Fatalf("failed to create OCI token connector: %v", err)
+	}
+
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	ctx := context.Background()
+
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatalf("OCI token authentication ping failed: %v", err)
+	}
+
+	var result string
+	if err := db.QueryRowContext(ctx, "SELECT USER FROM SYS.DUAL").Scan(&result); err != nil {
+		t.Fatalf("OCI token authentication query failed: %v", err)
+	}
+	if result != expectedUser {
+		t.Fatalf("unexpected OCI token authentication query result: got %q, want %q", result, expectedUser)
+	}
+}
+
+// TestDriver_Authentication_OAuth verifies OAuth token authentication by
+// connecting to a Database and querying DUAL. Set
+// ORACLE_GO_OAUTH_CONNECT_DESCRIPTOR, ORACLE_GO_OAUTH_TOKEN_LOCATION and
+// ORACLE_GO_OAUTH_EXPECTED_USER to run this integration test.
+func TestDriver_Authentication_OAuth(t *testing.T) {
+	connectDescriptor := os.Getenv("ORACLE_GO_OAUTH_CONNECT_DESCRIPTOR")
+	tokenLocation := os.Getenv("ORACLE_GO_OAUTH_TOKEN_LOCATION")
+	expectedUser := os.Getenv("ORACLE_GO_OAUTH_EXPECTED_USER")
+
+	if connectDescriptor == "" || tokenLocation == "" || expectedUser == "" {
+		t.Skip("OAuth token authentication requires ORACLE_GO_OAUTH_CONNECT_DESCRIPTOR, ORACLE_GO_OAUTH_TOKEN_LOCATION and ORACLE_GO_OAUTH_EXPECTED_USER")
+	}
+
+	cfg := NewOracleDriverConfig()
+	cfg.ConnectDescriptor = connectDescriptor
+	cfg.Credentials.TokenAuthentication = config.TokenAuthenticationOAuth
+	cfg.Credentials.TokenLocation = tokenLocation
+
+	connector, err := NewOracleConnector(cfg)
+	if err != nil {
+		t.Fatalf("failed to create OAuth token connector: %v", err)
+	}
+
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	ctx := context.Background()
+
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatalf("OAuth token authentication ping failed: %v", err)
+	}
+
+	var result string
+	if err := db.QueryRowContext(ctx, "SELECT USER FROM SYS.DUAL").Scan(&result); err != nil {
+		t.Fatalf("OAuth token authentication query failed: %v", err)
+	}
+	if result != expectedUser {
+		t.Fatalf("unexpected OAuth token authentication query result: got %q, want %q", result, expectedUser)
+	}
 }

@@ -93,6 +93,10 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 		return nil, connInstantiator.localizationService.LocalizeError(err)
 	}
 
+	remoteAddsProperty := driverCommon.NewProperties[string]()
+	remoteAddsProperty.SetProperty("REMOTE_ADDRESS", connInstantiator.ns.GetRemoteAddress())
+	sessCtx.UpdateSessionProperties(remoteAddsProperty)
+
 	// Add connection properties to shelf for downstream consumers
 	shelf.UpdateConnectionProperties(connInstantiator.connectionProperties)
 	shelf.RegisterLocalizationService(connInstantiator.localizationService)
@@ -143,11 +147,14 @@ func GetAuthenticator(parameters *oracleconfig.OracleDriverConfig) (Authenticato
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
-	if len(parameters.Credentials.User) == 0 {
-		return nil, common.NewOracleError(oracleErrors.EmptyUsernameError, nil, nil)
+	if parameters.Credentials.TokenAuthentication.IsValid() {
+		return createTokenAuthenticator(parameters)
 	}
-	// for now, we have only username/password authenticator
+
 	if len(parameters.Credentials.Password) > 0 {
+		if len(parameters.Credentials.User) == 0 {
+			return nil, common.NewOracleError(oracleErrors.EmptyUsernameError, nil, nil)
+		}
 		return createPasswordAuthenticator(parameters)
 	}
 	return nil, common.NewOracleError(oracleErrors.NoAuthenticatorError, nil, nil)
@@ -165,6 +172,15 @@ func createPasswordAuthenticator(parameters *oracleconfig.OracleDriverConfig) (A
 	return NewPasswordAuthenticator(parameters.Credentials.User,
 		parameters.Credentials.Password,
 		parameters.ConnectDescriptor), nil
+}
+
+func createTokenAuthenticator(parameters *oracleconfig.OracleDriverConfig) (Authenticator, error) {
+	return NewTokenAuthenticator(
+		parameters.Credentials.TokenAuthentication,
+		parameters.Credentials.AccessToken,
+		parameters.Credentials.TokenLocation,
+		parameters.ConnectDescriptor,
+	), nil
 }
 
 // *** Negotiator Factory ***

@@ -84,6 +84,8 @@ var testCases = []struct {
 	{"TestEventServiceRegisterAndPost", "unitary", false, TestEventServiceRegisterAndPost},
 	{"TestAuthencationFactoryWithNilParameters", "unitary", false, TestAuthencationFactoryWithNilParameters},
 	{"TestAuthencationFactoryBasic", "unitary", false, TestAuthencationFactoryBasic},
+	{"TestGetAuthenticator_UsesTokenAuthenticatorForOCIToken", "unitary", false, TestGetAuthenticator_UsesTokenAuthenticatorForOCIToken},
+	{"TestGetAuthenticator_UsesTokenAuthenticatorForOAuth", "unitary", false, TestGetAuthenticator_UsesTokenAuthenticatorForOAuth},
 	{"TestGetConnection", "unitary", false, TestGetConnection},
 	{"TestConnectionPinger_Ping", "unitary", false, TestConnectionPinger_Ping},
 	{"TestConnectionPinger_IsValid", "unitary", false, TestConnectionPinger_IsValid},
@@ -231,6 +233,14 @@ var testCases = []struct {
 	{"TestStatementExecutor_Others_FaultyPush", "unitary", false, TestStatementExecutor_Others_FaultyPush},
 	{"TestPasswordAuthenticator_doOSESSKEY_Golden", "unitary", false, TestPasswordAuthenticator_doOSESSKEY_Golden},
 	{"TestPasswordAuthenticator_doOAuth_Golden", "unitary", false, TestPasswordAuthenticator_doOAuth_Golden},
+	{"TestOCITokenProviderResolveTokenPathDefault", "unitary", false, TestOCITokenProviderResolveTokenPathDefault},
+	{"TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature", "unitary", false, TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature},
+	{"TestOCITokenProviderGenerateTokenHeader", "unitary", false, TestOCITokenProviderGenerateTokenHeader},
+	{"TestOAuthTokenProviderResolveTokenPathFile", "unitary", false, TestOAuthTokenProviderResolveTokenPathFile},
+	{"TestOAuthTokenProviderApplyAuthDataAddsTokenOnly", "unitary", false, TestOAuthTokenProviderApplyAuthDataAddsTokenOnly},
+	{"TestTokenAuthenticatorResolveAccessTokenUsesConfiguredAccessToken", "unitary", false, TestTokenAuthenticatorResolveAccessTokenUsesConfiguredAccessToken},
+	{"TestTokenAuthenticatorResolveAccessTokenPrefersAccessTokenOverLocation", "unitary", false, TestTokenAuthenticatorResolveAccessTokenPrefersAccessTokenOverLocation},
+	{"TestValidateJWTExpirationExpired", "unitary", false, TestValidateJWTExpirationExpired},
 	{"TestConnectionNegotiator_Negotiate_Fail", "unitary", false, TestConnectionNegotiator_Negotiate_Fail},
 	{"TestConnectionNegotiator_Negotiate_Success", "unitary", false, TestConnectionNegotiator_Negotiate_Success},
 	{"TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey", "unitary", false, TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey},
@@ -1072,6 +1082,7 @@ type mockNetworkSession struct {
 	sleepDuration   time.Duration
 	cancelErr       error
 	inband          bool
+	remoteAddress   string
 }
 
 // newTestConnection creates a connection without querying DBTIMEZONE. Tests that
@@ -1097,6 +1108,10 @@ func newTestConnection(
 // CheckInbandNotification implements [common.NetworkSession].
 func (m *mockNetworkSession) CheckInbandNotification() bool {
 	return m.inband
+}
+
+func (m *mockNetworkSession) GetRemoteAddress() string {
+	return m.remoteAddress
 }
 
 func (m *mockNetworkSession) CancelOperation(ctx context.Context) error {
