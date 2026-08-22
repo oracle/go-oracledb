@@ -460,6 +460,8 @@ var testCases = []struct {
 	{"TestClobExecutor_WriteErrors", "unitary", false, TestClobExecutor_WriteErrors},
 	{"TestClobExecutor_Read", "unitary", false, TestClobExecutor_Read},
 	{"TestClobExecutor_ReadErrors", "unitary", false, TestClobExecutor_ReadErrors},
+	{"TestClobExecutor_Open", "unitary", false, TestClobExecutor_Open},
+	{"TestClobExecutor_Close", "unitary", false, TestClobExecutor_Close},
 	{"TestClobExecutor_IsOpen", "unitary", false, TestClobExecutor_IsOpen},
 	{"TestClobExecutor_IsOpenErrors", "unitary", false, TestClobExecutor_IsOpenErrors},
 	{"TestClobExecutor_GetLength", "unitary", false, TestClobExecutor_GetLength},
