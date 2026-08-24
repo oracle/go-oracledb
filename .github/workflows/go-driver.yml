@@ -55,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go-env
-      - run: go test -parallel=10  -shuffle=on -v -coverprofile=${{ github.workspace }}/coverage-results.out  $(go list ${{ github.workspace }}/... | grep -v /vendor/ grep -v go-driver/examples ) -run TestCategoryExecutor -test.category="unitary"
+      - run: go test -parallel=10  -shuffle=on -v -coverprofile=${{ github.workspace }}/coverage-results.out  $(go list ${{ github.workspace }}/... | grep -v /vendor/ | grep -v go-driver/examples ) -run TestCategoryExecutor -test.category="unitary"
       - uses: actions/upload-artifact@v4
         with:
             name: coverage
