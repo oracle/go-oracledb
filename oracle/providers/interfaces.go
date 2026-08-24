@@ -34,4 +34,14 @@ type OCITokenAuthenticationProvider interface {
 	PrivateKey(context.Context) ([]byte, error)
 }
 
+// OCITokenCredentialsProvider returns an OCI IAM token and its matching private
+// key atomically. Providers with rotating credentials should implement this
+// interface so a refresh cannot pair a token with a key from another generation.
+type OCITokenCredentialsProvider interface {
+	TokenAuthenticationProvider
+	// TokenAndPrivateKey returns the token and PEM-encoded private key from one
+	// credential generation.
+	TokenAndPrivateKey(context.Context) (string, []byte, error)
+}
+
 /*** END OF TOKEN AUTHENTICATI%ON ***/

@@ -102,8 +102,9 @@ func (ta *tokenAuthenticator) Authenticate(ctx context.Context) error {
 		return common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
-	// Validate token
-	token, err := ta.tokenProvider.Token(ctx)
+	// Resolve rotating OCI credentials as one generation when the provider
+	// supports the atomic credential interface.
+	token, keyPEM, err := ta.resolveTokenCredentials(ctx)
 	if err != nil {
 		return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 	}
@@ -116,7 +117,7 @@ func (ta *tokenAuthenticator) Authenticate(ctx context.Context) error {
 	if err != nil {
 		return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 	}
-	signature, err := ta.signHeader(ctx, tokenHeader)
+	signature, err := ta.signHeader(tokenHeader, keyPEM)
 	if err != nil {
 		return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 	}
@@ -189,8 +190,34 @@ func (ta *tokenAuthenticator) Authenticate(ctx context.Context) error {
 //   - true when tokenProvider implements OCITokenAuthenticationProvider.
 //   - false otherwise.
 func expectsHeader(tokenProvider oracleProviders.TokenAuthenticationProvider) bool {
-	_, ok := tokenProvider.(oracleProviders.OCITokenAuthenticationProvider)
-	return ok
+	switch tokenProvider.(type) {
+	case oracleProviders.OCITokenCredentialsProvider, oracleProviders.OCITokenAuthenticationProvider:
+		return true
+	default:
+		return false
+	}
+}
+
+// resolveTokenCredentials returns the token and optional OCI signing key for
+// one authentication attempt. The atomic interface takes precedence so rotating
+// providers cannot return values from different credential generations.
+func (ta *tokenAuthenticator) resolveTokenCredentials(ctx context.Context) (string, []byte, error) {
+	if provider, ok := ta.tokenProvider.(oracleProviders.OCITokenCredentialsProvider); ok {
+		return provider.TokenAndPrivateKey(ctx)
+	}
+
+	token, err := ta.tokenProvider.Token(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	if provider, ok := ta.tokenProvider.(oracleProviders.OCITokenAuthenticationProvider); ok {
+		keyPEM, err := provider.PrivateKey(ctx)
+		if err != nil {
+			return "", nil, err
+		}
+		return token, keyPEM, nil
+	}
+	return token, nil, nil
 }
 
 // logonMode returns the OAUTH logon mode bits for the supplied token provider.
@@ -241,18 +268,14 @@ func (ta *tokenAuthenticator) generateTokenHeader() (string, error) {
 // private-key signing.
 //
 // Parameters:
-//   - ctx: the context controlling private key retrieval.
 //   - header: the token header payload to sign.
+//   - keyPEM: the PEM-encoded key resolved with the token for this attempt.
 //
 // Returns:
 //   - the base64-encoded signature, or an empty string when signing is not required.
-//   - an error if key retrieval, parsing, or signing fails.
-func (ta *tokenAuthenticator) signHeader(ctx context.Context, header string) (string, error) {
+//   - an error if key parsing or signing fails.
+func (ta *tokenAuthenticator) signHeader(header string, keyPEM []byte) (string, error) {
 	if expectsHeader(ta.tokenProvider) && len(header) > 0 {
-		keyPEM, err := ta.tokenProvider.(oracleProviders.OCITokenAuthenticationProvider).PrivateKey(ctx)
-		if err != nil {
-			return "", err
-		}
 		signer, err := getSigner(keyPEM)
 		if err != nil {
 			return "", err

@@ -35,6 +35,17 @@ func (m mockOCITokenAuthenticationProvider) PrivateKey(context.Context) ([]byte,
 	return m.privateKey, m.privateKeyErr
 }
 
+type mockAtomicOCITokenCredentialsProvider struct {
+	mockTokenAuthenticationProvider
+	atomicToken      string
+	atomicPrivateKey []byte
+	atomicErr        error
+}
+
+func (m mockAtomicOCITokenCredentialsProvider) TokenAndPrivateKey(context.Context) (string, []byte, error) {
+	return m.atomicToken, m.atomicPrivateKey, m.atomicErr
+}
+
 type mockNonTokenProvider struct{}
 
 func encodePrivateKeyPEM(t *testing.T, privateKey *rsa.PrivateKey) []byte {
@@ -243,6 +254,32 @@ func TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader(t *testing.T) {
 	}
 }
 
+func TestResolveTokenCredentialsPrefersAtomicProvider(t *testing.T) {
+	t.Parallel()
+
+	privateKey := []byte("matching-key")
+	authenticator := &tokenAuthenticator{
+		tokenProvider: mockAtomicOCITokenCredentialsProvider{
+			mockTokenAuthenticationProvider: mockTokenAuthenticationProvider{
+				token: "standalone-token-must-not-be-used",
+			},
+			atomicToken:      "atomic-token",
+			atomicPrivateKey: privateKey,
+		},
+	}
+
+	token, gotPrivateKey, err := authenticator.resolveTokenCredentials(context.Background())
+	if err != nil {
+		t.Fatalf("resolveTokenCredentials returned error: %v", err)
+	}
+	if token != "atomic-token" {
+		t.Fatalf("token = %q, want atomic-token", token)
+	}
+	if string(gotPrivateKey) != string(privateKey) {
+		t.Fatalf("private key = %q, want %q", gotPrivateKey, privateKey)
+	}
+}
+
 func TestTokenAuthenticatorSignHeaderForOCIProvider(t *testing.T) {
 	t.Parallel()
 
@@ -251,13 +288,14 @@ func TestTokenAuthenticatorSignHeaderForOCIProvider(t *testing.T) {
 		t.Fatalf("GenerateKey failed: %v", err)
 	}
 
+	keyPEM := encodePrivateKeyPEM(t, privateKey)
 	authenticator := &tokenAuthenticator{
 		tokenProvider: mockOCITokenAuthenticationProvider{
-			privateKey: encodePrivateKeyPEM(t, privateKey),
+			privateKey: keyPEM,
 		},
 	}
 
-	got, err := authenticator.signHeader(context.Background(), "date: Mon, 10 Aug 2026 10:00:00 GMT")
+	got, err := authenticator.signHeader("date: Mon, 10 Aug 2026 10:00:00 GMT", keyPEM)
 	if err != nil {
 		t.Fatalf("signHeader returned error: %v", err)
 	}
@@ -276,7 +314,7 @@ func TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty(t *testing.T) 
 		tokenProvider: mockTokenAuthenticationProvider{token: "token-value"},
 	}
 
-	got, err := authenticator.signHeader(context.Background(), "date: Mon, 10 Aug 2026 10:00:00 GMT")
+	got, err := authenticator.signHeader("date: Mon, 10 Aug 2026 10:00:00 GMT", nil)
 	if err != nil {
 		t.Fatalf("signHeader returned error: %v", err)
 	}
