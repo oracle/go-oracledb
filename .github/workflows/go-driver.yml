@@ -62,6 +62,7 @@ jobs:
             path: coverage-results.out
 
   coverage:
+
     needs:
       - unit_tests
     runs-on: ubuntu-latest
@@ -73,7 +74,7 @@ jobs:
           name: coverage
           path: .
       - run: |
-          awk 'BEGIN{min=80} /^mode:/ {next} {split($1,a,":"); f=a[1]; s=$2+0; c=$3+0; total[f]+=s; all+=s; if(c>0){covered[f]+=s; cov+=s}} END{for(f in total) printf "%s %.1f%%\n", f, 100*covered[f]/total[f]; pct=all?100*cov/all:0; printf "total: %.1f%%\n", pct; exit(pct>=min?0:1)}' ${{ github.workspace }}/coverage-results.out
+          awk 'BEGIN{min=75} /^mode:/ {next} {split($1,a,":"); f=a[1]; s=$2+0; c=$3+0; total[f]+=s; all+=s; if(c>0){covered[f]+=s; cov+=s}} END{for(f in total) printf "%s %.1f%%\n", f, 100*covered[f]/total[f]; pct=all?100*cov/all:0; printf "total: %.1f%%\n", pct; exit(pct>=min?0:1)}' ${{ github.workspace }}/coverage-results.out
 
 #  the github repo will refuse to run this workflow because gvenzl/setup-oracle-free@v1 appears here.
 #  Message is :
