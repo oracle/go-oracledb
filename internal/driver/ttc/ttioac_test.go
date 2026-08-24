@@ -79,6 +79,16 @@ func TestTTIoac_NewTTIoac(t *testing.T) {
 	}
 }
 
+func TestNewTTIOacBytesUsesNonZeroLengthForEmptyValue(t *testing.T) {
+	t.Parallel()
+
+	oac := newTTIOacBytes(0).(*tTIoac)
+
+	if oac.maxLength != 1 {
+		t.Fatalf("expected empty binary bind OAC length 1, got %d", oac.maxLength)
+	}
+}
+
 // TestTTIoac_UnMarshalFrom_Success tests that UnMarshalFrom succeeds on a valid TTC payload.
 func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
 	t.Parallel()

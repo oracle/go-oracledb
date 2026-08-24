@@ -208,6 +208,11 @@ func newTTIOacNumber() driverCommon.Marshallable {
 
 // newTTIOacBytes creates an OAC descriptor for raw byte bind values.
 func newTTIOacBytes(maxLength driverCommon.UB4) driverCommon.Marshallable {
+	if maxLength == 0 {
+		// A zero-length OAC corrupts the bind metadata for values that follow an empty []byte.
+		// Oracle represents empty binary values as NULL, but still requires a non-zero bind buffer.
+		maxLength = 1
+	}
 	return newTTIoac(DtyVbi, maxLength)
 }
 
