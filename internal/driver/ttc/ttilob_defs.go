@@ -200,6 +200,10 @@ type lobDefinition struct {
 	// operation selects which lobOperationCode TTC should execute for this payload.
 	operation lobOperationCode
 
+	// fixedTemporaryLocator keeps compatibility with servers that return the
+	// legacy fixed-width temporary locator instead of a length-prefixed locator.
+	fixedTemporaryLocator bool
+
 	// bytesTransferred accumulates the number of raw bytes streamed through TTILOBD payloads
 	// for the current operation. This is primarily used by read operations to distinguish the
 	// byte-oriented transfer size from the character-oriented amount reported by lobAmt.

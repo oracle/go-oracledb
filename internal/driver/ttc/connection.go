@@ -244,6 +244,9 @@ func (c *Connection) CheckNamedValue(nv *driver.NamedValue) error {
 // checkNamedValue validates sql.Out destinations and returns shelf-localized
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
+	if _, ok := nv.Value.(oracleBlobValue); ok {
+		return nil
+	}
 	if out, ok := nv.Value.(sql.Out); ok {
 		// Destination must be provided for output binding.
 		if out.Dest == nil {

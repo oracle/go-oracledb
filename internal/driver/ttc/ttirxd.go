@@ -71,6 +71,7 @@ type tTIrxd struct {
 
 	// Outgoing bind payload for TTIRXD when marshalling bind values (Phase 1: single row binds).
 	bindRow        []driverCommon.B1Array
+	bindOACs       []driverCommon.Marshallable
 	columnContexts []ColumnContext
 	lobColContext  []*LobColumnContext
 
@@ -159,6 +160,10 @@ func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array) {
 	rxd.bindRow = row
 }
 
+func (rxd *tTIrxd) setBindOACs(oacs []driverCommon.Marshallable) {
+	rxd.bindOACs = oacs
+}
+
 /*
 MarshalTo writes the RXD bind payload for outgoing messages (single row).
 
@@ -182,6 +187,15 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 			}
 			continue
+		}
+		// LOB locator binds carry an explicit UB4 locator length before the CLR.
+		// Scalar binds start directly with CLR framing.
+		if i < len(rxd.bindOACs) {
+			if oac, ok := rxd.bindOACs[i].(*tTIoac); ok && oac.requestedtype == DtyBlob {
+				if err := engine.MarshalUB4(ctx, driverCommon.UB4(len(val))); err != nil {
+					return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+				}
+			}
 		}
 		// Write as CLR (short or long form depending on size)
 		if err := engine.MarshalCLR(ctx, val, 0, len(val)); err != nil {

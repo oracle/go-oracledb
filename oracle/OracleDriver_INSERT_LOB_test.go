@@ -115,8 +115,8 @@ func TestDriver_Prepared_Insert_Clob_Large(t *testing.T) {
 	runPreparedInsertClob(t, createObjectName("clob1_large"), rows)
 }
 
-// TestDriver_Prepared_Insert_Blob_Small mirrors the CLOB small insertion test
-// but uses BLOB columns bound from Go []byte values (RAW bind type).
+// TestDriver_Prepared_Insert_Blob_Small verifies BLOB marker binds, including a
+// payload over 32KB positioned before another bind variable.
 func TestDriver_Prepared_Insert_Blob_Small(t *testing.T) {
 	t.Parallel()
 	rows := []blobRowData{
@@ -145,8 +145,8 @@ func TestDriver_Prepared_Insert_Blob_Small(t *testing.T) {
 	runPreparedInsertBlob(t, createObjectName("blob1_small"), rows)
 }
 
-// TestDriver_Prepared_Insert_Blob_Large covers large BLOB payloads to verify
-// inserts via prepared statements continues to work for >32KB data.
+// TestDriver_Prepared_Insert_Blob_Large covers large BLOB marker payloads to
+// verify temporary locator upload and statement binding above the RAW limit.
 func TestDriver_Prepared_Insert_Blob_Large(t *testing.T) {
 	t.Parallel()
 	rows := []blobRowData{
@@ -273,9 +273,15 @@ func runPreparedInsertBlob(t *testing.T, table string, rows []blobRowData) {
 		}
 	})
 
-	insSQL := "INSERT INTO " + table + " (id, name, blob) " +
-		"VALUES (:id, :n, :b)"
-	insStmt, err := db.PrepareContext(ctx, insSQL)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin BLOB insert transaction: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	insSQL := "INSERT INTO " + table + " (id, blob, name) " +
+		"VALUES (:id, :b, :n)"
+	insStmt, err := tx.PrepareContext(ctx, insSQL)
 	if err != nil {
 		t.Fatalf("prepare insert failed: %v", err)
 	}
@@ -284,8 +290,8 @@ func runPreparedInsertBlob(t *testing.T, table string, rows []blobRowData) {
 	for _, rr := range rows {
 		result, err := insStmt.ExecContext(ctx,
 			sql.Named("id", rr.id),
+			sql.Named("b", Blob(rr.b)),
 			sql.Named("n", rr.n),
-			sql.Named("b", rr.b),
 		)
 
 		if err != nil {
@@ -301,17 +307,20 @@ func runPreparedInsertBlob(t *testing.T, table string, rows []blobRowData) {
 		}
 
 		if len(rr.b) > 33554432 {
-			t.Skip()
+			continue
 		}
 		var gotBlob []byte
-		err = db.QueryRowContext(ctx,
+		err = tx.QueryRowContext(ctx,
 			fmt.Sprintf("SELECT blob FROM %s WHERE id = %d", table, rr.id),
 		).Scan(&gotBlob)
 		if err != nil {
 			t.Fatalf("select inserted row failed for id=%d: %v", rr.id, err)
 		}
-		if len(gotBlob) != len(rr.b) {
-			t.Fatalf("unexpected clob for id=%d: got length %d want %d", rr.id, len(gotBlob), len(rr.b))
+		if !bytes.Equal(gotBlob, rr.b) {
+			t.Fatalf("unexpected blob for id=%d: got length %d want %d", rr.id, len(gotBlob), len(rr.b))
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit BLOB insert transaction: %v", err)
 	}
 }

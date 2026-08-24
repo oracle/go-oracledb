@@ -216,6 +216,11 @@ func newTTIOacBytes(maxLength driverCommon.UB4) driverCommon.Marshallable {
 	return newTTIoac(DtyVbi, maxLength)
 }
 
+// newTTIOacBlobBind creates an OAC descriptor for a temporary BLOB locator.
+func newTTIOacBlobBind(maxLength driverCommon.UB4) driverCommon.Marshallable {
+	return newTTIoac(DtyBlob, maxLength)
+}
+
 // newTTIOacNull creates an OAC descriptor for null bind values using the driver's null placeholder length.
 func newTTIOacNull() driverCommon.Marshallable {
 	return newTTIoac(DtyVCS, converters.MaxNullLength)

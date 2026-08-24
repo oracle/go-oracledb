@@ -783,6 +783,9 @@ func init() {
 	if err := EncoderRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, converters.EncodeBinary); err != nil {
 		common.Odl.Warn("Failed to register []byte encoder", "error", err)
 	}
+	if err := EncoderRegistry.Register(reflect.TypeOf(blobLocator(nil)), MinTTCProtocolVersion, converters.EncodeBinary); err != nil {
+		common.Odl.Warn("Failed to register BLOB locator encoder", "error", err)
+	}
 
 	if err := EncoderRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
 		common.Odl.Warn("Failed to register nil encoder", "error", err)
@@ -950,6 +953,9 @@ func init() {
 	}
 	if err := BindOacRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBytes, maxLength: 32767}); err != nil {
 		common.Odl.Warn("Failed to register []byte bind OAC", "error", err)
+	}
+	if err := BindOacRegistry.Register(reflect.TypeOf(blobLocator(nil)), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBlobBind, maxLength: max_lob_length}); err != nil {
+		common.Odl.Warn("Failed to register BLOB locator bind OAC", "error", err)
 	}
 
 	if err := BindOacRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNull() }, maxLength: converters.MaxNullLength}); err != nil {

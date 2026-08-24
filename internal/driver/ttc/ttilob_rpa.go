@@ -89,7 +89,7 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 	sourceLocator := p.lobDefinition.sourceLocator
 	if sourceLocator != nil && sourceLocator.hasBytes() {
 		sourceLocatorBytes := sourceLocator.locatorBytes
-		if p.lobDefinition.operation == kplobTmpCreate {
+		if p.lobDefinition.operation == kplobTmpCreate && !p.lobDefinition.fixedTemporaryLocator {
 			common.Odl.Debug("TTILobRpa.UnmarshalFrom: reading temporary locator header")
 			header, err := mar.UnmarshalB1Array(ctx, 2)
 			if err != nil {

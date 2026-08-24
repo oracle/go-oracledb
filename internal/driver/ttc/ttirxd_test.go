@@ -134,6 +134,26 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 	}
 }
 
+func TestTTIrxd_MarshalTo_BlobLocatorPrefix(t *testing.T) {
+	t.Parallel()
+
+	rxd := newTTIrxd().(*tTIrxd)
+	locator := common.B1Array{0x01, 0x02, 0x03}
+	rxd.setBindValues([]common.B1Array{locator})
+	rxd.setBindOACs([]common.Marshallable{newTTIOacBlobBind(common.UB4(len(locator)))})
+	buf, engine := NewMarshalEngineTest(session.BIG_ENDIAN, B2, Universal, 64)
+
+	if err := rxd.MarshalTo(context.Background(), engine); err != nil {
+		t.Fatalf("MarshalTo returned error: %v", err)
+	}
+
+	got := buf.bytes[:buf.currentWritePosition]
+	want := []byte{1, 3, 3, 1, 2, 3}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("MarshalTo BLOB bytes = %v, want %v", got, want)
+	}
+}
+
 // TestTTIrxd_MarshalTo_FailOnNullIndicator simulates a failure when writing the null indicator byte.
 // Uses FaultyArrayBasedDataBuffer (via createMarshaller) to fail WriteByte on first call.
 func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {

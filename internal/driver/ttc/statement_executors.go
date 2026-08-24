@@ -473,6 +473,17 @@ func (e *statementExecutorDML) ExecContext(ctx context.Context, query *qualified
 	if err != nil {
 		return nil, err
 	}
+	namedValues, cleanup, err := e.materializeBlobBinds(ctx, namedValues)
+	if err != nil {
+		return nil, err
+	}
+	if cleanup != nil {
+		defer e.cleanupBlobBinds(ctx, cleanup)
+		args, err = extractInputBindValues(query.binds, namedValues)
+		if err != nil {
+			return nil, err
+		}
+	}
 	e.initExecRunner(args)
 	messageToBeExecuted, err := e.prepareForExec(query, args)
 	if err != nil {
@@ -489,6 +500,49 @@ func (e *statementExecutorDML) ExecContext(ctx context.Context, query *qualified
 		query.cursorId = id
 	}
 	return result, err
+}
+
+func (e *statementExecutorDML) materializeBlobBinds(
+	ctx context.Context,
+	namedValues []driver.NamedValue,
+) ([]driver.NamedValue, *blobBindCleanup, error) {
+	var cleanup *blobBindCleanup
+	var materialized []driver.NamedValue
+	for index, namedValue := range namedValues {
+		blob, ok := namedValue.Value.(oracleBlobValue)
+		if !ok {
+			continue
+		}
+		if materialized == nil {
+			materialized = append([]driver.NamedValue(nil), namedValues...)
+			executor := newBlobBindExecutor(e.shelf.Shelf)
+			cleanup = &blobBindCleanup{executor: executor}
+		}
+		data := blob.OracleBlobValue()
+		if len(data) == 0 {
+			materialized[index].Value = []byte{}
+			continue
+		}
+		locator, err := cleanup.executor.materialize(ctx, data)
+		if err != nil {
+			e.cleanupBlobBinds(ctx, cleanup)
+			return nil, nil, err
+		}
+		cleanup.locators = append(cleanup.locators, locator)
+		materialized[index].Value = locator
+	}
+	if materialized == nil {
+		return namedValues, nil, nil
+	}
+	return materialized, cleanup, nil
+}
+
+func (e *statementExecutorDML) cleanupBlobBinds(ctx context.Context, cleanup *blobBindCleanup) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), blobBindCleanupTimeout)
+	defer cancel()
+	if err := cleanup.free(cleanupCtx); err != nil {
+		common.Odl.Warn("Failed to free temporary BLOB binds", "error", err)
+	}
 }
 
 // unregisterDMLCallbacks removes the DML-specific TTC callbacks registered for statement execution.
@@ -714,6 +768,7 @@ func (e *statementProcessor) pushBindRows(
 		}
 		rxd := msg.(*tTIrxd)
 		rxd.setBindValues(row)
+		rxd.setBindOACs(e.currentOacs)
 		if err := stmr.Push(ctx, rxd); err != nil {
 			common.Odl.Error(caller+": Push RXD failed", "error", err, "stage", "push", "msgCode", rxd.GetMsgCode())
 			return common.NewOracleError(errCode, err, "push")
