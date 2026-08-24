@@ -75,28 +75,34 @@ jobs:
       - run: |
           awk 'BEGIN{min=80} /^mode:/ {next} {split($1,a,":"); f=a[1]; s=$2+0; c=$3+0; total[f]+=s; all+=s; if(c>0){covered[f]+=s; cov+=s}} END{for(f in total) printf "%s %.1f%%\n", f, 100*covered[f]/total[f]; pct=all?100*cov/all:0; printf "total: %.1f%%\n", pct; exit(pct>=min?0:1)}' ${{ github.workspace }}/coverage-results.out
 
-  validate_driver:
-    if: ${{ github.repository != 'oracle/go-oracledb' }}
-    needs:
-      - unit_tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-go-env
-      - uses: gvenzl/setup-oracle-free@v1
-        with:
-          app-user: $VALIDATION_USER_NAME
-          app-user-password: ${{ secrets.test_user_password }}
-          container-name: oracledb
-      - uses: ./.github/actions/setup-test-configuration
-        with:
-          database-version: "26"
-          database-service: "FREEPDB1"
-          database-host: "localhost"
-          database-user: ${{ env.VALIDATION_USER_NAME }}
-          database-password: ${{ secrets.test_user_password }}
-      - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
+#  the github repo will refuse to run this workflow because gvenzl/setup-oracle-free@v1 appears here.
+#  Message is :
+#      Error
+#      The action gvenzl/setup-oracle-free@v1 is not allowed in oracle/go-oracledb because all actions must be from a repository owned by your enterprise
+#    we need to change  this to use services instead.
+#    
+#  validate_driver:
+#    if: ${{ github.repository != 'oracle/go-oracledb' }}
+#    needs:
+#      - unit_tests
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 10
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: ./.github/actions/setup-go-env
+#      - uses: gvenzl/setup-oracle-free@v1
+#        with:
+#          app-user: $VALIDATION_USER_NAME
+#          app-user-password: ${{ secrets.test_user_password }}
+#          container-name: oracledb
+#      - uses: ./.github/actions/setup-test-configuration
+#        with:
+#          database-version: "26"
+#          database-service: "FREEPDB1"
+#          database-host: "localhost"
+#          database-user: ${{ env.VALIDATION_USER_NAME }}
+#          database-password: ${{ secrets.test_user_password }}
+#      - run: go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -run TestCategoryExecutor -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
 
   validate_driver_tp:
     if: ${{ github.repository == 'oracle/go-oracledb' }}
