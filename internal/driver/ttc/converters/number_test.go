@@ -580,7 +580,7 @@ func TestNumber_ErrorCodes(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}
-			if sqle, ok := errors.AsType[oracleErrors.SQLError](err); ok {
+			if sqle, ok := asSQLError(err); ok {
 				if sqle.ErrorCode() != string(tc.want) {
 					t.Errorf("%s: want error code %s, got %s", tc.name, tc.want, sqle.ErrorCode())
 				}
@@ -616,7 +616,7 @@ func TestNumber_EncodeDecimal_StrictErrors(t *testing.T) {
 			t.Errorf("EncodeDecimal(%s) expected error, got nil", c.name)
 			continue
 		}
-		if sqle, ok := errors.AsType[oracleErrors.SQLError](err); ok {
+		if sqle, ok := asSQLError(err); ok {
 			if sqle.ErrorCode() != string(c.want) {
 				t.Errorf("%s: want error code %s, got %s", c.name, c.want, sqle.ErrorCode())
 			}
@@ -718,7 +718,7 @@ func TestEncodeUInt_OverflowOnDecodeInt(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error decoding uint64 over int64 range, got nil")
 	}
-	if sqle, ok := errors.AsType[oracleErrors.SQLError](err); ok {
+	if sqle, ok := asSQLError(err); ok {
 		if sqle.ErrorCode() != string(oracleErrors.ConverterRange) {
 			t.Errorf("want error code %s, got %s", oracleErrors.ConverterRange, sqle.ErrorCode())
 		}

@@ -48,6 +48,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 )
 
 type connectionInstantiator struct {
@@ -169,10 +170,20 @@ func GetAuthenticator(parameters *oracleconfig.OracleDriverConfig, providerRegis
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
-	if len(parameters.Credentials.Password) > 0 {
-		if len(parameters.Credentials.User) == 0 {
-			return createTokenAuthenticator(parameters, providerRegistry)
+	var tokenProvider oracleProviders.TokenAuthenticationProvider
+	if providerRegistry != nil {
+		tokenProvider = findFirstTokenAuthenticatorProvider(providerRegistry.Providers())
+	}
+	if len(parameters.Credentials.User) == 0 {
+		if len(parameters.Credentials.Password) > 0 {
+			return nil, common.NewOracleError(oracleErrors.EmptyUsernameError, nil, nil)
 		}
+		if tokenProvider != nil {
+			return createTokenAuthenticator(parameters, tokenProvider)
+		}
+		return nil, common.NewOracleError(oracleErrors.NoAuthenticatorError, nil, nil)
+	}
+	if len(parameters.Credentials.Password) > 0 {
 		return createPasswordAuthenticator(parameters)
 	}
 	return nil, common.NewOracleError(oracleErrors.NoAuthenticatorError, nil, nil)
@@ -192,9 +203,9 @@ func createPasswordAuthenticator(parameters *oracleconfig.OracleDriverConfig) (A
 		parameters.ConnectDescriptor), nil
 }
 
-func createTokenAuthenticator(parameters *oracleconfig.OracleDriverConfig, providerRegistry common.ProviderRegistry) (Authenticator, error) {
+func createTokenAuthenticator(parameters *oracleconfig.OracleDriverConfig, tokenProvider oracleProviders.TokenAuthenticationProvider) (Authenticator, error) {
 	return newTokenAuthenticator(
-		providerRegistry,
+		tokenProvider,
 		parameters.ConnectDescriptor,
 	), nil
 }

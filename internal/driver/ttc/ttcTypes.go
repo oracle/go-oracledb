@@ -243,7 +243,8 @@ func newKeywordValueArray(pairCount driverCommon.UB4) (*keywordValueArray, error
 		common.Odl.Debug("keyword/value pair count exceeds maximum", "pairs", pairCount, "limit", maxKeywordValueArrayPairs)
 		return nil, common.NewOracleError(oracleErrors.FailUnmarshal, nil, "keyword/value")
 	}
-	return new(make(keywordValueArray, pairCount)), nil
+	values := make(keywordValueArray, pairCount)
+	return &values, nil
 }
 
 // MarshalTo Marshals a keyword value list

@@ -39,10 +39,13 @@
 package converters
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"strings"
 	"testing"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestCategory category of tests to be un
@@ -51,6 +54,12 @@ var TestCategory string
 func TestMain(m *testing.M) {
 	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
 	os.Exit(m.Run())
+}
+
+func asSQLError(err error) (oracleErrors.SQLError, bool) {
+	var sqlErr oracleErrors.SQLError
+	ok := errors.As(err, &sqlErr)
+	return sqlErr, ok
 }
 
 var testCases = []struct {

@@ -279,7 +279,8 @@ func (ns *NetworkSession) ReadText(ctx context.Context, length int) (*[]byte, er
 		}
 	}
 	offset--
-	return new(tmpBuffer[:offset]), nil
+	result := tmpBuffer[:offset]
+	return &result, nil
 }
 func (ns *NetworkSession) ReadBA(ctx context.Context, n uint16) ([]byte, error) {
 	err := ns.PrepareReadBuffer(ctx)

@@ -39,7 +39,6 @@
 package converters
 
 import (
-	"errors"
 	"math"
 	"testing"
 
@@ -111,7 +110,7 @@ func TestFloat_Decode(t *testing.T) {
 				t.Errorf("%s: expected error but got none", tc.name)
 				continue
 			}
-			if sqle, ok := errors.AsType[oracleErrors.SQLError](err); ok {
+			if sqle, ok := asSQLError(err); ok {
 				if tc.expCode != "" && sqle.ErrorCode() != string(tc.expCode) {
 					t.Errorf("%s: want error code %s, got %s", tc.name, tc.expCode, sqle.ErrorCode())
 				}
@@ -200,7 +199,7 @@ func TestBinaryFloat_Decode(t *testing.T) {
 				t.Errorf("%s: expected error but got none", tc.name)
 				continue
 			}
-			if sqle, ok := errors.AsType[oracleErrors.SQLError](err); ok {
+			if sqle, ok := asSQLError(err); ok {
 				if tc.expCode != "" && sqle.ErrorCode() != string(tc.expCode) {
 					t.Errorf("%s: want error code %s, got %s", tc.name, tc.expCode, sqle.ErrorCode())
 				}
@@ -267,7 +266,7 @@ func TestBinaryDouble_Decode(t *testing.T) {
 				t.Errorf("%s: expected error but got none", tc.name)
 				continue
 			}
-			if sqle, ok := errors.AsType[oracleErrors.SQLError](err); ok {
+			if sqle, ok := asSQLError(err); ok {
 				if tc.expCode != "" && sqle.ErrorCode() != string(tc.expCode) {
 					t.Errorf("%s: want error code %s, got %s", tc.name, tc.expCode, sqle.ErrorCode())
 				}
@@ -313,7 +312,7 @@ func TestFloat_Encode_Specials(t *testing.T) {
 			t.Errorf("EncodeFloat should error for %s", c.name)
 			continue
 		}
-		if sqle, ok := errors.AsType[oracleErrors.SQLError](err); ok {
+		if sqle, ok := asSQLError(err); ok {
 			if sqle.ErrorCode() != string(oracleErrors.ConverterExpectedFormat) {
 				t.Errorf("EncodeFloat(%s): want error code %s, got %s", c.name, oracleErrors.ConverterExpectedFormat, sqle.ErrorCode())
 			}

@@ -471,7 +471,8 @@ func (r *ttcRows) ColumnTypeScanType(index int) reflect.Type {
 			common.Odl.Warn("Do not have decode mapping", "type", r.columnContexts[index].DataType)
 			return reflect.TypeOf([]byte(nil))
 		}
-		r.columnContexts[index].ScanType = new(decoder.getScanType(r.columnContexts[index]))
+		scanType := decoder.getScanType(r.columnContexts[index])
+		r.columnContexts[index].ScanType = &scanType
 	}
 	return *r.columnContexts[index].ScanType
 }

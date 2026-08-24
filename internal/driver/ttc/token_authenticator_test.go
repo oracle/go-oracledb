@@ -60,7 +60,6 @@ func TestGetAuthenticator_UsesTokenAuthenticatorForOCIToken(t *testing.T) {
 
 	cfg := oracleconfig.NewOracleDriverConfig()
 	cfg.ConnectDescriptor = "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=127.0.0.1)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=freepdb1)))"
-	cfg.Credentials.Password = "token-value"
 
 	authenticator, err := GetAuthenticator(cfg, newTestProviderRegistry(
 		mockOCITokenAuthenticationProvider{
@@ -80,7 +79,6 @@ func TestGetAuthenticator_UsesTokenAuthenticatorForOAuth(t *testing.T) {
 
 	cfg := oracleconfig.NewOracleDriverConfig()
 	cfg.ConnectDescriptor = "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=127.0.0.1)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=freepdb1)))"
-	cfg.Credentials.Password = "token-value"
 
 	authenticator, err := GetAuthenticator(cfg, newTestProviderRegistry(
 		mockTokenAuthenticationProvider{token: "token-value"},
@@ -90,6 +88,38 @@ func TestGetAuthenticator_UsesTokenAuthenticatorForOAuth(t *testing.T) {
 	}
 	if _, ok := authenticator.(*tokenAuthenticator); !ok {
 		t.Fatalf("expected tokenAuthenticator, got %T", authenticator)
+	}
+}
+
+func TestGetAuthenticator_RejectsPasswordWithoutUsername(t *testing.T) {
+	t.Parallel()
+
+	cfg := oracleconfig.NewOracleDriverConfig()
+	cfg.Credentials.Password = "password"
+
+	authenticator, err := GetAuthenticator(cfg, newTestProviderRegistry(
+		mockTokenAuthenticationProvider{token: "token-value"},
+	))
+	if err == nil || !strings.Contains(err.Error(), "empty username") {
+		t.Fatalf("expected empty username error, got authenticator %T and error %v", authenticator, err)
+	}
+}
+
+func TestGetAuthenticator_PrefersPasswordCredentialsWhenUsernameIsPresent(t *testing.T) {
+	t.Parallel()
+
+	cfg := oracleconfig.NewOracleDriverConfig()
+	cfg.Credentials.User = "user"
+	cfg.Credentials.Password = "password"
+
+	authenticator, err := GetAuthenticator(cfg, newTestProviderRegistry(
+		mockTokenAuthenticationProvider{token: "token-value"},
+	))
+	if err != nil {
+		t.Fatalf("GetAuthenticator returned error: %v", err)
+	}
+	if _, ok := authenticator.(*PasswordAuthenticator); !ok {
+		t.Fatalf("expected PasswordAuthenticator, got %T", authenticator)
 	}
 }
 

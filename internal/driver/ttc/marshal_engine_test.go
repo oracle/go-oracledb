@@ -1203,7 +1203,8 @@ func (b *aggregateLimitDataBuffer) ReadBytesWithContext(_ context.Context, lengt
 			return nil, fmt.Errorf("unexpected chunk data length %d, want %d", length, b.currentChunkLen)
 		}
 		b.pendingChunkData = false
-		return new(make([]byte, int(length))), nil
+		data := make([]byte, int(length))
+		return &data, nil
 	}
 
 	if length != 4 {

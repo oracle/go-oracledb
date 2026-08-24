@@ -33,18 +33,17 @@ type tokenAuthenticator struct {
 	connectString  string
 }
 
-// newTokenAuthenticator creates a token authenticator backed by the first
-// token authentication provider found in the supplied provider registry.
+// newTokenAuthenticator creates a token authenticator backed by tokenProvider.
 //
 // Parameters:
-//   - providerRegistry: the providers available for this connection attempt.
+//   - tokenProvider: the provider selected for this connection attempt.
 //   - connectString: the connect descriptor used to derive token header fields.
 //
 // Returns:
 //   - the configured token authenticator.
-func newTokenAuthenticator(providerRegistry common.ProviderRegistry, connectString string) *tokenAuthenticator {
+func newTokenAuthenticator(tokenProvider oracleProviders.TokenAuthenticationProvider, connectString string) *tokenAuthenticator {
 	return &tokenAuthenticator{
-		tokenProvider: findFirstTokenAuthenticatorProvider(providerRegistry.Providers()),
+		tokenProvider: tokenProvider,
 		connectString: connectString,
 	}
 }
@@ -373,7 +372,7 @@ func validateJWTExpiration(token string) error {
 		return nil
 	}
 
-	common.Odl.Debug("JWTToken", "token", token, "payload", payload)
+	// The token and decoded claims are credentials and must not be logged.
 	var claims struct {
 		Exp *int64 `json:"exp"`
 	}

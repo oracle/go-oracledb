@@ -140,7 +140,8 @@ func Test_ttcRows_handleNullStrict(t *testing.T) {
 		t.Fatalf("strict null handling should return nil, got %#v (%T)", val, val)
 	}
 
-	rows = buildTestTTCRows(true, DtyVCS, 0, new(true))
+	strict := true
+	rows = buildTestTTCRows(true, DtyVCS, 0, &strict)
 	val = rows.handleNull(0, DtyVCS, 0)
 	if val != nil {
 		t.Fatalf("strict null handling should return nil when property is true, got %#v (%T)", val, val)

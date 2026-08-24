@@ -999,8 +999,8 @@ func (m *MarshalEngine) _unmarshalBuffer(ctx context.Context, byteValue []byte, 
 		return common.NewOracleError(oracleErrors.MarshalEngineError, nil, "CLR")
 	}
 	// Store len bytes of data into original buffer
-	byteValueP := byteValue
-	if err := m._readAndCopyToBuffer(ctx, new(byteValueP[offset:offset+length]), length); err != nil {
+	buffer := byteValue[offset : offset+length]
+	if err := m._readAndCopyToBuffer(ctx, &buffer, length); err != nil {
 		return err
 	}
 	offset += length

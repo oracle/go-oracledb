@@ -507,7 +507,8 @@ func TestHandleRXDRow_NilWireValue_SkipsAssignment(t *testing.T) {
 		},
 	}
 
-	exec.outDestPtrs = []any{new("original")}
+	original := "original"
+	exec.outDestPtrs = []any{&original}
 	exec.outColumnContexts = []ColumnContext{
 		{Index: 0, DataType: DtyVCS},
 	}
