@@ -225,7 +225,7 @@ var testCases = []struct {
 	{"TestDriver_Select_AllNullExceptPK", "functional", false, TestDriver_Select_AllNullExceptPK},
 	{"TestDriver_Select_NullFromComputedExpression", "functional", false, TestDriver_Select_NullFromComputedExpression},
 	{"TestDriver_OpenConnectorReturnsInvalidDSNParameterError", "unitary", false, TestDriver_OpenConnectorReturnsInvalidDSNParameterError},
-	{"TestDriver_OpenConnectorStoresConnectDescriptorFromDSN", "unitary", false, TestDriver_OpenConnectorStoresConnectDescriptorFromDSN},
+	{"TestDriver_OpenConnectorStoresConnectDescriptorFromDSN", "unitary", true, TestDriver_OpenConnectorStoresConnectDescriptorFromDSN},
 	{"TestDriver_OpenConnectorUsesFallbackConnectDescriptor", "unitary", false, TestDriver_OpenConnectorUsesFallbackConnectDescriptor},
 	{"TestDriver_OpenConnectorUsesNSParam", "unitary", false, TestDriver_OpenConnectorUsesNSParam},
 	{"TestDriver_OpenConnectorUsesNSProperty", "unitary", false, TestDriver_OpenConnectorUsesNSProperty},
