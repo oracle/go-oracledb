@@ -147,6 +147,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_Exec_Query_cursor_leak", Categories: "robustness", Exclusive: false, Fn: TestDriver_Exec_Query_cursor_leak},
 	{Name: "TestDriver_Select_Query_cursor_leak", Categories: "robustness", Exclusive: false, Fn: TestDriver_Select_Query_cursor_leak},
 	{Name: "TestDriver_PreparedStatement_Query_cursor_leak", Categories: "robustness", Exclusive: false, Fn: TestDriver_PreparedStatement_Query_cursor_leak},
+	{Name: "TestDriver_Select_5000Rows_NumberColumn", Categories: "robustness", Exclusive: false, Fn: TestDriver_Select_5000Rows_NumberColumn},
 	{Name: "TestQueryNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestQueryNonExistentTable_NegativeCase},
 	{Name: "TestPreparedStatementNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestPreparedStatementNonExistentTable_NegativeCase},
 	{Name: "TestSelectSpecificColumnsNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestSelectSpecificColumnsNonExistentTable_NegativeCase},

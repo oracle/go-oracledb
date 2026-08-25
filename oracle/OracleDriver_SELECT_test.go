@@ -102,6 +102,85 @@ func TestDriver_Table_Select(t *testing.T) {
 
 }
 
+// TestDriver_Select_5000Rows_NumberColumn verifies that the driver can fetch
+// and decode at least 5,000 rows containing NUMBER values without losing rows
+// or returning an error while iterating through the result set.
+func TestDriver_Select_5000Rows_NumberColumn(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const expectedRows = 5000
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("cleanup close database failed: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	table := createObjectName("t_select_5000_number")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":        "NUMBER PRIMARY KEY",
+		"num_value": "NUMBER",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	insertSQL := fmt.Sprintf(
+		"INSERT INTO %s (id, num_value) SELECT LEVEL, LEVEL * 10 FROM dual CONNECT BY LEVEL <= %d",
+		table,
+		expectedRows,
+	)
+	if _, err := db.ExecContext(ctx, insertSQL); err != nil {
+		t.Fatalf("insert %d rows failed: %v", expectedRows, err)
+	}
+
+	rows, err := db.QueryContext(ctx, "SELECT id, num_value FROM "+table+" ORDER BY id")
+	if err != nil {
+		t.Fatalf("query %d rows failed: %v", expectedRows, err)
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			t.Errorf("cleanup close rows failed: %v", err)
+		}
+	}()
+
+	count := 0
+	for rows.Next() {
+		var id, numberValue int64
+		if err := rows.Scan(&id, &numberValue); err != nil {
+			t.Fatalf("scan row %d failed: %v", count+1, err)
+		}
+
+		expectedID := int64(count + 1)
+		if id != expectedID {
+			t.Fatalf("row %d: got id %d, want %d", count+1, id, expectedID)
+		}
+		if numberValue != expectedID*10 {
+			t.Fatalf("row %d: got NUMBER value %d, want %d", count+1, numberValue, expectedID*10)
+		}
+		count++
+	}
+
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate %d rows failed: %v", expectedRows, err)
+	}
+	if count != expectedRows {
+		t.Fatalf("got %d rows, want %d", count, expectedRows)
+	}
+}
+
 // TestDriver_Exec_Query_cursor_leak
 // What it does: run in loop a simple select
 // Expectation: execution must not fail due to cursor starvation
