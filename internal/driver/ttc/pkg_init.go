@@ -967,9 +967,6 @@ func init() {
 		}); err != nil {
 			common.Odl.Warn("Failed to register VECTOR bind OAC", "type", vectorType, "error", err)
 		}
-		if err := BindValueRegistry.Register(vectorType, MinTTCProtocolVersion, buildVectorBindValue); err != nil {
-			common.Odl.Warn("Failed to register VECTOR bind transport", "type", vectorType, "error", err)
-		}
 	}
 	if err := BindOacRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBytes, maxLength: 32767}); err != nil {
 		common.Odl.Warn("Failed to register []byte bind OAC", "error", err)

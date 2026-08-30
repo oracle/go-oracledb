@@ -8,47 +8,42 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// bindTransport owns the TTC wire representation for a prepared bind value.
-type bindTransport interface {
-	marshal(context.Context, driverCommon.Marshaller, driverCommon.MessageType, int, bindValue) error
-}
+type bindValueKind uint8
 
-// bindValue stores an encoded bind value together with the transport used to marshal it.
+const (
+	bindValueKindCLR bindValueKind = iota
+	bindValueKindVector
+)
+
+// bindValue keeps the encoded bytes and the TTC representation TTIRXD must use.
 type bindValue struct {
-	transport bindTransport
-	payload   driverCommon.B1Array
-	isNull    bool
+	kind    bindValueKind
+	payload driverCommon.B1Array
 }
-
-var defaultCLRBindTransport bindTransport = clrBindTransport{}
 
 func newCLRBindValue(payload driverCommon.B1Array) bindValue {
 	return bindValue{
-		transport: defaultCLRBindTransport,
-		payload:   payload,
-		isNull:    payload == nil,
+		kind:    bindValueKindCLR,
+		payload: payload,
 	}
 }
 
 func (v bindValue) marshal(ctx context.Context, engine driverCommon.Marshaller, msgCode driverCommon.MessageType, index int) error {
-	transport := v.transport
-	if transport == nil {
-		transport = defaultCLRBindTransport
+	if v.kind == bindValueKindVector {
+		return marshalVectorBind(ctx, engine, msgCode, index, v.payload)
 	}
-	return transport.marshal(ctx, engine, msgCode, index, v)
+	return marshalCLRBind(ctx, engine, msgCode, index, v.payload)
 }
 
-// clrBindTransport marshals binds using the generic CLR encoding path.
-type clrBindTransport struct{}
-
-func (clrBindTransport) marshal(
+// marshalCLRBind marshals ordinary binds using a single CLR value.
+func marshalCLRBind(
 	ctx context.Context,
 	engine driverCommon.Marshaller,
 	msgCode driverCommon.MessageType,
 	index int,
-	bind bindValue,
+	payload driverCommon.B1Array,
 ) error {
-	if bind.isNull || bind.payload == nil {
+	if payload == nil {
 		if err := engine.MarshalUB1(ctx, driverCommon.UB1(0)); err != nil {
 			common.Odl.Error("tTIrxd.MarshalTo: failed to write null length indicator",
 				"error", err, "stage", "null-indicator", "index", index)
@@ -56,7 +51,7 @@ func (clrBindTransport) marshal(
 		}
 		return nil
 	}
-	if err := engine.MarshalCLR(ctx, bind.payload, 0, len(bind.payload)); err != nil {
+	if err := engine.MarshalCLR(ctx, payload, 0, len(payload)); err != nil {
 		common.Odl.Error("tTIrxd.MarshalTo: failed to write CLR",
 			"error", err, "stage", "clr", "index", index)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[msgCode])

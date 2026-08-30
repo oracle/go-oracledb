@@ -291,7 +291,7 @@ func TestPrepareBindsAndOAC_Encode_Supported(t *testing.T) {
 	if !bytes.Equal(row[2].payload, []byte{1, 2, 3}) {
 		t.Fatalf("raw encoding mismatch: got %v want %v", row[2].payload, []byte{1, 2, 3})
 	}
-	if !row[3].isNull {
+	if row[3].payload != nil {
 		t.Fatalf("nil bind should encode as nil cell, got %v", row[3])
 	}
 	// bool -> representation per current impl

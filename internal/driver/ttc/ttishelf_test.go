@@ -193,10 +193,6 @@ func (t *testCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
 	}, nil), nil
 }
 
-func (t *testCodecFactory) getBindValue(_ normalizedBindValue, payload driverCommon.B1Array) (bindValue, error) {
-	return newCLRBindValue(payload), nil
-}
-
 func (t *testCodecFactory) getBindOac(_ normalizedBindValue, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
 	return t.bindOac, nil
 }

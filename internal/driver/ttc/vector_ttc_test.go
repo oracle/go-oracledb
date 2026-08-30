@@ -31,10 +31,10 @@ func TestPrepareBindsAndOAC_VectorBinds(t *testing.T) {
 		t.Fatalf("unexpected bind/OAC counts: %d/%d", len(row), len(sp.currentOacs))
 	}
 	for i, bind := range row {
-		if _, ok := bind.transport.(*vectorBindTransport); !ok {
-			t.Fatalf("bind %d transport=%T, want *vectorBindTransport", i, bind.transport)
+		if bind.kind != bindValueKindVector {
+			t.Fatalf("bind %d kind=%d, want vector", i, bind.kind)
 		}
-		if bind.isNull || len(bind.payload) == 0 {
+		if bind.payload == nil || len(bind.payload) == 0 {
 			t.Fatalf("bind %d unexpectedly empty", i)
 		}
 		if got := sp.currentOacs[i].(*tTIoac).dataType; got != driverCommon.UB1(DtyVec) {
@@ -45,10 +45,7 @@ func TestPrepareBindsAndOAC_VectorBinds(t *testing.T) {
 
 func TestTTIrxdMarshalToVectorLocator(t *testing.T) {
 	payload := driverCommon.B1Array{0xAA, 0xBB, 0xCC}
-	bind, err := buildVectorBindValue(normalizedBindValue{}, payload)
-	if err != nil {
-		t.Fatalf("build vector bind: %v", err)
-	}
+	bind := newVectorBindValue(payload)
 	rxd := newTTIrxd().(*tTIrxd)
 	rxd.setBindValues([]bindValue{bind})
 
@@ -61,12 +58,12 @@ func TestTTIrxdMarshalToVectorLocator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read locator length: %v", err)
 	}
-	transport := bind.transport.(*vectorBindTransport)
-	if int(locatorLen) != len(transport.locator) {
-		t.Fatalf("locator length=%d, want %d", locatorLen, len(transport.locator))
+	wantLocator := buildVectorQuasiLocator(len(payload))
+	if int(locatorLen) != len(wantLocator) {
+		t.Fatalf("locator length=%d, want %d", locatorLen, len(wantLocator))
 	}
 	locator, _, err := reader.UnmarshalCLRColumnData(context.Background())
-	if err != nil || !bytes.Equal(locator, transport.locator) {
+	if err != nil || !bytes.Equal(locator, wantLocator) {
 		t.Fatalf("locator mismatch: %v, err=%v", locator, err)
 	}
 	value, _, err := reader.UnmarshalCLRColumnData(context.Background())
@@ -77,10 +74,7 @@ func TestTTIrxdMarshalToVectorLocator(t *testing.T) {
 
 func TestVectorBindTransportNullAndErrors(t *testing.T) {
 	ctx := context.Background()
-	nullBind, err := buildVectorBindValue(normalizedBindValue{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	nullBind := newVectorBindValue(nil)
 	buf, writer := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, B2, Universal, 16)
 	if err := nullBind.marshal(ctx, writer, TTIRXD, 0); err != nil {
 		t.Fatalf("marshal null vector: %v", err)
@@ -92,10 +86,7 @@ func TestVectorBindTransportNullAndErrors(t *testing.T) {
 		t.Fatal("expected null-vector marshal error")
 	}
 
-	bind, err := buildVectorBindValue(normalizedBindValue{}, driverCommon.B1Array{1})
-	if err != nil {
-		t.Fatal(err)
-	}
+	bind := newVectorBindValue(driverCommon.B1Array{1})
 	for _, tc := range []struct {
 		name  string
 		fail  FailOn

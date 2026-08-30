@@ -36,30 +36,19 @@ func checkVectorNamedValue(nv *driver.NamedValue) error {
 	return driver.ErrSkip
 }
 
-type vectorBindTransport struct {
-	locator driverCommon.B1Array
+func newVectorBindValue(payload driverCommon.B1Array) bindValue {
+	return bindValue{kind: bindValueKindVector, payload: payload}
 }
 
-func buildVectorBindValue(_ normalizedBindValue, payload driverCommon.B1Array) (bindValue, error) {
-	transport := &vectorBindTransport{}
-	if payload != nil {
-		transport.locator = buildVectorQuasiLocator(len(payload))
-	}
-	return bindValue{
-		transport: transport,
-		payload:   payload,
-		isNull:    payload == nil,
-	}, nil
-}
-
-func (t *vectorBindTransport) marshal(
+// marshalVectorBind writes the native VECTOR payload with its BLOB quasi-locator.
+func marshalVectorBind(
 	ctx context.Context,
 	engine driverCommon.Marshaller,
 	msgCode driverCommon.MessageType,
 	index int,
-	bind bindValue,
+	payload driverCommon.B1Array,
 ) error {
-	if bind.isNull {
+	if payload == nil {
 		if err := engine.MarshalUB4(ctx, 0); err != nil {
 			common.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector null length",
 				"error", err, "stage", "vector-null-length", "index", index)
@@ -68,18 +57,19 @@ func (t *vectorBindTransport) marshal(
 		return nil
 	}
 
-	locLen := len(t.locator)
+	locator := buildVectorQuasiLocator(len(payload))
+	locLen := len(locator)
 	if err := engine.MarshalUB4(ctx, driverCommon.UB4(locLen)); err != nil {
 		common.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector locator length",
 			"error", err, "stage", "vector-locator-length", "index", index)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[msgCode])
 	}
-	if err := engine.MarshalCLR(ctx, t.locator, 0, locLen); err != nil {
+	if err := engine.MarshalCLR(ctx, locator, 0, locLen); err != nil {
 		common.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector locator",
 			"error", err, "stage", "vector-locator", "index", index)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[msgCode])
 	}
-	if err := engine.MarshalCLR(ctx, bind.payload, 0, len(bind.payload)); err != nil {
+	if err := engine.MarshalCLR(ctx, payload, 0, len(payload)); err != nil {
 		common.Odl.Error("tTIrxd.MarshalTo: failed to marshal vector payload",
 			"error", err, "stage", "vector-payload", "index", index)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[msgCode])

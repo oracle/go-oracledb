@@ -670,9 +670,10 @@ func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value) error {
 		if err != nil {
 			return err
 		}
-		e.encodedValues[currentRow][i], err = e.shelf.GetCodecFactory().getBindValue(normalized, encoded)
-		if err != nil {
-			return err
+		if isVectorBindType(normalized.goType) {
+			e.encodedValues[currentRow][i] = newVectorBindValue(encoded)
+		} else {
+			e.encodedValues[currentRow][i] = newCLRBindValue(encoded)
 		}
 
 		e.currentOacs[i], err = e.shelf.GetCodecFactory().getBindOac(
