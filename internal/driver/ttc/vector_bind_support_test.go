@@ -10,6 +10,10 @@ import (
 // Named VECTOR types must bypass database/sql's default conversion so their
 // concrete type reaches the encoder registry unchanged.
 func TestCheckVectorNamedValue(t *testing.T) {
+	if err := checkVectorNamedValue(nil); err != driver.ErrSkip {
+		t.Fatalf("nil NamedValue: got %v want driver.ErrSkip", err)
+	}
+
 	cases := []struct {
 		name  string
 		value any
