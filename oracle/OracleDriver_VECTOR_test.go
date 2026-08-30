@@ -13,7 +13,7 @@ func TestDriver_Vector_Basic(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion < 23 {
+	if TestingConfig.DatabaseVersion.Major < 23 {
 		t.Skip("VECTOR datatype requires Oracle Database 23c+")
 	}
 
