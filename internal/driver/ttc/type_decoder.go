@@ -575,6 +575,15 @@ func DecodeBinaryColumn(_ columnContext, data driverCommon.B1Array) (driver.Valu
 	return []byte(data), nil
 }
 
+// DecodeVectorColumn decodes a fully prefetched TTC VECTOR envelope.
+func DecodeVectorColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+	value, err := converters.DecodeVector(data)
+	if err != nil {
+		return nil, rowDecodeError(columnContext, err, "VECTOR")
+	}
+	return value, nil
+}
+
 func GetScanTypeForVarcharColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
