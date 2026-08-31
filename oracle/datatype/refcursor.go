@@ -36,40 +36,42 @@
 ** SOFTWARE.
  */
 
-package converters
+// Package datatype provides the typed OUT-bind holder for Oracle REF CURSORs.
+package datatype
 
-import "github.com/oracle/go-oracledb/v26/internal/driver/common"
+import "database/sql/driver"
 
-// Maximum TTC byte lengths for encodings produced by this package.
-// Values reflect Oracle's wire representations to prevent truncation when
-// allocating buffers for binds/defines.
-const (
-	// EmptyStringOacLength is the minimum TTC OAC length to use for common.DtyVCS binds.
-	// Empty strings still require an OAC length of 4.
-	EmptyStringOacLength common.UB4 = 4
+// RefCursor is a typed OUT-bind holder for an Oracle REF CURSOR.
+//
+// Pass a pointer to RefCursor as the destination of sql.Out. Rows returns the
+// server cursor after execution. A RefCursor may also be used for internal
+// typed cursor binds when a database API requires REF CURSOR OUT parameters.
+type RefCursor struct {
+	rows driver.Rows
+}
 
-	// MaxBoolLength is the maximum number of bytes needed to encode a Go bool
-	// as a TTC common.DtyBol value. The on-wire form typically uses 1–2 bytes, but 4 is
-	// used here to align with UB4 and provide headroom when constructing OACs.
-	MaxBoolLength common.UB4 = 4
+// Rows returns the cursor result set. It is nil for a NULL cursor.
+func (c *RefCursor) Rows() driver.Rows {
+	if c == nil {
+		return nil
+	}
+	return c.rows
+}
 
-	// MaxNumberLength is the maximum number of bytes required by Oracle NUMBER
-	// in TTC (variable-length up to 22 bytes).
-	MaxNumberLength common.UB4 = 22
+// SetRows associates rows with c. It is intended for driver transport
+// implementations that populate a typed REF CURSOR OUT bind.
+func (c *RefCursor) SetRows(rows driver.Rows) {
+	if c != nil {
+		c.rows = rows
+	}
+}
 
-	// MaxDateLength is the maximum number of bytes required by DATE/TIMESTAMP
-	// without time zone in TTC (up to 11 bytes).
-	MaxDateLength common.UB4 = 11
-
-	// MaxTimeStampLength is the maximum number of bytes required by TIMESTAMP
-	// WITH TIME ZONE in TTC (13 bytes).
-	MaxTimeStampLength common.UB4 = 13
-
-	// MaxNullLength is the maximum number of bytes required by Null common.DtyVcs
-	// TTC (4 bytes).
-	MaxNullLength common.UB4 = 4
-
-	// MaxVarcharLength is the maximum TTC byte length used for VARCHAR2-style
-	// variable-width character payloads, including space for the TTC length prefix.
-	MaxVarcharLength common.UB4 = 32768
-)
+// Close closes the server cursor, if it was returned.
+func (c *RefCursor) Close() error {
+	if c == nil || c.rows == nil {
+		return nil
+	}
+	err := c.rows.Close()
+	c.rows = nil
+	return err
+}

@@ -48,9 +48,11 @@ import (
 	"strings"
 
 	"reflect"
+	"sync"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -69,6 +71,11 @@ type connection struct {
 	// failure) or when then connectionShouldBeDropped flag is received on an STA
 	// or OER message (TODO).
 	_isValid bool
+	// adtTypes is scoped to this physical TTC connection. A named-type
+	// descriptor contains server-specific TOID/version metadata and must not be
+	// populated through one pooled connection then used on another.
+	adtMu    sync.Mutex
+	adtTypes map[string]*datatype.ObjectType
 }
 
 // newConnection constructs a new Oracle connection wrapping negotiated state.
@@ -85,6 +92,7 @@ func newConnection(
 		ns:        ns,
 		_isClosed: false,
 		_isValid:  true,
+		adtTypes:  make(map[string]*datatype.ObjectType),
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
 	_registerHandleConnectionShouldBeDropped(shelf, conn)
@@ -246,7 +254,15 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 // checkNamedValue validates sql.Out destinations and returns shelf-localized
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
+	// Named SQL types carry their own TOID/version metadata and must bypass
+	// database/sql's scalar parameter conversion.
+	if isADTBindValue(nv.Value) {
+		return nil
+	}
 	if out, ok := nv.Value.(sql.Out); ok {
+		if isADTBindDestination(out.Dest) || isRefCursorDestination(out.Dest) {
+			return nil
+		}
 		// Destination must be provided for output binding.
 		if out.Dest == nil {
 			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("nil destination"))
@@ -273,6 +289,33 @@ func checkNamedValue(nv *driver.NamedValue) error {
 		return err
 	}
 	return driver.ErrSkip
+}
+
+func isRefCursorDestination(v any) bool {
+	switch v.(type) {
+	case *datatype.RefCursor, *driver.Rows:
+		return true
+	default:
+		return false
+	}
+}
+
+func isADTBindValue(v any) bool {
+	switch v.(type) {
+	case datatype.ObjectCollection, *datatype.ObjectCollection, *datatype.Object:
+		return true
+	default:
+		return false
+	}
+}
+
+func isADTBindDestination(v any) bool {
+	switch v.(type) {
+	case *datatype.ObjectCollection, *datatype.Object:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {

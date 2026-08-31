@@ -388,6 +388,9 @@ func initMessagesEn() {
 	// Action:   Use an identifier with a supported length and characters.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidIdentifier), "invalid SQL identifier")
+	message.SetString(language.English, string(oracleErrors.ADTMetadataError), "invalid ADT metadata")
+	message.SetString(language.English, string(oracleErrors.ADTEncodingError), "invalid ADT collection image")
+	message.SetString(language.English, string(oracleErrors.ADTValueError), "invalid ADT value or collection operation")
 
 	// Document: No
 	message.SetString(language.English, string(oracleErrors.CancelOperationError), "cancel operation failed")

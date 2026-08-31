@@ -45,6 +45,7 @@ import (
 	"reflect"
 	"testing"
 
+	typeCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -128,6 +129,11 @@ func newDMLReturningRXD(numberOfReturningPositions int) *tTIrxd {
 	rxd := newTTIrxd().(*tTIrxd)
 	rxd.setNumberofReturningArgs(numberOfReturningPositions)
 	rxd.setDmlReturning()
+	columnContexts := make([]columnContext, numberOfReturningPositions)
+	for i := range columnContexts {
+		columnContexts[i].DataType = typeCommon.DtyVCS
+	}
+	rxd.setColumnContexts(columnContexts)
 	return rxd
 }
 

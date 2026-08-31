@@ -46,6 +46,7 @@ import (
 	"strings"
 	"testing"
 
+	typeCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -176,9 +177,9 @@ func (s *testStringScanner) Scan(src any) error {
 
 func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T) {
 	t.Parallel()
-	decoderRegistry := newCodecRegistry[DtyType, *typeDecoder]()
+	decoderRegistry := newCodecRegistry[typeCommon.DtyType, *typeDecoder]()
 	if err := decoderRegistry.Register(
-		DtyVCS,
+		typeCommon.DtyVCS,
 		-1,
 		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
@@ -200,7 +201,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 		},
 		outDestPtrs: []any{dest},
 		outColumnContexts: []columnContext{
-			{DataType: DtyVCS},
+			{DataType: typeCommon.DtyVCS},
 		},
 	}
 
@@ -223,9 +224,9 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 
 func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T) {
 	t.Parallel()
-	decoderRegistry := newCodecRegistry[DtyType, *typeDecoder]()
+	decoderRegistry := newCodecRegistry[typeCommon.DtyType, *typeDecoder]()
 	if err := decoderRegistry.Register(
-		DtyVCS,
+		typeCommon.DtyVCS,
 		-1,
 		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
 			return "scanner-value", nil
@@ -247,7 +248,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 		},
 		outDestPtrs: []any{dest},
 		outColumnContexts: []columnContext{
-			{DataType: DtyVCS},
+			{DataType: typeCommon.DtyVCS},
 		},
 	}
 

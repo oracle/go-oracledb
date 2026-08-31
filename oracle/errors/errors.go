@@ -114,6 +114,13 @@ const (
 	StatementParsingMissingValue             ErrorCode = "OGD-00161"
 	// InvalidIdentifier indicates a provided SQL identifier is invalid.
 	InvalidIdentifier ErrorCode = "OGD-00162"
+	// ADTMetadataError indicates invalid or incomplete ADT metadata returned by
+	// DBMS_PICKLER or encountered while parsing a type descriptor.
+	ADTMetadataError ErrorCode = "OGD-00163"
+	// ADTEncodingError indicates malformed ADT collection image data.
+	ADTEncodingError ErrorCode = "OGD-00164"
+	// ADTValueError indicates an invalid ADT value or collection operation.
+	ADTValueError ErrorCode = "OGD-00165"
 
 	// Driver Internal Error
 	InternalError ErrorCode = "OGD-00062"

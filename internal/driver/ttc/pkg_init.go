@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"container/list"
+	"database/sql/driver"
 	"fmt"
 	"os"
 	"os/user"
@@ -51,6 +52,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 const MinTTCProtocolVersion = 12 // 19.1
@@ -347,383 +349,383 @@ func init() {
 	// It sets up scalar and record types with their respective representations.
 
 	typeRepresentationTable.SetFlags(TTCLXMULTI)
-	typeRepresentationTable.addTypeRepToTable(DtyChr, DtyChr, int16(RepCUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyNum, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyBol, DtyBol, int16(RepIUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyLng, DtyLng, int16(RepCUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDat, DtyDat, int16(RepDV51))
-	typeRepresentationTable.addTypeRepToTable(DtyBin, DtyBin, int16(RepBUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyLbi, DtyLbi, int16(RepBUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyChr, common.DtyChr, int16(RepCUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyNum, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBol, common.DtyBol, int16(RepIUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLng, common.DtyLng, int16(RepCUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDat, common.DtyDat, int16(RepDV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBin, common.DtyBin, int16(RepBUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLbi, common.DtyLbi, int16(RepBUnv))
 	// data types for moving structures etc across the interface
 	// integer data types
-	typeRepresentationTable.addTypeRepToTable(DtyUb2, DtyUb2, int16(RepIUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUb4, DtyUb4, int16(RepIUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyB1, DtyB1, int16(RepIUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyB2, DtyB2, int16(RepIUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyB4, DtyB4, int16(RepIUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyWord, DtyWord, int16(RepIUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUword, DtyUword, int16(RepIUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUb2, common.DtyUb2, int16(RepIUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUb4, common.DtyUb4, int16(RepIUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyB1, common.DtyB1, int16(RepIUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyB2, common.DtyB2, int16(RepIUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyB4, common.DtyB4, int16(RepIUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyWord, common.DtyWord, int16(RepIUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUword, common.DtyUword, int16(RepIUnv))
 	// pointer data types
-	typeRepresentationTable.addTypeRepToTable(DtyPb, DtyPb, int16(RepAUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPw, DtyPw, int16(RepAUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPb, common.DtyPb, int16(RepAUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPw, common.DtyPw, int16(RepAUnv))
 
 	// next send the records
-	typeRepresentationTable.addTypeRepToTable(DtyTi5, DtyTi5, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRiD, DtyRiD, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTi5, common.DtyTi5, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRiD, common.DtyRiD, int16(RepRUnv))
 	// opidef program interface request block types
-	typeRepresentationTable.addTypeRepToTable(DtyAms, DtyAms, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyBrn, DtyBrn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyCwd, DtyCwd, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyNac122, DtyNac122, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOer8, DtyOer8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyFun, DtyFun, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAua, DtyAua, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRxh7, DtyRxh7, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyNa6, DtyNa6, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyBrp, DtyBrp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyBrv, DtyBrv, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKva, DtyKva, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyCls, DtyCls, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyCui, DtyCui, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDfn, DtyDfn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDqr, DtyDqr, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsc, DtyDsc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyExe, DtyExe, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyFch, DtyFch, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyGbv, DtyGbv, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyGem, DtyGem, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyGiv, DtyGiv, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOkg, DtyOkg, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyHmi, DtyHmi, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyIno, DtyIno, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyLnf, DtyLnf, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOnt, DtyOnt, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOpe, DtyOpe, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOsq, DtyOsq, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySfe, DtySfe, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySpf, DtySpf, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyVsn, DtyVsn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUd7, DtyUd7, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsa, DtyDsa, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPin, DtyPin, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPfn, DtyPfn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPpt, DtyPpt, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySto, DtySto, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyArc, DtyArc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyMrs, DtyMrs, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyMrt, DtyMrt, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyMrg, DtyMrg, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyMrr, DtyMrr, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyMrc, DtyMrc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyVer, DtyVer, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyLon2, DtyLon2, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyIno2, DtyIno2, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAll, DtyAll, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUdb, DtyUdb, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAqi, DtyAqi, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUlb, DtyUlb, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUld, DtyUld, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySid, DtySid, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyNa7, DtyNa7, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAl7, DtyAl7, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyK2Rpc, DtyK2Rpc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXdp, DtyXdp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOko8, DtyOko8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUd12, DtyUd12, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAl8, DtyAl8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyLfop, DtyLfop, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyFcrt, DtyFcrt, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDny, DtyDny, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOpr, DtyOpr, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPls, DtyPls, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXid, DtyXid, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyTxn, DtyTxn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDcb, DtyDcb, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyCca, DtyCca, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyWrn, DtyWrn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyTlh121, DtyTlh121, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyToh121, DtyToh121, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyFoi, DtyFoi, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySid2, DtySid2, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyTch, DtyTch, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPii, DtyPii, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPfi, DtyPfi, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPpu, DtyPpu, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPte, DtyPte, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRxh8, DtyRxh8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyTn12, DtyTn12, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAuth, DtyAuth, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKval, DtyKval, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyFgi, DtyFgi, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsy, DtyDsy, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyR8, DtyDsyR8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyH8, DtyDsyH8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyL, DtyDsyL, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyT8, DtyDsyT8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyV8, DtyDsyV8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyP, DtyDsyP, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyF, DtyDsyF, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyK, DtyDsyK, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyY, DtyDsyY, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyQ, DtyDsyQ, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyC, DtyDsyC, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyA, DtyDsyA, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOt8, DtyOt8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyTy, DtyDsyTy, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAqe, DtyAqe, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKv, DtyKv, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAqd, DtyAqd, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAQ8, DtyAQ8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRfs, DtyRfs, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRxh10, DtyRxh10, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpn, DtyKpn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpdnr, DtyKpdnr, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyD, DtyDsyD, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyS, DtyDsyS, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyR, DtyDsyR, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyH, DtyDsyH, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyT, DtyDsyT, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDsyV, DtyDsyV, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAqm, DtyAqm, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOer11, DtyOer11, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAql, DtyAql, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOtc, DtyOtc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKfno, DtyKfno, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKfnp, DtyKfnp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOkgt8, DtyOkgt8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRaSb4, DtyRaSb4, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRaUb2, DtyRaUb2, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRaUb1, DtyRaUb1, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRaTxt, DtyRaTxt, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRsSb4, DtyRsSb4, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRsUb2, DtyRsUb2, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRsUb1, DtyRsUb1, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRsTxt, DtyRsTxt, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRidl, DtyRidl, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyGlrdd, DtyGlrdd, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyGlrdg, DtyGlrdg, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyGlrdc, DtyGlrdc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOko, DtyOko, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDpp, DtyDpp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDpls, DtyDpls, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDpmop, DtyDpmop, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyStat, DtyStat, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRfx, DtyRfx, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyFal, DtyFal, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyCkv, DtyCkv, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDrcx, DtyDrcx, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKgh, DtyKgh, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAqo, DtyAqo, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOkgt, DtyOkgt, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpfc, DtyKpfc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyFe2, DtyFe2, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySpfp, DtySpfp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDpuls, DtyDpuls, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAqa, DtyAqa, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpbf, DtyKpbf, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyTsm, DtyTsm, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyMss, DtyMss, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpc, DtyKpc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyCrs, DtyCrs, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKks, DtyKks, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKsp, DtyKsp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKspTop, DtyKspTop, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKspVal, DtyKspVal, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPss, DtyPss, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyNls, DtyNls, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAls, DtyAls, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKsdEvtVal, DtyKsdEvtVal, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKsdEvtTop, DtyKsdEvtTop, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpspp, DtyKpspp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKol, DtyKol, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyLst, DtyLst, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAcx, DtyAcx, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyScs, DtyScs, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRxh, DtyRxh, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpdns, DtyKpdns, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpdcn, DtyKpdcn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpnns, DtyKpnns, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpncn, DtyKpncn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKps, DtyKps, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyApinf, DtyApinf, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyTen, DtyTen, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAms, common.DtyAms, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBrn, common.DtyBrn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyCwd, common.DtyCwd, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyNac122, common.DtyNac122, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOer8, common.DtyOer8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyFun, common.DtyFun, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAua, common.DtyAua, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRxh7, common.DtyRxh7, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyNa6, common.DtyNa6, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBrp, common.DtyBrp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBrv, common.DtyBrv, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKva, common.DtyKva, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyCls, common.DtyCls, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyCui, common.DtyCui, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDfn, common.DtyDfn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDqr, common.DtyDqr, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsc, common.DtyDsc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyExe, common.DtyExe, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyFch, common.DtyFch, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyGbv, common.DtyGbv, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyGem, common.DtyGem, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyGiv, common.DtyGiv, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOkg, common.DtyOkg, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyHmi, common.DtyHmi, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyIno, common.DtyIno, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLnf, common.DtyLnf, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOnt, common.DtyOnt, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOpe, common.DtyOpe, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOsq, common.DtyOsq, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySfe, common.DtySfe, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySpf, common.DtySpf, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyVsn, common.DtyVsn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUd7, common.DtyUd7, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsa, common.DtyDsa, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPin, common.DtyPin, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPfn, common.DtyPfn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPpt, common.DtyPpt, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySto, common.DtySto, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyArc, common.DtyArc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyMrs, common.DtyMrs, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyMrt, common.DtyMrt, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyMrg, common.DtyMrg, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyMrr, common.DtyMrr, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyMrc, common.DtyMrc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyVer, common.DtyVer, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLon2, common.DtyLon2, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyIno2, common.DtyIno2, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAll, common.DtyAll, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUdb, common.DtyUdb, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAqi, common.DtyAqi, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUlb, common.DtyUlb, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUld, common.DtyUld, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySid, common.DtySid, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyNa7, common.DtyNa7, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAl7, common.DtyAl7, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyK2Rpc, common.DtyK2Rpc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXdp, common.DtyXdp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOko8, common.DtyOko8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUd12, common.DtyUd12, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAl8, common.DtyAl8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLfop, common.DtyLfop, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyFcrt, common.DtyFcrt, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDny, common.DtyDny, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOpr, common.DtyOpr, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPls, common.DtyPls, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXid, common.DtyXid, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTxn, common.DtyTxn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDcb, common.DtyDcb, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyCca, common.DtyCca, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyWrn, common.DtyWrn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTlh121, common.DtyTlh121, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyToh121, common.DtyToh121, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyFoi, common.DtyFoi, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySid2, common.DtySid2, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTch, common.DtyTch, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPii, common.DtyPii, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPfi, common.DtyPfi, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPpu, common.DtyPpu, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPte, common.DtyPte, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRxh8, common.DtyRxh8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTn12, common.DtyTn12, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAuth, common.DtyAuth, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKval, common.DtyKval, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyFgi, common.DtyFgi, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsy, common.DtyDsy, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyR8, common.DtyDsyR8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyH8, common.DtyDsyH8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyL, common.DtyDsyL, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyT8, common.DtyDsyT8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyV8, common.DtyDsyV8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyP, common.DtyDsyP, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyF, common.DtyDsyF, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyK, common.DtyDsyK, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyY, common.DtyDsyY, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyQ, common.DtyDsyQ, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyC, common.DtyDsyC, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyA, common.DtyDsyA, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOt8, common.DtyOt8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyTy, common.DtyDsyTy, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAqe, common.DtyAqe, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKv, common.DtyKv, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAqd, common.DtyAqd, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAQ8, common.DtyAQ8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRfs, common.DtyRfs, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRxh10, common.DtyRxh10, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpn, common.DtyKpn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpdnr, common.DtyKpdnr, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyD, common.DtyDsyD, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyS, common.DtyDsyS, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyR, common.DtyDsyR, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyH, common.DtyDsyH, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyT, common.DtyDsyT, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDsyV, common.DtyDsyV, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAqm, common.DtyAqm, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOer11, common.DtyOer11, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAql, common.DtyAql, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOtc, common.DtyOtc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKfno, common.DtyKfno, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKfnp, common.DtyKfnp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOkgt8, common.DtyOkgt8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRaSb4, common.DtyRaSb4, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRaUb2, common.DtyRaUb2, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRaUb1, common.DtyRaUb1, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRaTxt, common.DtyRaTxt, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRsSb4, common.DtyRsSb4, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRsUb2, common.DtyRsUb2, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRsUb1, common.DtyRsUb1, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRsTxt, common.DtyRsTxt, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRidl, common.DtyRidl, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyGlrdd, common.DtyGlrdd, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyGlrdg, common.DtyGlrdg, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyGlrdc, common.DtyGlrdc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOko, common.DtyOko, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDpp, common.DtyDpp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDpls, common.DtyDpls, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDpmop, common.DtyDpmop, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyStat, common.DtyStat, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRfx, common.DtyRfx, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyFal, common.DtyFal, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyCkv, common.DtyCkv, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDrcx, common.DtyDrcx, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKgh, common.DtyKgh, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAqo, common.DtyAqo, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOkgt, common.DtyOkgt, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpfc, common.DtyKpfc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyFe2, common.DtyFe2, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySpfp, common.DtySpfp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDpuls, common.DtyDpuls, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAqa, common.DtyAqa, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpbf, common.DtyKpbf, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTsm, common.DtyTsm, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyMss, common.DtyMss, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpc, common.DtyKpc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyCrs, common.DtyCrs, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKks, common.DtyKks, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKsp, common.DtyKsp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKspTop, common.DtyKspTop, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKspVal, common.DtyKspVal, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPss, common.DtyPss, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyNls, common.DtyNls, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAls, common.DtyAls, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKsdEvtVal, common.DtyKsdEvtVal, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKsdEvtTop, common.DtyKsdEvtTop, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpspp, common.DtyKpspp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKol, common.DtyKol, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLst, common.DtyLst, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAcx, common.DtyAcx, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyScs, common.DtyScs, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRxh, common.DtyRxh, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpdns, common.DtyKpdns, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpdcn, common.DtyKpdcn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpnns, common.DtyKpnns, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpncn, common.DtyKpncn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKps, common.DtyKps, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyApinf, common.DtyApinf, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTen, common.DtyTen, int16(RepRUnv))
 
-	typeRepresentationTable.addTypeRepToTable(DtyXsscs, DtyXsscs, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXssro, DtyXssro, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsspo, DtyXsspo, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKsrpc, DtyKsrpc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKvl, DtyKvl, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsssDef, DtyXsssDef, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpdqcInv, DtyKpdqcInv, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpdqIdc, DtyKpdqIdc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpdqcSta, DtyKpdqcSta, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKprs, DtyKprs, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpdqcID, DtyKpdqcID, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRtstrm, DtyRtstrm, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySessGet, DtySessGet, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySessRls, DtySessRls, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsscs, common.DtyXsscs, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXssro, common.DtyXssro, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsspo, common.DtyXsspo, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKsrpc, common.DtyKsrpc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKvl, common.DtyKvl, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsssDef, common.DtyXsssDef, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpdqcInv, common.DtyKpdqcInv, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpdqIdc, common.DtyKpdqIdc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpdqcSta, common.DtyKpdqcSta, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKprs, common.DtyKprs, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpdqcID, common.DtyKpdqcID, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRtstrm, common.DtyRtstrm, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySessGet, common.DtySessGet, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySessRls, common.DtySessRls, int16(RepRUnv))
 	// server to client piggyback:
-	typeRepresentationTable.addTypeRepToTable(DtySessRet, DtySessRet, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyScn6, DtyScn6, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKecpa, DtyKecpa, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKecpp, DtyKecpp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySxa, DtySxa, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKvarr, DtyKvarr, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpngn, DtyKpngn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyInt, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyFlt, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyStr, DtyChr, int16(RepCUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyVnu, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyPdn, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyVCS, DtyChr, int16(RepCUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySessRet, common.DtySessRet, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyScn6, common.DtyScn6, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKecpa, common.DtyKecpa, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKecpp, common.DtyKecpp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySxa, common.DtySxa, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKvarr, common.DtyKvarr, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpngn, common.DtyKpngn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyInt, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyFlt, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyStr, common.DtyChr, int16(RepCUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyVnu, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPdn, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyVCS, common.DtyChr, int16(RepCUnv))
 	// some internal data types. not internal, and not kernel
-	typeRepresentationTable.addTypeRepToTable(DtyIdt, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyIju, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyVbi, DtyBin, int16(RepBUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDif, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyDof, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyDtz, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyDyn, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyDpc, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyBfloat, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyBdouble, Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyIdt, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyIju, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyVbi, common.DtyBin, int16(RepBUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDif, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDof, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDtz, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDyn, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDpc, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBfloat, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBdouble, common.Dty0, int16(0))
 	// structure data types - used for TTI messages
 	// oracle version of uac - one form for native, one for network
-	typeRepresentationTable.addTypeRepToTable(DtyOac, DtyNac, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOpq, Dty0, int16(0)) // Opaque
+	typeRepresentationTable.addTypeRepToTable(common.DtyOac, common.DtyNac, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOpq, common.Dty0, int16(0)) // Opaque
 
-	typeRepresentationTable.addTypeRepToTable(DtyUin, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyBri, Dty0, int16(0))
-	// Array - recycling Dty70 - %TEMPORARY%
-	typeRepresentationTable.addTypeRepToTable(DtyArr, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyOcu, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyVar, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtySls, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyLvc, DtyChr, int16(RepCUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyLvb, DtyBin, int16(RepBUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAfc, DtyAfc, int16(RepCUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAvc, DtyAfc, int16(RepCUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUin, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBri, common.Dty0, int16(0))
+	// Array - recycling common.Dty70 - %TEMPORARY%
+	typeRepresentationTable.addTypeRepToTable(common.DtyArr, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOcu, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyVar, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtySls, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLvc, common.DtyChr, int16(RepCUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLvb, common.DtyBin, int16(RepBUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAfc, common.DtyAfc, int16(RepCUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAvc, common.DtyAfc, int16(RepCUnv))
 	// The datatype for canonical format binary_float is lfp_cf
 	// The datatype for canonical format binary_double is lfp_cd
-	typeRepresentationTable.addTypeRepToTable(DtyIbFloat, DtyIbFloat, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyIbDouble, DtyIbDouble, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyCur, DtyCur, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyIbFloat, common.DtyIbFloat, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyIbDouble, common.DtyIbDouble, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyCur, common.DtyCur, int16(RepUnv))
 	// direct path Export
-	typeRepresentationTable.addTypeRepToTable(DtyRdd, DtyRiD, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRdd, common.DtyRiD, int16(RepUnv))
 	// datatypes for labels
-	typeRepresentationTable.addTypeRepToTable(DtyLab, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyOsl, DtyOsl, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyNty, DtyINty, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyINty, DtyINty, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRef, DtyIref, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyIref, DtyIref, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyClob, DtyClob, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyBlob, DtyBlob, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyBFil, DtyBFil, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyCFil, DtyCFil, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyRSet, DtyCur, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySvt, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyJSON, DtyJSON, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAdt, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyNtb, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyNar, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyVec, DtyVec, int16(RepUnv)) // 23.4 Vector
-	typeRepresentationTable.addTypeRepToTable(DtyObj, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyClv, DtyClv, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyBlv, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyDtr, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyDun, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyDop, DtyNum, int16(RepNV51))
-	typeRepresentationTable.addTypeRepToTable(DtyVst, DtyChr, int16(RepCUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOdt, DtyDat, int16(RepDV51))
-	typeRepresentationTable.addTypeRepToTable(DtyDol, DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLab, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOsl, common.DtyOsl, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyNty, common.DtyINty, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyINty, common.DtyINty, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRef, common.DtyIref, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyIref, common.DtyIref, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyClob, common.DtyClob, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBlob, common.DtyBlob, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBFil, common.DtyBFil, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyCFil, common.DtyCFil, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyRSet, common.DtyCur, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySvt, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyJSON, common.DtyJSON, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAdt, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyNtb, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyNar, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyVec, common.DtyVec, int16(RepUnv)) // 23.4 Vector
+	typeRepresentationTable.addTypeRepToTable(common.DtyObj, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyClv, common.DtyClv, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBlv, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDtr, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDun, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDop, common.DtyNum, int16(RepNV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyVst, common.DtyChr, int16(RepCUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOdt, common.DtyDat, int16(RepDV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDol, common.DtyNum, int16(RepNV51))
 	// old byte array stops here
-	typeRepresentationTable.addTypeRepToTable(DtyTime, DtyTime, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyTtz, DtyTtz, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyStamp, DtyStamp, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyStz, DtyStz, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyIym, DtyIym, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyIds, DtyIds, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyEdate, DtyDat, int16(RepDV51))
-	typeRepresentationTable.addTypeRepToTable(DtyEtime, DtyEtime, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyEttz, DtyEttz, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyEstamp, DtyEstamp, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyEstz, DtyEstz, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyEiym, DtyEiym, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyEids, DtyEids, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyLdiIf, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyLdiOf, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtyDclob, DtyClob, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDblob, DtyBlob, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDjson, DtyJSON, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyDbfil, DtyBFil, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyBuri, DtyBuri, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPsr, Dty0, int16(0))
-	typeRepresentationTable.addTypeRepToTable(DtySitz, DtySitz, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyEsitz, DtySitz, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUb8, DtyUb8, int16(RepIUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPnty, DtyINty, int16(RepUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAbs, Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTime, common.DtyTime, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTtz, common.DtyTtz, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyStamp, common.DtyStamp, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyStz, common.DtyStz, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyIym, common.DtyIym, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyIds, common.DtyIds, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyEdate, common.DtyDat, int16(RepDV51))
+	typeRepresentationTable.addTypeRepToTable(common.DtyEtime, common.DtyEtime, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyEttz, common.DtyEttz, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyEstamp, common.DtyEstamp, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyEstz, common.DtyEstz, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyEiym, common.DtyEiym, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyEids, common.DtyEids, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLdiIf, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyLdiOf, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDclob, common.DtyClob, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDblob, common.DtyBlob, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDjson, common.DtyJSON, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyDbfil, common.DtyBFil, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyBuri, common.DtyBuri, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPsr, common.Dty0, int16(0))
+	typeRepresentationTable.addTypeRepToTable(common.DtySitz, common.DtySitz, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyEsitz, common.DtySitz, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUb8, common.DtyUb8, int16(RepIUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPnty, common.DtyINty, int16(RepUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAbs, common.Dty0, int16(0))
 
 	// !!!! NEW RECORDS SHOULD BE INSERTED HERE !!!!
-	typeRepresentationTable.addTypeRepToTable(DtyXsnsop, DtyXsnsop, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsattr, DtyXsattr, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsns, DtyXsns, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUb1Array, DtyUb1Array, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySessState, DtySessState, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAppContReplay, DtyAppContReplay, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAppContCtl, DtyAppContCtl, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySessSign, DtySessSign, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyImplRes, DtyImplRes, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOer, DtyOer, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpdxft, DtyKpdxft, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsnsop, common.DtyXsnsop, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsattr, common.DtyXsattr, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsns, common.DtyXsns, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUb1Array, common.DtyUb1Array, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySessState, common.DtySessState, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAppContReplay, common.DtyAppContReplay, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAppContCtl, common.DtyAppContCtl, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySessSign, common.DtySessSign, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyImplRes, common.DtyImplRes, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOer, common.DtyOer, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpdxft, common.DtyKpdxft, int16(RepRUnv))
 
 	// 20c
-	typeRepresentationTable.addTypeRepToTable(DtyShrdKeySync, DtyShrdKeySync, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyOer19, DtyOer19, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpdssTemplate, DtyKpdssTemplate, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyShrdKeySync, common.DtyShrdKeySync, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyOer19, common.DtyOer19, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpdssTemplate, common.DtyKpdssTemplate, int16(RepRUnv))
 
 	// 23ai
-	typeRepresentationTable.addTypeRepToTable(DtySaga, DtySaga, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUd21, DtyUd21, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySaga, common.DtySaga, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUd21, common.DtyUd21, int16(RepRUnv))
 
 	// New records for triton 12c:
-	typeRepresentationTable.addTypeRepToTable(DtyTxt, DtyTxt, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXssessns, DtyXssessns, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsattop, DtyXsattop, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXscreop, DtyXscreop, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsdetop, DtyXsdetop, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsdesop, DtyXsdesop, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXssetsp, DtyXssetsp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXssidp, DtyXssidp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsprin, DtyXsprin, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXskvl, DtyXskvl, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsssdef2, DtyXsssdef2, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsnsop2, DtyXsnsop2, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyXsns2, DtyXsns2, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtykpdnrEq, DtykpdnrEq, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtykpdnrNf, DtykpdnrNf, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpngnc, DtyKpngnc, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyKpnri, DtyKpnri, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAqEnq, DtyAqEnq, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAqDeq, DtyAqDeq, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyAqJms, DtyAqJms, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtykpdnrPay, DtykpdnrPay, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtykpdnrAck, DtykpdnrAck, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtykpdnrMp, DtykpdnrMp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtykpdnrDq, DtykpdnrDq, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyScn, DtyScn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyScn8, DtyScn8, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyChunkInfo, DtyChunkInfo, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyUds, DtyUds, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyTnp, DtyTnp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyTlh, DtyTlh, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyToh, DtyToh, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtySnp, DtySnp, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyNac, DtyNac, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPlend, DtyPlend, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPlbgn, DtyPlbgn, int16(RepRUnv))
-	typeRepresentationTable.addTypeRepToTable(DtyPlopn, DtyPlopn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTxt, common.DtyTxt, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXssessns, common.DtyXssessns, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsattop, common.DtyXsattop, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXscreop, common.DtyXscreop, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsdetop, common.DtyXsdetop, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsdesop, common.DtyXsdesop, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXssetsp, common.DtyXssetsp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXssidp, common.DtyXssidp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsprin, common.DtyXsprin, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXskvl, common.DtyXskvl, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsssdef2, common.DtyXsssdef2, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsnsop2, common.DtyXsnsop2, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyXsns2, common.DtyXsns2, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtykpdnrEq, common.DtykpdnrEq, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtykpdnrNf, common.DtykpdnrNf, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpngnc, common.DtyKpngnc, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyKpnri, common.DtyKpnri, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAqEnq, common.DtyAqEnq, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAqDeq, common.DtyAqDeq, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyAqJms, common.DtyAqJms, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtykpdnrPay, common.DtykpdnrPay, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtykpdnrAck, common.DtykpdnrAck, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtykpdnrMp, common.DtykpdnrMp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtykpdnrDq, common.DtykpdnrDq, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyScn, common.DtyScn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyScn8, common.DtyScn8, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyChunkInfo, common.DtyChunkInfo, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyUds, common.DtyUds, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTnp, common.DtyTnp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyTlh, common.DtyTlh, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyToh, common.DtyToh, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtySnp, common.DtySnp, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyNac, common.DtyNac, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPlend, common.DtyPlend, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPlbgn, common.DtyPlbgn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(common.DtyPlopn, common.DtyPlopn, int16(RepRUnv))
 
 	// ========================= TYPE CODEC Registry =========================
 	// Register default encoders.
@@ -768,6 +770,18 @@ func init() {
 	if err := EncoderRegistry.Register(reflect.TypeOf(float64(0)), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
 		common.Odl.Warn("Failed to register float64 encoder", "error", err)
 	}
+	if err := CollectionEncoderRegistry.Register(common.DtyIbFloat, MinTTCProtocolVersion, func(v driver.Value) (driverCommon.B1Array, error) {
+		encoded, err := converters.EncodeBinaryFloat(v)
+		return driverCommon.B1Array(encoded), err
+	}); err != nil {
+		common.Odl.Warn("Failed to register BINARY_FLOAT collection encoder", "error", err)
+	}
+	if err := CollectionEncoderRegistry.Register(common.DtyIbDouble, MinTTCProtocolVersion, func(v driver.Value) (driverCommon.B1Array, error) {
+		encoded, err := converters.EncodeBinaryDouble(v)
+		return driverCommon.B1Array(encoded), err
+	}); err != nil {
+		common.Odl.Warn("Failed to register BINARY_DOUBLE collection encoder", "error", err)
+	}
 	if err := EncoderRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, converters.EncodeTimestampWithTimeZone); err != nil {
 		common.Odl.Warn("Failed to register time.Time encoder", "error", err)
 	}
@@ -778,6 +792,12 @@ func init() {
 
 	if err := EncoderRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
 		common.Odl.Warn("Failed to register nil encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(reflect.TypeOf(datatype.RefCursor{}), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR rows encoder", "error", err)
 	}
 
 	// bool is version dependent
@@ -791,112 +811,123 @@ func init() {
 	}
 
 	// Register default decoders.
-	if err := DecoderRegistry.Register(DtyNum, MinTTCProtocolVersion,
+	if err := DecoderRegistry.Register(common.DtyNum, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeNumberColumn,
 			GetScanTypeForNumberColumn)); err != nil {
 		common.Odl.Warn("Failed to register number decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyVnu, MinTTCProtocolVersion,
+	if err := DecoderRegistry.Register(common.DtyVnu, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeNumberColumn,
 			GetScanTypeForNumberColumn)); err != nil {
 		common.Odl.Warn("Failed to register VNU decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyChr, MinTTCProtocolVersion, newTypeDecoder(
+	if err := DecoderRegistry.Register(common.DtyChr, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeVarcharColumn,
 		GetScanTypeForVarcharColumn)); err != nil {
 		common.Odl.Warn("Failed to register varchar decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyAfc, MinTTCProtocolVersion, newTypeDecoder(
+	if err := DecoderRegistry.Register(common.DtyVCS, MinTTCProtocolVersion, newTypeDecoder(
+		DecodeVarcharColumn,
+		GetScanTypeForVarcharColumn)); err != nil {
+		common.Odl.Warn("Failed to register varchar decoder", "error", err)
+	}
+	if err := DecoderRegistry.Register(common.DtyAfc, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeCharColumn,
 		GetScanTypeForCharColumn)); err != nil {
 		common.Odl.Warn("Failed to register char decoder", "error", err)
 	}
 	// Note: bool decoder is NOT version-dependent; only encoding/OAC are.
-	if err := DecoderRegistry.Register(DtyBol, MinTTCProtocolVersion, newTypeDecoder(
+	if err := DecoderRegistry.Register(common.DtyBol, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeBooleanColumn,
 		GetScanTypeForBooleanColumn)); err != nil {
 		common.Odl.Warn("Failed to register boolean decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyIbFloat, MinTTCProtocolVersion, newTypeDecoder(
+	if err := DecoderRegistry.Register(common.DtyIbFloat, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeBinaryFloatColumn,
 		GetScanTypeForBinaryFloatColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary float decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyIbDouble, MinTTCProtocolVersion,
+	if err := DecoderRegistry.Register(common.DtyIbDouble, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeBinaryDoubleColumn,
 			GetScanTypeForDoubleColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary double decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyIym, MinTTCProtocolVersion, newTypeDecoder(
+	if err := DecoderRegistry.Register(common.DtyIym, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeIntervalYearToMonthColumn,
 		GetScanTypeForIntervalYearToMonthColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval year-to-month decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyEiym, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalYearToMonthColumn,
+	if err := DecoderRegistry.Register(common.DtyEiym, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalYearToMonthColumn,
 		GetScanTypeForIntervalYearToMonthColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval year-to-month (extended) decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyIds, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalDayToSecondColumn,
+	if err := DecoderRegistry.Register(common.DtyIds, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalDayToSecondColumn,
 		GetScanTypeForIntervalDayToSecondColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval day-to-second decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyEids, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalDayToSecondColumn,
+	if err := DecoderRegistry.Register(common.DtyEids, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalDayToSecondColumn,
 		GetScanTypeForIntervalDayToSecondColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval day-to-second (extended) decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyDat, MinTTCProtocolVersion, newTypeDecoder(DecodeDateColumn,
+	if err := DecoderRegistry.Register(common.DtyDat, MinTTCProtocolVersion, newTypeDecoder(DecodeDateColumn,
 		GetScanTypeForDateColumn)); err != nil {
 		common.Odl.Warn("Failed to register date decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyEdate, MinTTCProtocolVersion, newTypeDecoder(DecodeDateColumn,
+	if err := DecoderRegistry.Register(common.DtyEdate, MinTTCProtocolVersion, newTypeDecoder(DecodeDateColumn,
 		GetScanTypeForDateColumn)); err != nil {
 		common.Odl.Warn("Failed to register date (extended) decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyStamp, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampColumn,
+	if err := DecoderRegistry.Register(common.DtyStamp, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampColumn,
 		GetScanTypeForTimestampColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyEstamp, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampColumn,
+	if err := DecoderRegistry.Register(common.DtyEstamp, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampColumn,
 		GetScanTypeForTimestampColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp (extended) decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyStz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithTimeZoneColumn,
+	if err := DecoderRegistry.Register(common.DtyStz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithTimeZoneColumn,
 		GetScanTypeForTimestampWithTimeZoneColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with time zone decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyEstz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithTimeZoneColumn,
+	if err := DecoderRegistry.Register(common.DtyEstz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithTimeZoneColumn,
 		GetScanTypeForTimestampWithTimeZoneColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with time zone (extended) decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtySitz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithLocalTimeZoneColumn,
+	if err := DecoderRegistry.Register(common.DtySitz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithLocalTimeZoneColumn,
 		GetScanTypeForTimestampWithLocalTimeZonColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with local time zone decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(DtyEsitz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithLocalTimeZoneColumn,
+	if err := DecoderRegistry.Register(common.DtyEsitz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithLocalTimeZoneColumn,
 		GetScanTypeForTimestampWithLocalTimeZonColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with local time zone (extended) decoder", "error", err)
 	}
 
-	if err := DecoderRegistry.Register(DtyBin, MinTTCProtocolVersion, newTypeDecoder(DecodeBinaryColumn,
+	if err := DecoderRegistry.Register(common.DtyBin, MinTTCProtocolVersion, newTypeDecoder(DecodeBinaryColumn,
 		GetScanTypeForBinaryColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary decoder", "error", err)
 	}
 
-	if err := DecoderRegistry.Register(DtyClob, MinTTCProtocolVersion,
+	if err := DecoderRegistry.Register(common.DtyClob, MinTTCProtocolVersion,
 		newTypeDecoder(DecodeClob, GetScanTypeForCLOBColumn)); err != nil {
 		common.Odl.Warn("Failed to register CLOB decoder", "error", err)
 	}
 
-	if err := DecoderRegistry.Register(DtyJSON, MinTTCProtocolVersion,
+	if err := DecoderRegistry.Register(common.DtyJSON, MinTTCProtocolVersion,
 		newTypeDecoder(DecodeJson, GetScanTypeForJsonColumn)); err != nil {
 		common.Odl.Warn("Failed to register JSON decoder", "error", err)
 	}
 
-	if err := DecoderRegistry.Register(DtyBlob, MinTTCProtocolVersion, newTypeDecoder(DecodeBlob, GetScanTypeForBLOBColumn)); err != nil {
+	if err := DecoderRegistry.Register(common.DtyBlob, MinTTCProtocolVersion, newTypeDecoder(DecodeBlob, GetScanTypeForBLOBColumn)); err != nil {
 		common.Odl.Warn("Failed to register BLOB decoder", "error", err)
+	}
+	if err := DecoderRegistry.Register(common.DtyCur, MinTTCProtocolVersion, newTypeDecoder(
+		func(_ columnContext, _ driverCommon.B1Array) (driver.Value, error) { return datatype.RefCursor{}, nil },
+		func(_ columnContext) reflect.Type { return reflect.TypeOf(datatype.RefCursor{}) },
+	)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR decoder", "error", err)
 	}
 
 	// Register default bind OACs.
@@ -947,6 +978,12 @@ func init() {
 	if err := BindOacRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNull() }, maxLength: converters.MaxNullLength}); err != nil {
 		common.Odl.Warn("Failed to register nil bind OAC", "error", err)
 	}
+	if err := BindOacRegistry.Register(reflect.TypeOf(datatype.RefCursor{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(common.DtyRSet, 4) }, maxLength: 4}); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR bind OAC", "error", err)
+	}
+	if err := BindOacRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(common.DtyRSet, 4) }, maxLength: 4}); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR rows bind OAC", "error", err)
+	}
 	if err := BindOacRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacTime() }, maxLength: converters.MaxTimeStampLength}); err != nil {
 		common.Odl.Warn("Failed to register time.Time bind OAC", "error", err)
 	}
@@ -962,19 +999,19 @@ func init() {
 
 	// Register default define OAC makers.
 	// JSON currently uses a BLOB-based define OAC with max length 4000.
-	if err := DefineOacRegistry.Register(DtyJSON, MinTTCProtocolVersion, newTTIOacJSONDefine); err != nil {
+	if err := DefineOacRegistry.Register(common.DtyJSON, MinTTCProtocolVersion, newTTIOacJSONDefine); err != nil {
 		common.Odl.Warn("Failed to register JSON define OAC", "error", err)
 	}
 
-	if err := DefineOacRegistry.Register(DtyClob, MinTTCProtocolVersion, newTTIOacClobDefine); err != nil {
+	if err := DefineOacRegistry.Register(common.DtyClob, MinTTCProtocolVersion, newTTIOacClobDefine); err != nil {
 		common.Odl.Warn("Failed to register CLOB define OAC", "error", err)
 	}
 
-	if err := DefineOacRegistry.Register(DtyBlob, MinTTCProtocolVersion, newTTIOacBlobDefine); err != nil {
+	if err := DefineOacRegistry.Register(common.DtyBlob, MinTTCProtocolVersion, newTTIOacBlobDefine); err != nil {
 		common.Odl.Warn("Failed to register BLOB define OAC", "error", err)
 	}
 
-	if err := DefineOacRegistry.Register(DtyVCS, MinTTCProtocolVersion, func(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
+	if err := DefineOacRegistry.Register(common.DtyVCS, MinTTCProtocolVersion, func(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
 		return newTTIOacVarcharDefine(columnContext)
 	}); err != nil {
 		common.Odl.Warn("Failed to register VARCHAR define OAC", "error", err)
