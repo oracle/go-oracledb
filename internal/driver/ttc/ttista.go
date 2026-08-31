@@ -80,8 +80,8 @@ func (sta *ttiSTA) GetMsgCode() driverCommon.MessageType {
 	return TTISTA
 }
 
-// UnMarshalFrom unmarshals the STA message
-func (sta *ttiSTA) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+// UnmarshalFrom unmarshals the STA message
+func (sta *ttiSTA) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 	var err error
 	if sta._supportsEndOfCallStatus {
 		sta.eocStatus, err = unmarshalEndOfCallStatus(ctx, engine)

@@ -74,18 +74,18 @@ func newTTIOallRPA() driverCommon.Message[driverCommon.MessageType] {
 	return &ttioallrpa{}
 }
 
-// UnMarshalFrom decodes the OALL8 RPA core payload.
+// UnmarshalFrom decodes the OALL8 RPA core payload.
 // It reads:
 //   - UB2 al8o4l (length), then al8o4l times UB4 values into al8o4
 //   - Builds SCN from al8o4[0] (low) and al8o4[1]&^KSCNFVB (high)
 //   - Sets cursorId from al8o4[2]
 //   - Reads transaction context length (UB2) and bytes (ignored)
 //   - Reads keyword-values length (UB2); decoding of pairs is deferred
-func (p *ttioallrpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (p *ttioallrpa) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	// read UB2 length for al8o4
 	al8o4l, err := mar.UnmarshalUB2(ctx)
 	if err != nil {
-		common.Odl.Error("ttioallrpa.UnMarshalFrom: failed to read al8o4 length",
+		common.Odl.Error("ttioallrpa.UnmarshalFrom: failed to read al8o4 length",
 			"error", err, "stage", "al8o4-len")
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
@@ -101,7 +101,7 @@ func (p *ttioallrpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	for i := 0; i < int(al8o4l); i++ {
 		val, err := mar.UnmarshalUB4(ctx)
 		if err != nil {
-			common.Odl.Error("ttioallrpa.UnMarshalFrom: failed to read al8o4 value",
+			common.Odl.Error("ttioallrpa.UnmarshalFrom: failed to read al8o4 value",
 				"error", err, "stage", "al8o4-value["+strconv.Itoa(i)+"]")
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
@@ -123,13 +123,13 @@ func (p *ttioallrpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	// Transaction context length + bytes (ignored as we don't support it)
 	al8txl, err := mar.UnmarshalUB2(ctx)
 	if err != nil {
-		common.Odl.Error("ttioallrpa.UnMarshalFrom: failed to read txn length",
+		common.Odl.Error("ttioallrpa.UnmarshalFrom: failed to read txn length",
 			"error", err, "stage", "txn-len")
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 	if al8txl > 0 {
 		if _, err := mar.UnmarshalB1Array(ctx, int(al8txl)); err != nil {
-			common.Odl.Error("ttioallrpa.UnMarshalFrom: failed to read txn bytes",
+			common.Odl.Error("ttioallrpa.UnmarshalFrom: failed to read txn bytes",
 				"error", err, "stage", "txn-bytes")
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
@@ -138,7 +138,7 @@ func (p *ttioallrpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	// Keyword-values count (we should never receive the count>0 as kpccapCtbOci3Ocssync capability is
 	// set. It will be received as part of OCSSYNC).
 	if al8kvl, err := mar.UnmarshalUB2(ctx); err != nil || al8kvl != 0 {
-		common.Odl.Error("ttioallrpa.UnMarshalFrom: failed to read kv-count",
+		common.Odl.Error("ttioallrpa.UnmarshalFrom: failed to read kv-count",
 			"error", err, "stage", "kv-count", "al8kvl", al8kvl)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
@@ -146,7 +146,7 @@ func (p *ttioallrpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	// Registration feedback (regLen should not be > 0). We do not support query cache/dcn yet.
 	regFeedbackLen, err := mar.UnmarshalUB4(ctx)
 	if err != nil || regFeedbackLen != 0 {
-		common.Odl.Error("ttioallrpa.UnMarshalFrom: failed to read reg-feedback-len",
+		common.Odl.Error("ttioallrpa.UnmarshalFrom: failed to read reg-feedback-len",
 			"error", err, "stage", "reg-feedback-len", "reg-feedback-len", regFeedbackLen)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
@@ -154,11 +154,11 @@ func (p *ttioallrpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	return nil
 }
 
-// UnMarshalDMLRows decodes optional per-iteration DML row counts (AL8PIDMLRC).
-func (p *ttioallrpa) UnMarshalDMLRows(ctx context.Context, mar driverCommon.Marshaller) error {
+// UnmarshalDMLRows decodes optional per-iteration DML row counts (AL8PIDMLRC).
+func (p *ttioallrpa) UnmarshalDMLRows(ctx context.Context, mar driverCommon.Marshaller) error {
 	count, err := mar.UnmarshalUB4(ctx)
 	if err != nil {
-		common.Odl.Error("ttioallrpa.UnMarshalDMLRows: failed to read dml-count",
+		common.Odl.Error("ttioallrpa.UnmarshalDMLRows: failed to read dml-count",
 			"error", err, "stage", "dml-count")
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
@@ -167,7 +167,7 @@ func (p *ttioallrpa) UnMarshalDMLRows(ctx context.Context, mar driverCommon.Mars
 		for i := 0; i < int(count); i++ {
 			u, err := mar.UnmarshalUB8(ctx)
 			if err != nil {
-				common.Odl.Error("ttioallrpa.UnMarshalDMLRows: failed to read dml-value",
+				common.Odl.Error("ttioallrpa.UnmarshalDMLRows: failed to read dml-value",
 					"error", err, "stage", "dml-value["+strconv.Itoa(i)+"]")
 				return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 			}

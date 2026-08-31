@@ -688,10 +688,10 @@ func (rpa *OAuthRPA) GetMsgCode() driverCommon.MessageType {
 	return TTIRPA
 }
 
-// UnMarshalFrom deserializes the OAuthRPA message from the provided marshaller engine.
-// It implements the common.UnMarshallable interface and reads the TTC protocol
+// UnmarshalFrom deserializes the OAuthRPA message from the provided marshaller engine.
+// It implements the common.Unmarshallable interface and reads the TTC protocol
 // data for the authentication reply, extracting connection properties and session information.
-func (rpa *OAuthRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (rpa *OAuthRPA) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 	common.Odl.Debug("unmarshal OAUTH RPA starts")
 	var err error
 	rpa.outNbPairs, err = engine.UnmarshalUB2(ctx)
@@ -705,7 +705,7 @@ func (rpa *OAuthRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Mars
 
 	//for o5logon, the flag is the verifier type
 	keyValueList := newPreallocatedKeyValueList(int(rpa.outNbPairs))
-	err = ((driverCommon.UnMarshallable)(keyValueList)).UnMarshalFrom(ctx, engine)
+	err = ((driverCommon.Unmarshallable)(keyValueList)).UnmarshalFrom(ctx, engine)
 	if err != nil {
 		common.Odl.Warn("Unable to unmarshal oAuth RPA, cant' unmarshal key/value pairs", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)

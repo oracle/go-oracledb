@@ -59,31 +59,31 @@ type tTIuds17 struct {
 }
 
 // newTTIuds17 initializes a TTIuds17 struct
-func newTTIuds17() driverCommon.UnMarshallable {
+func newTTIuds17() driverCommon.Unmarshallable {
 	return &tTIuds17{
 		tTIuds: newTTIuds().(*tTIuds),
 	}
 }
 
-// UnMarshalFrom extracts column/type metadata and domain info from the network buffer
-func (p *tTIuds17) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIuds17: UnMarshalFrom start")
+// UnmarshalFrom extracts column/type metadata and domain info from the network buffer
+func (p *tTIuds17) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+	common.Odl.Debug("TTIuds17: UnmarshalFrom start")
 	var err error
-	if err = p.tTIuds.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("TTIuds.UnMarshalFrom: failed to unmarshal", "error", err)
+	if err = p.tTIuds.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("TTIuds.UnmarshalFrom: failed to unmarshal", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 
 	var domainSchema dynamicAllocatedArray
-	if err = domainSchema.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal domainSchema", "error", err)
+	if err = domainSchema.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal domainSchema", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 	p.domainSchema = domainSchema.value
 
 	var domainName dynamicAllocatedArray
-	if err = domainName.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal domainName", "error", err)
+	if err = domainName.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal domainName", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 	p.domainName = domainName.value

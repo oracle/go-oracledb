@@ -1284,7 +1284,7 @@ func (e *statementExecutorDML) registerDMLCallbacks(ctx context.Context) {
 	stmr.RegisterPreUnmarshallCallback(TTIRXD, e.createRXD)
 
 	common.Odl.Debug("registerDMLOallRpaCallbacks: registering II-RPA callback")
-	// For DML, capture optional per-iteration row counts carried after TTIRPA by calling UnMarshalDMLRows.
+	// For DML, capture optional per-iteration row counts carried after TTIRPA by calling UnmarshalDMLRows.
 	// Register a post-unmarshal callback for TTIRPA (oAll8) so we can consume the trailing AL8PIDMLRC section.
 	stmr.RegisterPostUnmarshallCallback(TTIRPA, func(msg driverCommon.Message[driverCommon.MessageType], prevErr error) (bool, error) {
 		if prevErr != nil {
@@ -1292,8 +1292,8 @@ func (e *statementExecutorDML) registerDMLCallbacks(ctx context.Context) {
 		}
 		if rpa, ok := msg.(*ttioallrpa); ok {
 			// map DML row count parsing failure -> OGD-00060 RunExecError("unmarshal-dml-rows")
-			if err := rpa.UnMarshalDMLRows(ctx, e.shelf.GetMarshaller()); err != nil {
-				common.Odl.Error("StatementExecutorDML.ExecContext: UnMarshalDMLRows failed",
+			if err := rpa.UnmarshalDMLRows(ctx, e.shelf.GetMarshaller()); err != nil {
+				common.Odl.Error("StatementExecutorDML.ExecContext: UnmarshalDMLRows failed",
 					"error", err, "stage", "unmarshal-dml-rows")
 				return false, common.NewOracleError(oracleErrors.RunExecError, err, "ExecContext failed")
 			}
@@ -1444,8 +1444,8 @@ func registerDMLOallRpaCallbacks(ctx context.Context, stmr MessageStreamerInterf
 		if rpa, ok := msg.(*ttioallrpa); ok {
 			// map DML row count parsing failure -> OGD-00060 RunExecError("unmarshal-dml-rows")
 			// todo: once ttcResult is implemented, consume the rows returned.
-			if err := rpa.UnMarshalDMLRows(ctx, shelf.GetMarshaller()); err != nil {
-				common.Odl.Error("StatementExecutorDML.ExecContext: UnMarshalDMLRows failed",
+			if err := rpa.UnmarshalDMLRows(ctx, shelf.GetMarshaller()); err != nil {
+				common.Odl.Error("StatementExecutorDML.ExecContext: UnmarshalDMLRows failed",
 					"error", err, "stage", "unmarshal-dml-rows")
 				return false, common.NewOracleError(oracleErrors.RunExecError, err, "ExecContext failed")
 			}

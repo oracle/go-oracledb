@@ -252,10 +252,10 @@ func (rpa *oSesskeyRPA) GetMsgCode() driverCommon.MessageType {
 	return TTIRPA
 }
 
-// UnMarshalFrom deserializes the oSesskeyRPA message from the provided marshaller engine.
-// It implements the common.UnMarshallable interface and reads the TTC protocol
+// UnmarshalFrom deserializes the oSesskeyRPA message from the provided marshaller engine.
+// It implements the common.Unmarshallable interface and reads the TTC protocol
 // data for the session key establishment reply, extracting authentication parameters.
-func (rpa *oSesskeyRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (rpa *oSesskeyRPA) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 
 	outNbPairs, err := engine.UnmarshalUB2(ctx)
 	if err != nil {
@@ -267,7 +267,7 @@ func (rpa *oSesskeyRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.M
 	}
 	keyValueList := newPreallocatedKeyValueList(int(outNbPairs))
 
-	err = keyValueList.UnMarshalFrom(ctx, engine)
+	err = keyValueList.UnmarshalFrom(ctx, engine)
 	if err != nil {
 		common.Odl.Debug("error unmarshalling Osesskey RPA key value list", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)

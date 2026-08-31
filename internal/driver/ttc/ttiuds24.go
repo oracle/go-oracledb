@@ -60,34 +60,34 @@ type tTIuds24 struct {
 }
 
 // newTTIuds24 initializes a TTIuds24 struct
-func newTTIuds24() driverCommon.UnMarshallable {
+func newTTIuds24() driverCommon.Unmarshallable {
 	return &tTIuds24{
 		tTIuds20: newTTIuds20().(*tTIuds20),
 	}
 }
 
-// UnMarshalFrom extracts column/type metadata from the network buffer into the TTIuds struct.
+// UnmarshalFrom extracts column/type metadata from the network buffer into the TTIuds struct.
 // It populates vector properties.
-func (p *tTIuds24) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIuds24: UnMarshalFrom start")
+func (p *tTIuds24) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+	common.Odl.Debug("TTIuds24: UnmarshalFrom start")
 	var err error
-	if err = p.tTIuds20.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("TTIuds20.UnMarshalFrom: failed to unmarshal", "error", err)
+	if err = p.tTIuds20.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("TTIuds20.UnmarshalFrom: failed to unmarshal", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 
 	if p.vectorDim, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Warn("TTIuds24.UnMarshalFrom: failed to unmarshal vectorDim", "error", err)
+		common.Odl.Warn("TTIuds24.UnmarshalFrom: failed to unmarshal vectorDim", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 
 	if p.vectorType, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Warn("TTIuds24.UnMarshalFrom: failed to unmarshal vectorType", "error", err)
+		common.Odl.Warn("TTIuds24.UnmarshalFrom: failed to unmarshal vectorType", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 
 	if p.vectorFlag, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Warn("TTIuds24.UnMarshalFrom: failed to unmarshal vectorFlag", "error", err)
+		common.Odl.Warn("TTIuds24.UnmarshalFrom: failed to unmarshal vectorFlag", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {

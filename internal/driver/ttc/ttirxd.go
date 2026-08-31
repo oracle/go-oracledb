@@ -193,19 +193,19 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 	return nil
 }
 
-// UnMarshalFrom reads and decodes either a regular RXD result-set row or a DML/PLSQL
+// UnmarshalFrom reads and decodes either a regular RXD result-set row or a DML/PLSQL
 // RETURNING-bind payload from the provided Marshaller per TTC specifications.
 // It uses column/row information previously set on the struct and applies BVC
 // column-carry to both raw data and LOB metadata when required. After a
 // successful call, BVC state is reset and rxd.row contains the unmarshalled row.
-func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	// DML returning case
 	if rxd.numberOfReturningPositions > 0 && rxd.isDmlReturning {
 		rxd.row = make([]driverCommon.B1Array, rxd.numberOfReturningPositions)
 		for col := 0; col < rxd.numberOfReturningPositions; col++ {
 			numberOfRows, err := mar.UnmarshalUB4(ctx)
 			if err != nil {
-				common.Odl.Error("tTIrxd.UnMarshalFrom: failed to read DML RETURNING row count",
+				common.Odl.Error("tTIrxd.UnmarshalFrom: failed to read DML RETURNING row count",
 					"error", err, "stage", "dml-returning-row-count", "index", col)
 				return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 			}

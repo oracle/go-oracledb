@@ -78,13 +78,13 @@ func runTTIRPATest(t *testing.T, name string, dump []string) {
 		t.Fatalf("%s: GetMsgCode mismatch, expected TTIRPA", name)
 	}
 
-	if err := rpa.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("%s: UnMarshalFrom failed: %v", name, err)
+	if err := rpa.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("%s: UnmarshalFrom failed: %v", name, err)
 	}
 	// for DMLS
 	if strings.Contains(name, "INSERT") {
-		if err := rpa.UnMarshalDMLRows(context.Background(), mar); err != nil {
-			t.Fatalf("%s: UnMarshalDMLRows failed: %v", name, err)
+		if err := rpa.UnmarshalDMLRows(context.Background(), mar); err != nil {
+			t.Fatalf("%s: UnmarshalDMLRows failed: %v", name, err)
 		}
 	}
 
@@ -112,35 +112,35 @@ func runTTIRPATest(t *testing.T, name string, dump []string) {
 }
 
 // TestTTIOallRPA_Unmarshal_Drop verifies DROP TTIRPA payload decodes without error and core invariants hold.
-// Expectation: UnMarshalFrom succeeds and derived fields (cursorId, SCN, al8o4) are consistent.
+// Expectation: UnmarshalFrom succeeds and derived fields (cursorId, SCN, al8o4) are consistent.
 func TestTTIOallRPA_Unmarshal_Drop(t *testing.T) {
 	t.Parallel()
 	runTTIRPATest(t, "DROP", validTTIRPADropDump)
 }
 
 // TestTTIOallRPA_Unmarshal_Create verifies CREATE TTIRPA payload decodes without error and core invariants hold.
-// Expectation: UnMarshalFrom succeeds and computed values (cursorId, SCN) match expected derivations.
+// Expectation: UnmarshalFrom succeeds and computed values (cursorId, SCN) match expected derivations.
 func TestTTIOallRPA_Unmarshal_Create(t *testing.T) {
 	t.Parallel()
 	runTTIRPATest(t, "CREATE", validTTIRPACreateDump)
 }
 
 // TestTTIOallRPA_Unmarshal_Insert verifies INSERT TTIRPA payload decodes and DML rows can be unmarshalled.
-// Expectation: UnMarshalFrom and UnMarshalDMLRows succeed with consistent decoder state.
+// Expectation: UnmarshalFrom and UnmarshalDMLRows succeed with consistent decoder state.
 func TestTTIOallRPA_Unmarshal_Insert(t *testing.T) {
 	t.Parallel()
 	runTTIRPATest(t, "INSERT", validTTIRPAInsertDump)
 }
 
 // TestTTIOallRPA_Unmarshal_AlterSessionDrop verifies ALTER SESSION/DROP style TTIRPA payload decodes correctly.
-// Expectation: UnMarshalFrom succeeds and invariants (cursorId, SCN) hold true.
+// Expectation: UnmarshalFrom succeeds and invariants (cursorId, SCN) hold true.
 func TestTTIOallRPA_Unmarshal_AlterSessionDrop(t *testing.T) {
 	t.Parallel()
 	runTTIRPATest(t, "ALTER_SESSION_DROP", validTTIRPAAlterSessionDrop)
 }
 
-// Truncated payload should fail during UnMarshalFrom (e.g., not enough bytes for al8o4 or subsequent fields)
-// TestTTIOallRPA_UnmarshalFrom_Fail_Truncated verifies truncated payloads fail during UnMarshalFrom.
+// Truncated payload should fail during UnmarshalFrom (e.g., not enough bytes for al8o4 or subsequent fields)
+// TestTTIOallRPA_UnmarshalFrom_Fail_Truncated verifies truncated payloads fail during UnmarshalFrom.
 // Expectation: decoder returns an error due to insufficient bytes for required fields (e.g., al8o4).
 func TestTTIOallRPA_UnmarshalFrom_Fail_Truncated(t *testing.T) {
 	t.Parallel()
@@ -157,13 +157,13 @@ func TestTTIOallRPA_UnmarshalFrom_Fail_Truncated(t *testing.T) {
 	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	rpa := &ttioallrpa{}
-	if err := rpa.UnMarshalFrom(context.Background(), mar); err == nil {
-		t.Fatalf("expected UnMarshalFrom to fail on truncated payload, but got nil error")
+	if err := rpa.UnmarshalFrom(context.Background(), mar); err == nil {
+		t.Fatalf("expected UnmarshalFrom to fail on truncated payload, but got nil error")
 	}
 }
 
 // Fault-injection using FaultyArrayBasedDataBuffer
-// TestTTIOallRPA_UnmarshalFrom_FaultyBuffer verifies injected read faults cause UnMarshalFrom to fail.
+// TestTTIOallRPA_UnmarshalFrom_FaultyBuffer verifies injected read faults cause UnmarshalFrom to fail.
 // Expectation: each subtest triggers an error for the configured failOn/callN scenario.
 func TestTTIOallRPA_UnmarshalFrom_FaultyBuffer(t *testing.T) {
 	t.Parallel()
@@ -190,8 +190,8 @@ func TestTTIOallRPA_UnmarshalFrom_FaultyBuffer(t *testing.T) {
 			mar := createMarshaller(payload, tc.failOn, tc.callN)
 
 			rpa := &ttioallrpa{}
-			if err := rpa.UnMarshalFrom(context.Background(), mar); err == nil {
-				t.Fatalf("expected UnMarshalFrom to fail with %v (call %d)", tc.failOn, tc.callN)
+			if err := rpa.UnmarshalFrom(context.Background(), mar); err == nil {
+				t.Fatalf("expected UnmarshalFrom to fail with %v (call %d)", tc.failOn, tc.callN)
 			}
 		})
 	}
@@ -229,7 +229,7 @@ func TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues(t *testing.T) {
 			mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 			rpa := &ttioallrpa{}
-			if err := rpa.UnMarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "Failed to unmarshal message") {
+			if err := rpa.UnmarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "Failed to unmarshal message") {
 				t.Fatalf("expected failure for unsupported non-zero %s, got err=%v", tc.name, err)
 			}
 		})
@@ -237,7 +237,7 @@ func TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues(t *testing.T) {
 }
 
 // TestTTIOallRPA_UnmarshalDMLRows_FaultyBuffer verifies failures during DML row count unmarshalling are reported.
-// Expectation: UnMarshalDMLRows returns error when marshaller read operations fail for the rows section.
+// Expectation: UnmarshalDMLRows returns error when marshaller read operations fail for the rows section.
 func TestTTIOallRPA_UnmarshalDMLRows_FaultyBuffer(t *testing.T) {
 	t.Parallel()
 	// Build a minimal DML rows buffer: UB4 count (2) + 16 bytes for two UB8s
@@ -254,13 +254,13 @@ func TestTTIOallRPA_UnmarshalDMLRows_FaultyBuffer(t *testing.T) {
 			_ = buf.WriteBytesWithContext(context.Background(), payload)
 			mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			rpa := &ttioallrpa{}
-			if err := rpa.UnMarshalFrom(context.Background(), mar); err != nil {
-				t.Fatalf("unexpected UnMarshalFrom error: %v", err)
+			if err := rpa.UnmarshalFrom(context.Background(), mar); err != nil {
+				t.Fatalf("unexpected UnmarshalFrom error: %v", err)
 			}
 
 			// Now inject a faulty reader for DML rows phase
-			if err := rpa.UnMarshalDMLRows(context.Background(), mar2); err == nil {
-				t.Fatalf("expected UnMarshalDMLRows to fail with %v", failOn)
+			if err := rpa.UnmarshalDMLRows(context.Background(), mar2); err == nil {
+				t.Fatalf("expected UnmarshalDMLRows to fail with %v", failOn)
 			}
 		})
 	}
@@ -271,7 +271,7 @@ func TestTTIOallRPA_UnmarshalDMLRows_FaultyBuffer(t *testing.T) {
 
 // Exercise transaction context path: set al8txl > 0 and supply 3 bytes (A,B,C).
 // TestTTIOallRPA_Unmarshal_TransactionContext verifies parsing succeeds when transaction context bytes are present.
-// Expectation: UnMarshalFrom completes and invariants (cursorId and SCN derived from al8o4) match expected values.
+// Expectation: UnmarshalFrom completes and invariants (cursorId and SCN derived from al8o4) match expected values.
 func TestTTIOallRPA_Unmarshal_TransactionContext(t *testing.T) {
 	t.Parallel()
 	// Start from DROP dump payload
@@ -298,8 +298,8 @@ func TestTTIOallRPA_Unmarshal_TransactionContext(t *testing.T) {
 		t.Fatalf("GetMsgCode mismatch, expected TTIRPA")
 	}
 	// Should parse including transaction context without error
-	if err := rpa.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("UnMarshalFrom failed with transaction context: %v", err)
+	if err := rpa.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnmarshalFrom failed with transaction context: %v", err)
 	}
 
 	// Minimal invariants as in runTTIRPATest
@@ -322,7 +322,7 @@ func TestTTIOallRPA_Unmarshal_TransactionContext(t *testing.T) {
 // Sets al8txl=3 but appends fewer than 3 bytes to force UnmarshalB1Array error.
 
 // TestTTIOallRPA_Unmarshal_TransactionContext_Fail_Bytes verifies insufficient txn context bytes cause failure.
-// Expectation: UnMarshalFrom returns an error indicating failure while reading [txn-bytes].
+// Expectation: UnmarshalFrom returns an error indicating failure while reading [txn-bytes].
 func TestTTIOallRPA_Unmarshal_TransactionContext_Fail_Bytes(t *testing.T) {
 	t.Parallel()
 	// Start from DROP dump payload
@@ -346,7 +346,7 @@ func TestTTIOallRPA_Unmarshal_TransactionContext_Fail_Bytes(t *testing.T) {
 	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	rpa := &ttioallrpa{}
-	if err := rpa.UnMarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "Failed to unmarshal message") {
+	if err := rpa.UnmarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "Failed to unmarshal message") {
 		t.Fatalf("expected failure for transaction context bytes, got err=%v", err)
 	}
 }

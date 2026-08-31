@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-// Package ttc – unit tests for the DML RETURNING path of tTIrxd.UnMarshalFrom
+// Package ttc – unit tests for the DML RETURNING path of tTIrxd.UnmarshalFrom
 package ttc
 
 import (
@@ -135,10 +135,10 @@ func newDMLReturningRXD(numberOfReturningPositions int) *tTIrxd {
 // Tests
 // ---------------------------------------------------------------------------
 
-// TestTTIrxd_UnMarshalFrom_Returning_SinglePosition_SingleRow verifies that
-// UnMarshalFrom with numberOfReturningPositions=1 correctly reads a single
+// TestTTIrxd_UnmarshalFrom_Returning_SinglePosition_SingleRow verifies that
+// UnmarshalFrom with numberOfReturningPositions=1 correctly reads a single
 // returned row for that position.
-func TestTTIrxd_UnMarshalFrom_Returning_SinglePosition_SingleRow(t *testing.T) {
+func TestTTIrxd_UnmarshalFrom_Returning_SinglePosition_SingleRow(t *testing.T) {
 	t.Parallel()
 	data := []byte("hello")
 	wire := buildReturningWire([][]byte{data})
@@ -146,8 +146,8 @@ func TestTTIrxd_UnMarshalFrom_Returning_SinglePosition_SingleRow(t *testing.T) {
 	rxd := newDMLReturningRXD(1)
 
 	mar := createMarshaller(wire, 0, 0)
-	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("UnMarshalFrom returned error: %v", err)
+	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnmarshalFrom returned error: %v", err)
 	}
 
 	if len(rxd.row) != 1 {
@@ -158,9 +158,9 @@ func TestTTIrxd_UnMarshalFrom_Returning_SinglePosition_SingleRow(t *testing.T) {
 	}
 }
 
-// TestTTIrxd_UnMarshalFrom_Returning_TwoPositions_SingleRowEach verifies that
-// UnMarshalFrom reads two RETURNING positions each containing one row.
-func TestTTIrxd_UnMarshalFrom_Returning_TwoPositions_SingleRowEach(t *testing.T) {
+// TestTTIrxd_UnmarshalFrom_Returning_TwoPositions_SingleRowEach verifies that
+// UnmarshalFrom reads two RETURNING positions each containing one row.
+func TestTTIrxd_UnmarshalFrom_Returning_TwoPositions_SingleRowEach(t *testing.T) {
 	t.Parallel()
 	data0 := []byte("alpha")
 	data1 := []byte{0xDE, 0xAD, 0xBE}
@@ -169,8 +169,8 @@ func TestTTIrxd_UnMarshalFrom_Returning_TwoPositions_SingleRowEach(t *testing.T)
 	rxd := newDMLReturningRXD(2)
 
 	mar := createMarshaller(wire, 0, 0)
-	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("UnMarshalFrom returned error: %v", err)
+	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnmarshalFrom returned error: %v", err)
 	}
 
 	if len(rxd.row) != 2 {
@@ -184,10 +184,10 @@ func TestTTIrxd_UnMarshalFrom_Returning_TwoPositions_SingleRowEach(t *testing.T)
 	}
 }
 
-// TestTTIrxd_UnMarshalFrom_Returning_ZeroRowsForPosition verifies that when a
+// TestTTIrxd_UnmarshalFrom_Returning_ZeroRowsForPosition verifies that when a
 // RETURNING position has a row count of zero (the DML matched no rows for that
 // position) no data is read and the row slot remains nil.
-func TestTTIrxd_UnMarshalFrom_Returning_ZeroRowsForPosition(t *testing.T) {
+func TestTTIrxd_UnmarshalFrom_Returning_ZeroRowsForPosition(t *testing.T) {
 	t.Parallel()
 	// Position 0: 0 rows (no data or indicators follow).
 	wire := buildReturningWire([][]byte{}) // empty slice → row count = 0
@@ -195,8 +195,8 @@ func TestTTIrxd_UnMarshalFrom_Returning_ZeroRowsForPosition(t *testing.T) {
 	rxd := newDMLReturningRXD(1)
 
 	mar := createMarshaller(wire, 0, 0)
-	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("UnMarshalFrom returned error for zero-row position: %v", err)
+	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnmarshalFrom returned error for zero-row position: %v", err)
 	}
 
 	if len(rxd.row) != 1 {
@@ -208,9 +208,9 @@ func TestTTIrxd_UnMarshalFrom_Returning_ZeroRowsForPosition(t *testing.T) {
 	}
 }
 
-// TestTTIrxd_UnMarshalFrom_Returning_NullValue verifies that a NULL wire value
+// TestTTIrxd_UnmarshalFrom_Returning_NullValue verifies that a NULL wire value
 // (CLR length byte = 0x00) is stored as a nil B1Array in rxd.row.
-func TestTTIrxd_UnMarshalFrom_Returning_NullValue(t *testing.T) {
+func TestTTIrxd_UnmarshalFrom_Returning_NullValue(t *testing.T) {
 	t.Parallel()
 	// Pass nil to returningPayload to produce a NULL CLR (0x00 length byte).
 	wire := buildReturningWire([][]byte{nil})
@@ -218,8 +218,8 @@ func TestTTIrxd_UnMarshalFrom_Returning_NullValue(t *testing.T) {
 	rxd := newDMLReturningRXD(1)
 
 	mar := createMarshaller(wire, 0, 0)
-	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("UnMarshalFrom returned error for NULL value: %v", err)
+	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnmarshalFrom returned error for NULL value: %v", err)
 	}
 
 	if len(rxd.row) != 1 {
@@ -230,10 +230,10 @@ func TestTTIrxd_UnMarshalFrom_Returning_NullValue(t *testing.T) {
 	}
 }
 
-// TestTTIrxd_UnMarshalFrom_Returning_MultipleRows verifies that when multiple rows
+// TestTTIrxd_UnmarshalFrom_Returning_MultipleRows verifies that when multiple rows
 // are returned for one position the final row's data is stored in rxd.row[col]
 // (each iteration overwrites the previous one via _unmarshalScalarColumn).
-func TestTTIrxd_UnMarshalFrom_Returning_MultipleRows(t *testing.T) {
+func TestTTIrxd_UnmarshalFrom_Returning_MultipleRows(t *testing.T) {
 	t.Parallel()
 	first := []byte("first")
 	last := []byte("last-value")
@@ -244,8 +244,8 @@ func TestTTIrxd_UnMarshalFrom_Returning_MultipleRows(t *testing.T) {
 	rxd := newDMLReturningRXD(1)
 
 	mar := createMarshaller(wire, 0, 0)
-	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("UnMarshalFrom returned error: %v", err)
+	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnmarshalFrom returned error: %v", err)
 	}
 
 	if len(rxd.row) != 1 {
@@ -257,10 +257,10 @@ func TestTTIrxd_UnMarshalFrom_Returning_MultipleRows(t *testing.T) {
 	}
 }
 
-// TestTTIrxd_UnMarshalFrom_Returning_RowCountReadError verifies that an error is
+// TestTTIrxd_UnmarshalFrom_Returning_RowCountReadError verifies that an error is
 // returned when the wire stream is truncated before the UB4 row-count field can be
 // read for a position.
-func TestTTIrxd_UnMarshalFrom_Returning_RowCountReadError(t *testing.T) {
+func TestTTIrxd_UnmarshalFrom_Returning_RowCountReadError(t *testing.T) {
 	t.Parallel()
 	// Universal UB4 length says 4 bytes follow, but only 2 are present.
 	wire := []byte{0x04, 0x00, 0x00}
@@ -268,7 +268,7 @@ func TestTTIrxd_UnMarshalFrom_Returning_RowCountReadError(t *testing.T) {
 	rxd := newDMLReturningRXD(1)
 
 	mar := createMarshaller(wire, 0, 0)
-	err := rxd.UnMarshalFrom(context.Background(), mar)
+	err := rxd.UnmarshalFrom(context.Background(), mar)
 	if err == nil {
 		t.Fatal("expected error for truncated DML RETURNING row count, got nil")
 	}
@@ -281,10 +281,10 @@ func TestTTIrxd_UnMarshalFrom_Returning_RowCountReadError(t *testing.T) {
 	}
 }
 
-// TestTTIrxd_UnMarshalFrom_Returning_DataReadError verifies that an error is
+// TestTTIrxd_UnmarshalFrom_Returning_DataReadError verifies that an error is
 // returned when the wire stream is truncated in the middle of a CLR data payload
 // for a returned row.
-func TestTTIrxd_UnMarshalFrom_Returning_DataReadError(t *testing.T) {
+func TestTTIrxd_UnmarshalFrom_Returning_DataReadError(t *testing.T) {
 	t.Parallel()
 	// UB4 row count = 1 in Universal encoding, then CLR length = 5 but no data.
 	wire := []byte{
@@ -295,7 +295,7 @@ func TestTTIrxd_UnMarshalFrom_Returning_DataReadError(t *testing.T) {
 	rxd := newDMLReturningRXD(1)
 
 	mar := createMarshaller(wire, 0, 0)
-	err := rxd.UnMarshalFrom(context.Background(), mar)
+	err := rxd.UnmarshalFrom(context.Background(), mar)
 	if err == nil {
 		t.Fatal("expected error for truncated CLR data, got nil")
 	}
@@ -305,10 +305,10 @@ func TestTTIrxd_UnMarshalFrom_Returning_DataReadError(t *testing.T) {
 	}
 }
 
-// TestTTIrxd_UnMarshalFrom_Returning_IndicatorReadError verifies that an error is
+// TestTTIrxd_UnmarshalFrom_Returning_IndicatorReadError verifies that an error is
 // returned when the wire stream is truncated before the UB2 indicator that follows
 // each returned row's CLR data.
-func TestTTIrxd_UnMarshalFrom_Returning_IndicatorReadError(t *testing.T) {
+func TestTTIrxd_UnmarshalFrom_Returning_IndicatorReadError(t *testing.T) {
 	t.Parallel()
 	// UB4 row count = 1 (Universal), valid CLR "ab", but no trailing UB2 indicator.
 	wire := []byte{
@@ -320,7 +320,7 @@ func TestTTIrxd_UnMarshalFrom_Returning_IndicatorReadError(t *testing.T) {
 	rxd := newDMLReturningRXD(1)
 
 	mar := createMarshaller(wire, 0, 0)
-	err := rxd.UnMarshalFrom(context.Background(), mar)
+	err := rxd.UnmarshalFrom(context.Background(), mar)
 	if err == nil {
 		t.Fatal("expected error for missing UB2 indicator, got nil")
 	}
@@ -330,10 +330,10 @@ func TestTTIrxd_UnMarshalFrom_Returning_IndicatorReadError(t *testing.T) {
 	}
 }
 
-// TestTTIrxd_UnMarshalFrom_Returning_ThreePositionsMixed verifies a realistic scenario
+// TestTTIrxd_UnmarshalFrom_Returning_ThreePositionsMixed verifies a realistic scenario
 // with three RETURNING positions: the first has one row, the second has zero rows
 // (no match), and the third has one NULL value.
-func TestTTIrxd_UnMarshalFrom_Returning_ThreePositionsMixed(t *testing.T) {
+func TestTTIrxd_UnmarshalFrom_Returning_ThreePositionsMixed(t *testing.T) {
 	t.Parallel()
 	data0 := []byte{0xC1, 0x02} // NUMBER wire encoding for "1"
 	// position 1: zero rows
@@ -347,8 +347,8 @@ func TestTTIrxd_UnMarshalFrom_Returning_ThreePositionsMixed(t *testing.T) {
 	rxd := newDMLReturningRXD(3)
 
 	mar := createMarshaller(wire, 0, 0)
-	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("UnMarshalFrom returned error: %v", err)
+	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnmarshalFrom returned error: %v", err)
 	}
 
 	if len(rxd.row) != 3 {
@@ -366,7 +366,7 @@ func TestTTIrxd_UnMarshalFrom_Returning_ThreePositionsMixed(t *testing.T) {
 }
 
 // TestTTIrxd_SetNumberofReturningArgs_SwitchesMode verifies that setting
-// numberOfReturningPositions to a positive value correctly switches UnMarshalFrom
+// numberOfReturningPositions to a positive value correctly switches UnmarshalFrom
 // away from the regular column-count path (which requires numberOfColumns > 0).
 func TestTTIrxd_SetNumberofReturningArgs_SwitchesMode(t *testing.T) {
 	t.Parallel()
@@ -379,7 +379,7 @@ func TestTTIrxd_SetNumberofReturningArgs_SwitchesMode(t *testing.T) {
 	// path is taken instead.
 
 	mar := createMarshaller(wire, 0, 0)
-	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
+	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
 		t.Fatalf("RETURNING mode must not require numberOfColumns; got error: %v", err)
 	}
 	if len(rxd.row) != 1 || !reflect.DeepEqual([]byte(rxd.row[0]), data) {

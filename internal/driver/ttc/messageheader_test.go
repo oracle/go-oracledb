@@ -45,7 +45,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-func TestMessageHeader_UnMarshalFrom(t *testing.T) {
+func TestMessageHeader_UnmarshalFrom(t *testing.T) {
 	t.Parallel()
 	size := 1024
 	dataBuffer := NewArrayDataBuffer(size) //DataBuffer is properly initialized
@@ -62,10 +62,10 @@ func TestMessageHeader_UnMarshalFrom(t *testing.T) {
 	// Create messageHeader
 	mh := &messageHeader{}
 
-	// UnMarshalFrom
-	err = mh.UnMarshalFrom(context.Background(), engine)
+	// UnmarshalFrom
+	err = mh.UnmarshalFrom(context.Background(), engine)
 	if err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	// Check GetType

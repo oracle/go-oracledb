@@ -548,8 +548,8 @@ func (t *representationTable) MarshalTo(ctx context.Context, mar driverCommon.Ma
 	return nil
 }
 
-// UnMarshalFrom unmarshal the type representations.
-func (t *representationTable) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+// UnmarshalFrom unmarshal the type representations.
+func (t *representationTable) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	var b driverCommon.UB2
 	var err error
 

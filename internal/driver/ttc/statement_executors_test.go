@@ -1119,7 +1119,7 @@ func TestStatementExecutor_Select_DoesNotReuseStaleBVCStateAcrossExecutions(t *t
 	if err != nil {
 		t.Fatalf("create DCB probe message: %v", err)
 	}
-	if err := dcbMessage.(common.UnMarshallable).UnMarshalFrom(ctx, probeShelf.GetMarshaller()); err != nil {
+	if err := dcbMessage.(common.Unmarshallable).UnmarshalFrom(ctx, probeShelf.GetMarshaller()); err != nil {
 		t.Fatalf("decode DCB probe message: %v", err)
 	}
 	responseWithoutDCB := append([]byte(nil), fullResponse[probeBuffer.currentReadPosition:]...)

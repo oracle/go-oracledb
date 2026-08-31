@@ -55,7 +55,7 @@ type tTIlobd struct {
 	buffer driverCommon.B1Array
 
 	// lastBytesRead tracks the number of bytes copied during the most recent
-	// UnMarshalFrom invocation so callers can update bookkeeping such as
+	// UnmarshalFrom invocation so callers can update bookkeeping such as
 	// lobDefinition.bytesTransferred.
 	lastBytesRead driverCommon.UB8
 }
@@ -76,7 +76,7 @@ func (p *tTIlobd) GetMsgCode() driverCommon.MessageType {
 	return TTILOBD
 }
 
-// UnMarshalFrom populates the output buffer with bytes read from the marshaller.
+// UnmarshalFrom populates the output buffer with bytes read from the marshaller.
 //
 // Inputs:
 //   - ctx context.Context: governs cancellation and deadlines for unmarshalling.
@@ -85,8 +85,8 @@ func (p *tTIlobd) GetMsgCode() driverCommon.MessageType {
 // Outputs:
 //   - error:common.NewOracleError with code FailUnmarshal when unmarshalling from the wire fails.
 //
-// Preconditions: call setOutputBuffer before invoking UnMarshalFrom.
-func (p *tTIlobd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+// Preconditions: call setOutputBuffer before invoking UnmarshalFrom.
+func (p *tTIlobd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	common.Odl.Debug("TTILobd.UnmarshalFrom: start")
 
 	bytesRead, err := mar.UnmarshalCLR(ctx, p.buffer, len(p.buffer))
@@ -128,13 +128,13 @@ func (p *tTIlobd) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) er
 //
 // Inputs:
 //   - buf common.B1Array: LOB byte slice acting as either the inbound payload
-//     (for UnMarshalFrom) or outbound payload (for MarshalTo).
+//     (for UnmarshalFrom) or outbound payload (for MarshalTo).
 func (p *tTIlobd) setBuffer(buf driverCommon.B1Array) {
 	p.buffer = buf
 }
 
 // getLastBytesRead reports the number of bytes copied into the output buffer
-// during the most recent UnMarshalFrom invocation.
+// during the most recent UnmarshalFrom invocation.
 func (p *tTIlobd) getLastBytesRead() driverCommon.UB8 {
 	return p.lastBytesRead
 }
