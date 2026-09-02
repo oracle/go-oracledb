@@ -45,6 +45,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -100,6 +101,300 @@ func TestDriver_Table_Select(t *testing.T) {
 		t.Fatalf("rows err: %v", err)
 	}
 
+}
+
+// TestDriver_Select_5000Rows_NumberColumn verifies that the driver can fetch
+// and decode at least 5,000 rows containing NUMBER values without losing rows
+// or returning an error while iterating through the result set.
+func TestDriver_Select_5000Rows_NumberColumn(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const expectedRows = 5000
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("cleanup close database failed: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	table := createObjectName("t_select_5000_number")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":        "NUMBER PRIMARY KEY",
+		"num_value": "NUMBER",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	insertSQL := fmt.Sprintf(
+		"INSERT INTO %s (id, num_value) SELECT LEVEL, LEVEL * 10 FROM dual CONNECT BY LEVEL <= %d",
+		table,
+		expectedRows,
+	)
+	if _, err := db.ExecContext(ctx, insertSQL); err != nil {
+		t.Fatalf("insert %d rows failed: %v", expectedRows, err)
+	}
+
+	rows, err := db.QueryContext(ctx, "SELECT id, num_value FROM "+table+" ORDER BY id")
+	if err != nil {
+		t.Fatalf("query %d rows failed: %v", expectedRows, err)
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			t.Errorf("cleanup close rows failed: %v", err)
+		}
+	}()
+
+	count := 0
+	for rows.Next() {
+		var id, numberValue int64
+		if err := rows.Scan(&id, &numberValue); err != nil {
+			t.Fatalf("scan row %d failed: %v", count+1, err)
+		}
+
+		expectedID := int64(count + 1)
+		if id != expectedID {
+			t.Fatalf("row %d: got id %d, want %d", count+1, id, expectedID)
+		}
+		if numberValue != expectedID*10 {
+			t.Fatalf("row %d: got NUMBER value %d, want %d", count+1, numberValue, expectedID*10)
+		}
+		count++
+	}
+
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate %d rows failed: %v", expectedRows, err)
+	}
+	if count != expectedRows {
+		t.Fatalf("got %d rows, want %d", count, expectedRows)
+	}
+}
+
+// TestDriver_Insert_5000Rows_NumberColumn verifies that a single database
+// connection can execute a high-volume NUMBER insert.
+func TestDriver_Insert_5000Rows_NumberColumn(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const expectedRows = 5000
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("cleanup close database failed: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	table := createObjectName("t_insert_5000_number")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":        "NUMBER PRIMARY KEY",
+		"num_value": "NUMBER",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	insertSQL := fmt.Sprintf(
+		"INSERT INTO %s (id, num_value) SELECT LEVEL, LEVEL * 10 FROM dual CONNECT BY LEVEL <= %d",
+		table,
+		expectedRows,
+	)
+	if _, err := db.ExecContext(ctx, insertSQL); err != nil {
+		t.Fatalf("insert %d rows failed: %v", expectedRows, err)
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil {
+		t.Fatalf("count inserted rows failed: %v", err)
+	}
+	if count != expectedRows {
+		t.Fatalf("got %d inserted rows, want %d", count, expectedRows)
+	}
+}
+
+// TestDriver_Select_5000Rows_ComplexTypes verifies that high-volume result
+// sets containing CLOB, RAW, and TIMESTAMP values are decoded correctly.
+func TestDriver_Select_5000Rows_ComplexTypes(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const expectedRows = 5000
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("cleanup close database failed: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	table := createObjectName("t_select_5000_complex")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":         "NUMBER PRIMARY KEY",
+		"label":      "VARCHAR2(64)",
+		"created_at": "TIMESTAMP",
+		"payload":    "CLOB",
+		"raw_value":  "RAW(64)",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	insertSQL := fmt.Sprintf(
+		"INSERT INTO %s (id, label, created_at, payload, raw_value) "+
+			"SELECT LEVEL, 'label-' || LEVEL, "+
+			"TIMESTAMP '2024-01-01 00:00:00' + NUMTODSINTERVAL(LEVEL, 'SECOND'), "+
+			"TO_CLOB('payload-' || LEVEL), UTL_RAW.CAST_TO_RAW('raw-' || LEVEL) "+
+			"FROM dual CONNECT BY LEVEL <= %d",
+		table,
+		expectedRows,
+	)
+	if _, err := db.ExecContext(ctx, insertSQL); err != nil {
+		t.Fatalf("insert %d complex rows failed: %v", expectedRows, err)
+	}
+
+	rows, err := db.QueryContext(ctx, "SELECT id, label, created_at, payload, raw_value FROM "+table+" ORDER BY id")
+	if err != nil {
+		t.Fatalf("query %d complex rows failed: %v", expectedRows, err)
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var (
+			id        int64
+			label     string
+			createdAt time.Time
+			payload   string
+			rawValue  []byte
+		)
+		if err := rows.Scan(&id, &label, &createdAt, &payload, &rawValue); err != nil {
+			t.Fatalf("scan complex row %d failed: %v", count+1, err)
+		}
+
+		expectedID := int64(count + 1)
+		if id != expectedID || label != fmt.Sprintf("label-%d", expectedID) || payload != fmt.Sprintf("payload-%d", expectedID) {
+			t.Fatalf("row %d values do not match expected values", count+1)
+		}
+		if createdAt.IsZero() {
+			t.Fatalf("row %d returned a zero TIMESTAMP", count+1)
+		}
+		if string(rawValue) != fmt.Sprintf("raw-%d", expectedID) {
+			t.Fatalf("row %d: got RAW %q", count+1, rawValue)
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate %d complex rows failed: %v", expectedRows, err)
+	}
+	if count != expectedRows {
+		t.Fatalf("got %d complex rows, want %d", count, expectedRows)
+	}
+}
+
+// TestDriver_ConcurrentQueriesOnSharedDB verifies that concurrent goroutines
+// can query through a shared *sql.DB without mixing up rows or returning an error.
+func TestDriver_ConcurrentQueriesOnSharedDB(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const (
+		rowCount         = 500
+		workers          = 10
+		queriesPerWorker = 50
+	)
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("cleanup close database failed: %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	table := createObjectName("t_concurrent_queries")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":        "NUMBER PRIMARY KEY",
+		"num_value": "NUMBER",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	insertSQL := fmt.Sprintf(
+		"INSERT INTO %s (id, num_value) SELECT LEVEL, LEVEL * 10 FROM dual CONNECT BY LEVEL <= %d",
+		table,
+		rowCount,
+	)
+	if _, err := db.ExecContext(ctx, insertSQL); err != nil {
+		t.Fatalf("insert query rows failed: %v", err)
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, workers)
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			<-start
+			for query := 0; query < queriesPerWorker; query++ {
+				expectedID := int64((worker*queriesPerWorker+query)%rowCount + 1)
+				var id, value int64
+				if err := db.QueryRowContext(ctx, "SELECT id, num_value FROM "+table+" WHERE id = :1", expectedID).Scan(&id, &value); err != nil {
+					errs <- fmt.Errorf("worker %d query %d: %w", worker, query, err)
+					return
+				}
+				if id != expectedID || value != expectedID*10 {
+					errs <- fmt.Errorf("worker %d query %d: got (%d, %d), want (%d, %d)", worker, query, id, value, expectedID, expectedID*10)
+					return
+				}
+			}
+		}(worker)
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // TestDriver_Exec_Query_cursor_leak
