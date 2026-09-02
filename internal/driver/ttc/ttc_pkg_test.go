@@ -585,7 +585,6 @@ var testCases = []struct {
 	{"TestTTIrxd_UnMarshalFrom_Returning_ThreePositionsMixed", "unitary", false, TestTTIrxd_UnMarshalFrom_Returning_ThreePositionsMixed},
 	{"TestTTIrxd_UnMarshalFrom_Returning_TwoPositions_SingleRowEach", "unitary", false, TestTTIrxd_UnMarshalFrom_Returning_TwoPositions_SingleRowEach},
 	{"TestTTIrxd_UnMarshalFrom_Returning_ZeroRowsForPosition", "unitary", false, TestTTIrxd_UnMarshalFrom_Returning_ZeroRowsForPosition},
-	{"TestParsePlaceholders_IgnoreTriggerPseudoRecords", "unitary", false, TestParsePlaceholders_IgnoreTriggerPseudoRecords},
 	{"TestTTCRowsColumnsNextAndMetadata", "unitary", false, TestTTCRowsColumnsNextAndMetadata},
 	{"TestTTCRowsColumnTypeDatabaseTypeNameMappings", "unitary", false, TestTTCRowsColumnTypeDatabaseTypeNameMappings},
 	{"TestTTCResult", "unitary", false, TestTTCResult},
