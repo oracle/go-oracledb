@@ -29,6 +29,7 @@ jobs:
   functional_validate_driver:
     runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
     strategy:
+      fail-fast: false
       matrix:
         include:
           - rdbms: base-database-service-19c
