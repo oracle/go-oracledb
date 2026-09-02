@@ -31,7 +31,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - rdbms: [base-database-service-19c, base-database-service-21c, base-database-service-26ai autonomous-transaction-processing-serverless-19c, autonomous-transaction-processing-serverless-26ai,base-database-service-26ai-rac]
+          - rdbms: base-database-service-19c
+          - rdbms: base-database-service-21c
+          - rdbms: base-database-service-26ai
+          - rdbms: autonomous-transaction-processing-serverless-19c
+          - rdbms: autonomous-transaction-processing-serverless-26ai
+          - rdbms: base-database-service-26ai-rac
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1r
