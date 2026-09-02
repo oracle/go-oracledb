@@ -113,4 +113,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestStripSpacesOutsideQuotes", Categories: "unitary", Exclusive: false, Fn: TestStripSpacesOutsideQuotes},
 	{Name: "TestConstants_Protocol", Categories: "unitary", Exclusive: false, Fn: TestConstants_Protocol},
 	{Name: "TestConstants_ProtocolString", Categories: "unitary", Exclusive: false, Fn: TestConstants_ProtocolString},
+	{Name: "TestShelf_ConnectionProperties", Categories: "unitary", Exclusive: false, Fn: TestShelf_ConnectionProperties},
+	{Name: "TestUtility_B1ArrayToString", Categories: "unitary", Exclusive: false, Fn: TestUtility_B1ArrayToString},
+	{Name: "TestUtility_GenerateRandomBytes", Categories: "unitary", Exclusive: false, Fn: TestUtility_GenerateRandomBytes},
 }

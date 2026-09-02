@@ -873,3 +873,69 @@ func TestDriver_Prepared_SelectMultipleRows_Re_exec_BindTypeChange(t *testing.T)
 		}
 	}
 }
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_DeleteWithRowIDSubqueryLimit(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("t_raw_delete_limit")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":   "NUMBER PRIMARY KEY",
+		"name": "VARCHAR2(100)",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	for _, row := range []struct {
+		id   int64
+		name string
+	}{
+		{1, "del-limited-1"},
+		{2, "del-limited-2"},
+		{3, "del-limited-3"},
+	} {
+		if _, err := db.ExecContext(ctx,
+			"INSERT INTO "+table+" (id, name) VALUES (:1, :2)",
+			row.id, row.name,
+		); err != nil {
+			t.Fatalf("insert row %+v failed: %v", row, err)
+		}
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		DELETE FROM `+table+`
+		WHERE rowid IN (
+			SELECT rowid FROM `+table+`
+			WHERE name LIKE :1
+			ORDER BY id DESC FETCH FIRST 1 ROWS ONLY
+		)
+	`, "del-limited-%"); err != nil {
+		t.Fatalf("limited raw delete failed: %v", err)
+	}
+
+	var remaining int64
+	if err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM "+table+" WHERE name LIKE :1",
+		"del-limited-%",
+	).Scan(&remaining); err != nil {
+		t.Fatalf("count after limited delete failed: %v", err)
+	}
+	if remaining != 2 {
+		t.Fatalf("unexpected remaining count after limited delete: got %d, want 2", remaining)
+	}
+}

@@ -130,3 +130,83 @@ func TestDriver_TRIGGER_GormTest(t *testing.T) {
 		t.Fatalf("Expected line to be returned")
 	}
 }
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_TRIGGER_PseudoRecords(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("trigger")
+	changesTable := createObjectName("trigger_changes")
+	triggerName := createObjectName("trigger")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":    "NUMBER PRIMARY KEY",
+		"refer": "NUMBER",
+	}); err != nil {
+		t.Fatalf("Create table failed: %v", err)
+	}
+	defer func() {
+		if e := dropTable(ctx, db, table); e != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, e)
+		}
+	}()
+
+	if err := createTable(ctx, db, changesTable, map[string]string{
+		"id":        "NUMBER PRIMARY KEY",
+		"refer":     "NUMBER",
+		"old_refer": "NUMBER",
+	}); err != nil {
+		t.Fatalf("Create table failed: %v", err)
+	}
+	defer func() {
+		if e := dropTable(ctx, db, changesTable); e != nil {
+			t.Errorf("cleanup drop table %s failed: %v", changesTable, e)
+		}
+	}()
+
+	createTriggerStmt := "CREATE OR REPLACE TRIGGER " + triggerName + " " +
+		"AFTER UPDATE OF refer ON " + table + " " +
+		"FOR EACH ROW " +
+		"BEGIN " +
+		"INSERT INTO " + changesTable + " (id, refer, old_refer) VALUES (:NEW.id, :NEW.refer, :OLD.refer); " +
+		"END;"
+
+	if _, err = db.ExecContext(ctx, createTriggerStmt); err != nil {
+		t.Fatalf("Unexpected error %v", err)
+	}
+	if _, err = db.ExecContext(ctx, "INSERT INTO "+table+" (id, refer) values (1, 2)"); err != nil {
+		t.Fatalf("Unexpected error %v", err)
+	}
+	if _, err = db.ExecContext(ctx, "UPDATE "+table+" set refer = 3 where id = 1"); err != nil {
+		t.Fatalf("Unexpected error %v", err)
+	}
+
+	rows, err := db.QueryContext(ctx, "SELECT id, refer, old_refer FROM "+changesTable)
+	if err != nil {
+		t.Fatalf("Unexpected error %v", err)
+	}
+	defer rows.Close()
+
+	var id, refer, oldRefer int
+	if !rows.Next() {
+		t.Fatal("Expected line to be returned")
+	}
+	if err := rows.Scan(&id, &refer, &oldRefer); err != nil {
+		t.Fatalf("scan changes failed: %v", err)
+	}
+	if id != 1 || refer != 3 || oldRefer != 2 {
+		t.Fatalf("unexpected trigger changes: id=%d refer=%d old_refer=%d", id, refer, oldRefer)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate trigger changes: %v", err)
+	}
+}

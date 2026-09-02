@@ -367,3 +367,80 @@ func TestReadOnlyTransaction(t *testing.T) {
 		t.Fatal("INSERT in read-only tx should fail")
 	}
 }
+
+// Migrated from the OraHub test coverage MR.
+func TestSavepointRollback(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("transaction_test_savepoint")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":   "NUMBER PRIMARY KEY",
+		"name": "VARCHAR2(50)",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: false})
+	if err != nil {
+		t.Fatalf("BeginTx failed: %v", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "INSERT INTO "+table+" (id, name) VALUES (:1, :2)", int64(1), "outer"); err != nil {
+		t.Fatalf("insert before savepoint failed: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT sp1"); err != nil {
+		t.Fatalf("create savepoint failed: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO "+table+" (id, name) VALUES (:1, :2)", int64(2), "inner"); err != nil {
+		t.Fatalf("insert after savepoint failed: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT sp1"); err != nil {
+		t.Fatalf("rollback to savepoint failed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit failed: %v", err)
+	}
+
+	rows, err := db.QueryContext(ctx, "SELECT id, name FROM "+table+" ORDER BY id")
+	if err != nil {
+		t.Fatalf("select after commit failed: %v", err)
+	}
+	defer rows.Close()
+
+	var (
+		ids   []int64
+		names []string
+	)
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			t.Fatalf("scan row failed: %v", err)
+		}
+		ids = append(ids, id)
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+
+	if len(ids) != 1 || ids[0] != 1 || names[0] != "outer" {
+		t.Fatalf("unexpected rows after savepoint rollback: ids=%v names=%v", ids, names)
+	}
+}

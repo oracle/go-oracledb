@@ -89,4 +89,5 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded", Categories: "unitary", Exclusive: false, Fn: TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded},
 	{Name: "TestProviderRegistryGetProviderReturnsRequestedInterface", Categories: "unitary", Exclusive: false, Fn: TestProviderRegistryGetProviderReturnsRequestedInterface},
 	{Name: "TestProviderRegistryGetProviderReturnsErrorWhenUninitialized", Categories: "unitary", Exclusive: false, Fn: TestProviderRegistryGetProviderReturnsErrorWhenUninitialized},
+	{Name: "TestNewCtxTimeoutCauseError", Categories: "unitary", Exclusive: false, Fn: TestNewCtxTimeoutCauseError},
 }

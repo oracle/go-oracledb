@@ -1405,3 +1405,266 @@ func TestDriver_Select_NullFromComputedExpression(t *testing.T) {
 		}
 	}
 }
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_JoinQuery(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	companiesTable := createObjectName("join_companies")
+	usersTable := createObjectName("join_users")
+
+	if err := createTable(ctx, db, companiesTable, map[string]string{
+		"id":   "NUMBER PRIMARY KEY",
+		"name": "VARCHAR2(100)",
+	}); err != nil {
+		t.Fatalf("create companies table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, usersTable); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", usersTable, err)
+		}
+		if err := dropTable(ctx, db, companiesTable); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", companiesTable, err)
+		}
+	}()
+
+	if _, err := db.ExecContext(ctx, `CREATE TABLE `+usersTable+` (
+		id NUMBER PRIMARY KEY,
+		name VARCHAR2(100),
+		company_id NUMBER,
+		CONSTRAINT fk_t_join_users_company FOREIGN KEY (company_id) REFERENCES `+companiesTable+`(id)
+	)`); err != nil {
+		t.Fatalf("create users table failed: %v", err)
+	}
+
+	if _, err := db.ExecContext(ctx, "INSERT INTO "+companiesTable+" (id, name) VALUES (:1, :2)", int64(1), "Acme"); err != nil {
+		t.Fatalf("insert company failed: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "INSERT INTO "+usersTable+" (id, name, company_id) VALUES (:1, :2, :3)", int64(10), "alice", int64(1)); err != nil {
+		t.Fatalf("insert user failed: %v", err)
+	}
+
+	var userName, companyName string
+	if err := db.QueryRowContext(ctx, `
+		SELECT u.name, c.name
+		FROM `+usersTable+` u
+		JOIN `+companiesTable+` c ON c.id = u.company_id
+		WHERE u.id = :1
+	`, int64(10)).Scan(&userName, &companyName); err != nil {
+		t.Fatalf("join query failed: %v", err)
+	}
+
+	if userName != "alice" || companyName != "Acme" {
+		t.Fatalf("unexpected join row: got (%q, %q), want (%q, %q)", userName, companyName, "alice", "Acme")
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_SubqueryInFrom(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("t_subquery_users")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":   "NUMBER PRIMARY KEY",
+		"name": "VARCHAR2(100)",
+		"age":  "NUMBER",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	inserts := []struct {
+		id   int64
+		name string
+		age  int64
+	}{
+		{1, "groupby", 10},
+		{2, "groupby", 20},
+		{3, "groupby1", 110},
+		{4, "groupby1", 220},
+	}
+	for _, row := range inserts {
+		if _, err := db.ExecContext(ctx,
+			"INSERT INTO "+table+" (id, name, age) VALUES (:1, :2, :3)",
+			row.id, row.name, row.age,
+		); err != nil {
+			t.Fatalf("insert row %+v failed: %v", row, err)
+		}
+	}
+
+	var name string
+	var totalAge int64
+	if err := db.QueryRowContext(ctx, `
+		SELECT agg.name, agg.total_age
+		FROM (
+			SELECT name, SUM(age) AS total_age
+			FROM `+table+`
+			GROUP BY name
+		) agg
+		WHERE agg.name = :1
+	`, "groupby1").Scan(&name, &totalAge); err != nil {
+		t.Fatalf("subquery select failed: %v", err)
+	}
+
+	if name != "groupby1" || totalAge != 330 {
+		t.Fatalf("unexpected subquery result: got (%q, %d), want (%q, %d)", name, totalAge, "groupby1", int64(330))
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_GroupByHaving(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("t_group_by_users")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":   "NUMBER PRIMARY KEY",
+		"name": "VARCHAR2(100)",
+		"age":  "NUMBER",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	inserts := []struct {
+		id   int64
+		name string
+		age  int64
+	}{
+		{1, "groupby", 10},
+		{2, "groupby", 20},
+		{3, "groupby", 30},
+		{4, "groupby1", 110},
+		{5, "groupby1", 220},
+		{6, "groupby1", 330},
+	}
+	for _, row := range inserts {
+		if _, err := db.ExecContext(ctx,
+			"INSERT INTO "+table+" (id, name, age) VALUES (:1, :2, :3)",
+			row.id, row.name, row.age,
+		); err != nil {
+			t.Fatalf("insert row %+v failed: %v", row, err)
+		}
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT name, SUM(age) AS total
+		FROM `+table+`
+		WHERE name LIKE :1
+		GROUP BY name
+		HAVING SUM(age) >= :2
+		ORDER BY name
+	`, "groupby%", int64(300))
+	if err != nil {
+		t.Fatalf("group by query failed: %v", err)
+	}
+	defer rows.Close()
+
+	type aggregateRow struct {
+		name  string
+		total int64
+	}
+	var got []aggregateRow
+	for rows.Next() {
+		var row aggregateRow
+		if err := rows.Scan(&row.name, &row.total); err != nil {
+			t.Fatalf("scan aggregate row failed: %v", err)
+		}
+		got = append(got, row)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 aggregate row, got %d", len(got))
+	}
+	if got[0].name != "groupby1" || got[0].total != 660 {
+		t.Fatalf("unexpected aggregate row: got (%q, %d), want (%q, %d)", got[0].name, got[0].total, "groupby1", int64(660))
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_NamedArgMultipleSameParamRefs(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("t_named_arg_multi_ref")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":   "NUMBER PRIMARY KEY",
+		"name": "VARCHAR2(100)",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO "+table+" (id, name) VALUES (:1, :2)",
+		int64(1), "multi-ref",
+	); err != nil {
+		t.Fatalf("insert seed row failed: %v", err)
+	}
+
+	var id int64
+	var name string
+	if err := db.QueryRowContext(ctx,
+		`SELECT id, name FROM `+table+` WHERE :name = :name AND name = :name`,
+		sql.Named("name", "multi-ref"),
+	).Scan(&id, &name); err != nil {
+		t.Fatalf("named-arg multi-ref query failed: %v", err)
+	}
+
+	if id != 1 || name != "multi-ref" {
+		t.Fatalf("unexpected named-arg multi-ref row: got (%d, %q), want (%d, %q)", id, name, 1, "multi-ref")
+	}
+}

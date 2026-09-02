@@ -940,6 +940,579 @@ func TestDriver_Select_TimestampWithLocalTimeZone_Prepared_Named(t *testing.T) {
 	}
 }
 
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_DATE_BoundaryYears(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("date_boundary_test")
+	cols := map[string]string{
+		"id": "NUMBER PRIMARY KEY",
+		"d":  "DATE",
+	}
+
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	inserts := []string{
+		// Absolute minimum AD year (year 1, Jan 1)
+		"INSERT INTO " + table + " (id, d) VALUES (1, TO_DATE('0001-01-01', 'YYYY-MM-DD'))",
+		// Absolute maximum Oracle DATE value (year 9999, Dec 31)
+		"INSERT INTO " + table + " (id, d) VALUES (2, TO_DATE('9999-12-31', 'YYYY-MM-DD'))",
+	}
+	for i, stmt := range inserts {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("insert %d failed: %v", i+1, err)
+		}
+	}
+
+	rs, err := db.QueryContext(ctx, "SELECT id, d FROM "+table+" ORDER BY id")
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	defer rs.Close()
+
+	type rowExp struct {
+		id   int
+		date time.Time
+	}
+
+	loc := time.UTC
+	exp := []rowExp{
+		{id: 1, date: time.Date(1, time.January, 1, 0, 0, 0, 0, loc)},
+		{id: 2, date: time.Date(9999, time.December, 31, 0, 0, 0, 0, loc)},
+	}
+
+	idx := 0
+	for rs.Next() {
+		var (
+			id int
+			d  time.Time
+		)
+		if err := rs.Scan(&id, &d); err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
+		t.Logf("DATE boundary row %d: id=%d DATE=%s", idx, id, d.Format(time.RFC3339Nano))
+
+		if idx >= len(exp) {
+			t.Fatalf("received more rows than expected: idx=%d", idx)
+		}
+		e := exp[idx]
+		if id != e.id {
+			t.Fatalf("id mismatch at row %d: got %d want %d", idx, id, e.id)
+		}
+		assertSameYMDHMSNanos(t, idx, "DATE boundary", d, e.date)
+		idx++
+	}
+	if err := rs.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+	if idx != len(exp) {
+		t.Fatalf("row count mismatch: got %d want %d", idx, len(exp))
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_TIMESTAMP_SubSecond_MinimumNonZero(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("ts_subsecond_min_test")
+	cols := map[string]string{
+		"id": "NUMBER PRIMARY KEY",
+		"ts": "TIMESTAMP(9)",
+	}
+
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	stmt := "INSERT INTO " + table + " (id, ts) VALUES (1, TIMESTAMP '2024-06-15 12:00:00.000001')"
+	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	rs, err := db.QueryContext(ctx, "SELECT id, ts FROM "+table)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	defer rs.Close()
+
+	if !rs.Next() {
+		t.Fatalf("no rows returned")
+	}
+
+	var id int
+	var ts time.Time
+	if err := rs.Scan(&id, &ts); err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	loc := time.UTC
+	expected := time.Date(2024, time.June, 15, 12, 0, 0, 1000, loc)
+	assertSameYMDHMSNanos(t, 0, "TIMESTAMP sub-second minimum", ts, expected)
+
+	if rs.Next() {
+		t.Fatalf("unexpected additional rows")
+	}
+	if err := rs.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_TIMESTAMP_SubSecond_MidRange(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("ts_subsecond_mid_test")
+	cols := map[string]string{
+		"id": "NUMBER PRIMARY KEY",
+		"ts": "TIMESTAMP(9)",
+	}
+
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	stmt := "INSERT INTO " + table + " (id, ts) VALUES (1, TIMESTAMP '2024-06-15 12:00:00.000500')"
+	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	rs, err := db.QueryContext(ctx, "SELECT id, ts FROM "+table)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	defer rs.Close()
+
+	if !rs.Next() {
+		t.Fatalf("no rows returned")
+	}
+
+	var id int
+	var ts time.Time
+	if err := rs.Scan(&id, &ts); err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	loc := time.UTC
+	expected := time.Date(2024, time.June, 15, 12, 0, 0, 500000, loc)
+	assertSameYMDHMSNanos(t, 0, "TIMESTAMP sub-second mid-range", ts, expected)
+
+	if rs.Next() {
+		t.Fatalf("unexpected additional rows")
+	}
+	if err := rs.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_TIMESTAMP_SubSecond_ShortTrailingDigit(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("ts_subsecond_short_test")
+	cols := map[string]string{
+		"id": "NUMBER PRIMARY KEY",
+		"ts": "TIMESTAMP(9)",
+	}
+
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	stmt := "INSERT INTO " + table + " (id, ts) VALUES (1, TIMESTAMP '2024-06-15 12:00:00.1')"
+	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	rs, err := db.QueryContext(ctx, "SELECT id, ts FROM "+table)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	defer rs.Close()
+
+	if !rs.Next() {
+		t.Fatalf("no rows returned")
+	}
+
+	var id int
+	var ts time.Time
+	if err := rs.Scan(&id, &ts); err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	loc := time.UTC
+	expected := time.Date(2024, time.June, 15, 12, 0, 0, 100000000, loc)
+	assertSameYMDHMSNanos(t, 0, "TIMESTAMP sub-second short trailing digit", ts, expected)
+
+	if rs.Next() {
+		t.Fatalf("unexpected additional rows")
+	}
+	if err := rs.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_TIMESTAMP_SubSecond_FullNanosecondPrecision(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("ts_subsecond_full_test")
+	cols := map[string]string{
+		"id": "NUMBER PRIMARY KEY",
+		"ts": "TIMESTAMP(9)",
+	}
+
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	stmt := "INSERT INTO " + table + " (id, ts) VALUES (1, TO_TIMESTAMP('2024-06-15 12:00:00.123456789', 'YYYY-MM-DD HH24:MI:SS.FF9'))"
+	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	rs, err := db.QueryContext(ctx, "SELECT id, ts FROM "+table)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	defer rs.Close()
+
+	if !rs.Next() {
+		t.Fatalf("no rows returned")
+	}
+
+	var id int
+	var ts time.Time
+	if err := rs.Scan(&id, &ts); err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	loc := time.UTC
+	expected := time.Date(2024, time.June, 15, 12, 0, 0, 123456789, loc)
+	assertSameYMDHMSNanos(t, 0, "TIMESTAMP sub-second full nanosecond", ts, expected)
+
+	if rs.Next() {
+		t.Fatalf("unexpected additional rows")
+	}
+	if err := rs.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMinimum(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("ts_subsecond_boundary_min_test")
+	cols := map[string]string{
+		"id": "NUMBER PRIMARY KEY",
+		"ts": "TIMESTAMP(9)",
+	}
+
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	stmt := "INSERT INTO " + table + " (id, ts) VALUES (1, TO_TIMESTAMP('0001-01-01 00:00:00.000001', 'YYYY-MM-DD HH24:MI:SS.FF6'))"
+	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	rs, err := db.QueryContext(ctx, "SELECT id, ts FROM "+table)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	defer rs.Close()
+
+	if !rs.Next() {
+		t.Fatalf("no rows returned")
+	}
+
+	var id int
+	var ts time.Time
+	if err := rs.Scan(&id, &ts); err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	loc := time.UTC
+	expected := time.Date(1, time.January, 1, 0, 0, 0, 1000, loc)
+	assertSameYMDHMSNanos(t, 0, "TIMESTAMP boundary year minimum with sub-second", ts, expected)
+
+	if rs.Next() {
+		t.Fatalf("unexpected additional rows")
+	}
+	if err := rs.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMaximum(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("ts_subsecond_boundary_max_test")
+	cols := map[string]string{
+		"id": "NUMBER PRIMARY KEY",
+		"ts": "TIMESTAMP(9)",
+	}
+
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	stmt := "INSERT INTO " + table + " (id, ts) VALUES (1, TO_TIMESTAMP('9999-12-31 23:59:59.999999', 'YYYY-MM-DD HH24:MI:SS.FF6'))"
+	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	rs, err := db.QueryContext(ctx, "SELECT id, ts FROM "+table)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	defer rs.Close()
+
+	if !rs.Next() {
+		t.Fatalf("no rows returned")
+	}
+
+	var id int
+	var ts time.Time
+	if err := rs.Scan(&id, &ts); err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	loc := time.UTC
+	expected := time.Date(9999, time.December, 31, 23, 59, 59, 999999000, loc)
+	assertSameYMDHMSNanos(t, 0, "TIMESTAMP boundary year maximum with sub-second", ts, expected)
+
+	if rs.Next() {
+		t.Fatalf("unexpected additional rows")
+	}
+	if err := rs.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_DATE_NLSDateFormat_Session(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("date_nls_session_test")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":          "NUMBER PRIMARY KEY",
+		"standard_dt": "DATE",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO "+table+" (id, standard_dt) VALUES (:1, DATE '2025-06-15')",
+		int64(1),
+	); err != nil {
+		t.Fatalf("seed insert failed: %v", err)
+	}
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("failed to acquire dedicated connection: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, "ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD'"); err != nil {
+		t.Fatalf("alter session NLS_DATE_FORMAT failed: %v", err)
+	}
+
+	var formatted string
+	if err := conn.QueryRowContext(ctx,
+		"SELECT TO_CHAR(standard_dt) FROM "+table+" WHERE id = :1",
+		int64(1),
+	).Scan(&formatted); err != nil {
+		t.Fatalf("select TO_CHAR(date) failed: %v", err)
+	}
+
+	if formatted != "2025-06-15" {
+		t.Fatalf("unexpected NLS-formatted date: got %q, want %q", formatted, "2025-06-15")
+	}
+}
+
+// Migrated from the OraHub test coverage MR.
+func TestDriver_Select_DATE_IntervalArithmetic(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("date_interval_ops_test")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id": "NUMBER PRIMARY KEY",
+		"d":  "DATE",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO "+table+" (id, d) VALUES (:1, TO_DATE(:2, 'YYYY-MM-DD HH24:MI:SS'))",
+		int64(1), "2025-01-15 12:00:00",
+	); err != nil {
+		t.Fatalf("seed insert failed: %v", err)
+	}
+
+	var addYearMonth string
+	if err := db.QueryRowContext(ctx,
+		"SELECT TO_CHAR(d + INTERVAL '1-3' YEAR TO MONTH, 'YYYY-MM-DD HH24:MI:SS') FROM "+table+" WHERE id = :1",
+		int64(1),
+	).Scan(&addYearMonth); err != nil {
+		t.Fatalf("year-to-month interval query failed: %v", err)
+	}
+	if addYearMonth != "2026-04-15 12:00:00" {
+		t.Fatalf("unexpected YEAR TO MONTH interval result: got %q, want %q", addYearMonth, "2026-04-15 12:00:00")
+	}
+
+	var addDaySecond string
+	if err := db.QueryRowContext(ctx,
+		"SELECT TO_CHAR(d + INTERVAL '10 05:00:00' DAY TO SECOND, 'YYYY-MM-DD HH24:MI:SS') FROM "+table+" WHERE id = :1",
+		int64(1),
+	).Scan(&addDaySecond); err != nil {
+		t.Fatalf("day-to-second interval query failed: %v", err)
+	}
+	if addDaySecond != "2025-01-25 17:00:00" {
+		t.Fatalf("unexpected DAY TO SECOND interval result: got %q, want %q", addDaySecond, "2025-01-25 17:00:00")
+	}
+}
+
 // TestDriver_Select_TimestampWithTimeZone_Prepared_LoadLocation_And_Offset
 // Purpose: Prepared statement with TIMESTAMP WITH TIME ZONE using:
 //   - One input built with time.LoadLocation (region name, e.g. Asia/Kolkata)
