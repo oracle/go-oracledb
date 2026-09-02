@@ -49,7 +49,7 @@ import (
 // ttiSPFOCSSync models a Server Piggyback (TTISPF) packet used by the server
 // to synchronize session state with the client (OCSSYNC, see function code ocssync).
 // This message is received from the server and therefore only implements
-// UnMarshalFrom and GetMsgCode; it does not support MarshalTo.
+// UnmarshalFrom and GetMsgCode; it does not support MarshalTo.
 type ttiSPFOCSSync struct {
 	// keyValueArr holds the list of keyword/value pairs carried by the piggyback.
 	keyValueArr *keywordValueArray
@@ -88,7 +88,7 @@ func (spf *ttiSPFOCSSync) GetNlsKeys() [64]string {
 
 // newttiSPFOCSSync allocates a new receiver for TTISPF/OCSSYNC payloads.
 // The returned value implements common.Message and is intended to be populated
-// via UnMarshalFrom by the MessageStreamer.
+// via UnmarshalFrom by the MessageStreamer.
 func newttiSPFOCSSync() driverCommon.Message[driverCommon.MessageType] {
 	return &ttiSPFOCSSync{}
 }
@@ -105,9 +105,9 @@ func (spf *ttiSPFOCSSync) GetFuncCode() driverCommon.FunctionType {
 	return driverCommon.FunctionType(ocssync)
 }
 
-// UnMarshalFrom reads a TTISPF/OCSSYNC payload from the wire.
+// UnmarshalFrom reads a TTISPF/OCSSYNC payload from the wire.
 // Expected layout (as observed from network traces):
-func (spf *ttiSPFOCSSync) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (spf *ttiSPFOCSSync) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 	// Reserved/length (ignored)
 	_, err := engine.UnmarshalUB2(ctx)
 	if err != nil {
@@ -142,7 +142,7 @@ func (spf *ttiSPFOCSSync) UnMarshalFrom(ctx context.Context, engine driverCommon
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "keyword/value")
 	}
 	spf.keyValueArr = keyValueList
-	err = ((driverCommon.UnMarshallable)(keyValueList)).UnMarshalFrom(ctx, engine)
+	err = ((driverCommon.Unmarshallable)(keyValueList)).UnmarshalFrom(ctx, engine)
 	if err != nil {
 		common.Odl.Warn("Unable to unmarshal Server-To-Client Piggyback, cant' unmarshal key/value pairs", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "keyword/value")

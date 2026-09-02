@@ -122,64 +122,64 @@ func (p *tTIuds) getColumnFlags() driverCommon.UB4 {
 }
 
 // newTTIuds initializes a TTIuds struct with a new network buffer and an oac object for column metadata.
-func newTTIuds() driverCommon.UnMarshallable {
+func newTTIuds() driverCommon.Unmarshallable {
 	return &tTIuds{
 		oac: &tTIoac{},
 	}
 }
 
-// UnMarshalFrom extracts column/type metadata fields from the network buffer.
-func (p *tTIuds) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIuds: UnMarshalFrom start")
+// UnmarshalFrom extracts column/type metadata fields from the network buffer.
+func (p *tTIuds) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+	common.Odl.Debug("TTIuds: UnmarshalFrom start")
 	var nullAllowed driverCommon.UB1
 	var err error
 
-	if err = p.oac.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("TTIuds.UnMarshalFrom: failed to unmarshal oac", "error", err)
+	if err = p.oac.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("TTIuds.UnmarshalFrom: failed to unmarshal oac", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 
 	if nullAllowed, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Warn("TTIuds.UnMarshalFrom: failed to unmarshal null flag", "error", err)
+		common.Odl.Warn("TTIuds.UnmarshalFrom: failed to unmarshal null flag", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 	p.isNullable = nullAllowed != 0
 
 	if p.columnNameLen, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Warn("TTIuds.UnMarshalFrom: failed to unmarshal columnNameLen", "error", err)
+		common.Odl.Warn("TTIuds.UnmarshalFrom: failed to unmarshal columnNameLen", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 
 	var colName dynamicAllocatedArray
-	if err = colName.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal columnName", "error", err)
+	if err = colName.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal columnName", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 	p.columnName = colName.value
 	p.columnNameLen = driverCommon.UB1((len(p.columnName)))
 
 	var schName dynamicAllocatedArray
-	if err = schName.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal schemaName", "error", err)
+	if err = schName.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal schemaName", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 	p.schemaName = schName.value
 
 	var typName dynamicAllocatedArray
-	if err = typName.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal typeName", "error", err)
+	if err = typName.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal typeName", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 	p.typeName = typName.value
 
 	// position of the column in the row
 	if p.kernelPosition, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Warn("TTIuds.UnMarshalFrom: failed to unmarshal kernelPosition", "error", err)
+		common.Odl.Warn("TTIuds.UnmarshalFrom: failed to unmarshal kernelPosition", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 
 	if p.columnFlags, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Warn("TTIuds.UnMarshalFrom: failed to unmarshal columnFlags", "error", err)
+		common.Odl.Warn("TTIuds.UnmarshalFrom: failed to unmarshal columnFlags", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {

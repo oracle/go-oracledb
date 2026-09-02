@@ -183,7 +183,7 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 	nextHeader := &messageHeader{}
 	for {
 		// read next message header
-		errHeader := nextHeader.UnMarshalFrom(ctx, ms.shelf.GetMarshaller())
+		errHeader := nextHeader.UnmarshalFrom(ctx, ms.shelf.GetMarshaller())
 		if errHeader != nil {
 			common.Odl.Warn("Failed to unmarshal next message header", "error", errHeader)
 			return nil, common.NewOracleError(oracleErrors.StreamerReadError, errHeader, nil)
@@ -197,7 +197,7 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 		var keep bool = true
 		var processingError error
 		preUnmarshalCallback := ms.preUCallbacks[nextHeader.GetType()]
-		// Call preUnMarshal if registered
+		// Call preUnmarshal if registered
 		if preUnmarshalCallback != nil {
 			msg, processingError = preUnmarshalCallback(nextHeader)
 			common.Odl.Debug("Pre-unmarshal callback registered returned",
@@ -221,19 +221,19 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 				return nil, common.NewOracleError(oracleErrors.StreamerReadError, ferr, nil)
 			}
 		}
-		marshallable, isUnMarshallable := msg.(driverCommon.UnMarshallable)
-		if !isUnMarshallable {
+		marshallable, isUnmarshallable := msg.(driverCommon.Unmarshallable)
+		if !isUnmarshallable {
 			// we received a message that we do not know how to unmarshal, throw
 			// error
-			common.Odl.Warn("Message does not implmente common.UnMarshallable", "msg", msg)
+			common.Odl.Warn("Message does not implmente common.Unmarshallable", "msg", msg)
 			return nil, common.NewOracleError(oracleErrors.StreamerReadError, nil, nil)
 		}
-		uerr := marshallable.UnMarshalFrom(ctx, ms.shelf.GetMarshaller())
+		uerr := marshallable.UnmarshalFrom(ctx, ms.shelf.GetMarshaller())
 		if uerr != nil {
 			common.Odl.Info(fmt.Sprintf("can't unmarshal message: %v", uerr))
 			processingError = uerr
 		}
-		// Call PostUnMarshal if registered
+		// Call PostUnmarshal if registered
 		// even in error case we call it so we can rely on the "keep" flag
 		postUnmarshalCallback := ms.postUCallbacks[nextHeader.GetType()]
 		if postUnmarshalCallback != nil {

@@ -367,8 +367,8 @@ func newDefaultCapability() *capability {
 	return capability
 }
 
-// UnMarshalFrom reads server capabilities from the marshal engine.
-func (cap *capability) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+// UnmarshalFrom reads server capabilities from the marshal engine.
+func (cap *capability) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	// Read server's compile time capabilities
 	length, err := mar.UnmarshalUB1(ctx)
 	if err != nil {

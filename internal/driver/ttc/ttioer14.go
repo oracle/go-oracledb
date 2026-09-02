@@ -81,12 +81,12 @@ func (t *tTIoer14) init() {
 	t.checksum = 0
 }
 
-// UnMarshalFrom reads and processes error attributes from the network buffer.
+// UnmarshalFrom reads and processes error attributes from the network buffer.
 // It returns the current cursorId ID and an error if unmarshalling fails.
-func (t *tTIoer14) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIoer14.UnMarshalFrom: start")
+func (t *tTIoer14) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+	common.Odl.Debug("TTIoer14.UnmarshalFrom: start")
 	if err := t._unmarshalAttributes(ctx, mar); err != nil {
-		common.Odl.Error("TTIoer14.UnMarshalFrom: unmarshalAttributes failed",
+		common.Odl.Error("TTIoer14.UnmarshalFrom: unmarshalAttributes failed",
 			"error", err,
 			"retCode", t.retCode,
 			"oerrcd2", t.oerrcd2,
@@ -97,9 +97,9 @@ func (t *tTIoer14) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	}
 
 	if t.oerrcd2 != 0 {
-		common.Odl.Debug("TTIoer14.UnMarshalFrom: oerrcd2 != 0, unmarshalling error message")
+		common.Odl.Debug("TTIoer14.UnmarshalFrom: oerrcd2 != 0, unmarshalling error message")
 		if err := t._unmarshalErrorMessage(ctx, mar); err != nil {
-			common.Odl.Error("TTIoer14.UnMarshalFrom: unmarshalErrorMessage failed",
+			common.Odl.Error("TTIoer14.UnmarshalFrom: unmarshalErrorMessage failed",
 				"error", err,
 				"retCode", t.retCode,
 				"oerrcd2", t.oerrcd2,
@@ -110,7 +110,7 @@ func (t *tTIoer14) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		}
 	}
 	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("TTIoer14.UnMarshalFrom: end", "struct", fmt.Sprintf("%+v", t))
+		common.Odl.Debug("TTIoer14.UnmarshalFrom: end", "struct", fmt.Sprintf("%+v", t))
 	}
 	return nil
 }

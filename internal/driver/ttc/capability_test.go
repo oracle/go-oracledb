@@ -159,8 +159,8 @@ func TestCapabilityMarshalTo_Fail(t *testing.T) {
 	}
 }
 
-// TestCapabilityUnMarshalFrom_Success checks success path unmarshal.
-func TestCapabilityUnMarshalFrom_Success(t *testing.T) {
+// TestCapabilityUnmarshalFrom_Success checks success path unmarshal.
+func TestCapabilityUnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	payload := makeTestPayload(testCompileCaps(), testRunCaps())
 	buf := NewArrayDataBuffer(1024)
@@ -168,7 +168,7 @@ func TestCapabilityUnMarshalFrom_Success(t *testing.T) {
 
 	cap := newCapability()
 	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-	err := cap.UnMarshalFrom(context.Background(), engine)
+	err := cap.UnmarshalFrom(context.Background(), engine)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -180,8 +180,8 @@ func TestCapabilityUnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-// TestCapabilityUnMarshalFrom_Fail checks error unmarshal.
-func TestCapabilityUnMarshalFrom_Fail(t *testing.T) {
+// TestCapabilityUnmarshalFrom_Fail checks error unmarshal.
+func TestCapabilityUnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	errorCases := []struct {
 		name    string
@@ -201,7 +201,7 @@ func TestCapabilityUnMarshalFrom_Fail(t *testing.T) {
 			buf = &FaultyArrayBasedDataBuffer{ArrayBasedDataBuffer: dbuf, FailOnReadByteCall: ec.failPos}
 			cap := newCapability()
 			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-			err := cap.UnMarshalFrom(context.Background(), engine)
+			err := cap.UnmarshalFrom(context.Background(), engine)
 			if err == nil {
 				t.Error("Expected error but got none")
 			}

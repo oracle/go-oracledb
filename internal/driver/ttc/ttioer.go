@@ -159,12 +159,12 @@ func (o *tTIoer) init() {
 	o.oercn2 = 0
 }
 
-// UnMarshalFrom unmarshals the error data
-func (o *tTIoer) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTIoer.UnMarshalFrom: start")
+// UnmarshalFrom unmarshals the error data
+func (o *tTIoer) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+	common.Odl.Debug("TTIoer.UnmarshalFrom: start")
 	err := o._unmarshalAttributes(ctx, mar)
 	if err != nil {
-		common.Odl.Error("TTIoer.UnMarshalFrom: unmarshalAttributes failed",
+		common.Odl.Error("TTIoer.UnmarshalFrom: unmarshalAttributes failed",
 			"error", err,
 			"retCode", o.retCode,
 			"oerrcd2", o.oerrcd2,
@@ -182,10 +182,10 @@ func (o *tTIoer) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 
 	// If the retCode (Error #) is not zero or oerrcd2 != 0, extract the error-string
 	if o.retCode != 0 || o.oerrcd2 != 0 {
-		common.Odl.Debug("TTIoer.UnMarshalFrom: error code != 0, unmarshalling error message")
+		common.Odl.Debug("TTIoer.UnmarshalFrom: error code != 0, unmarshalling error message")
 		err = o._unmarshalErrorMessage(ctx, mar)
 		if err != nil {
-			common.Odl.Error("TTIoer.UnMarshalFrom: unmarshalErrorMessage failed",
+			common.Odl.Error("TTIoer.UnmarshalFrom: unmarshalErrorMessage failed",
 				"error", err,
 				"retCode", o.retCode,
 				"oerrcd2", o.oerrcd2,
@@ -197,7 +197,7 @@ func (o *tTIoer) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 		}
 	}
 
-	common.Odl.Debug("TTIoer.UnMarshalFrom: end")
+	common.Odl.Debug("TTIoer.UnmarshalFrom: end")
 
 	return nil
 }
@@ -381,7 +381,7 @@ func (o *tTIoer) _unmarshalAttributes(ctx context.Context, mar driverCommon.Mars
 	}
 
 	var oerdd dynamicAllocatedArray
-	if err = oerdd.UnMarshalFrom(ctx, mar); err != nil {
+	if err = oerdd.UnmarshalFrom(ctx, mar); err != nil {
 		common.Odl.Error("TTIoer.UnmarshalAttributes: oerdd unmarshal failed",
 			"error", err,
 		)
@@ -393,7 +393,7 @@ func (o *tTIoer) _unmarshalAttributes(ctx context.Context, mar driverCommon.Mars
 	// error occurs.
 	// This is not supported in v1, so we just read and discard the values.
 	var oerrar dynamicAllocatedArray
-	if err = oerrar.UnMarshalFrom(ctx, mar); err != nil {
+	if err = oerrar.UnmarshalFrom(ctx, mar); err != nil {
 		common.Odl.Error("TTIoer.UnmarshalAttributes: oerrar unmarshal failed",
 			"error", err,
 		)
@@ -401,7 +401,7 @@ func (o *tTIoer) _unmarshalAttributes(ctx context.Context, mar driverCommon.Mars
 	}
 
 	var oerepa dynamicAllocatedArray
-	if err = oerepa.UnMarshalFrom(ctx, mar); err != nil {
+	if err = oerepa.UnmarshalFrom(ctx, mar); err != nil {
 		common.Odl.Error("TTIoer.UnmarshalAttributes: oerepa unmarshal failed",
 			"error", err,
 		)
@@ -499,12 +499,12 @@ func unmarshalEndOfCallStatus(ctx context.Context, mar driverCommon.Marshaller) 
 			return nil, common.NewOracleError(oracleErrors.FailUnmarshal, err, "EndOfCallStatus")
 		}
 		retVal.elapsedTime = elapsedTime
-		common.Odl.Debug("tTIoer.UnMarshalFrom: EOCS ", "Elapsed time", elapsedTime)
+		common.Odl.Debug("tTIoer.UnmarshalFrom: EOCS ", "Elapsed time", elapsedTime)
 	}
 
 	// server sends this bit to indicate that connection is affected by planned down
 	if (ucaeocs & TtiEocfDropWhenReturned) != 0 {
-		common.Odl.Debug("TTIoer.UnMarshalFrom: EOCS got in-band planned down bit, mark connection for close")
+		common.Odl.Debug("TTIoer.UnmarshalFrom: EOCS got in-band planned down bit, mark connection for close")
 		retVal.connectionShouldBeDropped = true
 		// TODO: set connection to be closed when returned to pool
 	}

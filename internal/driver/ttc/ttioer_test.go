@@ -211,9 +211,9 @@ func TestTTIoer_UnmarshalAttributes_Fail(t *testing.T) {
 		{"callNumber", failOnReadByte, 23, "error"},
 		{"pad1", failOnReadByte, 24, "error"},
 		{"successIters", failOnReadByte, 25, "error"},
-		{"oerrdd_UnMarshalFrom", failOnReadByte, 26, "error"},
-		{"oerrar_UnMarshalFrom", failOnReadByte, 27, "error"},
-		{"oerepa_UnMarshalFrom", failOnReadByte, 28, "error"},
+		{"oerrdd_UnmarshalFrom", failOnReadByte, 26, "error"},
+		{"oerrar_UnmarshalFrom", failOnReadByte, 27, "error"},
+		{"oerepa_UnmarshalFrom", failOnReadByte, 28, "error"},
 		{"oermarl", failOnReadByte, 29, "error"},
 		{"oerrcd2", failOnReadByte, 30, "error"},
 		{"UnmarshalUB8_oercn2_Fail", failOnReadByte, 31, "error"},
@@ -231,10 +231,10 @@ func TestTTIoer_UnmarshalAttributes_Fail(t *testing.T) {
 	}
 }
 
-// TestTTIoer_UnMarshalFrom verifies success and failure paths including:
+// TestTTIoer_UnmarshalFrom verifies success and failure paths including:
 // - attribute unmarshalling failure
 // - error-message unmarshalling path when retCode != 0
-func TestTTIoer_UnMarshalFrom(t *testing.T) {
+func TestTTIoer_UnmarshalFrom(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
 		name         string
@@ -284,7 +284,7 @@ func TestTTIoer_UnMarshalFrom(t *testing.T) {
 			oer := newTTIoer().(*tTIoer)
 			oer.setSupportsEndOfCallStatus(true)
 			mar := createMarshaller(tc.fillBuffer(), failOnReadByte, tc.failRead)
-			err := oer.UnMarshalFrom(context.Background(), mar)
+			err := oer.UnmarshalFrom(context.Background(), mar)
 			assertErrorContains(t, err, tc.wantErrRegex)
 			// Match oer error
 			if tc.ErrorMsg != "" {

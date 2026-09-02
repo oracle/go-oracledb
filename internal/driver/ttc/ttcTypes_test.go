@@ -62,7 +62,7 @@ func TestMarshalKeywordValuePairs(t *testing.T) {
 	kva.MarshalTo(context.Background(), engine)
 
 	unMarshalledKva := make(keywordValueArray, 2)
-	unMarshalledKva.UnMarshalFrom(context.Background(), engine)
+	unMarshalledKva.UnmarshalFrom(context.Background(), engine)
 
 	if len(kva) != len(unMarshalledKva) {
 		t.Fatalf("Invalid length expected %d, but was %d", len(kva), len(unMarshalledKva))
@@ -112,7 +112,7 @@ func TestMarshalKeywordValuePairsWithEmptyValues(t *testing.T) {
 	kva.MarshalTo(context.Background(), engine)
 
 	unMarshalledKva := make(keywordValueArray, 2)
-	unMarshalledKva.UnMarshalFrom(context.Background(), engine)
+	unMarshalledKva.UnmarshalFrom(context.Background(), engine)
 
 	if len(kva) != len(unMarshalledKva) {
 		t.Fatalf("Invalid length expected %d, but was %d", len(kva), len(unMarshalledKva))
@@ -165,7 +165,7 @@ func TestKeywordValueArrayRejectsOversizedDynamicValue(t *testing.T) {
 		t.Fatalf("newKeywordValueArray failed: %v", err)
 	}
 
-	err = kva.UnMarshalFrom(context.Background(), engine)
+	err = kva.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
 		t.Fatal("expected oversized dynamic value to be rejected")
 	}
@@ -219,13 +219,13 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name         string
-		newRPA       func() common.UnMarshallable
+		newRPA       func() common.Unmarshallable
 		pairCount    common.UB2
 		writePayload func(context.Context, *MarshalEngine) error
 	}{
 		{
 			name:      "oauth huge key length",
-			newRPA:    func() common.UnMarshallable { return NewOAuthRPA().(common.UnMarshallable) },
+			newRPA:    func() common.Unmarshallable { return NewOAuthRPA().(common.Unmarshallable) },
 			pairCount: 1,
 			writePayload: func(ctx context.Context, engine *MarshalEngine) error {
 				return engine.MarshalSB4(ctx, common.SB4(maxAuthKeyValueKeyLength+1))
@@ -233,7 +233,7 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 		},
 		{
 			name:      "oauth huge value length",
-			newRPA:    func() common.UnMarshallable { return NewOAuthRPA().(common.UnMarshallable) },
+			newRPA:    func() common.Unmarshallable { return NewOAuthRPA().(common.Unmarshallable) },
 			pairCount: 1,
 			writePayload: func(ctx context.Context, engine *MarshalEngine) error {
 				if err := engine.MarshalSB4(ctx, 0); err != nil {
@@ -244,13 +244,13 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 		},
 		{
 			name:         "oauth huge pair count",
-			newRPA:       func() common.UnMarshallable { return NewOAuthRPA().(common.UnMarshallable) },
+			newRPA:       func() common.Unmarshallable { return NewOAuthRPA().(common.Unmarshallable) },
 			pairCount:    common.UB2(maxAuthKeyValuePairs + 1),
 			writePayload: func(context.Context, *MarshalEngine) error { return nil },
 		},
 		{
 			name:      "osesskey huge key length",
-			newRPA:    func() common.UnMarshallable { return NewOSesskeyRPA().(common.UnMarshallable) },
+			newRPA:    func() common.Unmarshallable { return NewOSesskeyRPA().(common.Unmarshallable) },
 			pairCount: 1,
 			writePayload: func(ctx context.Context, engine *MarshalEngine) error {
 				return engine.MarshalSB4(ctx, common.SB4(maxAuthKeyValueKeyLength+1))
@@ -258,7 +258,7 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 		},
 		{
 			name:      "osesskey huge value length",
-			newRPA:    func() common.UnMarshallable { return NewOSesskeyRPA().(common.UnMarshallable) },
+			newRPA:    func() common.Unmarshallable { return NewOSesskeyRPA().(common.Unmarshallable) },
 			pairCount: 1,
 			writePayload: func(ctx context.Context, engine *MarshalEngine) error {
 				if err := engine.MarshalSB4(ctx, 0); err != nil {
@@ -269,7 +269,7 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 		},
 		{
 			name:         "osesskey huge pair count",
-			newRPA:       func() common.UnMarshallable { return NewOSesskeyRPA().(common.UnMarshallable) },
+			newRPA:       func() common.Unmarshallable { return NewOSesskeyRPA().(common.Unmarshallable) },
 			pairCount:    common.UB2(maxAuthKeyValuePairs + 1),
 			writePayload: func(context.Context, *MarshalEngine) error { return nil },
 		},
@@ -287,7 +287,7 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 			}
 
 			dataBuffer.currentReadPosition = 0
-			if err := tt.newRPA().UnMarshalFrom(ctx, engine); err == nil {
+			if err := tt.newRPA().UnmarshalFrom(ctx, engine); err == nil {
 				t.Fatalf("expected oversized auth RPA key/value payload to be rejected")
 			}
 		})

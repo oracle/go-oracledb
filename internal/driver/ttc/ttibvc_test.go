@@ -100,12 +100,12 @@ func TestTTIbvc_SetNumberOfColumns(t *testing.T) {
 }
 
 /*
-TestTTIbvc_UnMarshalFrom covers the protocol logic for unmarshalling a received BVC (bitvector column) message:
+TestTTIbvc_UnmarshalFrom covers the protocol logic for unmarshalling a received BVC (bitvector column) message:
 - Validates that valid presence vectors activate the correct bits/columns.
 - Asserts the column count matches the received protocol value.
 - Verifies that errors are raised on mismatch or on unexpected stream input.
 */
-func TestTTIbvc_UnMarshalFrom(t *testing.T) {
+func TestTTIbvc_UnmarshalFrom(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
 		name        string
@@ -167,7 +167,7 @@ func TestTTIbvc_UnMarshalFrom(t *testing.T) {
 			bvc := newTTIbvc().(*tTIbvc)
 			// Setup: initialize for N columns, then try to unmarshal the bitvector payload.
 			bvc.SetNumberOfColumns(tc.noOfCols)
-			err := bvc.UnMarshalFrom(context.Background(), mar)
+			err := bvc.UnmarshalFrom(context.Background(), mar)
 			if tc.wantErr && err == nil {
 				t.Fatal("expected error but got nil")
 			}
@@ -175,7 +175,7 @@ func TestTTIbvc_UnMarshalFrom(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			// Log bit state after reading the message.
-			t.Logf("Bits after UnMarshalFrom: %s", bvc.bvcColSent.String())
+			t.Logf("Bits after UnmarshalFrom: %s", bvc.bvcColSent.String())
 			if len(tc.expectSet) > 0 {
 				// Check all expected set bits are present in the vector.
 				for _, idx := range tc.expectSet {

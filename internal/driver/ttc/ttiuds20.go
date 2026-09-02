@@ -58,18 +58,18 @@ type tTIuds20 struct {
 }
 
 // newTTIuds20 returns a new TTIuds20 struct
-func newTTIuds20() driverCommon.UnMarshallable {
+func newTTIuds20() driverCommon.Unmarshallable {
 	common.Odl.Debug("Instantiating TTIuds20 with new TTIuds17")
 	return &tTIuds20{
 		tTIuds17: newTTIuds17().(*tTIuds17),
 	}
 }
 
-// UnMarshalFrom unmarshals column/type metadata and annotation key-value pairs from the network buffer
-func (p *tTIuds20) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+// UnmarshalFrom unmarshals column/type metadata and annotation key-value pairs from the network buffer
+func (p *tTIuds20) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	var err error
-	if err = p.tTIuds17.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("TTIuds17.UnMarshalFrom: failed to unmarshal", "error", err)
+	if err = p.tTIuds17.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("TTIuds17.UnmarshalFrom: failed to unmarshal", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "UDS")
 	}
 
@@ -105,7 +105,7 @@ func (p *tTIuds20) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 			common.Odl.Warn("Server-To-Client Piggyback key/value pair count exceeds limit", "error", err)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, "keyword/value")
 		}
-		err = ((driverCommon.UnMarshallable)(keyValueArr)).UnMarshalFrom(ctx, mar)
+		err = ((driverCommon.Unmarshallable)(keyValueArr)).UnmarshalFrom(ctx, mar)
 		if err != nil {
 			common.Odl.Warn("Unable to unmarshal Server-To-Client Piggyback key/value pairs", "error", err)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, "keyword/value")

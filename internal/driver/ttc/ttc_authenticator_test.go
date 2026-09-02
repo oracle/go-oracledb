@@ -167,9 +167,9 @@ func TestPasswordAuthenticator_doOAuth_Golden(t *testing.T) {
 		t.Fatalf("write oSesskeyRPA payload to temp buffer failed: %v", err)
 	}
 	rpaEngine := NewMarshalEngine(rpaBuf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-	unmarshallable, _ := osrpaMsg.(driverCommon.UnMarshallable)
-	if err := unmarshallable.UnMarshalFrom(ctx, rpaEngine); err != nil {
-		t.Fatalf("UnMarshalFrom(oSesskeyRPA) failed: %v", err)
+	unmarshallable, _ := osrpaMsg.(driverCommon.Unmarshallable)
+	if err := unmarshallable.UnmarshalFrom(ctx, rpaEngine); err != nil {
+		t.Fatalf("UnmarshalFrom(oSesskeyRPA) failed: %v", err)
 	}
 
 	// Wire up authenticator shelf for oAuth.

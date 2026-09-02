@@ -82,10 +82,10 @@ func (p *tTIpro) GetMsgCode() driverCommon.MessageType {
 	return TTIPRO
 }
 
-// UnMarshalFrom reads, validates, and populates a tTIpro structure from a server TTC response.
+// UnmarshalFrom reads, validates, and populates a tTIpro structure from a server TTC response.
 // Returns an error for any protocol violation or underflow.
-func (p *tTIpro) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("tTIpro.UnMarshalFrom: Start unmarshalling protocol message")
+func (p *tTIpro) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+	common.Odl.Debug("tTIpro.UnmarshalFrom: Start unmarshalling protocol message")
 	ub1, err := mar.UnmarshalUB1(ctx)
 	if err != nil {
 		common.Odl.Warn("Failed to unmarshal protocol version UB1", "error", err)
@@ -116,7 +116,7 @@ func (p *tTIpro) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 		common.Odl.Warn("Failed to unmarshal port description", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
-	common.Odl.Debug("tTIpro.UnMarshalFrom: unmarshalled server port description",
+	common.Odl.Debug("tTIpro.UnmarshalFrom: unmarshalled server port description",
 		"proSvrVer", p.proSvrVer,
 		"svrPortDescriptionRaw", p.svrPortDescription,
 		"svrPortDescription", string(p.svrPortDescription))
@@ -191,7 +191,7 @@ func (p *tTIpro) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 		return nil
 	}
 
-	err = p.serverCaps.UnMarshalFrom(ctx, mar)
+	err = p.serverCaps.UnmarshalFrom(ctx, mar)
 	if err != nil {
 		common.Odl.Warn("Failed to unmarshal server caps", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
@@ -199,7 +199,7 @@ func (p *tTIpro) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 	p.clientCaps.adjustCapabilityFrom(p.serverCaps)
 
 	// too verbose, do not print this by default
-	// logging.Odl.Debug("tTIpro.UnMarshalFrom: Completed unmarshalling protocol message", "serverCaps", p.serverCaps, "clientCaps", p.clientCaps)
+	// logging.Odl.Debug("tTIpro.UnmarshalFrom: Completed unmarshalling protocol message", "serverCaps", p.serverCaps, "clientCaps", p.clientCaps)
 	return nil
 }
 

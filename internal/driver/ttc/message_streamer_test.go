@@ -67,7 +67,7 @@ type mockMessage struct {
 	msgType                common.MessageType
 	funcType               common.FunctionType
 	failureOnMarshalling   error
-	failureOnUnMarshalling error
+	failureOnUnmarshalling error
 }
 
 func NewMockTTIpro() common.Message[common.MessageType] {
@@ -91,8 +91,8 @@ func NewMockMessage(t common.MessageType) common.Message[common.MessageType] {
 func (m *mockMessage) setMarshallFailure(err error) {
 	m.failureOnMarshalling = err
 }
-func (m *mockMessage) setUnMarshallFailure(err error) {
-	m.failureOnUnMarshalling = err
+func (m *mockMessage) setUnmarshallFailure(err error) {
+	m.failureOnUnmarshalling = err
 }
 func (m *mockMessage) GetMsgCode() common.MessageType {
 	return m.msgType
@@ -143,10 +143,10 @@ func (m *mockMessage) MarshalTo(ctx context.Context, engine common.Marshaller) e
 }
 
 // unMarshalTo unmarshalls the mock msg
-func (m *mockMessage) UnMarshalFrom(ctx context.Context, engine common.Marshaller) error {
+func (m *mockMessage) UnmarshalFrom(ctx context.Context, engine common.Marshaller) error {
 
-	if m.failureOnUnMarshalling != nil {
-		return m.failureOnUnMarshalling
+	if m.failureOnUnmarshalling != nil {
+		return m.failureOnUnmarshalling
 	}
 
 	var ub2 common.UB2
@@ -205,11 +205,11 @@ func TestMessageStreamer_Flush(t *testing.T) {
 	streamer.Flush(context.Background())
 
 	mh := &messageHeader{}
-	mh.UnMarshalFrom(context.Background(), marshaller)
+	mh.UnmarshalFrom(context.Background(), marshaller)
 	if mh.GetType() != TTIPRO {
 		t.Errorf("unmarshal after flush wrong msdg type [%v] should be [%v]", mh.GetType(), TTIPRO)
 	}
-	err = msg.UnMarshalFrom(context.Background(), marshaller)
+	err = msg.UnmarshalFrom(context.Background(), marshaller)
 	if err != nil {
 		t.Errorf("unexpected error raised [%v]", err)
 	}
@@ -744,7 +744,7 @@ func TestMessageStreamer_UnmarshallError(t *testing.T) {
 
 	var customError = errors.New("this is a test error")
 	var tMsg = &mockMessage{msgType: TTIPRO}
-	tMsg.setUnMarshallFailure(customError)
+	tMsg.setUnmarshallFailure(customError)
 
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMarshaller(marshaller)
@@ -777,7 +777,7 @@ func TestMessageStreamer_UnmarshallError(t *testing.T) {
 }
 
 // This verifies that and error is thrown when a received message does not
-// implement common.UnMarshallable.
+// implement common.Unmarshallable.
 func TestMessageStreamer_PullReturnsErrorForNonUnmarshallableFunction(t *testing.T) {
 	t.Parallel()
 	marshaller := newMockMarshaller()

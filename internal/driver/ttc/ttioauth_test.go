@@ -207,9 +207,9 @@ func TestOAuth_MarshalTo_WithOSESSKEYRPA_Success(t *testing.T) {
 	rpaBuf := NewArrayDataBuffer(8192)
 	_ = rpaBuf.WriteBytesWithContext(context.Background(), payload)
 	rpaEngine := NewMarshalEngine(rpaBuf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-	unmarshallable, _ := rpa.(common.UnMarshallable)
-	if err := unmarshallable.UnMarshalFrom(context.Background(), rpaEngine); err != nil {
-		t.Fatalf("UnMarshalFrom oSesskeyRPA failed: %v", err)
+	unmarshallable, _ := rpa.(common.Unmarshallable)
+	if err := unmarshallable.UnmarshalFrom(context.Background(), rpaEngine); err != nil {
+		t.Fatalf("UnmarshalFrom oSesskeyRPA failed: %v", err)
 	}
 
 	// 2) Build oAuth and set fields as in _doOAuth (o5logon_authenticator._doOAuth)
@@ -740,7 +740,7 @@ func TestOAuthRPA_NewOAuthRPA(t *testing.T) {
 	}
 }
 
-func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
+func TestOAuthRPA_UnmarshalFrom_Golden(t *testing.T) {
 	t.Parallel()
 	payload := makeOauthRPAPayload()
 	if len(payload) == 0 {
@@ -752,13 +752,13 @@ func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
 	_ = buf.WriteBytesWithContext(context.Background(), payload)
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	unmarshallable, _ := rpa.(common.UnMarshallable)
-	if err := unmarshallable.UnMarshalFrom(context.Background(), engine); err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+	unmarshallable, _ := rpa.(common.Unmarshallable)
+	if err := unmarshallable.UnmarshalFrom(context.Background(), engine); err != nil {
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	cv := rpa.(*OAuthRPA).connectionValues
-	// Required by UnMarshalFrom; presence indicates success parsing
+	// Required by UnmarshalFrom; presence indicates success parsing
 	if !cv.ContainsKey(authDbMountID) {
 		t.Errorf("missing key %s", authDbMountID)
 	}
@@ -777,7 +777,7 @@ func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
 	}
 }
 
-func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
+func TestOAuthRPAUnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name         string
@@ -836,8 +836,8 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 			}
 			session.PrintPacket(payload, 0, len(payload))
 			rpa := NewOAuthRPA()
-			unmarshallable, _ := rpa.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := rpa.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -849,8 +849,8 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 	}
 }
 
-// TestOAuthRPA_UnMarshalFrom_Fail tests failed unmarshaling.
-func TestOAuthRPA_UnMarshalFrom_Fail(t *testing.T) {
+// TestOAuthRPA_UnmarshalFrom_Fail tests failed unmarshaling.
+func TestOAuthRPA_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	rpa := NewOAuthRPA().(*OAuthRPA)
 	buf := NewArrayDataBuffer(1024)
@@ -861,14 +861,14 @@ func TestOAuthRPA_UnMarshalFrom_Fail(t *testing.T) {
 
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	err := rpa.UnMarshalFrom(context.Background(), engine)
+	err := rpa.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
 		t.Error("Expected Error")
 	}
 }
 
-// TestOAuthRPA_UnMarshalFrom_Failure tests unmarshaling failure.
-func TestOAuthRPA_UnMarshalFrom_Failure(t *testing.T) {
+// TestOAuthRPA_UnmarshalFrom_Failure tests unmarshaling failure.
+func TestOAuthRPA_UnmarshalFrom_Failure(t *testing.T) {
 	t.Parallel()
 	rpa := NewOAuthRPA().(*OAuthRPA)
 	buf := NewArrayDataBuffer(10)
@@ -879,7 +879,7 @@ func TestOAuthRPA_UnMarshalFrom_Failure(t *testing.T) {
 
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	err := rpa.UnMarshalFrom(context.Background(), engine)
+	err := rpa.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
 		t.Error("Expected error for invalid data")
 	}
