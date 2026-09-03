@@ -116,7 +116,7 @@ func TestServerError(t *testing.T) {
 	})
 	t.Run("TestServerError_ORA_12541", func(t *testing.T) {
 		wrongPortCfg := TestingConfig.Clone()
-		wrongPortCfg.Database.Port = 1700
+		wrongPortCfg.Database.Port = 3389
 
 		dsn := wrongPortCfg.GetConnectionString()
 		db, err := sql.Open(wrongPortCfg.Driver.Name, dsn)
