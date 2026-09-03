@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: UPL-1.0
+
 /*
 ** Copyright (c) 2026 Oracle and/or its affiliates.
 **
