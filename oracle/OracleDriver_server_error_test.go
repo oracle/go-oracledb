@@ -85,7 +85,9 @@ func TestServerError(t *testing.T) {
 		checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.NoAvailableHandler) // ORA-12520
 	})
 	t.Run("TestServerError_ORA-12521", func(t *testing.T) {
-
+		if TestingConfig.IsAutonomousDatabase() {
+			t.Skip("Cannot connection to ADB using instance name, disable tests for ADB")
+		}
 		noInstanceCfg := TestingConfig.Clone()
 		noInstanceCfg.Database.InstanceName = "nonexistent"
 		dsn := noInstanceCfg.GetConnectionString()
@@ -100,7 +102,9 @@ func TestServerError(t *testing.T) {
 	})
 
 	t.Run("TestServerError_ORA-12505", func(t *testing.T) {
-
+		if TestingConfig.IsAutonomousDatabase() {
+			t.Skip("Cannot connection to ADB using SID, disable tests for ADB")
+		}
 		noSIDCfg := TestingConfig.Clone()
 		noSIDCfg.Database.ServiceName = ""
 		noSIDCfg.Database.SIDName = "nonexistent"
@@ -115,6 +119,9 @@ func TestServerError(t *testing.T) {
 		checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.InvalidSID) // ORA-12505
 	})
 	t.Run("TestServerError_ORA_12541", func(t *testing.T) {
+		if TestingConfig.IsAutonomousDatabase() {
+			t.Skip("Cannot connection to ADB wrong PORT, disable tests for ADB")
+		}
 		wrongPortCfg := TestingConfig.Clone()
 		wrongPortCfg.Database.Port = 8443
 
