@@ -161,39 +161,14 @@ func (ta *tokenAuthenticator) Authenticate(ctx context.Context) error {
 		return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 	}
 
-	// prepare to receive response
-	oauthRPACallBack := func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
-		return shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIRPA, oauth)
+	oauthrpa, err := handleOAuthResponse(ctx, streamer, &shelf)
+	if err != nil {
+		return err
 	}
-	streamer.RegisterPreUnmarshallCallback(TTIRPA, oauthRPACallBack)
-	defer streamer.UnRegisterPreUnmarshallCallback(TTIRPA)
 
-	// fetch response
-	var oauthrpa *OAuthRPA
-	for {
-		msg, err := streamer.Pull(ctx, TTIRPA, TTIOER, TTIWRN)
-		if err != nil {
-			return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
-		}
-		switch msg.GetMsgCode() {
-		case TTIRPA:
-			oauthrpa = msg.(*OAuthRPA)
-		case TTIOER:
-			ttioer := msg.(tTIOerIface)
-			if err := ttioer.getError(); err != nil {
-				return err
-			}
-			if oauthrpa == nil {
-				return common.NewOracleError(oracleErrors.InternalError, nil, nil)
-			}
-			ta.sessionContext.UpdateSessionProperties(oauthrpa.connectionValues)
-			return nil
-		case TTIWRN:
-			logAuthenticationWarning(msg.(*tTIwrn))
-		default:
-			return common.NewOracleError(oracleErrors.InternalError, nil, nil)
-		}
-	}
+	ta.sessionContext.UpdateSessionProperties(oauthrpa.connectionValues)
+
+	return nil
 }
 
 // expectsHeader reports whether the provider requires signed token header fields.

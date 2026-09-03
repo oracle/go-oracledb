@@ -46,6 +46,7 @@ import (
 	"sync"
 	"testing"
 
+	oracleCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
@@ -62,6 +63,32 @@ func TestNewOAuth_Success(t *testing.T) {
 	}
 	if oAuth.GetFuncCode() != oauth {
 		t.Errorf("Expected function code oauth, got %v", oAuth.GetFuncCode())
+	}
+}
+
+func TestOAuth_prepareForTokenOAUTH(t *testing.T) {
+	t.Parallel()
+	oauth := NewOAuth().(*oAuth)
+	oauth.setLogonMode(oracleCommon.KpzLogonToken.Value())
+	oauth.prepareForTokenOAUTH(common.StringToB1Array("token-user"))
+
+	if oauth.logonMode != KpzLogon|oracleCommon.KpzLogonToken.Value() {
+		t.Fatalf("logonMode = %d, want %d", oauth.logonMode, KpzLogon|oracleCommon.KpzLogonToken.Value())
+	}
+	if oauth.keyValList == nil || oauth.keyValList.Len() < 3 {
+		t.Fatalf("token OAUTH should include session, alter-session, and driver identity values")
+	}
+	for _, key := range []string{authConnectString, authAlterSession, authSessionClientDrvnm} {
+		found := false
+		for e := oauth.keyValList.Front(); e != nil; e = e.Next() {
+			if common.B1ArrayToString(e.Value.(*common.KeyValue).Key) == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("token OAUTH missing %s key", key)
+		}
 	}
 }
 
