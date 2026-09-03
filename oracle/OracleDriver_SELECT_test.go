@@ -1406,7 +1406,6 @@ func TestDriver_Select_NullFromComputedExpression(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_JoinQuery(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1469,7 +1468,6 @@ func TestDriver_Select_JoinQuery(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_SubqueryInFrom(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1535,7 +1533,6 @@ func TestDriver_Select_SubqueryInFrom(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_GroupByHaving(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1621,7 +1618,6 @@ func TestDriver_Select_GroupByHaving(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_NamedArgMultipleSameParamRefs(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

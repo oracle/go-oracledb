@@ -36,18 +36,23 @@
 ** SOFTWARE.
  */
 
-package driver
+package common
 
-import (
-	"testing"
+import "testing"
 
-	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
-)
+func TestNewCtxTimeoutCauseError(t *testing.T) {
+	err := NewCtxTimeoutCauseError("connect", 250, "cid-1")
 
-var testCases = []oracleTest.CategorizedTestCase{
-	{Name: "TestGetConnectionInstantiator", Categories: "unitary", Exclusive: false, Fn: TestGetConnectionInstantiator},
-}
-
-func TestCategoryExecutor(t *testing.T) {
-	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
+	if err.GetSource() != "connect" {
+		t.Fatalf("source = %q, want connect", err.GetSource())
+	}
+	if err.GetValue() != 250 {
+		t.Fatalf("value = %d, want 250", err.GetValue())
+	}
+	if err.GetEmitterID() != "cid-1" {
+		t.Fatalf("emitter = %q, want cid-1", err.GetEmitterID())
+	}
+	if got, want := err.Error(), "timeout of 250 set by connect"; got != want {
+		t.Fatalf("Error() = %q, want %q", got, want)
+	}
 }

@@ -36,18 +36,42 @@
 ** SOFTWARE.
  */
 
-package driver
+package converters
 
 import (
+	"bytes"
 	"testing"
-
-	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
-var testCases = []oracleTest.CategorizedTestCase{
-	{Name: "TestGetConnectionInstantiator", Categories: "unitary", Exclusive: false, Fn: TestGetConnectionInstantiator},
+func TestEncodeNull(t *testing.T) {
+	got, err := EncodeNull(nil)
+	if err != nil {
+		t.Fatalf("EncodeNull returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("EncodeNull = %v, want nil", got)
+	}
 }
 
-func TestCategoryExecutor(t *testing.T) {
-	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
+func TestEncodeBooleanAsNumber(t *testing.T) {
+	tests := []struct {
+		name string
+		in   bool
+		want []byte
+	}{
+		{name: "false", in: false, want: []byte{0x80}},
+		{name: "true", in: true, want: []byte{0xC1, 0x02}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := EncodeBooleanAsNumber(tt.in)
+			if err != nil {
+				t.Fatalf("EncodeBooleanAsNumber returned error: %v", err)
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Fatalf("EncodeBooleanAsNumber(%v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
 }

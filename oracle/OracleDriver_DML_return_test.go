@@ -1649,7 +1649,6 @@ func TestDriver_DMLReturning_Insert_BooleanColumn(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_DMLReturning_Merge_InsertGeneratedIdentity(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1741,7 +1740,6 @@ RETURNING id, external_id, name INTO :out_id, :out_external_id, :out_name`)
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_DMLReturning_PLSQLForallMerge_MixedScalars(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

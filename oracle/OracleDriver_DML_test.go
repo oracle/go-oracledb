@@ -874,7 +874,6 @@ func TestDriver_Prepared_SelectMultipleRows_Re_exec_BindTypeChange(t *testing.T)
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_DeleteWithRowIDSubqueryLimit(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

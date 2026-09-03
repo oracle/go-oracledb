@@ -131,7 +131,6 @@ func TestDriver_TRIGGER_GormTest(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_TRIGGER_PseudoRecords(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

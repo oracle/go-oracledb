@@ -165,7 +165,6 @@ func TestDriver_Select_Intervals(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_Intervals_Prepared_Named(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -293,7 +292,6 @@ func TestDriver_Select_Intervals_Prepared_Named(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_Intervals_Prepared_Ordinal(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -412,7 +410,6 @@ func TestDriver_Select_Intervals_Prepared_Ordinal(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_Intervals_Negative_D2S_SubSecond(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -481,7 +478,6 @@ func TestDriver_Select_Intervals_Negative_D2S_SubSecond(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_Intervals_Negative_Y2M_Positive_D2S(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -550,7 +546,6 @@ func TestDriver_Select_Intervals_Negative_Y2M_Positive_D2S(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_Intervals_Positive_Y2M_Negative_D2S(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -619,7 +614,6 @@ func TestDriver_Select_Intervals_Positive_Y2M_Negative_D2S(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_Intervals_Negative_LargeScale(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

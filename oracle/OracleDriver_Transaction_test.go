@@ -368,7 +368,6 @@ func TestReadOnlyTransaction(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestSavepointRollback(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

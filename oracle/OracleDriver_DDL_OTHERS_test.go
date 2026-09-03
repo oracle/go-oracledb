@@ -142,7 +142,6 @@ func TestDriver_AlterSessionSetLanguage(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_CreateTrigger_WithPseudoRecords(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

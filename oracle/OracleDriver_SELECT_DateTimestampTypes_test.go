@@ -940,7 +940,6 @@ func TestDriver_Select_TimestampWithLocalTimeZone_Prepared_Named(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_DATE_BoundaryYears(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1027,7 +1026,6 @@ func TestDriver_Select_DATE_BoundaryYears(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_TIMESTAMP_SubSecond_MinimumNonZero(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1089,7 +1087,6 @@ func TestDriver_Select_TIMESTAMP_SubSecond_MinimumNonZero(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_TIMESTAMP_SubSecond_MidRange(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1151,7 +1148,6 @@ func TestDriver_Select_TIMESTAMP_SubSecond_MidRange(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_TIMESTAMP_SubSecond_ShortTrailingDigit(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1213,7 +1209,6 @@ func TestDriver_Select_TIMESTAMP_SubSecond_ShortTrailingDigit(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_TIMESTAMP_SubSecond_FullNanosecondPrecision(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1275,7 +1270,6 @@ func TestDriver_Select_TIMESTAMP_SubSecond_FullNanosecondPrecision(t *testing.T)
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMinimum(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1337,7 +1331,6 @@ func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMinimum(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMaximum(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1399,7 +1392,6 @@ func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMaximum(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_DATE_NLSDateFormat_Session(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1456,7 +1448,6 @@ func TestDriver_Select_DATE_NLSDateFormat_Session(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_Select_DATE_IntervalArithmetic(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

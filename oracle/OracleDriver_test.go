@@ -496,7 +496,6 @@ func TestDriver_InsertForeignKeyViolation(t *testing.T) {
 	}
 }
 
-// Migrated from the OraHub test coverage MR.
 func TestDriver_QueryAfterInvalidQuery(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
