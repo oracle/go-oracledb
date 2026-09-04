@@ -50,6 +50,8 @@ import (
 	"golang.org/x/text/language"
 )
 
+// TestAuthencationFactoryWithNilParameters verifies missing configuration is
+// rejected without returning an authenticator.
 func TestAuthencationFactoryWithNilParameters(t *testing.T) {
 	t.Parallel()
 
@@ -62,6 +64,8 @@ func TestAuthencationFactoryWithNilParameters(t *testing.T) {
 	}
 }
 
+// TestAuthencationFactoryBasic verifies valid username/password configuration
+// creates a password authenticator.
 func TestAuthencationFactoryBasic(t *testing.T) {
 	t.Parallel()
 	c := oracleconfig.NewOracleDriverConfig()
@@ -77,6 +81,8 @@ func TestAuthencationFactoryBasic(t *testing.T) {
 	}
 }
 
+// TestGetConnection verifies successful connection creation and propagation of
+// negotiation and authentication errors.
 func TestGetConnection(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -177,6 +183,8 @@ func TestGetConnection(t *testing.T) {
 	}
 }
 
+// TestGetConnectionMissingLocalizationService verifies connection creation
+// fails with the documented error when localization is unavailable.
 func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

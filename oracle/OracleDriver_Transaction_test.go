@@ -368,6 +368,8 @@ func TestReadOnlyTransaction(t *testing.T) {
 	}
 }
 
+// TestSavepointRollback verifies a rollback to a savepoint preserves changes
+// made before the savepoint and removes later changes.
 func TestSavepointRollback(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

@@ -49,6 +49,8 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
+// TestDriver_Prepared_Insert_InvalidThenValidJSON_ReusesStatement verifies an
+// invalid JSON bind does not prevent a later valid execution of the statement.
 func TestDriver_Prepared_Insert_InvalidThenValidJSON_ReusesStatement(t *testing.T) {
 	t.Parallel()
 
@@ -139,6 +141,8 @@ func TestDriver_Prepared_Insert_InvalidThenValidJSON_ReusesStatement(t *testing.
 	}
 }
 
+// TestDriver_Prepared_Insert_InvalidJSON_NegativeCase verifies invalid JSON is
+// rejected with the expected structured database error.
 func TestDriver_Prepared_Insert_InvalidJSON_NegativeCase(t *testing.T) {
 	t.Parallel()
 

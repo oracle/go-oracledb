@@ -874,6 +874,8 @@ func TestDriver_Prepared_SelectMultipleRows_Re_exec_BindTypeChange(t *testing.T)
 	}
 }
 
+// TestDriver_DeleteWithRowIDSubqueryLimit verifies a DELETE using a ROWID
+// subquery and row limit removes only the intended rows.
 func TestDriver_DeleteWithRowIDSubqueryLimit(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

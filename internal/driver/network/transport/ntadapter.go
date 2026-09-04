@@ -47,6 +47,8 @@ import (
 type NTAdapter interface {
 	Connect(ctx context.Context, address Address) error
 	Send(ctx context.Context, buf []byte) error
+	// Receive reads bytes2Read bytes into buf. If bytes2Read is greater than
+	// len(buf), it returns an error and does not read from the connection.
 	Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error)
 	Disconnect() error
 }

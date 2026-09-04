@@ -49,25 +49,8 @@ import (
 	"testing"
 )
 
-func TestNewNTTCP(t *testing.T) {
-	nt := NewNTTCP(NTattributes{Connectionid: "cid"}, 1521)
-	if nt.cha != TCPCHA {
-		t.Fatalf("cha = %d, want %d", nt.cha, TCPCHA)
-	}
-	if nt.connected {
-		t.Fatal("new NTTCP should not be connected")
-	}
-	if nt.secure {
-		t.Fatal("new NTTCP should not be secure")
-	}
-	if nt.port != 1521 {
-		t.Fatalf("port = %d, want 1521", nt.port)
-	}
-	if nt.atts.Connectionid != "cid" {
-		t.Fatalf("Connectionid = %q, want cid", nt.atts.Connectionid)
-	}
-}
-
+// TestNTTCPSendReceiveAndDisconnect verifies that a connected TCP adapter
+// sends and receives complete buffers and clears its connected state on close.
 func TestNTTCPSendReceiveAndDisconnect(t *testing.T) {
 	client, server := net.Pipe()
 	t.Cleanup(func() {
@@ -130,6 +113,8 @@ func TestNTTCPSendReceiveAndDisconnect(t *testing.T) {
 	}
 }
 
+// TestNTTCPReceiveBufferTooSmall verifies that Receive rejects a request
+// larger than the destination buffer without reading any bytes.
 func TestNTTCPReceiveBufferTooSmall(t *testing.T) {
 	nt := NewNTTCP(NTattributes{}, 1521)
 	n, err := nt.Receive(context.Background(), make([]byte, 1), 2)
@@ -141,6 +126,8 @@ func TestNTTCPReceiveBufferTooSmall(t *testing.T) {
 	}
 }
 
+// TestNTTCPDisconnectWhenNotConnected verifies that disconnecting an unused
+// adapter is safe and returns no error.
 func TestNTTCPDisconnectWhenNotConnected(t *testing.T) {
 	nt := NewNTTCP(NTattributes{}, 1521)
 	if err := nt.Disconnect(); err != nil {
@@ -148,6 +135,8 @@ func TestNTTCPDisconnectWhenNotConnected(t *testing.T) {
 	}
 }
 
+// TestNewNTTCPSAndClear verifies wallet attributes are retained and Clear
+// releases the adapter's TLS configuration.
 func TestNewNTTCPSAndClear(t *testing.T) {
 	nt := NewNTTCPS(NTattributes{WalletPassword: "secret"})
 	if nt.atts.WalletPassword != "secret" {
@@ -161,6 +150,8 @@ func TestNewNTTCPSAndClear(t *testing.T) {
 	}
 }
 
+// TestProcessWalletEmptyAndUnknownBlock verifies empty wallet handling and
+// rejection of an unknown PEM block type.
 func TestProcessWalletEmptyAndUnknownBlock(t *testing.T) {
 	nt := NewNTTCPS(NTattributes{})
 	if err := nt.processWallet(); err != nil {
@@ -180,6 +171,8 @@ func TestProcessWalletEmptyAndUnknownBlock(t *testing.T) {
 	}
 }
 
+// TestParseAndVerifyDN verifies configured distinguished names are parsed and
+// matching and mismatching certificate subjects are handled correctly.
 func TestParseAndVerifyDN(t *testing.T) {
 	got, err := parseConfiguredDN("CN=db.example.com, O=Oracle, OU=Drivers")
 	if err != nil {

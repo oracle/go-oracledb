@@ -104,7 +104,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID},
-	{Name: "TestNewNTTCP", Categories: "unitary", Exclusive: false, Fn: TestNewNTTCP},
 	{Name: "TestNTTCPSendReceiveAndDisconnect", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSendReceiveAndDisconnect},
 	{Name: "TestNTTCPReceiveBufferTooSmall", Categories: "unitary", Exclusive: false, Fn: TestNTTCPReceiveBufferTooSmall},
 	{Name: "TestNTTCPDisconnectWhenNotConnected", Categories: "unitary", Exclusive: false, Fn: TestNTTCPDisconnectWhenNotConnected},

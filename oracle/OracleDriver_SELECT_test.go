@@ -1406,6 +1406,8 @@ func TestDriver_Select_NullFromComputedExpression(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_JoinQuery verifies a join returns the expected matching
+// values from both tables.
 func TestDriver_Select_JoinQuery(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1468,6 +1470,8 @@ func TestDriver_Select_JoinQuery(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_SubqueryInFrom verifies a derived table in the FROM clause
+// returns the expected aggregated row.
 func TestDriver_Select_SubqueryInFrom(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1533,6 +1537,8 @@ func TestDriver_Select_SubqueryInFrom(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_GroupByHaving verifies GROUP BY and HAVING return only the
+// groups that satisfy the aggregate condition.
 func TestDriver_Select_GroupByHaving(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1618,6 +1624,8 @@ func TestDriver_Select_GroupByHaving(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_NamedArgMultipleSameParamRefs verifies one named argument
+// can be used by multiple references in a SELECT statement.
 func TestDriver_Select_NamedArgMultipleSameParamRefs(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

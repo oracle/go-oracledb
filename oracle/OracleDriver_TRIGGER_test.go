@@ -131,6 +131,8 @@ func TestDriver_TRIGGER_GormTest(t *testing.T) {
 	}
 }
 
+// TestDriver_TRIGGER_PseudoRecords verifies executing DML through a trigger
+// with :NEW and :OLD references succeeds with the expected row values.
 func TestDriver_TRIGGER_PseudoRecords(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

@@ -45,6 +45,8 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
+// TestDriverConstructorsAndOpenConnector verifies the default and explicit
+// driver constructors and confirms OpenConnector returns a usable connector.
 func TestDriverConstructorsAndOpenConnector(t *testing.T) {
 	if GetDefaultDriver() == nil {
 		t.Fatal("GetDefaultDriver returned nil")
@@ -67,6 +69,8 @@ func TestDriverConstructorsAndOpenConnector(t *testing.T) {
 	}
 }
 
+// TestOracleConnectorDriverAndNoAttempts verifies a connector exposes its
+// driver and does not make connection attempts until Connect is called.
 func TestOracleConnectorDriverAndNoAttempts(t *testing.T) {
 	config := NewOracleDriverConfig()
 	config.ConnectDescriptor = "(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=example)))"

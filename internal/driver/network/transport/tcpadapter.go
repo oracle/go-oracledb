@@ -148,15 +148,8 @@ func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 	}
 }
 
-// Receive read bytes2Read byte form underlying stream
-// parameters:
-//   - ctx : context to be used while reading
-//   - buf : the buffer to copy bytes to.
-//   - bytes2Read: number of byte sot be read
-//
-// returns :
-//   - read bytes count
-//   - error raised during read operation
+// Receive reads bytes2Read bytes from the underlying stream into buf. If
+// bytes2Read is greater than len(buf), it returns an error and does not read.
 func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error) {
 
 	if bytes2Read > len(buf) {

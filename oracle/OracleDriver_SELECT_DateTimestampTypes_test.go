@@ -940,6 +940,8 @@ func TestDriver_Select_TimestampWithLocalTimeZone_Prepared_Named(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_DATE_BoundaryYears verifies DATE values at the supported
+// lower and upper years round-trip with the expected calendar components.
 func TestDriver_Select_DATE_BoundaryYears(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1026,6 +1028,8 @@ func TestDriver_Select_DATE_BoundaryYears(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_TIMESTAMP_SubSecond_MinimumNonZero verifies the smallest
+// non-zero fractional second is preserved when a TIMESTAMP is selected.
 func TestDriver_Select_TIMESTAMP_SubSecond_MinimumNonZero(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1087,6 +1091,8 @@ func TestDriver_Select_TIMESTAMP_SubSecond_MinimumNonZero(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_TIMESTAMP_SubSecond_MidRange verifies a middle-range
+// fractional second is preserved when a TIMESTAMP is selected.
 func TestDriver_Select_TIMESTAMP_SubSecond_MidRange(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1148,6 +1154,8 @@ func TestDriver_Select_TIMESTAMP_SubSecond_MidRange(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_TIMESTAMP_SubSecond_ShortTrailingDigit verifies Oracle's
+// fractional-second padding is returned as the expected nanosecond value.
 func TestDriver_Select_TIMESTAMP_SubSecond_ShortTrailingDigit(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1209,6 +1217,8 @@ func TestDriver_Select_TIMESTAMP_SubSecond_ShortTrailingDigit(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_TIMESTAMP_SubSecond_FullNanosecondPrecision verifies all
+// nine TIMESTAMP fractional digits are preserved during decoding.
 func TestDriver_Select_TIMESTAMP_SubSecond_FullNanosecondPrecision(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1270,6 +1280,8 @@ func TestDriver_Select_TIMESTAMP_SubSecond_FullNanosecondPrecision(t *testing.T)
 	}
 }
 
+// TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMinimum verifies a
+// sub-second TIMESTAMP at year 1 is decoded correctly.
 func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMinimum(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1331,6 +1343,8 @@ func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMinimum(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMaximum verifies a
+// sub-second TIMESTAMP at year 9999 is decoded correctly.
 func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMaximum(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1392,6 +1406,8 @@ func TestDriver_Select_TIMESTAMP_SubSecond_BoundaryYearMaximum(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_DATE_NLSDateFormat_Session verifies DATE retrieval is not
+// corrupted by a session-specific NLS_DATE_FORMAT setting.
 func TestDriver_Select_DATE_NLSDateFormat_Session(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1448,6 +1464,8 @@ func TestDriver_Select_DATE_NLSDateFormat_Session(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_DATE_IntervalArithmetic verifies DATE arithmetic with an
+// interval returns the expected date and time components.
 func TestDriver_Select_DATE_IntervalArithmetic(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

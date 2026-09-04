@@ -433,6 +433,8 @@ func TestOAuth_setPasswordKeyValsForOAUTH_WithEncryptedKB(t *testing.T) {
 	}
 }
 
+// TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal verifies each OAuth
+// instance retains its own connection string, including concurrent instances.
 func TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal(t *testing.T) {
 	connectString := func(oauth *oAuth) string {
 		t.Helper()

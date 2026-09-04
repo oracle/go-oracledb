@@ -142,6 +142,8 @@ func TestDriver_AlterSessionSetLanguage(t *testing.T) {
 	}
 }
 
+// TestDriver_CreateTrigger_WithPseudoRecords verifies a trigger using :NEW and
+// :OLD row references can be created successfully.
 func TestDriver_CreateTrigger_WithPseudoRecords(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

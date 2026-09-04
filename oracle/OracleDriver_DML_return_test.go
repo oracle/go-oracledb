@@ -1649,6 +1649,8 @@ func TestDriver_DMLReturning_Insert_BooleanColumn(t *testing.T) {
 	}
 }
 
+// TestDriver_DMLReturning_Merge_InsertGeneratedIdentity verifies MERGE
+// RETURNING returns the generated identity for a newly inserted row.
 func TestDriver_DMLReturning_Merge_InsertGeneratedIdentity(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1740,6 +1742,8 @@ RETURNING id, external_id, name INTO :out_id, :out_external_id, :out_name`)
 	}
 }
 
+// TestDriver_DMLReturning_PLSQLForallMerge_MixedScalars verifies PL/SQL
+// FORALL MERGE RETURNING handles mixed scalar output values in row order.
 func TestDriver_DMLReturning_PLSQLForallMerge_MixedScalars(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

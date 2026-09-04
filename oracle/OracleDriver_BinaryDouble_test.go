@@ -48,6 +48,8 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
+// TestDriver_Select_BinaryDouble_SpecialValues verifies Oracle BINARY_DOUBLE
+// special values are returned with the expected Go floating-point semantics.
 func TestDriver_Select_BinaryDouble_SpecialValues(t *testing.T) {
 	t.Parallel()
 
@@ -150,6 +152,8 @@ func TestDriver_Select_BinaryDouble_SpecialValues(t *testing.T) {
 	}
 }
 
+// TestDriver_Prepared_BinaryDouble_SpecialValues_RoundTrip verifies prepared
+// BINARY_DOUBLE binds preserve special values through insert and select.
 func TestDriver_Prepared_BinaryDouble_SpecialValues_RoundTrip(t *testing.T) {
 	t.Parallel()
 

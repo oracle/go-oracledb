@@ -496,6 +496,8 @@ func TestDriver_InsertForeignKeyViolation(t *testing.T) {
 	}
 }
 
+// TestDriver_QueryAfterInvalidQuery verifies a connection remains usable after
+// an invalid query and can successfully execute a later valid query.
 func TestDriver_QueryAfterInvalidQuery(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

@@ -54,6 +54,8 @@ import (
 type ColumnContext = columnContext
 type LobColumnContext = lobColumnContext
 
+// TestDecodeNumberColumn verifies integer and decimal NUMBER wire values are
+// decoded into the expected Go values.
 func TestDecodeNumberColumn(t *testing.T) {
 	intVal, err := DecodeNumberColumn(ColumnContext{Scale: 0}, common.B1Array{0xC1, 0x02})
 	if err != nil {
@@ -88,6 +90,8 @@ func TestDecodeNumberColumn(t *testing.T) {
 	}
 }
 
+// TestDecodeTextColumns verifies character, raw, JSON, and rowid column data
+// are decoded into their expected string or byte representations.
 func TestDecodeTextColumns(t *testing.T) {
 	tests := []struct {
 		name string
@@ -117,6 +121,8 @@ func TestDecodeTextColumns(t *testing.T) {
 	}
 }
 
+// TestDecodeBooleanColumn verifies a non-zero encoded BOOLEAN value decodes to
+// true.
 func TestDecodeBooleanColumn(t *testing.T) {
 	got, err := DecodeBooleanColumn(ColumnContext{}, common.B1Array{1})
 	if err != nil {
@@ -127,6 +133,8 @@ func TestDecodeBooleanColumn(t *testing.T) {
 	}
 }
 
+// TestDecodeFloatingAndTemporalColumns verifies binary floating-point, DATE,
+// and TIMESTAMP wire values are decoded with their expected precision.
 func TestDecodeFloatingAndTemporalColumns(t *testing.T) {
 	binaryFloat, err := converters.EncodeBinaryFloat(float32(1.5))
 	if err != nil {
@@ -179,6 +187,8 @@ func TestDecodeFloatingAndTemporalColumns(t *testing.T) {
 	}
 }
 
+// TestDecodeIntervalAndLobColumns verifies interval values and LOB locator
+// data are decoded into the expected driver values.
 func TestDecodeIntervalAndLobColumns(t *testing.T) {
 	iymWire, err := converters.EncodeIntervalYearToMonth("02-03")
 	if err != nil {
@@ -215,6 +225,8 @@ func TestDecodeIntervalAndLobColumns(t *testing.T) {
 	}
 }
 
+// TestRowDecodeError verifies row decoding failures are returned as structured
+// errors with the public RowDecodeError code.
 func TestRowDecodeError(t *testing.T) {
 	err := rowDecodeError(ColumnContext{Name: common.B1Array("C1"), Index: 2}, errors.New("bad wire"), "NUMBER")
 	var sqle oracleErrors.SQLError

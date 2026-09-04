@@ -165,6 +165,8 @@ func TestDriver_Select_Intervals(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_Intervals_Prepared_Named verifies named binds preserve
+// YEAR TO MONTH and DAY TO SECOND interval values through a prepared statement.
 func TestDriver_Select_Intervals_Prepared_Named(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -292,6 +294,8 @@ func TestDriver_Select_Intervals_Prepared_Named(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_Intervals_Prepared_Ordinal verifies positional binds
+// preserve YEAR TO MONTH and DAY TO SECOND interval values.
 func TestDriver_Select_Intervals_Prepared_Ordinal(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -410,6 +414,8 @@ func TestDriver_Select_Intervals_Prepared_Ordinal(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_Intervals_Negative_D2S_SubSecond verifies a negative
+// DAY TO SECOND interval retains its sign and fractional seconds.
 func TestDriver_Select_Intervals_Negative_D2S_SubSecond(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -478,6 +484,8 @@ func TestDriver_Select_Intervals_Negative_D2S_SubSecond(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_Intervals_Negative_Y2M_Positive_D2S verifies independent
+// signs are preserved for negative YEAR TO MONTH and positive DAY TO SECOND.
 func TestDriver_Select_Intervals_Negative_Y2M_Positive_D2S(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -546,6 +554,8 @@ func TestDriver_Select_Intervals_Negative_Y2M_Positive_D2S(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_Intervals_Positive_Y2M_Negative_D2S verifies independent
+// signs are preserved for positive YEAR TO MONTH and negative DAY TO SECOND.
 func TestDriver_Select_Intervals_Positive_Y2M_Negative_D2S(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -614,6 +624,8 @@ func TestDriver_Select_Intervals_Positive_Y2M_Negative_D2S(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_Intervals_Negative_LargeScale verifies large negative
+// interval fields are decoded without losing their scale or sign.
 func TestDriver_Select_Intervals_Negative_LargeScale(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

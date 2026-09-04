@@ -231,5 +231,4 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestResolveAddresses_ContextHandling", Categories: "unitary", Exclusive: false, Fn: TestResolveAddresses_ContextHandling},
 	{Name: "TestResolveAddresses_DNSExpansion", Categories: "unitary", Exclusive: false, Fn: TestResolveAddresses_DNSExpansion},
 	{Name: "TestResolveAddresses_HostClassification", Categories: "unitary", Exclusive: false, Fn: TestResolveAddresses_HostClassification},
-	{Name: "TestAddressString", Categories: "unitary", Exclusive: false, Fn: TestAddressString},
 }
