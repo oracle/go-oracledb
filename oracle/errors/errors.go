@@ -76,6 +76,10 @@ const (
 	// UnsupportedCharacterSet surfaces when LOB operations encounter a character set that
 	// the Go driver does not yet support.
 	UnsupportedCharacterSet ErrorCode = "OGD-00015"
+	// NetworkCompressionFailed indicates that a network packet could not be compressed.
+	NetworkCompressionFailed ErrorCode = "OGD-00016"
+	// NetworkDecompressionFailed indicates that a compressed network packet could not be decompressed.
+	NetworkDecompressionFailed ErrorCode = "OGD-00017"
 
 	// Converter Errors
 	// Empty input Error

@@ -40,9 +40,13 @@ package session
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/zlib"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"time"
@@ -60,7 +64,6 @@ type networkSession struct {
 	isBreak             bool
 	isReset             bool
 	breakPosted         bool
-	compressionEnabled  bool
 	endOfRequestSupport bool
 	supportsFastAuth    bool
 	redirectCount       int
@@ -87,15 +90,14 @@ const (
 // newNetworkSession creates a new networkSession instance
 func newNetworkSession() *networkSession {
 	return &networkSession{
-		connected:          false,
-		isBreak:            false,
-		isReset:            false,
-		breakPosted:        false,
-		compressionEnabled: false,
-		sndDatapkt:         &dataPacket{},
-		rcvDatapkt:         &dataPacket{},
-		controlPkt:         &controlPacket{},
-		byteOrder:          driverCommon.BIG_ENDIAN,
+		connected:   false,
+		isBreak:     false,
+		isReset:     false,
+		breakPosted: false,
+		sndDatapkt:  &dataPacket{},
+		rcvDatapkt:  &dataPacket{},
+		controlPkt:  &controlPacket{},
+		byteOrder:   driverCommon.BIG_ENDIAN,
 	}
 }
 
@@ -635,6 +637,44 @@ func (ns *networkSession) processPacket(buf []byte, hdr *header) (any, error) {
 	case NSPTCNL:
 		packet = ns.controlPkt
 	case NSPTDA:
+		flags := binary.BigEndian.Uint16(buf[NSPDAFLG:])
+		if ns.sAtts != nil && ns.sAtts.networkCompressionEnabled && flags&NSPDAFCMP != 0 {
+			// NSPDAFCMP applies only to the payload; keep the wire header intact.
+			header := append([]byte(nil), buf[:NSPDADAT]...)
+			payload := buf[NSPDADAT:]
+			var r io.ReadCloser
+			var err error
+			PrintPacket(payload, 0, len(payload))
+			if ns.sAtts.firstRecvCompressedPacket {
+				// The first compressed payload has zlib framing; later payloads are raw DEFLATE.
+				// The reader decompresses payload bytes as they are read.
+				r, err = zlib.NewReader(bytes.NewReader(payload))
+				ns.sAtts.firstRecvCompressedPacket = false
+			} else {
+				r = flate.NewReader(bytes.NewReader(payload))
+			}
+			if err != nil {
+				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, err, "zlib")
+			}
+			decompressed, err := io.ReadAll(r)
+			if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+				r.Close()
+				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, err, "zlib")
+			}
+			if closeErr := r.Close(); closeErr != nil && err == nil {
+				err = closeErr
+			}
+			buf = append(header, decompressed...)
+			// The payload size changed, so update the packet length and remove its compression flag
+			// before the normal data-packet unmarshal path reads the packet.
+			if ns.sAtts.largeSDU {
+				binary.BigEndian.PutUint32(buf[:4], uint32(len(buf)))
+			} else {
+				binary.BigEndian.PutUint16(buf[:2], uint16(len(buf)))
+			}
+			binary.BigEndian.PutUint16(buf[NSPDAFLG:], flags&^NSPDAFCMP)
+			hdr.unmarshal(buf, ns.sAtts, nil)
+		}
 		packet = ns.rcvDatapkt
 	default:
 		return nil, fmt.Errorf("unsupported packet type: %d", hdr.typ)
@@ -664,6 +704,53 @@ func (ns *networkSession) SendPacket(ctx context.Context, buf []byte) error {
 	PrintPacket(buf, 0, len(buf))
 	if len(buf) < PACKET_HEADER_SIZE {
 		return fmt.Errorf("buffer too short: %d bytes, need at least %d", len(buf), PACKET_HEADER_SIZE)
+	}
+	if ns.sAtts != nil && ns.sAtts.networkCompressionEnabled && len(buf) > ns.sAtts.networkCompressionThreshold && buf[4] == NSPTDA {
+		// Only data-packet payloads above the negotiated threshold may be compressed.
+		header := append([]byte(nil), buf[:NSPDADAT]...)
+		payload := buf[NSPDADAT:]
+		var (
+			compressed bytes.Buffer
+			err        error
+		)
+		if ns.sAtts.firstSendCompressedPacket {
+			// Start the stream with zlib framing; later packets use raw DEFLATE.
+			zw, zErr := zlib.NewWriterLevel(&compressed, zlib.DefaultCompression)
+			if zErr != nil {
+				return zErr
+			}
+			if _, err = zw.Write(payload); err == nil {
+				err = zw.Flush()
+			}
+		} else {
+			fw, fErr := flate.NewWriter(&compressed, flate.DefaultCompression)
+			if fErr != nil {
+				return fErr
+			}
+			if _, err = fw.Write(payload); err == nil {
+				err = fw.Flush()
+			}
+		}
+
+		if err != nil {
+			return common.NewOracleError(oracleErrors.NetworkCompressionFailed, err, "zlib")
+		}
+		compressedBytes := compressed.Bytes()
+		if len(compressedBytes) < len(payload) {
+			// Use compression only if it makes the payload smaller.
+			if ns.sAtts.firstSendCompressedPacket {
+				ns.sAtts.firstSendCompressedPacket = false
+			}
+			buf = append(header, compressedBytes...)
+			// Mark the data flags as compressed, then publish the new length.
+			flags := binary.BigEndian.Uint16(buf[NSPDAFLG:])
+			binary.BigEndian.PutUint16(buf[NSPDAFLG:], flags|NSPDAFCMP)
+			if ns.sAtts.largeSDU {
+				binary.BigEndian.PutUint32(buf[:4], uint32(len(buf)))
+			} else {
+				binary.BigEndian.PutUint16(buf[:2], uint16(len(buf)))
+			}
+		}
 	}
 	return ns.ntAdapter.Send(ctx, buf)
 }

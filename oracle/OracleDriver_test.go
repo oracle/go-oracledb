@@ -97,6 +97,44 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 	}
 }
 
+// TestDriver_Functional_NetworkCompressionTCP is temporary test coverage for a TCP
+// connection with high-level network compression requested in the connect descriptor.
+// The descriptor has the form:
+// (DESCRIPTION=(COMPRESSION=on)(COMPRESSION_LEVELS=(LEVEL=high))
+// (ADDRESS=(PROTOCOL=tcp)(HOST=...)(PORT=...))(CONNECT_DATA=(SERVICE_NAME=...)))
+// It will be removed once network compression testing is part of the standard suite.
+func TestDriver_Functional_NetworkCompressionTCP(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+	if !strings.EqualFold(TestingConfig.Database.Protocol, "tcp") {
+		t.Skip("Network compression TCP test requires a TCP test configuration")
+	}
+
+	dsn := TestingConfig.GetConnectionStringWithProperties(map[string]string{
+		"COMPRESSION":        "on",
+		"COMPRESSION_LEVELS": "(LEVEL=high)",
+	})
+	db, err := sql.Open(TestingConfig.Driver.Name, dsn)
+	if err != nil {
+		t.Fatalf("open compressed TCP connection: %v", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close compressed TCP connection: %v", err)
+		}
+	}()
+
+	var value string
+	if err := db.QueryRowContext(context.Background(), "SELECT RPAD('x', 4000, 'x') FROM DUAL").Scan(&value); err != nil {
+		t.Fatalf("query over compressed TCP connection: %v", err)
+	}
+	if len(value) != 4000 {
+		t.Fatalf("result length: got %d, want 4000", len(value))
+	}
+}
+
 // TestDriver_Table_Create_Multiple_Connections
 // Opens two independent connections from a shared sql.DB pool and pings each to
 // validate basic multi-connection handling via database/sql.

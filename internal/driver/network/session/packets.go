@@ -320,6 +320,7 @@ func (ap *acceptPacket) unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header
 		}
 		ap.cflag = buffer[NSPACCFL]
 		if ap.cflag&NSPACCFON != 0 {
+			// Bit 0 confirms compression; bits 2-5 select the negotiated scheme.
 			sAtts.negotiatedNetworkCompressionScheme = int((ap.cflag & 0x3c) >> 2)
 			sAtts.networkCompressionEnabled = true
 			sAtts.firstRecvCompressedPacket = true
