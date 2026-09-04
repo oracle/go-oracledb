@@ -62,6 +62,8 @@ const (
 	_oacMaxLengthDate driverCommon.UB4 = 7
 	// _oacMaxLengthStampTZ is the fixed max length for TIMESTAMP WITH TIMEZONE columns.
 	_oacMaxLengthStampTZ driverCommon.UB4 = 13
+	// _jsonMaxPrefetchSize is the maximum size of an Oracle JSON value: 32 MB.
+	_jsonMaxPrefetchSize driverCommon.UB4 = 32 * 1024 * 1024
 )
 
 // tTIoac represents the Oracle TTIOAC structure, which holds metadata and state for column binding and definition
@@ -231,9 +233,10 @@ func newTTIOacTime() driverCommon.Marshallable {
 	return newTTIoac(DtyStz, converters.MaxTimeStampLength)
 }
 
-// newTTIOacJSONDefine creates a define OAC descriptor for JSON values transported as LOBs with prefetch enabled.
-func newTTIOacJSONDefine(columnContext columnContext, lobPrefetchSize driverCommon.UB4) driverCommon.Marshallable {
-	return newTTIOAcDefine(DtyBlob, max_lob_length, columnContext, uacfsald, lobPrefetchSize)
+// newTTIOacJSONDefine creates a define OAC descriptor for JSON values with prefetch enabled.
+func newTTIOacJSONDefine(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
+	// for JSON we want to fetch all the doc
+	return newTTIOAcDefine(DtyJSON, max_lob_length, columnContext, uacfsald, _jsonMaxPrefetchSize)
 }
 
 // newTTIOacClobDefine creates a define OAC descriptor for CLOB values using column metadata and LOB prefetch settings.
