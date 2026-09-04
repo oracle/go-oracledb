@@ -184,6 +184,8 @@ func TestNewNetworkSession(t *testing.T) {
 	}
 }
 
+// TestGetRemoteEndpoint verifies TCP and TCPS adapters expose their remote
+// address and port, while an unknown adapter returns zero values.
 func TestGetRemoteEndpoint(t *testing.T) {
 	t.Parallel()
 

@@ -152,3 +152,30 @@ func TestUtility_NonBMPStringToB1Array(t *testing.T) {
 		}
 	}
 }
+
+// TestUtility_B1ArrayToString verifies conversion of empty, normal, padded,
+// and invalid byte arrays to their public string representation.
+func TestUtility_B1ArrayToString(t *testing.T) {
+	tests := []struct {
+		name string
+		in   B1Array
+		want string
+	}{
+		{name: "nil", in: nil, want: ""},
+		{name: "empty", in: B1Array{}, want: ""},
+		{name: "ascii", in: B1Array("hello"), want: "hello"},
+		{name: "skips trailing null", in: B1Array{'a', 0}, want: "a"},
+		{name: "invalid utf8 replacement", in: B1Array{0xff}, want: "�"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := B1ArrayToString(tt.in); got != tt.want {
+				t.Fatalf("B1ArrayToString(%v) = %q, want %q", []byte(tt.in), got, tt.want)
+			}
+			if got := tt.in.String(); got != tt.want {
+				t.Fatalf("B1Array.String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

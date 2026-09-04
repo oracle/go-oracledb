@@ -495,3 +495,30 @@ func TestDriver_InsertForeignKeyViolation(t *testing.T) {
 		t.Fatalf("expected returned child id to remain unset on foreign key violation, got %d", insertedChildID)
 	}
 }
+
+// TestDriver_QueryAfterInvalidQuery verifies a connection remains usable after
+// an invalid query and can successfully execute a later valid query.
+func TestDriver_QueryAfterInvalidQuery(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open connection : %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.ExecContext(context.Background(), "SELECT invalid_column FROM dual"); err == nil {
+		t.Fatalf("expected invalid query to fail")
+	}
+
+	var result string
+	if err := db.QueryRowContext(context.Background(), "SELECT 'connection_works' FROM dual").Scan(&result); err != nil {
+		t.Fatalf("connection should remain usable after query error, got %v", err)
+	}
+	if result != "connection_works" {
+		t.Fatalf("unexpected result after recovery query: got %q, want %q", result, "connection_works")
+	}
+}

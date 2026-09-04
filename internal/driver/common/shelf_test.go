@@ -43,6 +43,7 @@ import (
 	"errors"
 	"testing"
 
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -208,6 +209,21 @@ func TestShelf_GetCapabilities(t *testing.T) {
 
 	if retrievedCapabilities != nil {
 		t.Fatal("capabilities on shelf should be nil")
+	}
+}
+
+// TestShelf_ConnectionProperties verifies that connection properties can be
+// stored on a shelf and retrieved without changing the shelf instance.
+func TestShelf_ConnectionProperties(t *testing.T) {
+	shelf := NewShelf[int]()
+
+	props := &oracleconfig.OracleDriverProperties{StrictNullValueHandling: true, DefaultLobPrefetchSize: 1024}
+	if returned := shelf.UpdateConnectionProperties(props); returned != shelf {
+		t.Fatal("UpdateConnectionProperties should return the shelf")
+	}
+
+	if got := shelf.GetConnectionProperties(); got != props {
+		t.Fatalf("GetConnectionProperties = %p, want %p", got, props)
 	}
 }
 

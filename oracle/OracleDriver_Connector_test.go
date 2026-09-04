@@ -36,48 +36,61 @@
 ** SOFTWARE.
  */
 
-package transport
+package oracle
 
 import (
 	"context"
+	"testing"
 
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-type NTAdapter interface {
-	Connect(ctx context.Context, address Address) error
-	Send(ctx context.Context, buf []byte) error
-	// Receive reads bytes2Read bytes into buf. If bytes2Read is greater than
-	// len(buf), it returns an error and does not read from the connection.
-	Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error)
-	Disconnect() error
+// TestDriverConstructorsAndOpenConnector verifies the default and explicit
+// driver constructors and confirms OpenConnector returns a usable connector.
+func TestDriverConstructorsAndOpenConnector(t *testing.T) {
+	if GetDefaultDriver() == nil {
+		t.Fatal("GetDefaultDriver returned nil")
+	}
+	if NewDriver() == nil {
+		t.Fatal("NewDriver returned nil")
+	}
+
+	driver := NewDriver()
+	connector, err := driver.openConnector("user/password@localhost:1521/service")
+	if err != nil {
+		t.Fatalf("OpenConnector returned error: %v", err)
+	}
+	if connector == nil {
+		t.Fatal("OpenConnector returned nil")
+	}
+
+	if _, err := driver.Open("not-a-dsn"); err == nil {
+		t.Fatal("expected Open to reject invalid DSN")
+	}
 }
 
-type Address struct {
-	naming.Address
-	Hostname       string
-	HTTPSProxy     string
-	HTTPSProxyPort int
-}
+// TestOracleConnectorDriverAndNoAttempts verifies a connector exposes its
+// driver and does not make connection attempts until Connect is called.
+func TestOracleConnectorDriverAndNoAttempts(t *testing.T) {
+	config := NewOracleDriverConfig()
+	config.ConnectDescriptor = "(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=example)))"
+	connector, err := NewOracleConnector(config)
+	if err != nil {
+		t.Fatalf("NewOracleConnector returned error: %v", err)
+	}
+	if connector.Driver() == nil {
+		t.Fatal("connector Driver returned nil")
+	}
 
-type NTattributes struct {
-	TCPNODelay              bool
-	SendTimeout             int
-	RecvTimeout             int
-	ExpireTime              int
-	SSLServerDNMatch        bool
-	SSLAllowWeakDNMatch     bool
-	EnabledDCD              bool
-	HttpsProxy              string
-	HttpsProxyPort          int
-	UseSNI                  bool
-	Transportconnecttimeout int
-	Connectionidprefix      string
-	Connectionid            string
-	WalletContent           []byte
-	WalletPassword          string
-	SSLServerCertDN         string
-	Servicename             string
-	WalletLocation          string
-	UseSystemTrust          bool
+	conn, err := connector.Connect(context.Background())
+	if err == nil {
+		t.Fatalf("expected no-attempts connect error, got conn=%v", conn)
+	}
+	sqle, ok := err.(oracleErrors.SQLError)
+	if !ok {
+		t.Fatalf("Connect error should be SQLError, got %T", err)
+	}
+	if sqle.ErrorCode() != string(oracleErrors.ConnectFailed) {
+		t.Fatalf("Connect error code = %s, want %s", sqle.ErrorCode(), oracleErrors.ConnectFailed)
+	}
 }
