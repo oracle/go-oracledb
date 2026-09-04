@@ -439,3 +439,96 @@ func getKeyValueFromKeyword(nlsKeys [64]string, keyword keywordValuePair) (strin
 
 	return "", nil
 }
+
+// keywordValuePairWithName represents the TTI/TTC DTYKVE keyword/value pair with name.
+type keywordValuePairWithName struct {
+	// flag: UB4 flag
+	flag driverCommon.UB4
+	// key: DALC text key
+	key dynamicAllocatedArray
+	// textValue: DALC text value
+	textValue dynamicAllocatedArray
+	// binaryValue: DALC binary value
+	binaryValue dynamicAllocatedArray
+}
+
+// Constraints for the (keyword, value) tuple element DTYKVE.
+const (
+	// maximum length of a key name
+	maxKPDKVEKeyLength = 128
+	// maximum length of a key value
+	maxKPDKVEValueLength = 64 * 1024
+)
+
+// newKeywordValuePairWithName creates a DTYKVE keyword/value pair with name.
+// key and textValue are converted to byte arrays and validated against the
+// DTYKVE limits: 128 bytes for key and 64 KiB for text and binary values.
+// It returns ProtocolViolationLimitExceeded when a field exceeds its limit.
+func newKeywordValuePairWithName(
+	key string,
+	textValue string,
+	binaryValue driverCommon.B1Array,
+	flag driverCommon.UB4,
+) (*keywordValuePairWithName, error) {
+	b1ArrKey := driverCommon.StringToB1Array(key)
+	if len(b1ArrKey) > maxKPDKVEKeyLength {
+		common.Odl.Debug("DTYKVE key length exceeds maximum", "length", len(b1ArrKey), "limit", maxKPDKVEKeyLength)
+		return nil, common.NewOracleError(
+			oracleErrors.ProtocolViolationLimitExceeded,
+			nil,
+			"DTYKVE key",
+			maxKPDKVEKeyLength,
+			len(b1ArrKey),
+		)
+	}
+
+	b1ArrTextVal := driverCommon.StringToB1Array(textValue)
+	if len(b1ArrTextVal) > maxKPDKVEValueLength {
+		common.Odl.Debug("DTYKVE text value length exceeds maximum", "length", len(b1ArrTextVal), "limit", maxKPDKVEValueLength)
+		return nil, common.NewOracleError(
+			oracleErrors.ProtocolViolationLimitExceeded,
+			nil,
+			"DTYKVE text value",
+			maxKPDKVEValueLength,
+			len(b1ArrTextVal),
+		)
+	}
+
+	b1ArrBinVal := append(driverCommon.B1Array(nil), binaryValue...)
+	if len(b1ArrBinVal) > maxKPDKVEValueLength {
+		common.Odl.Debug("DTYKVE binary value length exceeds maximum", "length", len(b1ArrBinVal), "limit", maxKPDKVEValueLength)
+		return nil, common.NewOracleError(
+			oracleErrors.ProtocolViolationLimitExceeded,
+			nil,
+			"DTYKVE binary value",
+			maxKPDKVEValueLength,
+			len(b1ArrBinVal),
+		)
+	}
+
+	kve := &keywordValuePairWithName{
+		flag:        flag,
+		key:         dynamicAllocatedArray{value: b1ArrKey},
+		textValue:   dynamicAllocatedArray{value: b1ArrTextVal},
+		binaryValue: dynamicAllocatedArray{value: b1ArrBinVal},
+	}
+
+	return kve, nil
+}
+
+// MarshalTo writes one DTYKVE record.
+func (kve *keywordValuePairWithName) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
+	if err := engine.MarshalUB4(ctx, kve.flag); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.key.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.textValue.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.binaryValue.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	return nil
+}
