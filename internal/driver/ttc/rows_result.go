@@ -39,9 +39,11 @@
 package ttc
 
 import (
+	"context"
 	"database/sql/driver"
 	"io"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -118,8 +120,21 @@ type columnContext struct {
 type ttcRows struct {
 	// row buffer
 	rowData       [][]driverCommon.B1Array
+	refCursorData [][]*ttcRows
 	currentRowIdx int
 	numOfRows     int
+	cursorID      driverCommon.SB4
+	fetchOnce     sync.Once
+	fetch         func() error
+	fetchErr      error
+	closed        bool
+	closeErr      error
+	onClose       func() error
+
+	// implicitRows makes this value a driver.RowsNextResultSet wrapper.
+	// The contained rows retain their own cursor IDs and fetch state.
+	implicitRows     []*ttcRows
+	currentResultSet int
 
 	// metadata caches for ColumnType* interfaces
 	columnContexts []columnContext
@@ -143,6 +158,9 @@ func (r *ttcRows) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
 // Columns implements driver.Rows.Columns. It returns the column names prepared
 // during construction (newTTCRows) based on decoded column metadata.
 func (r *ttcRows) Columns() []string {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.Columns()
+	}
 	res := make([]string, len(r.columnContexts))
 	for i, colCtx := range r.columnContexts {
 		res[i] = driverCommon.B1ArrayToString(colCtx.Name)
@@ -155,6 +173,15 @@ func (r *ttcRows) Columns() []string {
 // column's raw []common.B1Array value as a type provided in dest. Row count is
 // computed once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.Next(dest)
+	}
+	if r.fetch != nil {
+		r.fetchOnce.Do(func() { r.fetchErr = r.fetch() })
+		if r.fetchErr != nil {
+			return r.fetchErr
+		}
+	}
 	if r.currentRowIdx >= r.numOfRows {
 		return io.EOF
 	}
@@ -167,6 +194,27 @@ func (r *ttcRows) Next(dest []driver.Value) error {
 		dest[i] = val
 	}
 	r.currentRowIdx++
+	return nil
+}
+
+func (r *ttcRows) activeImplicitResultSet() *ttcRows {
+	if r.currentResultSet < len(r.implicitRows) {
+		return r.implicitRows[r.currentResultSet]
+	}
+	return nil
+}
+
+// HasNextResultSet and NextResultSet implement driver.RowsNextResultSet for
+// implicit cursors returned by DBMS_SQL.RETURN_RESULT.
+func (r *ttcRows) HasNextResultSet() bool {
+	return r.currentResultSet+1 < len(r.implicitRows)
+}
+
+func (r *ttcRows) NextResultSet() error {
+	if !r.HasNextResultSet() {
+		return io.EOF
+	}
+	r.currentResultSet++
 	return nil
 }
 
@@ -183,6 +231,12 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	// Fast-path locals to minimize repeated bounds checks and lookups
 	colCtx := r.columnContexts[i]
 	dtype := colCtx.DataType
+	if dtype == DtyCur {
+		if r.currentRowIdx < len(r.refCursorData) && i < len(r.refCursorData[r.currentRowIdx]) {
+			return r.refCursorData[r.currentRowIdx][i], nil
+		}
+		return nil, nil
+	}
 	scale := colCtx.Scale
 	data := r.rowData[r.currentRowIdx][i]
 	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]
@@ -335,10 +389,62 @@ func defaultNumericValue(scale int8) (driver.Value, bool) {
 	}
 }
 
-// Close implements driver.Rows.Close. No network/protocol resources are owned
-// by this object currently, so this is a no-op.
+// Close implements driver.Rows.Close and closes nested and server-side cursors.
 func (r *ttcRows) Close() error {
-	common.Odl.Debug("closing rows")
+	if r.closed {
+		return r.closeErr
+	}
+	r.closed = true
+	for _, resultSet := range r.implicitRows {
+		if resultSet != nil {
+			if err := resultSet.Close(); err != nil && r.closeErr == nil {
+				r.closeErr = err
+			}
+		}
+	}
+
+	for _, row := range r.refCursorData {
+		for _, cursor := range row {
+			if cursor != nil {
+				if err := cursor.Close(); err != nil && r.closeErr == nil {
+					r.closeErr = err
+				}
+			}
+		}
+	}
+	if r.cursorID != 0 {
+		if err := r.closeServerCursor(); err != nil && r.closeErr == nil {
+			r.closeErr = err
+		}
+	}
+	if r.onClose != nil {
+		if err := r.onClose(); err != nil && r.closeErr == nil {
+			r.closeErr = err
+		}
+		r.onClose = nil
+	}
+	return r.closeErr
+}
+
+func newImplicitResultRows(resultSets []*ttcRows) *ttcRows {
+	return &ttcRows{implicitRows: resultSets, strictNullHandlingValue: true}
+}
+
+func (r *ttcRows) closeServerCursor() error {
+	msg, err := r.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
+	if err != nil {
+		return r.shelf.LocalizeError(err)
+	}
+	occaMsg := msg.(*tTIOcca)
+	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(r.cursorID)})
+	stmr := r.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	if err = stmr.Push(context.Background(), occaMsg); err != nil {
+		return r.shelf.LocalizeError(err)
+	}
+	if err = stmr.Flush(context.Background()); err != nil {
+		return r.shelf.LocalizeError(err)
+	}
+	r.cursorID = 0
 	return nil
 }
 
@@ -364,6 +470,9 @@ func newTTCRows(columnContexts []columnContext) *ttcRows {
 // ColumnTypeDatabaseTypeName implements RowsColumnTypeDatabaseTypeName.
 // It returns the database-specific type name (e.g., VARCHAR2, NUMBER).
 func (r *ttcRows) ColumnTypeDatabaseTypeName(index int) string {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeDatabaseTypeName(index)
+	}
 	// inline translation here waiting for refactor of our type registry
 	switch r.columnContexts[index].DataType {
 	case DtyChr:
@@ -435,6 +544,9 @@ func (r *ttcRows) ColumnTypeDatabaseTypeName(index int) string {
 // ColumnTypeLength implements RowsColumnTypeLength. It returns the byte length
 // for variable-length types when available.
 func (r *ttcRows) ColumnTypeLength(index int) (int64, bool) {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeLength(index)
+	}
 	if index < 0 || index >= len(r.columnContexts) {
 		return 0, false
 	}
@@ -447,12 +559,18 @@ func (r *ttcRows) ColumnTypeLength(index int) (int64, bool) {
 // ColumnTypeNullable implements RowsColumnTypeNullable. It returns whether the
 // column may be NULL and whether the information is available.
 func (r *ttcRows) ColumnTypeNullable(index int) (bool, bool) {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeNullable(index)
+	}
 	return r.columnContexts[index].Nullable, true
 }
 
 // ColumnTypePrecisionScale implements RowsColumnTypePrecisionScale. It should return
 // the precision and scale for decimal types. If not applicable, ok should be false.
 func (r *ttcRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypePrecisionScale(index)
+	}
 	dty := r.columnContexts[index].DataType
 	if dty == DtyNum || dty == DtyVnu {
 		return r.columnContexts[index].Precision, int64(r.columnContexts[index].Scale), true
@@ -465,6 +583,9 @@ func (r *ttcRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
 // into which database values will be scanned. Currently, []byte is used for all
 // columns, matching the raw protocol representation returned by Next.
 func (r *ttcRows) ColumnTypeScanType(index int) reflect.Type {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeScanType(index)
+	}
 	if r.columnContexts[index].ScanType == nil {
 		decoder, err := r.shelf.GetCodecFactory().getDecoder(r.columnContexts[index].DataType)
 		if err != nil {

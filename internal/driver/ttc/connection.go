@@ -160,8 +160,14 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
-	defer stmt.Close()
 	result, err := stmt.QueryContext(ctx, args)
+	if err != nil {
+		_ = stmt.Close()
+		return nil, c.shelf.LocalizeError(err)
+	}
+	if rows, ok := result.(*ttcRows); ok {
+		rows.onClose = stmt.Close
+	}
 	return result, c.shelf.LocalizeError(err)
 }
 
@@ -247,6 +253,9 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
 	if out, ok := nv.Value.(sql.Out); ok {
+		if isRefCursorDestination(out.Dest) {
+			return nil
+		}
 		// Destination must be provided for output binding.
 		if out.Dest == nil {
 			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("nil destination"))
@@ -273,6 +282,15 @@ func checkNamedValue(nv *driver.NamedValue) error {
 		return err
 	}
 	return driver.ErrSkip
+}
+
+func isRefCursorDestination(v any) bool {
+	switch v.(type) {
+	case *driver.Rows:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {

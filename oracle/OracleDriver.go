@@ -144,11 +144,11 @@ var _initLoggingOnce sync.Once
 // openConnector returns a new database/sql/driver.Connector for this OracleDriver, using the Data Source Name.
 func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 
-	_initLoggingOnce.Do(func() {
-		// This is delayed until now because we cannot assume the start sequence of the application.
-		// Doing this in init() may end up defining flags after the CLI has been parsed.
-		common.InitLoggingWithConfig(oracleconfig.NewOracleLoggingConfig())
-	})
+	//_initLoggingOnce.Do(func() {
+	//	// This is delayed until now because we cannot assume the start sequence of the application.
+	//	// Doing this in init() may end up defining flags after the CLI has been parsed.
+	//	common.InitLoggingWithConfig(oracleconfig.NewOracleLoggingConfig())
+	//})
 
 	var confToUse *oracleconfig.OracleDriverConfig
 	if drv.connectorConfig != nil {

@@ -89,6 +89,11 @@ func openTestDBWithConfig(cfg *TestConfig) (*sql.DB, error) {
 		}
 		dsn = fmt.Sprintf("%s%voracle.go.DriverProperties.StrictNullValueHandling=%s", dsn, separator, v)
 	}
+	loggingConfig := NewOracleLoggingConfig()
+	loggingConfig.Destination = "STDOUT"
+	loggingConfig.Level = "DEBUG"
+	loggingConfig.IncludeSensitive = true
+	GetDefaultDriver().ApplyDriverLoggingConfig(loggingConfig)
 
 	db, err := sql.Open(cfg.Driver.Name, dsn)
 	if err != nil {

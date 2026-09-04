@@ -87,6 +87,7 @@ const (
 	kpccapCtbPrefetchRows          = "KPCCAP_CTB_PREFETCH_ROWS"
 	kpccapCtbImplicitPool          = "KPCCAP_CTB_IMPLICIT_POOL"
 	kpccapCtbOauthmsgOnerr         = "KPCCAP_CTB_OAUTHMSG_ONERR"
+	kpccapCtbImplresPrefetch       = "KPCCAP_CTB_IMPLRES_PREFETCH"
 	kpccapCtScrollableCursor       = "KPCCAP_CT_SCROLLABLE_CURSOR"
 	kpccapCtTtcFldVsn              = "KPCCAP_CT_TTC_FLD_VSN"
 	kpccapCt82pisal8               = "KPCCAP_CT_82PISAL8"
@@ -232,6 +233,7 @@ func newCapabilityMetadata() *capability {
 			kpccapCtbPrefetchRows:          {index: 5, value: 0x04, isFlag: true, isDefault: true},          // capability to support server directive row prefetch
 			kpccapCtbImplicitPool:          {index: 5, value: 0x08, isFlag: true, isDefault: true},          // capability to support DRCP implicit pooling
 			kpccapCtbOauthmsgOnerr:         {index: 5, value: 0x10, isFlag: true, isDefault: true},          // return message for OAUTH RPC even on error
+			kpccapCtbImplresPrefetch:       {index: 5, value: 0x20, isFlag: true, isDefault: true},          // receive implicit result set rows in the execution response
 			kpccapCtScrollableCursor:       {index: 6, value: 1, isFlag: false, isDefault: true},            // Not used default value
 			kpccapCtTtcFldVsn:              {index: 7, value: ttcFldVsnMax, isFlag: false, isDefault: true}, // Can the client and server understand the same anonymous fields: Latest supported version
 			kpccapCt82pisal8:               {index: 8, value: 1, isFlag: false, isDefault: true},            // Not used default value
