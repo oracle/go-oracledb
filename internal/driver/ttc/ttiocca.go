@@ -81,27 +81,27 @@ func (m *tTIOcca) MarshalTo(ctx context.Context, engine driverCommon.Marshaller)
 	// marshal function header
 	if err := m.headerMarshaller.MarshalTo(ctx, engine); err != nil {
 		common.Odl.Warn("Error marshalling OCCA header", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OCCA")
 	}
 
 	// PTR (cursorId pointer sentinel)
 	if err := engine.MarshalPTR(ctx); err != nil {
 		common.Odl.Warn("Error marshalling OCCA cursorId ptr", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OCCA")
 	}
 
 	// UB4 offset (number of cursorId ids)
 	offset := driverCommon.UB4(len(m.cursorIDs))
 	if err := engine.MarshalUB4(ctx, offset); err != nil {
 		common.Odl.Warn("Error marshalling OCCA offset", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OCCA")
 	}
 
 	// UB4 cursorId repeated offset times
 	for i := 0; i < int(offset); i++ {
 		if err := engine.MarshalUB4(ctx, m.cursorIDs[i]); err != nil {
 			common.Odl.Warn("Error marshalling OCCA cursorID", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "OCCA")
 		}
 	}
 

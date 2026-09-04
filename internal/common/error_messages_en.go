@@ -68,8 +68,8 @@ func initMessagesEn() {
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.NoListenerAvailable), "cannot connect. No listener at %s")
 	// Document: No
-	// Cause:    N/A
-	// Action:   N/A
+	// Cause:    The current version of the driver doesn't support the operation code sent by the server
+	// Action:   Upgrade to a newer version of the driver if any
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.ProtocolViolation), "protocol violation")
 	// Document: No

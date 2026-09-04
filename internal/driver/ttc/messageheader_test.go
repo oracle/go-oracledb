@@ -45,6 +45,8 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
+// TestMessageHeader_UnMarshalFrom check that a message header can be unmarshaled
+// check proerties of unmarshalle messages
 func TestMessageHeader_UnMarshalFrom(t *testing.T) {
 	t.Parallel()
 	size := 1024
@@ -53,7 +55,7 @@ func TestMessageHeader_UnMarshalFrom(t *testing.T) {
 	engine := NewNativeMarshalEngine(dataBuffer, byteOrder)
 
 	// Marshal a message type
-	expectedType := common.MessageType(42)
+	expectedType := TTIPRO
 	err := engine.MarshalUB1(context.Background(), common.UB1(expectedType))
 	if err != nil {
 		t.Fatalf("MarshalUB1 failed: %v", err)

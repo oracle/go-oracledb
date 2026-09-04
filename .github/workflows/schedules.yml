@@ -96,7 +96,7 @@ jobs:
           database-protocol: ${{ steps.create_database.outputs.database_protocol }}
           database-user: ${{ steps.create_database.outputs.database_user }}
           database-password: ${{ steps.create_database.outputs.database_password }}
-      - run: go test -parallel=10  -shuffle=on -v $(go list ${{ github.workspace }}/oracle/... | egrep -v /vendor/) -run=^$ -bench=. -benchmem -benchtime=10x -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test
+      - run: go test -v $(go list ${{ github.workspace }}/oracle/... | egrep -v /vendor/) -run=^$ -bench=. -benchmem -benchtime=10x -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test
       - uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # 1.0.31
         if: always()
         with:

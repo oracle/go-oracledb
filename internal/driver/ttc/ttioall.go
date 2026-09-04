@@ -177,66 +177,66 @@ func (m *tTIOall) MarshalTo(ctx context.Context, engine driverCommon.Marshaller)
 	// marshal function code, sequence number w/wo token-number
 	if err := m.headerMarshaller.MarshalTo(ctx, engine); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 header", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8 header")
 	}
 
 	// ---- Step#1: marshal PISDEF ----
 	// options
 	if err := engine.MarshalUB4(ctx, m.options); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 options", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
 	// cursorId
 	if err := engine.MarshalSB4(ctx, m.cursorId); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 cursorId", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 
 	}
 
 	// sql pointer/length
 	if err := m._marshalPtr(ctx, engine, driverCommon.SB4(len(m.sql)), "Oall8-sql-ptr"); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 sql ptr", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 	if err := engine.MarshalSB4(ctx, driverCommon.SB4(len(m.sql))); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 sql len", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
 	if err := engine.MarshalPTR(ctx); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 oall8Options", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 	if err := engine.MarshalSB4(ctx, driverCommon.SB4(len(m.oall8Options))); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 oall8Options len", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
 	// al8o4 / al8o4l (out vector)
 	if err := engine.MarshalNullPTR(ctx); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 out vector ptr", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 	if err := engine.MarshalNullPTR(ctx); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 out vector length ptr", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
 	// Prefetch (client buffer size, prefetch size)
 	if err := engine.MarshalUB4(ctx, m.maxClientBuffer); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 prefetch size", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 	if err := engine.MarshalUB4(ctx, m.rowsToFetch); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 prefetch rows", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
 	// Max length (configured based on pl-sql/ non-pl-sql)
 	if err := engine.MarshalUB4(ctx, m.maxLength); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 maxLength", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
 	// al8bno (bind input parameters)
@@ -247,7 +247,7 @@ func (m *tTIOall) MarshalTo(ctx context.Context, engine driverCommon.Marshaller)
 
 		if err := engine.MarshalSB4(ctx, m.numberOfBinds); err != nil {
 			common.Odl.Warn("Error marshalling OALL8 bind count", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL")
 		}
 	} else {
 		if err := m._marshalPtr(ctx, engine, 0, "bind ptr"); err != nil {
