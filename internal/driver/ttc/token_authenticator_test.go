@@ -92,10 +92,10 @@ func encodePrivateKeyPEM(t *testing.T, privateKey *rsa.PrivateKey) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: encoded})
 }
 
-func newTestProviderRegistry(providersToRegister ...oracleProviders.Provider) common.ProviderRegistry {
-	registry := common.NewProviderRegistry()
+func newTestProviderRegistry(providersToRegister ...oracleProviders.Provider) common.Registry[oracleProviders.Provider] {
+	registry := common.NewSafeRegistry[oracleProviders.Provider]()
 	for _, provider := range providersToRegister {
-		registry.RegisterProvider(provider)
+		registry.Register(provider)
 	}
 	return registry
 }
@@ -105,11 +105,18 @@ type stubProviderRegistry struct {
 	err      error
 }
 
-func (s stubProviderRegistry) RegisterProvider(provider oracleProviders.Provider) {
+func (s stubProviderRegistry) Register(provider oracleProviders.Provider) {
 	s.provider = provider
 }
 
-func (s stubProviderRegistry) Provider(providerType reflect.Type) (oracleProviders.Provider, error) {
+func (s stubProviderRegistry) GetAll() []oracleProviders.Provider {
+	if s.provider == nil {
+		return nil
+	}
+	return []oracleProviders.Provider{s.provider}
+}
+
+func (s stubProviderRegistry) Get(providerType reflect.Type) (oracleProviders.Provider, error) {
 	return s.provider, s.err
 }
 
@@ -125,7 +132,7 @@ func TestGetAuthenticator_SelectionLogic(t *testing.T) {
 		name          string
 		user          string
 		password      string
-		provider      common.ProviderRegistry
+		provider      common.Registry[oracleProviders.Provider]
 		wantType      string
 		wantErrorCode oracleErrors.ErrorCode
 	}{
@@ -133,6 +140,7 @@ func TestGetAuthenticator_SelectionLogic(t *testing.T) {
 			name:     "username and password use password authenticator",
 			user:     "scott",
 			password: "tiger",
+			provider: newTestProviderRegistry(),
 			wantType: "*ttc.passwordAuthenticator",
 		},
 		{
@@ -151,6 +159,7 @@ func TestGetAuthenticator_SelectionLogic(t *testing.T) {
 		{
 			name:          "username without password and without provider returns no authenticator",
 			user:          "scott",
+			provider:      newTestProviderRegistry(),
 			wantErrorCode: oracleErrors.NoAuthenticatorError,
 		},
 		{
@@ -160,11 +169,13 @@ func TestGetAuthenticator_SelectionLogic(t *testing.T) {
 		},
 		{
 			name:          "missing username and password without provider returns no authenticator",
+			provider:      newTestProviderRegistry(),
 			wantErrorCode: oracleErrors.NoAuthenticatorError,
 		},
 		{
 			name:          "missing username with password and without provider returns empty username",
 			password:      "tiger",
+			provider:      newTestProviderRegistry(),
 			wantErrorCode: oracleErrors.EmptyUsernameError,
 		},
 		{
@@ -279,9 +290,9 @@ func TestProviderRegistryReturnsFirstRegisteredTokenProvider(t *testing.T) {
 		mockTokenAuthenticationProvider{token: "first-token"},
 		mockTokenAuthenticationProvider{token: "second-token"},
 	)
-	gotProvider, err := registry.Provider(reflect.TypeOf((*oracleProviders.TokenAuthenticationProvider)(nil)).Elem())
+	gotProvider, err := registry.Get(reflect.TypeOf((*oracleProviders.TokenAuthenticationProvider)(nil)).Elem())
 	if err != nil {
-		t.Fatalf("GetProvider returned error: %v", err)
+		t.Fatalf("Get returned error: %v", err)
 	}
 	provider := gotProvider.(oracleProviders.TokenAuthenticationProvider)
 
@@ -364,7 +375,7 @@ func TestProviderRegistryReturnsNilWhenTokenProviderMissing(t *testing.T) {
 		struct{}{},
 		struct{}{},
 	)
-	provider, err := registry.Provider(reflect.TypeOf((*oracleProviders.TokenAuthenticationProvider)(nil)).Elem())
+	provider, err := registry.Get(reflect.TypeOf((*oracleProviders.TokenAuthenticationProvider)(nil)).Elem())
 	if err != nil {
 		t.Fatalf("expected nil error when token provider is missing, got %v", err)
 	}

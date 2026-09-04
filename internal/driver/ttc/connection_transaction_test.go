@@ -42,16 +42,15 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestTransactionCommitSuccess create a transaction and commits with different
-// combination of isolation level and read only options and checks that the
-// correct SQL is executed and that the correct error message is returned on the
-// second commit when the transaction is not longer active.
+// TestTransactionCommitSuccess verifies that commit succeeds for supported
+// transaction options and that a second commit is rejected.
 func TestTransactionCommitSuccess(t *testing.T) {
 	t.Parallel()
 	messageRegistry := NewRegistry[common.MessageType]()
@@ -166,10 +165,8 @@ func TestTransactionCommitSuccess(t *testing.T) {
 	}
 }
 
-// TestTransactionRollbackSuccess create a transaction and rollbacks with different
-// combination of isolation level and read only options and checks that the
-// correct SQL is executed and that the correct error message is returned on the
-// second rollback when the transaction is not longer active.
+// TestTransactionRollbackSuccess verifies that rollback succeeds for supported
+// transaction options and that a second rollback is rejected.
 func TestTransactionRollbackSuccess(t *testing.T) {
 	t.Parallel()
 	messageRegistry := NewRegistry[common.MessageType]()
@@ -273,8 +270,8 @@ func TestTransactionRollbackSuccess(t *testing.T) {
 	}
 }
 
-// TestCallBeginTxTwice calls beginTx twice in the same connection. Check for
-// already in a transaction error
+// TestCallBeginTxTwice verifies that beginning a second transaction on the same
+// connection returns an already-in-transaction error.
 func TestCallBeginTxTwice(t *testing.T) {
 	t.Parallel()
 	mockNs := &mockNetworkSession{disconnectCalls: 0, disconnectErr: nil, sleepDuration: 0}
@@ -310,4 +307,166 @@ func TestCallBeginTxTwice(t *testing.T) {
 		t.Fatalf("Wrong error expected %s, but was %s", oracleErrors.AlreadyInTransaction, sqlErr.ErrorCode())
 	}
 
+}
+
+func newTransactionTestConnection(streamer *mockStreamer) *connection {
+	messageRegistry := NewRegistry[common.MessageType]()
+	messageRegistry.Register(TTIOER, 1, newTTIoer)
+	functionRegistry := NewRegistry[functionRegistryKey]()
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
+	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
+	shelf := newShelf[common.MessageType]()
+	shelf.RegisterMessageFactory(messageFactory).RegisterMessageStreamer(streamer)
+	return newTestConnection(shelf, nil, nil)
+}
+
+func transactionErrorCode(t *testing.T, err error) oracleErrors.ErrorCode {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected transaction error, got nil")
+	}
+	sqlErr, ok := err.(oracleErrors.SQLError)
+	if !ok {
+		t.Fatalf("expected SQLError, got %T: %v", err, err)
+	}
+	return oracleErrors.ErrorCode(sqlErr.ErrorCode())
+}
+
+// TestConnectionBeginUsesDefaultIsolationLevel verifies that Begin uses the
+// read-committed isolation level when no options are supplied.
+func TestConnectionBeginUsesDefaultIsolationLevel(t *testing.T) {
+	t.Parallel()
+	streamer := &mockStreamer{pullMsg: &mockOer{}}
+	conn := newTransactionTestConnection(streamer)
+
+	tx, err := conn.Begin()
+	if err != nil {
+		t.Fatalf("Begin returned error: %v", err)
+	}
+	if streamer.pushedMsg.Len() != 1 {
+		t.Fatalf("Begin pushed %d setup messages, want 1", streamer.pushedMsg.Len())
+	}
+	msg := streamer.pushedMsg.Front().Value.(*common.Message[common.MessageType])
+	oall, ok := (*msg).(*tTIOall)
+	if !ok {
+		t.Fatalf("setup message = %T, want *tTIOall", *msg)
+	}
+	if got := common.B1ArrayToString(oall.sql); got != _isolationLevelReadCommitted {
+		t.Fatalf("default isolation SQL = %q, want %q", got, _isolationLevelReadCommitted)
+	}
+	if tx == nil {
+		t.Fatal("Begin returned a nil transaction")
+	}
+}
+
+// TestConnectionBeginTxRejectsUnsupportedIsolationLevel verifies that an
+// unsupported isolation level is rejected without sending a setup message.
+func TestConnectionBeginTxRejectsUnsupportedIsolationLevel(t *testing.T) {
+	t.Parallel()
+	streamer := &mockStreamer{}
+	conn := newTransactionTestConnection(streamer)
+
+	_, err := conn.BeginTx(context.Background(), driver.TxOptions{Isolation: driver.IsolationLevel(12345)})
+	if got := transactionErrorCode(t, err); got != oracleErrors.IsolationLevelNotSupported {
+		t.Fatalf("error code = %s, want %s", got, oracleErrors.IsolationLevelNotSupported)
+	}
+	if streamer.pushCalled {
+		t.Fatal("unsupported isolation level should not push a message")
+	}
+	if conn.shelf.isInTransaction() {
+		t.Fatal("unsupported isolation level should not register a transaction")
+	}
+}
+
+// TestConnectionBeginTxUnregistersAfterSetupErrors verifies that transaction
+// setup failures remove the partially initialized transaction.
+func TestConnectionBeginTxUnregistersAfterSetupErrors(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		pullMsgs []common.Message[common.MessageType]
+		wantPush int
+	}{
+		{
+			name:     "isolation setup error",
+			pullMsgs: []common.Message[common.MessageType]{&mockOer{err: errors.New("isolation failed")}},
+			wantPush: 1,
+		},
+		{
+			name:     "read only setup error",
+			pullMsgs: []common.Message[common.MessageType]{&mockOer{}, &mockOer{err: errors.New("read only failed")}},
+			wantPush: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			streamer := &mockStreamer{pullMsgs: tt.pullMsgs}
+			conn := newTransactionTestConnection(streamer)
+			_, err := conn.BeginTx(context.Background(), driver.TxOptions{ReadOnly: tt.name == "read only setup error"})
+			if got := transactionErrorCode(t, err); got != oracleErrors.ConfigureTransactionError {
+				t.Fatalf("error code = %s, want %s", got, oracleErrors.ConfigureTransactionError)
+			}
+			if streamer.pushedMsg.Len() != tt.wantPush {
+				t.Fatalf("pushed messages = %d, want %d", streamer.pushedMsg.Len(), tt.wantPush)
+			}
+			if conn.shelf.isInTransaction() {
+				t.Fatal("setup failure should unregister the transaction")
+			}
+		})
+	}
+}
+
+// TestTransactionOperationErrors verifies that commit and rollback errors are
+// wrapped as transaction errors and leave the transaction registered.
+func TestTransactionOperationErrors(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		operation func(*transaction) error
+		message   string
+	}{
+		{name: "commit", operation: (*transaction).Commit, message: "commit failed"},
+		{name: "rollback", operation: (*transaction).Rollback, message: "rollback failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			streamer := &mockStreamer{pullMsg: &mockOer{err: errors.New(tt.message)}}
+			conn := newTransactionTestConnection(streamer)
+			tx := newTransaction(conn, context.Background())
+			conn.shelf.registerTransaction(tx)
+
+			if got := transactionErrorCode(t, tt.operation(tx)); got != oracleErrors.ErrorInTransaction {
+				t.Fatalf("error code = %s, want %s", got, oracleErrors.ErrorInTransaction)
+			}
+			if !conn.shelf.isInTransaction() {
+				t.Fatal("transaction should remain registered after operation error")
+			}
+		})
+	}
+}
+
+// TestTransactionOperationRejectsStaleMessages verifies that commit and
+// rollback fail when connection validation reports stale messages.
+func TestTransactionOperationRejectsStaleMessages(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		operation func(*transaction) error
+	}{
+		{name: "commit", operation: (*transaction).Commit},
+		{name: "rollback", operation: (*transaction).Rollback},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			streamer := &mockStreamer{pullMsg: &mockOer{}, drainIn: 1}
+			conn := newTransactionTestConnection(streamer)
+			tx := newTransaction(conn, context.Background())
+			conn.shelf.registerTransaction(tx)
+			conn.shelf.registerStateValidator(&shelfConnectionValidator{valid: false})
+
+			if got := transactionErrorCode(t, tt.operation(tx)); got != oracleErrors.InternalError {
+				t.Fatalf("error code = %s, want %s", got, oracleErrors.InternalError)
+			}
+		})
+	}
 }

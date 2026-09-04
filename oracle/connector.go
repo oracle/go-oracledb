@@ -66,7 +66,7 @@ import (
 // Returns:
 //   - a connection instantiator bound to ns.
 //   - an error if the instantiator cannot be created.
-type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.ProviderRegistry) (driverCommon.ConnectionInstantiator, error)
+type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error)
 
 // ConnCreator opens a network session for a specific connection option and
 // connection identifier.
@@ -89,7 +89,7 @@ type connector struct {
 	connectorConfig         *oracleconfig.OracleDriverConfig
 	connCreator             ConnCreator
 	connInstantiatorFactory ConnInstantiatorFactory
-	providerRegistry        common.ProviderRegistry
+	providerRegistry        common.Registry[oracleProviders.Provider]
 }
 
 // used in tests
@@ -113,7 +113,7 @@ func newOracleConnector(cfg *naming.ParsedConfig, drvConfig *oracleconfig.Oracle
 		connectorConfig:         drvConfig,
 		connCreator:             connCreator,
 		connInstantiatorFactory: connInstantiatorFactory,
-		providerRegistry:        common.NewProviderRegistry(),
+		providerRegistry:        common.NewSafeRegistry[oracleProviders.Provider](),
 	}, nil
 }
 
@@ -227,5 +227,5 @@ func (c *connector) Driver() driver.Driver {
 // Parameters:
 //   - provider: the provider to append to the connector registry.
 func (c *connector) RegisterProvider(provider oracleProviders.Provider) {
-	c.providerRegistry.RegisterProvider(provider)
+	c.providerRegistry.Register(provider)
 }

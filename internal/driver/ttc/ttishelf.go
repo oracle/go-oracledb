@@ -46,6 +46,8 @@ import (
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	common "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/errors"
+	"github.com/oracle/go-oracledb/v26/oracle/providers"
 )
 
 // ttiShelfUser declares a dependency on a TTC shelf.
@@ -65,12 +67,13 @@ type StmtCancellationFunction func(ctx context.Context) error
 type ttiShelf[T any] struct {
 	*common.Shelf[T]
 	codecFactory             codecFactory
-	_providerRegistry        internalCommon.ProviderRegistry
+	_providerRegistry        internalCommon.Registry[providers.Provider]
 	_statements              map[*Statement]weak.Pointer[Statement]
 	_currentTransaction      *transaction
 	_cancelExecutionFunction StmtCancellationFunction
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
+	_validatorRegistry       internalCommon.Registry[stateValidator]
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
@@ -79,10 +82,11 @@ type ttiShelf[T any] struct {
 func newShelf[T any]() *ttiShelf[T] {
 	base := common.NewShelf[T]()
 	return &ttiShelf[T]{
-		Shelf:         base,
-		codecFactory:  nil,
-		_statements:   make(map[*Statement]weak.Pointer[Statement]),
-		_eventService: newEventService(),
+		Shelf:              base,
+		codecFactory:       nil,
+		_statements:        make(map[*Statement]weak.Pointer[Statement]),
+		_eventService:      newEventService(),
+		_validatorRegistry: internalCommon.NewRegistry[stateValidator](),
 	}
 }
 
@@ -102,7 +106,7 @@ func (s *ttiShelf[T]) GetCodecFactory() codecFactory {
 //
 // Parameters:
 //   - providerRegistry: the provider registry to store on the shelf.
-func (s *ttiShelf[T]) registerProviderRegistry(providerRegistry internalCommon.ProviderRegistry) {
+func (s *ttiShelf[T]) registerProviderRegistry(providerRegistry internalCommon.Registry[providers.Provider]) {
 	s._providerRegistry = providerRegistry
 }
 
@@ -110,7 +114,7 @@ func (s *ttiShelf[T]) registerProviderRegistry(providerRegistry internalCommon.P
 //
 // Returns:
 //   - the provider registry registered on the shelf, or nil if none was registered.
-func (s *ttiShelf[T]) getProviderRegistry() internalCommon.ProviderRegistry {
+func (s *ttiShelf[T]) getProviderRegistry() internalCommon.Registry[providers.Provider] {
 	return s._providerRegistry
 }
 
@@ -196,4 +200,32 @@ func (s *ttiShelf[T]) getServerTimeZoneOffset() int16 {
 
 func (s *ttiShelf[T]) getEventService() *eventService {
 	return s._eventService
+}
+
+// stateValidator reports whether a TTC component is still in a valid state.
+// Validators are checked before an operation completes so stale or otherwise
+// invalid protocol state can invalidate the operation.
+type stateValidator interface {
+	// isValid reports whether the associated TTC component is in a valid
+	// state.
+	isValid(context.Context) bool
+}
+
+// registerStateValidator adds a validator to the shelf's connection
+// validation chain.
+func (s *ttiShelf[T]) registerStateValidator(validator stateValidator) {
+	s._validatorRegistry.Register(validator)
+}
+
+// checkCurrentState runs all validators registered on the shelf.
+//
+// Returns an internal error when any validator reports that the state is
+// invalid; otherwise it returns nil.
+func (s *ttiShelf[T]) checkCurrentState(ctx context.Context) error {
+	for _, item := range s._validatorRegistry.GetAll() {
+		if item != nil && !item.isValid(ctx) {
+			return s.LocalizeError(internalCommon.NewOracleError(errors.InternalError, nil))
+		}
+	}
+	return nil
 }

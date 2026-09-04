@@ -309,6 +309,7 @@ func TestConnection_FaultyOnDrain(t *testing.T) {
 	mStreamer := NewWrappedMockStreamer(incomingMsgL, streamer)
 
 	shelf.RegisterMessageStreamer(mStreamer)
+	shelf.registerStateValidator(mStreamer)
 
 	// Pre-seed incoming wire with the full valid SELECT query stream dump.
 	stream := Oall8Payload(validSelectQueryDump)
@@ -375,6 +376,7 @@ func TestConnection_FaultyOnDrainInStatement(t *testing.T) {
 	mStreamer := NewWrappedMockStreamer(incomingMsgL, streamer)
 
 	shelf.RegisterMessageStreamer(mStreamer)
+	shelf.registerStateValidator(mStreamer)
 
 	// Pre-seed incoming wire with the full valid SELECT query stream dump.
 	stream := Oall8Payload(validSelectQueryDump)
