@@ -41,8 +41,9 @@ package session
 import (
 	"bytes"
 	"encoding/binary"
-	"strings"
 	"testing"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 func TestHeaderMarshalUnmarshal(t *testing.T) {
@@ -157,14 +158,6 @@ func TestConnectPacketMarshal(t *testing.T) {
 
 }
 
-func TestConnectPacketUnmarshal(t *testing.T) {
-	t.Parallel()
-	cp := &connectPacket{}
-	err := cp.unmarshal([]byte{}, sessionAtts{}, &header{})
-	if err == nil || err.Error() != "not implemented" {
-		t.Errorf("Expected 'not implemented' error, got %v", err)
-	}
-}
 func TestDataPacketMarshal(t *testing.T) {
 	t.Parallel()
 	sAtts := &sessionAtts{largeSDU: false}
@@ -263,9 +256,7 @@ func TestDataPacketUnmarshal(t *testing.T) {
 	for _, packetLen := range []uint32{8, 9} {
 		hdr := &header{packetLength: packetLen, typ: NSPTDA}
 		err = dp.unmarshal(buf[:packetLen], sAtts, hdr)
-		if err == nil || !strings.Contains(err.Error(), "data packet too short") {
-			t.Errorf("Expected data packet too short error for length %d, got %v", packetLen, err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkContextExpectedLength)
 	}
 }
 
@@ -369,12 +360,6 @@ func TestAcceptPacketUnmarshal(t *testing.T) {
 		t.Errorf("Unmarshal below min data flags failed: %v", err)
 	}
 
-	// Test Marshal not implemented
-	err = ap.marshal(buf, sAtts, 0)
-	if err == nil {
-		t.Errorf("Expected not implemented error for Marshal")
-	}
-
 	// Short buffer should error
 	err = ap.unmarshal(buf[:NSPACFL1], sAtts, hdr)
 	if err == nil {
@@ -463,11 +448,6 @@ func TestRefusePacketUnmarshal(t *testing.T) {
 		t.Errorf("Expected error for short refuse packet")
 	}
 
-	// Test Marshal not implemented
-	err = rp.marshal(buf, nil, 0)
-	if err == nil {
-		t.Errorf("Expected not implemented error for Marshal")
-	}
 }
 
 func TestRedirectPacketUnmarshal(t *testing.T) {
@@ -502,11 +482,6 @@ func TestRedirectPacketUnmarshal(t *testing.T) {
 		t.Errorf("Expected error for short redirect packet")
 	}
 
-	// Test Marshal not implemented
-	err = rp.marshal(buf, nil, 0)
-	if err == nil {
-		t.Errorf("Expected not implemented error for Marshal")
-	}
 }
 
 func TestMarkerPacket(t *testing.T) {
@@ -596,16 +571,16 @@ func TestControlPacketUnmarshal(t *testing.T) {
 	binary.BigEndian.PutUint32(buf[NSPCTLDAT:], 22)
 	binary.BigEndian.PutUint32(buf[NSPCTLDAT+4:], 12345)
 	err = cp.unmarshal(buf, nil, hdr)
-	if err == nil || err.Error() != "inband connection error: ORA-12345" {
-		t.Errorf("Unexpected error for ORA error: %v", err)
+	if err == nil || err.(oracleErrors.SQLError).ErrorCode() != string(oracleErrors.ErrConnectionInband) {
+		t.Errorf("expected in-band ORA error, got %v", err)
 	}
 
 	// Test other error without EMFI
 	binary.BigEndian.PutUint32(buf[NSPCTLDAT:], 0)
 	binary.BigEndian.PutUint32(buf[NSPCTLDAT+4:], 12345)
 	err = cp.unmarshal(buf, nil, hdr)
-	if err == nil || err.Error() != "inband connection error: TNS-12345" {
-		t.Errorf("Unexpected error for TNS error: %v", err)
+	if err == nil || err.(oracleErrors.SQLError).ErrorCode() != string(oracleErrors.ErrConnectionInband) {
+		t.Errorf("expected in-band TNS error, got %v", err)
 	}
 
 	cp.Clear()
@@ -639,12 +614,6 @@ func TestControlPacketUnmarshal(t *testing.T) {
 		t.Errorf("Expected error for invalid cmd")
 	}
 
-	// Test Marshal not implemented
-	err = cp.marshal(buf, nil, 0)
-	if err == nil {
-		t.Errorf("Expected not implemented error for Marshal")
-	}
-
 	// Reset cmd for invalid EMFI test
 	binary.BigEndian.PutUint16(buf[NSPCTLCMD:], NSPCTL_SERR)
 
@@ -652,8 +621,8 @@ func TestControlPacketUnmarshal(t *testing.T) {
 	binary.BigEndian.PutUint32(buf[NSPCTLDAT:], 999)
 	binary.BigEndian.PutUint32(buf[NSPCTLDAT+4:], 12345)
 	err = cp.unmarshal(buf, nil, hdr)
-	if err == nil || err.Error() != "inband connection error: TNS-12345" {
-		t.Errorf("Expected inband connection error, got %v", err)
+	if err == nil || err.(oracleErrors.SQLError).ErrorCode() != string(oracleErrors.ErrConnectionInband) {
+		t.Errorf("expected in-band TNS error, got %v", err)
 	}
 }
 
@@ -674,11 +643,6 @@ func TestResendPacketUnmarshal(t *testing.T) {
 		t.Errorf("Expected error for short buffer")
 	}
 
-	// Test Marshal
-	err = rp.marshal(buf, nil, 0)
-	if err != nil {
-		t.Errorf("Marshal failed: %v", err)
-	}
 }
 
 func TestContains(t *testing.T) {

@@ -115,7 +115,7 @@ func TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate(t *testi
 	if err == nil {
 		t.Fatal("expected post-accept DN match to fail")
 	}
-	if !strings.Contains(err.Error(), "post-accept DN match failed") {
+	if !strings.Contains(err.Error(), "server certificate DN match failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -198,6 +198,12 @@ func initMessagesEn() {
 	// Action:   Fix the connect descriptor syntax.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.NamingParseFailed), "invalid connection string")
+	message.SetString(language.English, string(oracleErrors.NamingParsePosition), "expected name after '(' at position %d")
+	message.SetString(language.English, string(oracleErrors.NamingParseValue), "invalid connection string token %q")
+	message.SetString(language.English, string(oracleErrors.NamingParseValues), "invalid connection string: got root %q, expected %q")
+	message.SetString(language.English, string(oracleErrors.NamingParsePath), "invalid connection string path %q")
+	message.SetString(language.English, string(oracleErrors.NamingParsePathSegment), "invalid connection string path segment %q in %q at position %d")
+	message.SetString(language.English, string(oracleErrors.NamingParseBounds), "invalid connection string: got %d, expected %d")
 
 	// Document: Yes
 	// Cause:    The connection string has an invalid value for a field.
@@ -240,6 +246,53 @@ func initMessagesEn() {
 	// Action:   Reconnect using AL32UTF8 or AL16UTF16 character sets.
 	// Comment:  Arg[0]: unsupported character set identifier.
 	message.SetString(language.English, string(oracleErrors.UnsupportedCharacterSet), "Unsupported character set: %d")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkValue), "Invalid value for %s: %v")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkExpectedValue), "Invalid value for %s: got %v, expected %v")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkContextValue), "Invalid value for %s (%s): %v")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkContextExpectedValue), "Invalid value for %s (%s): got %v, expected %v")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkLength), "Invalid length for %s: %d")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkExpectedLength), "Invalid length for %s: got %d, expected %d")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkContextExpectedLength), "Invalid length for %s (%s): got %d, expected %d")
+	message.SetString(language.English, string(oracleErrors.ErrConnectionInband), "server error received in-band")
+	message.SetString(language.English, string(oracleErrors.NetworkDataReadFailed), "Failed to read network data")
+	message.SetString(language.English, string(oracleErrors.ConnectionRefusedDetail), "connection refused: ORA-%s, user reason %d, system reason %d")
+	message.SetString(language.English, string(oracleErrors.NetworkServerErrorCode), "%s-%s")
+	message.SetString(language.English, string(oracleErrors.BreakPacketReceived), "break packet received")
+	message.SetString(language.English, string(oracleErrors.RefuseDataParseFailed), "failed to parse refuse data")
+	message.SetString(language.English, string(oracleErrors.RedirectAddressMissing), "redirect data contains no address")
+	message.SetString(language.English, string(oracleErrors.TLSRenegotiationUnsupported), "TLS renegotiation is not supported by this connection")
+	message.SetString(language.English, string(oracleErrors.UnexpectedConnectResponse), "unexpected packet during connect")
+	message.SetString(language.English, string(oracleErrors.NamingInputMissing), "missing %s")
+	message.SetString(language.English, string(oracleErrors.NamingTokensMissing), "connection string has no valid tokens")
+	message.SetString(language.English, string(oracleErrors.NamingUnexpectedClosingParenthesis), "unexpected ')' at position %d")
+	message.SetString(language.English, string(oracleErrors.NetworkRetryLimitExceeded), "too many %s: exceeded maximum of %d")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkProperty), "invalid value for property %s")
+	message.SetString(language.English, string(oracleErrors.PKCS8ParseFailed), "failed to parse PKCS#8 encrypted private key")
+	message.SetString(language.English, string(oracleErrors.PKCS8DecryptFailed), "failed to decrypt PKCS#8 encrypted private key")
+	message.SetString(language.English, string(oracleErrors.PKCS7PaddingInvalid), "invalid PKCS#7 padding")
+	message.SetString(language.English, string(oracleErrors.TLSCertificateVerificationFailed), "server certificate verification failed")
+	message.SetString(language.English, string(oracleErrors.TLSCertificateDNMatchFailed), "server certificate DN match failed")
+	message.SetString(language.English, string(oracleErrors.PEMBlockDecryptFailed), "failed to decrypt PEM block")
+	message.SetString(language.English, string(oracleErrors.WalletKeyPairLoadFailed), "failed to load wallet key pair")
+	message.SetString(language.English, string(oracleErrors.ConfiguredDNInvalid), "invalid configured DN")
+	message.SetString(language.English, string(oracleErrors.CertificateSubjectInvalid), "invalid server certificate subject")
+	message.SetString(language.English, string(oracleErrors.PKCS8ParametersParseFailed), "failed to parse %s parameters")
+	message.SetString(language.English, string(oracleErrors.PKCS8InitializationVectorParseFailed), "failed to parse PKCS#8 initialization vector")
+	message.SetString(language.English, string(oracleErrors.DNMalformedAttribute), "malformed DN attribute %s")
+	message.SetString(language.English, string(oracleErrors.DNUnsupportedAttribute), "unsupported DN attribute %s")
+	message.SetString(language.English, string(oracleErrors.DNAttributeValueMissing), "missing value for DN attribute %s")
+	message.SetString(language.English, string(oracleErrors.DNMalformedEscape), "malformed DN escape sequence")
+	message.SetString(language.English, string(oracleErrors.DNMismatchAtRDN), "DN mismatch at RDN %d")
+	message.SetString(language.English, string(oracleErrors.DNAttributeMissingFromCertificate), "configured DN attribute OID %s not found in server certificate subject")
+	message.SetString(language.English, string(oracleErrors.DNUnsupportedAttributeOID), "configured DN contains an unsupported attribute OID %s")
+	message.SetString(language.English, string(oracleErrors.DNDuplicateAttributeOID), "configured DN contains a duplicate attribute OID %s")
+	message.SetString(language.English, string(oracleErrors.DNAttributeOIDValueTypeInvalid), "DN attribute OID %s has a non-string value")
+	message.SetString(language.English, string(oracleErrors.DNHexValueUnsupported), "hex-encoded DN attribute values are not supported")
+	message.SetString(language.English, string(oracleErrors.DNAttributeValueInvalidUTF8), "DN attribute value is not valid UTF-8")
+	message.SetString(language.English, string(oracleErrors.CertificateSubjectTrailingData), "server certificate subject contains trailing data")
+	message.SetString(language.English, string(oracleErrors.CertificateSubjectParseFailed), "failed to parse server certificate subject")
+	message.SetString(language.English, string(oracleErrors.WalletCACertificatesMissing), "wallet contains no CA certificates")
+	message.SetString(language.English, string(oracleErrors.WalletCACertificatesParseFailed), "failed to parse wallet CA certificates")
 
 	message.SetString(language.English, string(oracleErrors.ConnectTimeout), "%s Timeout of %d for %s.(CONNECTION_ID=%s)")
 
@@ -394,6 +447,11 @@ func initMessagesEn() {
 
 	// Document: No
 	message.SetString(language.English, string(oracleErrors.InternalError), "internal error occurred.")
+	// Document: No
+	// Cause:    An unexpected state was encountered in the network driver.
+	// Action:   Try again or contact Oracle Support if the error persists.
+	// Comment:  Arg[0]: network component
+	message.SetString(language.English, string(oracleErrors.NetworkInternalError), "Internal network error: %s")
 	// Document: No
 	// Cause:    The shelf was used before a localization service was registered.
 	// Action:   Ensure the connection instantiator registers a localization service before returning the shelf.

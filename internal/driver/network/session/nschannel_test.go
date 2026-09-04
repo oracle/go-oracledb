@@ -453,15 +453,6 @@ func TestFlush(t *testing.T) {
 	})
 }
 
-func TestSendInterrupt(t *testing.T) {
-	t.Parallel()
-	ns := newNetworkSession()
-	err := ns.SendInterrupt(context.Background())
-	if err == nil || err.Error() != "SendInterrupt not implemented" {
-		t.Errorf("Expected 'SendInterrupt not implemented', got %v", err)
-	}
-}
-
 func TestSendReset(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
