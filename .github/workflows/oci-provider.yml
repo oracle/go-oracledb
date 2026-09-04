@@ -1,0 +1,28 @@
+name: OCI provider validation
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - providers/**
+      - .github/workflows/oci-provider.yml
+  workflow_dispatch:
+
+concurrency:
+  group: "oci-provider-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-go-env
+      - name: Test OCI provider module
+        working-directory: providers/oci
+        run: |
+          go test -race -coverprofile=coverage.out ./...
+          coverage=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%", "", $3); print $3}')
+          echo "OCI provider coverage: ${coverage}%"
+          awk -v coverage="$coverage" 'BEGIN { exit (coverage + 0 >= 95 ? 0 : 1) }'
