@@ -39,6 +39,8 @@ package ttc
 
 import (
 	"context"
+	"database/sql/driver"
+	"errors"
 	"io"
 	"testing"
 
@@ -74,6 +76,36 @@ func TestImplicitResultRowsNextResultSet(t *testing.T) {
 	}
 	if err := rows.NextResultSet(); err != io.EOF {
 		t.Fatalf("final NextResultSet() error = %v, want io.EOF", err)
+	}
+}
+
+func TestTTCRows_RefCursorNextAndClose(t *testing.T) {
+	child := &ttcRows{}
+	rows := newTTCRows([]columnContext{{Name: []byte("CUR"), DataType: DtyCur}})
+	rows.rowData = [][]driverCommon.B1Array{{nil}}
+	rows.refCursorData = [][]*ttcRows{{child}}
+	rows.lobColContext = [][]*lobColumnContext{{nil}}
+	rows.numOfRows = 1
+
+	dest := make([]driver.Value, 1)
+	if err := rows.Next(dest); err != nil {
+		t.Fatalf("Next() error = %v", err)
+	}
+	if got, ok := dest[0].(*ttcRows); !ok || got != child {
+		t.Fatalf("REF CURSOR value = %#v, want child rows", dest[0])
+	}
+
+	var calls int
+	closeErr := errors.New("close child")
+	child.onClose = func() error { calls++; return closeErr }
+	if err := rows.Close(); !errors.Is(err, closeErr) {
+		t.Fatalf("Close() error = %v, want %v", err, closeErr)
+	}
+	if err := rows.Close(); !errors.Is(err, closeErr) {
+		t.Fatalf("second Close() error = %v, want cached %v", err, closeErr)
+	}
+	if calls != 1 {
+		t.Fatalf("child close calls = %d, want 1", calls)
 	}
 }
 
@@ -306,6 +338,16 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 				t.Fatalf("truncated %s returned nil error", TTCMsgTypeName[code])
 			}
 		})
+	}
+}
+
+func TestTTIimplres_RefCursorDCBHeaderErrors(t *testing.T) {
+	ctx := context.Background()
+	for _, payload := range [][]byte{nil, {0}} {
+		dcb := &tTIdcb{newUDS: newTTIuds}
+		if err := dcb.unmarshalFromRefCursor(ctx, createMarshaller(payload, 0, 0)); err == nil {
+			t.Fatalf("DCB payload %v returned nil error", payload)
+		}
 	}
 }
 
