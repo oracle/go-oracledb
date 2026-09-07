@@ -174,6 +174,7 @@ var testCases = []struct {
 	{"TestMessageStreamer_CallbackRegisterPostUnmarshal", "unitary", false, TestMessageStreamer_CallbackRegisterPostUnmarshal},
 	{"TestMessageStreamer_CallbackUnregister", "unitary", false, TestMessageStreamer_CallbackUnregister},
 	{"TestMessageStreamer_Drain", "unitary", false, TestMessageStreamer_Drain},
+	{"TestMessageStreamer_IsValidReturnsFalseAndRaisesStaleEvent", "unitary", false, TestMessageStreamer_IsValidReturnsFalseAndRaisesStaleEvent},
 	{"TestMessageStreamer_SimplePush", "unitary", false, TestMessageStreamer_SimplePush},
 	{"TestMessageStreamer_PullFromIncomings", "unitary", false, TestMessageStreamer_PullFromIncomings},
 	{"TestMessageStreamer_OrderedPush", "unitary", false, TestMessageStreamer_OrderedPush},
@@ -518,6 +519,11 @@ var testCases = []struct {
 	{"TestTransactionCommitSuccess", "unitary", false, TestTransactionCommitSuccess},
 	{"TestTransactionRollbackSuccess", "unitary", false, TestTransactionRollbackSuccess},
 	{"TestCallBeginTxTwice", "unitary", false, TestCallBeginTxTwice},
+	{"TestConnectionBeginUsesDefaultIsolationLevel", "unitary", false, TestConnectionBeginUsesDefaultIsolationLevel},
+	{"TestConnectionBeginTxRejectsUnsupportedIsolationLevel", "unitary", false, TestConnectionBeginTxRejectsUnsupportedIsolationLevel},
+	{"TestConnectionBeginTxUnregistersAfterSetupErrors", "unitary", false, TestConnectionBeginTxUnregistersAfterSetupErrors},
+	{"TestTransactionOperationErrors", "unitary", false, TestTransactionOperationErrors},
+	{"TestTransactionOperationRejectsStaleMessages", "unitary", false, TestTransactionOperationRejectsStaleMessages},
 
 	{"TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination", "unitary", false, TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination},
 	{"TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError", "unitary", false, TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError},
@@ -573,6 +579,11 @@ var testCases = []struct {
 	{"TestTTILobd_UnMarshalFrom_Success", "unitary", false, TestTTILobd_UnMarshalFrom_Success},
 	{"TestTTIShelf_LocalizedStatementExecError", "unitary", false, TestTTIShelf_LocalizedStatementExecError},
 	{"TestTTIShelf_StatementDrain", "unitary", false, TestTTIShelf_StatementDrain},
+	{"TestTTIShelf_ValidateConnection", "unitary", false, TestTTIShelf_ValidateConnection},
+	{"TestNewMessageStreamerRegistersConnectionValidator", "unitary", false, TestNewMessageStreamerRegistersConnectionValidator},
+	{"TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator", "unitary", false, TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator},
+	{"TestTTIShelf_RegisterProviderRegistry", "unitary", false, TestTTIShelf_RegisterProviderRegistry},
+	{"TestTTIShelf_RegisterProviderRegistry_ReplacesExistingRegistry", "unitary", false, TestTTIShelf_RegisterProviderRegistry_ReplacesExistingRegistry},
 	{"TestTTIlob_GetFuncCode", "unitary", false, TestTTIlob_GetFuncCode},
 	{"TestTTIlob_GetMsgCode", "unitary", false, TestTTIlob_GetMsgCode},
 	{"TestTTIlob_MarshalTo_Fail", "unitary", false, TestTTIlob_MarshalTo_Fail},
@@ -1004,6 +1015,7 @@ type mockStreamer struct {
 	pullMsg    common.Message[common.MessageType]
 	pullMsgs   []common.Message[common.MessageType]
 	pullErr    error
+	drainIn    int
 }
 
 // wrapped mock stream combines both a pre-filled message incoming queue
@@ -1048,6 +1060,15 @@ func (m *wrappedMockStreamer) Drain(ctx context.Context, direction common.Stream
 	return icomingLen + i, o
 }
 
+func (m *wrappedMockStreamer) isValid(ctx context.Context) bool {
+	msgIn, _ := m.Drain(ctx, common.IN)
+	if msgIn == 0 {
+		return true
+	}
+	m.streamer.shelf.getEventService().post(streamerStaleEvent)
+	return false
+}
+
 func (m *wrappedMockStreamer) RegisterPostUnmarshallCallback(t common.MessageType, cb StreamerPostUnmarshallCallback) {
 	m.streamer.RegisterPostUnmarshallCallback(t, cb)
 }
@@ -1086,6 +1107,9 @@ func (m *mockStreamer) Flush(_ context.Context) error {
 }
 
 func (m *mockStreamer) Drain(_ context.Context, direction common.StreamDirection) (int, int) {
+	if direction == common.IN {
+		return m.drainIn, 0
+	}
 	return 0, 0
 }
 

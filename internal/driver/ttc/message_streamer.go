@@ -127,15 +127,19 @@ const outgoingMessagesListMaxLength = 50
 // or that a caller let more than 1024 messages to be parked.
 const incomingMessagesListMaxLength = 1024
 
-// NewMessageStreamer constructor
+// NewMessageStreamer creates a message streamer, associates it with shelf, and
+// registers it as a connection validator.
 func NewMessageStreamer(shelf *ttiShelf[driverCommon.MessageType]) *MessageStreamer {
-	return &MessageStreamer{
+	streamer := &MessageStreamer{
 		incomingMessages: list.New(),
 		outgoingMessages: list.New(),
 		preUCallbacks:    make(map[driverCommon.MessageType]StreamerPreUnmarshallCallback),
 		postUCallbacks:   make(map[driverCommon.MessageType]StreamerPostUnmarshallCallback),
 		shelf:            shelf,
 	}
+	// register the streamer as a state validator
+	shelf.registerStateValidator(streamer)
+	return streamer
 }
 
 // Push implementation. See Streamer interface
@@ -384,4 +388,18 @@ func (ms *MessageStreamer) getMessageForHeader(header *messageHeader) (driverCom
 		return ms.shelf.GetMessageFactory().GetMessageForFunction(header.messageType, header.functionType)
 	}
 	return ms.shelf.GetMessageFactory().GetMessage(header.messageType)
+}
+
+// isValid implements the stateValidator interface. When called it reports
+// whether the message streamer is in a valid state.
+func (ms *MessageStreamer) isValid(ctx context.Context) bool {
+	msgIn, _ := ms.Drain(ctx, driverCommon.IN)
+	if msgIn == 0 {
+		return true
+	}
+
+	common.Odl.Error("unexpected messages remained; invalidating connection",
+		"remaining messageCount", msgIn)
+	ms.shelf.getEventService().post(streamerStaleEvent)
+	return false
 }

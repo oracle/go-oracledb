@@ -204,14 +204,8 @@ func (pa *passwordAuthenticator) _doOSESSKEY(ctx context.Context) error {
 		}
 	}
 
-	// no message should be left at this point
-	msgIn, _ := streamer.Drain(ctx, driverCommon.IN)
-	// no message should be left at this point
-	if msgIn != 0 {
-		// should drop connection.
-		common.Odl.Warn("messaging service not drained after RPA")
-		shelf.getEventService().post(streamerStaleEvent)
-		return shelf.LocalizeError(common.NewOracleError(oracleErrors.InternalError, nil))
+	if err := shelf.checkCurrentState(ctx); err != nil {
+		return err
 	}
 
 	if osesskeyrpa == nil {
@@ -366,13 +360,8 @@ func handleOAuthResponse(ctx context.Context, streamer MessageStreamerInterface,
 		}
 	}
 
-	msgIn, _ := streamer.Drain(ctx, driverCommon.IN)
-	// no message should be left at this point
-	if msgIn != 0 {
-		// should drop connection.
-		common.Odl.Warn("messaging service not drained after query")
-		shelf.getEventService().post(streamerStaleEvent)
-		return nil, shelf.LocalizeError(common.NewOracleError(oracleErrors.InternalError, nil))
+	if err := shelf.checkCurrentState(ctx); err != nil {
+		return nil, err
 	}
 
 	if oauthrpa == nil {
