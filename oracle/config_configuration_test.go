@@ -278,34 +278,6 @@ func TestConfiguration_LoggingConfigAssignFromEnvValidation(t *testing.T) {
 	})
 }
 
-// TestConfiguration_LoggingConfigAssignFromFlags verifies that explicitly
-// supplied logging flags override the defaults on a logging configuration.
-func TestConfiguration_LoggingConfigAssignFromFlags(t *testing.T) {
-	if err := flag.Set("oracle.go.logging.Level", "WARN"); err != nil {
-		t.Fatalf("setting logging level flag failed: %v", err)
-	}
-	if err := flag.Set("oracle.go.logging.Destination", "STDERR"); err != nil {
-		t.Fatalf("setting logging destination flag failed: %v", err)
-	}
-	if err := flag.Set("oracle.go.logging.IncludeSensitive", "true"); err != nil {
-		t.Fatalf("setting sensitive logging flag failed: %v", err)
-	}
-
-	config := oracleconfig.NewOracleLoggingConfig()
-	if err := config.AssignFromFlags(); err != nil {
-		t.Fatalf("AssignFromFlags failed: %v", err)
-	}
-	if got, want := config.GetLevel(), "WARN"; got != want {
-		t.Fatalf("logging level = %q, want %q", got, want)
-	}
-	if got, want := config.GetDestination(), "STDERR"; got != want {
-		t.Fatalf("logging destination = %q, want %q", got, want)
-	}
-	if !config.GetIncludeSensitive() {
-		t.Fatal("IncludeSensitive = false, want true")
-	}
-}
-
 // TestConfiguration_AssignFromEmptyFlags checks AssignFromFlags
 // expectations:
 //

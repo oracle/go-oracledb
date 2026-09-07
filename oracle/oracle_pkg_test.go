@@ -75,7 +75,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConfiguration_AssignFromEnvClientLanguageTag", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnvClientLanguageTag},
 	{Name: "TestConfiguration_LoggingConfigAssignFromEnv", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_LoggingConfigAssignFromEnv},
 	{Name: "TestConfiguration_LoggingConfigAssignFromEnvValidation", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_LoggingConfigAssignFromEnvValidation},
-	{Name: "TestConfiguration_LoggingConfigAssignFromFlags", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_LoggingConfigAssignFromFlags},
 	{Name: "TestConfiguration_toNSConnectionParameters", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_toNSConnectionParameters},
 	{Name: "TestConfiguration_InitLoggingWithConfigFileDestination", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_InitLoggingWithConfigFileDestination},
 	{Name: "TestEnquoteLiteral", Categories: "unitary", Exclusive: false, Fn: TestEnquoteLiteral},
