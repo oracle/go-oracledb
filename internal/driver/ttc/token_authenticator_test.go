@@ -496,6 +496,8 @@ func TestValidateJWTExpirationExpired(t *testing.T) {
 	}
 }
 
+// tokenAuthErrorCode if the error is not nil and a SQLError, it returns the
+// error code otherwise nil.
 func tokenAuthErrorCode(t *testing.T, err error) oracleErrors.ErrorCode {
 	t.Helper()
 	if err == nil {
