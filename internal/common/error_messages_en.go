@@ -501,30 +501,30 @@ func initMessagesEn() {
 	// Comment:  Arg[0]: operation (query|retrieve|parse)
 	message.SetString(language.English, string(oracleErrors.ServerTimeZoneError), "Failed to %s server timezone")
 	// Document: No
-	// Cause:    The OSON scalar opcode is not supported by the decoder.
-	// Action:   Check the database/version and update the driver if needed.
+	// Cause:    The OSON document contains a scalar opcode that this driver version cannot decode.
+	// Action:   Check database and driver version compatibility. Upgrade the driver if the document uses a newer OSON scalar type.
 	// Comment:  Arg[0]: opcode byte
-	message.SetString(language.English, string(oracleErrors.OsonUnsupportedScalarError), "unsupported OSON scalar opcode: 0x%02x")
+	message.SetString(language.English, string(oracleErrors.OsonUnsupportedScalarError), "OSON document contains unsupported scalar opcode 0x%02x")
 	// Document: No
 	// Cause:    A JSON access request used an invalid access path or mode.
 	// Action:   Verify that the requested JSON access is valid for the value kind.
 	// Comment:  Arg[0]: access descriptor.
 	message.SetString(language.English, string(oracleErrors.JSONAccessError), "invalid JSON access: %s")
 	// Document: No
-	// Cause:    The OSON header is invalid, truncated, or unsupported.
-	// Action:   Verify the OSON payload and review driver logs for parsing details.
+	// Cause:    The OSON magic, version, flags, dictionary metadata, or segment layout is invalid, truncated, or unsupported.
+	// Action:   Verify that the complete value was read from an Oracle JSON column. If the database produced the value, review the wrapped cause and check database and driver version compatibility.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.OsonHeaderError), "OSON header parsing failed")
+	message.SetString(language.English, string(oracleErrors.OsonHeaderError), "invalid or unsupported OSON document header")
 	// Document: No
-	// Cause:    An invalid or out-of-bounds read was attempted on the OSON buffer.
-	// Action:   Verify the OSON payload and review driver logs for buffer access details.
+	// Cause:    The decoder attempted to read outside the OSON byte buffer or used an invalid buffer range.
+	// Action:   Inspect the wrapped cause for the requested offset, length, and buffer size.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.OsonBufferError), "OSON buffer access failed")
+	message.SetString(language.English, string(oracleErrors.OsonBufferError), "invalid OSON buffer access")
 	// Document: No
-	// Cause:    The OSON tree layout, offsets, or opcode stream is invalid or unsupported.
-	// Action:   Verify the OSON payload and review driver logs for parsing details.
+	// Cause:    The OSON value tree contains an invalid or unsupported opcode, container layout, child offset, or forwarding record.
+	// Action:   Verify that the payload is a complete OSON document. Inspect the wrapped cause and check database and driver version compatibility.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.OsonParsingError), "OSON tree parsing failed")
+	message.SetString(language.English, string(oracleErrors.OsonParsingError), "invalid or unsupported OSON document structure")
 	// Document: No
 	// Cause:    A public oracle/json method was called on a nil receiver.
 	// Action:   Initialize the receiver before calling the method.
@@ -546,10 +546,15 @@ func initMessagesEn() {
 	// Comment:  Arg[0]: array index.
 	message.SetString(language.English, string(oracleErrors.JSONArrayIndexOutOfRangeError), "oracle/json array index %d out of range")
 	// Document: No
-	// Cause:    The supplied Go value cannot be encoded into an OSON image.
-	// Action:   Use supported JSONValue input types or bind JSONString for preformatted JSON text.
-	// Comment:  Arg[0]: unsupported value description.
-	message.SetString(language.English, string(oracleErrors.OsonEncodingError), "OSON encoding failed: %v")
+	// Cause:    A value could not be encoded as OSON.
+	// Action:   Inspect the wrapped cause for details.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.OsonEncodingError), "failed to encode value as an OSON document")
+	// Document: No
+	// Cause:    An Oracle JSON value could not be represented as JSON text.
+	// Action:   Inspect the wrapped cause for details.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.JSONRenderingError), "failed to render Oracle JSON value as JSON text")
 	// Document: No
 	// Cause:    Token-based authentication resolved an empty token.
 	// Action:   Provide a non-empty token directly with AccessToken or ensure the token file contains a valid token.

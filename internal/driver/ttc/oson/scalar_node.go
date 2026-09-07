@@ -99,7 +99,7 @@ func (scalar *scalarNode) Kind() drvCommon.Kind {
 func newScalarNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*scalarNode, error) {
 	opcode, err := buf.readUB1At(offset)
 	if err != nil {
-		common.Odl.Error("newScalarNodeAt: failed", "error", err, "offset", offset)
+		common.Odl.Debug("newScalarNodeAt: failed", "error", err, "offset", offset)
 		return nil, err
 	}
 
@@ -154,8 +154,8 @@ func (scalar *scalarNode) StringWithOption(opts drvCommon.JSONOption) (string, e
 
 	text, err := json.Marshal(jsonCompatibleValue(value))
 	if err != nil {
-		common.Odl.Error("scalarNode.StringWithOption: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
-		return "", common.NewOracleError(oracleErrors.OsonBufferError, err)
+		common.Odl.Debug("scalarNode.StringWithOption: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
+		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
 	return string(text), nil
 }
@@ -173,7 +173,7 @@ func (scalar *scalarNode) StringWithOption(opts drvCommon.JSONOption) (string, e
 func (scalar *scalarNode) Value(opts drvCommon.JSONOption) (any, error) {
 	value, err := _decodeScalarValue(scalar, opts)
 	if err != nil {
-		common.Odl.Error("scalarNode.Value: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
+		common.Odl.Debug("scalarNode.Value: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
 		return nil, err
 	}
 
@@ -503,7 +503,8 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONOption) (any, err
 		return append([]byte(nil), raw...), nil
 
 	default:
-		return nil, common.NewOracleError(oracleErrors.OsonUnsupportedScalarError, nil, opcode)
+		cause := fmt.Errorf("opcode 0x%02x does not match a supported OSON scalar encoding", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonUnsupportedScalarError, cause, opcode)
 	}
 }
 

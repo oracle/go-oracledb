@@ -82,29 +82,29 @@ type objectNode struct {
 func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*objectNode, error) {
 	opcode, err := buf.readUB1At(offset)
 	if err != nil {
-		common.Odl.Error("newObjectNodeAt: failed", "error", err, "offset", offset)
+		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset)
 		return nil, err
 	}
 	if !isObjectOpcode(opcode) {
 		cause := fmt.Errorf("opcode 0x%02x is not an object", opcode)
-		common.Odl.Error("newObjectNodeAt: failed", "error", cause, "offset", offset, "opcode", opcode)
+		common.Odl.Debug("newObjectNodeAt: failed", "error", cause, "offset", offset, "opcode", opcode)
 		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 	}
 
 	memberCount, fieldIDArrayStart, childOffsetArrayStart, err := readObjectLayout(buf, header, offset, opcode)
 	if err != nil {
-		common.Odl.Error("newObjectNodeAt: failed", "error", err, "offset", offset, "opcode", opcode)
+		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset, "opcode", opcode)
 		return nil, err
 	}
 
 	fieldIDValues, err := readFieldIDEntriesAt(buf, header, fieldIDArrayStart, memberCount)
 	if err != nil {
-		common.Odl.Error("newObjectNodeAt: failed", "error", err, "offset", offset, "count", memberCount)
+		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset, "count", memberCount)
 		return nil, err
 	}
 	memberOffsets, err := readChildOffsetsAt(buf, header, offset, childOffsetArrayStart, memberCount, opcode)
 	if err != nil {
-		common.Odl.Error("newObjectNodeAt: failed", "error", err, "offset", offset, "count", memberCount)
+		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset, "count", memberCount)
 		return nil, err
 	}
 
@@ -114,12 +114,12 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*objectNo
 		fieldName, ok := header.fieldName(fieldIDValues[i] - 1)
 		if !ok {
 			cause := fmt.Errorf("field id %d not found in dictionary", fieldIDValues[i])
-			common.Odl.Error("newObjectNodeAt: failed", "error", cause, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
+			common.Odl.Debug("newObjectNodeAt: failed", "error", cause, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
 			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 		}
 		if _, exists := members[fieldName]; exists {
 			cause := fmt.Errorf("duplicate field id %d", fieldIDValues[i])
-			common.Odl.Error("newObjectNodeAt: failed", "error", cause, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
+			common.Odl.Debug("newObjectNodeAt: failed", "error", cause, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
 			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 		}
 		members[fieldName] = memberOffsets[i]
@@ -178,7 +178,7 @@ func readFieldIDEntriesAt(buf *osonBuffer, header *osonHeader, start, count int)
 			entries[i] = int(val)
 		default:
 			cause := fmt.Errorf("unsupported field id width %d", size)
-			common.Odl.Error("readFieldIDEntriesAt: failed", "error", cause, "width", size)
+			common.Odl.Debug("readFieldIDEntriesAt: failed", "error", cause, "width", size)
 			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 		}
 	}
@@ -286,7 +286,7 @@ func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode dr
 		}
 		if !isObjectOpcode(delegateOpcode) || delegateOpcode&osonOpChildSizeBits == osonOpChildDelegateForm {
 			cause := fmt.Errorf("delegate object at %d does not carry a direct field-id array", delegateOffset)
-			common.Odl.Error("readObjectLayout: failed", "error", cause, "offset", offset, "delegateOffset", delegateOffset, "delegateOpcode", delegateOpcode)
+			common.Odl.Debug("readObjectLayout: failed", "error", cause, "offset", offset, "delegateOffset", delegateOffset, "delegateOpcode", delegateOpcode)
 			return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 		}
 
@@ -301,7 +301,7 @@ func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode dr
 		return count, fidArrayStart, childArrayStart, nil
 	default:
 		cause := fmt.Errorf("unsupported object count encoding 0x%02x", opcode&osonOpChildSizeBits)
-		common.Odl.Error("readObjectLayout: failed", "error", cause, "offset", offset, "opcode", opcode)
+		common.Odl.Debug("readObjectLayout: failed", "error", cause, "offset", offset, "opcode", opcode)
 		return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 	}
 }
@@ -352,8 +352,8 @@ func (obj *objectNode) StringWithOption(opts drvCommon.JSONOption) (string, erro
 
 	text, err := json.Marshal(jsonCompatibleValue(value))
 	if err != nil {
-		common.Odl.Error("objectNode.StringWithOption: failed", "error", err, "offset", obj.offset)
-		return "", common.NewOracleError(oracleErrors.OsonBufferError, nil)
+		common.Odl.Debug("objectNode.StringWithOption: failed", "error", err, "offset", obj.offset)
+		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
 	return string(text), nil
 }
@@ -376,7 +376,7 @@ func (obj *objectNode) Get(key string) (drvCommon.JSONNode, bool) {
 	}
 	child, err := newNodeAt(obj.buf, obj.header, childOffset)
 	if err != nil {
-		common.Odl.Error("objectNode.Get: failed", "error", err, "offset", obj.offset, "key", key)
+		common.Odl.Debug("objectNode.Get: failed", "error", err, "offset", obj.offset, "key", key)
 		return nil, false
 	}
 	return child, true
@@ -429,12 +429,12 @@ func (obj *objectNode) Value(opts drvCommon.JSONOption) (map[string]any, error) 
 	for fieldName, offset := range obj.childrenOffsets {
 		child, err := newNodeAt(obj.buf, obj.header, offset)
 		if err != nil {
-			common.Odl.Error("objectNode.Value: failed", "error", err, "offset", obj.offset, "key", fieldName)
+			common.Odl.Debug("objectNode.Value: failed", "error", err, "offset", obj.offset, "key", fieldName)
 			return nil, err
 		}
 		value, err := child.GetValue(opts)
 		if err != nil {
-			common.Odl.Error("objectNode.Value: failed", "error", err, "offset", obj.offset, "key", fieldName)
+			common.Odl.Debug("objectNode.Value: failed", "error", err, "offset", obj.offset, "key", fieldName)
 			return nil, err
 		}
 		values[fieldName] = value

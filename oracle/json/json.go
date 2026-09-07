@@ -114,7 +114,8 @@ type JSON struct {
 // Scan implements sql.Scanner.
 func (jz *JSON) Scan(src any) error {
 	if jz == nil {
-		return common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Scan")
+		cause := fmt.Errorf("cannot scan Oracle JSON into a nil *JSON receiver")
+		return common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "Scan")
 	}
 	switch value := src.(type) {
 	case []byte:
@@ -129,16 +130,19 @@ func (jz *JSON) Scan(src any) error {
 			*jz = JSON{node: node}
 			return nil
 		}
-		return common.NewOracleError(oracleErrors.OsonParsingError, nil, "oracle/json text scan")
+		cause := fmt.Errorf("cannot scan %d-byte []byte as Oracle JSON: expected an OSON document beginning with magic bytes FF 4A 5A", len(value))
+		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
 	default:
-		return common.NewOracleError(oracleErrors.JSONScanTypeUnsupportedError, nil, fmt.Sprintf("%T", src))
+		cause := fmt.Errorf("source type %T cannot be scanned as Oracle JSON", src)
+		return common.NewOracleError(oracleErrors.JSONScanTypeUnsupportedError, cause, fmt.Sprintf("%T", src))
 	}
 }
 
 // Value implements driver.Valuer.
 func (jz JSON) Value() (driver.Value, error) {
 	if jz.node == nil {
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Value")
+		cause := fmt.Errorf("JSON has no parsed OSON node to encode")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "Value")
 	}
 
 	node, err := jz.node.GetValue(JSONOptNumberAsString)
@@ -153,7 +157,8 @@ func (jz JSON) Value() (driver.Value, error) {
 // Kind reports the high-level JSON value category.
 func (jz JSON) Kind() (JSONKind, error) {
 	if jz.node == nil {
-		return 0, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Kind")
+		cause := fmt.Errorf("JSON has no parsed OSON node to inspect")
+		return 0, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "Kind")
 	}
 
 	return jz.node.Kind(), nil
@@ -166,13 +171,15 @@ func (jz JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
 		return JSONObject{}, err
 	}
 	if kind != JSONObjectKind {
-		return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "object")
+		cause := fmt.Errorf("JSON node kind %d cannot be accessed as an object", kind)
+		return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "object")
 	}
 
 	if obj, ok := jz.node.(drvCommon.JSONObjectNode); ok {
 		return JSONObject{node: obj, opts: opts}, nil
 	}
-	return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "object")
+	cause := fmt.Errorf("JSON node of type %T reports object kind but does not implement JSONObjectNode", jz.node)
+	return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "object")
 }
 
 // GetJSONArray returns jz as a JSON array.
@@ -182,13 +189,15 @@ func (jz JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
 		return JSONArray{}, err
 	}
 	if kind != JSONArrayKind {
-		return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "array")
+		cause := fmt.Errorf("JSON node kind %d cannot be accessed as an array", kind)
+		return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "array")
 	}
 
 	if arr, ok := jz.node.(drvCommon.JSONArrayNode); ok {
 		return JSONArray{node: arr, opts: opts}, nil
 	}
-	return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "array")
+	cause := fmt.Errorf("JSON node of type %T reports array kind but does not implement JSONArrayNode", jz.node)
+	return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "array")
 }
 
 // GetJSONScalar returns jz as a JSON scalar.
@@ -198,18 +207,21 @@ func (jz JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 		return JSONScalar{}, err
 	}
 	if kind != JSONScalarKind {
-		return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "scalar")
+		cause := fmt.Errorf("JSON node kind %d cannot be accessed as a scalar", kind)
+		return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "scalar")
 	}
 	if scalar, ok := jz.node.(drvCommon.JSONScalarNode); ok {
 		return JSONScalar{node: scalar, opts: opts}, nil
 	}
-	return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, nil, "scalar")
+	cause := fmt.Errorf("JSON node of type %T reports scalar kind but does not implement JSONScalarNode", jz.node)
+	return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "scalar")
 }
 
 // GetValue materializes the JSON value with the supplied options.
 func (jz JSON) GetValue(opts JSONOption) (any, error) {
 	if jz.node == nil {
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
+		cause := fmt.Errorf("JSON has no parsed OSON node to materialize")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
 	return jz.node.GetValue(opts)
 }
@@ -230,7 +242,8 @@ func (jz JSON) String() string {
 // StringWithOption returns the JSON text form using the supplied options.
 func (jz JSON) StringWithOption(opts JSONOption) (string, error) {
 	if jz.node == nil {
-		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "StringWithOption")
+		cause := fmt.Errorf("JSON has no parsed OSON node to render")
+		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "StringWithOption")
 	}
 	return jz.node.StringWithOption(opts)
 }
@@ -254,7 +267,8 @@ func (obj JSONObject) Len() int {
 // GetValue materializes the object as a Go map.
 func (obj JSONObject) GetValue() (map[string]any, error) {
 	if obj.node == nil {
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
+		cause := fmt.Errorf("JSONObject has no underlying object node to materialize")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
 	return obj.node.Value(obj.opts)
 }
@@ -320,7 +334,8 @@ func (arr JSONArray) Len() int {
 // GetValue materializes the array as a Go slice.
 func (arr JSONArray) GetValue() ([]any, error) {
 	if arr.node == nil {
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
+		cause := fmt.Errorf("JSONArray has no underlying array node to materialize")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
 	return arr.node.Value(arr.opts)
 }
@@ -328,12 +343,14 @@ func (arr JSONArray) GetValue() ([]any, error) {
 // Get returns the child JSON value at i.
 func (arr JSONArray) Get(i int) (JSON, error) {
 	if arr.node == nil {
-		return JSON{}, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "Get")
+		cause := fmt.Errorf("JSONArray has no underlying array node to index")
+		return JSON{}, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "Get")
 	}
 
 	node, ok := arr.node.Get(i)
 	if !ok {
-		return JSON{}, common.NewOracleError(oracleErrors.JSONArrayIndexOutOfRangeError, nil, i)
+		cause := fmt.Errorf("array index %d is outside the valid range [0,%d)", i, arr.node.Len())
+		return JSON{}, common.NewOracleError(oracleErrors.JSONArrayIndexOutOfRangeError, cause, i)
 	}
 	return JSON{node: node}, nil
 }
@@ -361,7 +378,8 @@ type JSONScalar struct {
 // GetValue materializes the scalar value.
 func (scalar JSONScalar) GetValue() (any, error) {
 	if scalar.node == nil {
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, nil, "GetValue")
+		cause := fmt.Errorf("JSONScalar has no underlying scalar node to materialize")
+		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
 	return scalar.node.Value(scalar.opts)
 }

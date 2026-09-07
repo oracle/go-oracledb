@@ -120,7 +120,7 @@ func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 		if _, err := newArrayNodeAt(newOsonBuffer(drvCommon.B1Array{osonOpTrue}), &osonHeader{}, 0); err == nil {
 			t.Fatal("newArrayNodeAt(non-array) error = nil, want failure")
 		} else {
-			assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+			assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 		}
 	})
 

@@ -79,34 +79,35 @@ type arrayNode struct {
 func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int) (*arrayNode, error) {
 	opcode, err := buf.readUB1At(arrayNodeOffset)
 	if err != nil {
-		common.Odl.Error("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset)
 		return nil, err
 	}
 	if !isArrayOpcode(opcode) {
 		cause := fmt.Errorf("opcode 0x%02x is not an array", opcode)
-		common.Odl.Error("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonBufferError, nil)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 	}
-	if opcode&(osonOpChildNoSortBit|osonOpObjectSharedFieldIDsBit|osonOpObjectUpdateOverflowBit) != 0 {
-		cause := fmt.Errorf("array opcode 0x%02x contains object-only flags", opcode)
-		common.Odl.Error("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
+	objectOnlyFlags := opcode & (osonOpChildNoSortBit | osonOpObjectSharedFieldIDsBit | osonOpObjectUpdateOverflowBit)
+	if objectOnlyFlags != 0 {
+		cause := fmt.Errorf("array opcode 0x%02x sets object-only flags 0x%02x", opcode, objectOnlyFlags)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
 		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 	}
 	if opcode&osonOpChildSizeBits == osonOpChildDelegateForm {
 		cause := fmt.Errorf("array opcode 0x%02x uses the delegate child-header form", opcode)
-		common.Odl.Error("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
 		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
 	}
 
 	elementCount, childOffsetArrayStart, err := readContainerCountAt(buf, arrayNodeOffset+1, opcode)
 	if err != nil {
-		common.Odl.Error("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "opcode", opcode)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "opcode", opcode)
 		return nil, err
 	}
 
 	childOffsets, err := readChildOffsetsAt(buf, header, arrayNodeOffset, childOffsetArrayStart, elementCount, opcode)
 	if err != nil {
-		common.Odl.Error("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "count", elementCount)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "count", elementCount)
 		return nil, err
 	}
 
@@ -166,8 +167,8 @@ func (array *arrayNode) StringWithOption(opts drvCommon.JSONOption) (string, err
 
 	jsonBytes, err := json.Marshal(jsonCompatibleValue(materializedArray))
 	if err != nil {
-		common.Odl.Error("arrayNode.StringWithOption: failed", "error", err, "offset", array.offset)
-		return "", common.NewOracleError(oracleErrors.OsonBufferError, nil)
+		common.Odl.Debug("arrayNode.StringWithOption: failed", "error", err, "offset", array.offset)
+		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
 	return string(jsonBytes), nil
 }
@@ -189,7 +190,7 @@ func (array *arrayNode) Get(index int) (drvCommon.JSONNode, bool) {
 
 	childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[index])
 	if err != nil {
-		common.Odl.Error("arrayNode.Get: failed", "error", err, "offset", array.offset, "index", index, "childOffset", array.childOffsets[index])
+		common.Odl.Debug("arrayNode.Get: failed", "error", err, "offset", array.offset, "index", index, "childOffset", array.childOffsets[index])
 		return nil, false
 	}
 	return childNode, true
@@ -226,13 +227,13 @@ func (array *arrayNode) Value(opts drvCommon.JSONOption) ([]any, error) {
 		// materialization must retain the parsing error for its caller.
 		childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[elementIndex])
 		if err != nil {
-			common.Odl.Error("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex)
+			common.Odl.Debug("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex)
 			return nil, err
 		}
 
 		elementValue, err := childNode.GetValue(opts)
 		if err != nil {
-			common.Odl.Error("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex)
+			common.Odl.Debug("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex)
 			return nil, err
 		}
 

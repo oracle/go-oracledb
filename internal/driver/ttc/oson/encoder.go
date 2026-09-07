@@ -145,7 +145,7 @@ func (enc *osonEncoder) encode(value any) (drvCommon.B1Array, error) {
 	kind, err := classifyJSONValue(value)
 	if err != nil {
 		common.Odl.Debug("osonEncoder.encode: failed", "error", err)
-		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, err, fmt.Sprintf("%T", value))
+		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
 	switch kind {
 	case drvCommon.KindScalar:
@@ -287,7 +287,7 @@ func (enc *osonEncoder) collectFieldNames(value any) error {
 	kind, err := classifyJSONValue(value)
 	if err != nil {
 		common.Odl.Debug("osonEncoder.collectFieldNames: failed", "error", err)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, err, fmt.Sprintf("%T", value))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
 	if kind == drvCommon.KindScalar {
 		return nil
@@ -321,8 +321,8 @@ func (enc *osonEncoder) addFieldName(name string) error {
 	hash, byteLen := osonHash(name)
 	if byteLen > osonMaxSecondaryDictKeyLength {
 		cause := fmt.Errorf("field name length %d exceeds OSON limit %d", byteLen, osonMaxSecondaryDictKeyLength)
-		common.Odl.Error("osonEncoder.addFieldName: failed", "error", cause, "field", name, "length", byteLen)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, byteLen)
+		common.Odl.Debug("osonEncoder.addFieldName: failed", "error", cause, "length", byteLen)
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
 	field := &fieldNameEntry{
@@ -389,7 +389,7 @@ func (enc *osonEncoder) writeNode(tree *osonWriteBuffer, value any, childOffsetS
 	kind, err := classifyJSONValue(value)
 	if err != nil {
 		common.Odl.Debug("osonEncoder.writeNode: failed", "error", err)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, err, fmt.Sprintf("%T", value))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
 	switch kind {
 	case drvCommon.KindScalar:
@@ -403,8 +403,8 @@ func (enc *osonEncoder) writeNode(tree *osonWriteBuffer, value any, childOffsetS
 // bufferPatchError wraps an internal offset-table patching failure as an OSON
 // encoding error.
 func (enc *osonEncoder) bufferPatchError(operation string, err error) error {
-	common.Odl.Error("osonEncoder."+operation+": failed", "error", err)
-	return common.NewOracleError(oracleErrors.OsonEncodingError, err, nil)
+	common.Odl.Debug("osonEncoder."+operation+": failed", "error", err)
+	return common.NewOracleError(oracleErrors.OsonEncodingError, err)
 }
 
 // writeArrayNode writes one array node and its elements.
@@ -465,8 +465,8 @@ func (enc *osonEncoder) sortedObjectMembers(value map[string]any) ([]objectMembe
 		field, ok := enc.dict.entriesByName[key]
 		if !ok {
 			cause := fmt.Errorf("field %q missing from finalized OSON dictionary", key)
-			common.Odl.Error("osonEncoder.sortedObjectMembers: failed", "error", cause)
-			return nil, common.NewOracleError(oracleErrors.OsonEncodingError, cause, key)
+			common.Odl.Debug("osonEncoder.sortedObjectMembers: failed", "error", cause)
+			return nil, common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 		}
 		members = append(members, objectMember{
 			fieldID: field.fieldID,
@@ -532,7 +532,7 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 	default:
 		cause := fmt.Errorf("unsupported OSON scalar value type %T", value)
 		common.Odl.Debug("osonEncoder.writeScalarNode: failed", "error", cause)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, fmt.Sprintf("%T", value))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 }
 
@@ -547,9 +547,9 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) error {
 	raw := []byte(value)
 	if len(raw) > _maxUB4 {
-		cause := fmt.Errorf("string scalar length %d exceeds OSON UB4 length limit", len(raw))
-		common.Odl.Error("osonEncoder.writeStringScalar: failed", "error", cause, "length", len(raw))
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, len(raw))
+		cause := fmt.Errorf("string scalar length %d exceeds OSON UB4 length limit %d", len(raw), _maxUB4)
+		common.Odl.Debug("osonEncoder.writeStringScalar: failed", "error", cause, "length", len(raw))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
 	switch {
@@ -576,14 +576,14 @@ func (enc *osonEncoder) writeSignedIntScalar(tree *osonWriteBuffer, value int64,
 		return enc.scalarEncodingError("writeSignedIntScalar", err, value)
 	}
 	if len(payload) == 0 {
-		cause := fmt.Errorf("empty compact signed integer payload")
-		common.Odl.Error("osonEncoder.writeSignedIntScalar: failed", "error", cause, "opcodeMask", opcodeMask)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, fmt.Sprintf("%T", value))
+		cause := fmt.Errorf("encoding signed integer %d produced an empty Oracle NUMBER payload", value)
+		common.Odl.Debug("osonEncoder.writeSignedIntScalar: failed", "error", cause, "opcodeMask", opcodeMask)
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 	if len(payload) > int(platformSize) {
-		cause := fmt.Errorf("compact signed integer payload length %d exceeds OSON opcode capacity", len(payload))
-		common.Odl.Error("osonEncoder.writeSignedIntScalar: failed", "error", cause, "payloadLength", len(payload), "lengthMask", platformSize)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, fmt.Sprintf("%T", value))
+		cause := fmt.Errorf("compact signed integer payload length %d exceeds OSON opcode capacity %d", len(payload), platformSize)
+		common.Odl.Debug("osonEncoder.writeSignedIntScalar: failed", "error", cause, "payloadLength", len(payload), "lengthMask", platformSize)
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 	opcode := opcodeMask | drvCommon.UB1(len(payload))
 	common.Odl.Debug("osonEncoder.writeSignedIntScalar: compact signed number", "opcode", opcode, "payloadLength", len(payload))
@@ -600,9 +600,9 @@ func (enc *osonEncoder) writeUnsignedIntScalar(tree *osonWriteBuffer, value uint
 	}
 
 	if len(payload) == 0 {
-		cause := fmt.Errorf("empty Oracle NUMBER payload")
-		common.Odl.Error("osonEncoder.writeUnsignedIntScalar: failed", "error", cause)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, nil)
+		cause := fmt.Errorf("encoding unsigned integer %d produced an empty Oracle NUMBER payload", value)
+		common.Odl.Debug("osonEncoder.writeUnsignedIntScalar: failed", "error", cause)
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 	if len(payload) <= _compactOracleNumberMaxPayloadLen {
 		opcode := osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(payload)-1)
@@ -613,9 +613,9 @@ func (enc *osonEncoder) writeUnsignedIntScalar(tree *osonWriteBuffer, value uint
 	}
 
 	if len(payload) > _maxUB1 {
-		cause := fmt.Errorf("number payload length %d exceeds OSON UB1 length limit", len(payload))
-		common.Odl.Error("osonEncoder.writeUnsignedIntScalar: failed", "error", cause, "length", len(payload))
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, len(payload))
+		cause := fmt.Errorf("number payload length %d exceeds OSON UB1 length limit %d", len(payload), _maxUB1)
+		common.Odl.Debug("osonEncoder.writeUnsignedIntScalar: failed", "error", cause, "length", len(payload))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 	common.Odl.Debug("osonEncoder.writeUnsignedIntScalar: explicit oracle number", "opcode", osonOpOracleNumber, "payloadLength", len(payload))
 	tree.writeUB1(osonOpOracleNumber)
@@ -627,16 +627,16 @@ func (enc *osonEncoder) writeUnsignedIntScalar(tree *osonWriteBuffer, value uint
 // writeStringNumberScalar writes a JSON number as string.
 func (enc *osonEncoder) writeStringNumberScalar(tree *osonWriteBuffer, value string) error {
 	if !isJSONNumber(value) {
-		cause := fmt.Errorf("invalid JSON number text")
-		common.Odl.Error("osonEncoder.writeStringNumberScalar: failed", "error", cause, "length", len(value))
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, value)
+		cause := fmt.Errorf("value %q is not valid JSON number text", value)
+		common.Odl.Debug("osonEncoder.writeStringNumberScalar: failed", "error", cause, "length", len(value))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
 	raw := []byte(value)
 	if len(raw) > _maxUB1 {
-		cause := fmt.Errorf("string number length %d exceeds OSON UB1 length limit", len(raw))
-		common.Odl.Error("osonEncoder.writeStringNumberScalar: failed", "error", cause, "length", len(raw))
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, len(raw))
+		cause := fmt.Errorf("string number length %d exceeds OSON UB1 length limit %d", len(raw), _maxUB1)
+		common.Odl.Debug("osonEncoder.writeStringNumberScalar: failed", "error", cause, "length", len(raw))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
 	tree.writeUB1(osonOpStringNumber)
@@ -699,9 +699,9 @@ func (enc *osonEncoder) writeBinaryDoubleScalar(tree *osonWriteBuffer, value flo
 // writeBinaryScalar writes a variable-length binary scalar.
 func (enc *osonEncoder) writeBinaryScalar(tree *osonWriteBuffer, value drvCommon.B1Array) error {
 	if len(value) > _maxUB4 {
-		cause := fmt.Errorf("binary scalar length %d exceeds OSON UB4 length limit", len(value))
-		common.Odl.Error("osonEncoder.writeBinaryScalar: failed", "error", cause, "length", len(value))
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause, len(value))
+		cause := fmt.Errorf("binary scalar length %d exceeds OSON UB4 length limit %d", len(value), _maxUB4)
+		common.Odl.Debug("osonEncoder.writeBinaryScalar: failed", "error", cause, "length", len(value))
+		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
 	if len(value) <= _maxUB2 {
@@ -732,8 +732,8 @@ func (enc *osonEncoder) writeTimestampScalar(tree *osonWriteBuffer, value time.T
 // scalarEncodingError logs converter failures and returns the public OSON
 // encoding error used by scalar writers.
 func (enc *osonEncoder) scalarEncodingError(operation string, cause error, value any) error {
-	common.Odl.Error("osonEncoder."+operation+": failed", "error", cause)
-	return common.NewOracleError(oracleErrors.OsonEncodingError, cause, fmt.Sprintf("%T", value))
+	common.Odl.Debug("osonEncoder."+operation+": failed", "error", cause)
+	return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 }
 
 // containerOpcode builds the container opcode from the base type, child count, and child-offset size.

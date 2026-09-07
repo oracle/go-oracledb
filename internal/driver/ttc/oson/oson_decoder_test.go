@@ -108,7 +108,7 @@ func TestOsonDecoder_RejectsNonJSONBinaryFloatText(t *testing.T) {
 			if _, err := root.StringWithOption(drvCommon.JSONOptDefault); err == nil {
 				t.Fatal("StringWithOption() error = nil, want JSON encoding failure")
 			} else {
-				assertOracleErrorCode(t, err, oracleErrors.OsonBufferError)
+				assertOracleErrorCode(t, err, oracleErrors.JSONRenderingError)
 			}
 		})
 	}

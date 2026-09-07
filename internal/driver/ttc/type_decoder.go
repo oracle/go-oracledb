@@ -40,7 +40,7 @@ package ttc
 
 import (
 	"database/sql/driver"
-	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -492,7 +492,7 @@ func DecodeClob(columnContext columnContext, data driverCommon.B1Array) (driver.
 DecodeJson returns the underlying JSON payload as a driver.Value.
 
 Parameters:
-  - _: Unused column metadata (present for a uniform decode function signature).
+  - columnContext: Column name and index used to identify an invalid value.
   - data: Raw TTC payload bytes for the JSON column.
 
 Returns:
@@ -500,12 +500,12 @@ Returns:
   - error: an error if the payload is not OSON.
 
 Errors:
-  - Returns an error when the payload is not OSON.
+  - Returns OsonHeaderError when the payload does not start with the OSON magic prefix.
 */
 func DecodeJson(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	if !oson.IsOson(data) {
-		err := errors.New("invalid OSON bytes")
-		return nil, rowDecodeError(columnContext, err, "JSON")
+		cause := fmt.Errorf("database returned %d bytes for JSON column %q at index %d; expected an OSON document beginning with magic bytes FF 4A 5A", len(data), columnContext.Name, columnContext.Index)
+		return nil, common.NewOracleError(oracleErrors.OsonHeaderError, cause)
 	}
 
 	return []byte(data), nil

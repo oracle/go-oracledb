@@ -40,8 +40,68 @@ package json
 
 import (
 	"bytes"
+	"errors"
 	"testing"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+// TestJSONErrorsIncludeCause verifies locally constructed public JSON errors
+// retain a concrete explanation of the failed condition.
+func TestJSONErrorsIncludeCause(t *testing.T) {
+	var value JSON
+	var nilValue *JSON
+
+	driverValue, err := (JSONValue{Data: []any{true}}).Value()
+	if err != nil {
+		t.Fatalf("JSONValue.Value() failed: %v", err)
+	}
+	var arrayValue JSON
+	if err := arrayValue.Scan(driverValue); err != nil {
+		t.Fatalf("JSON.Scan() failed: %v", err)
+	}
+	_, kindMismatchErr := arrayValue.GetJSONObject(JSONOptDefault)
+	array, err := arrayValue.GetJSONArray(JSONOptDefault)
+	if err != nil {
+		t.Fatalf("GetJSONArray() failed: %v", err)
+	}
+	_, indexErr := array.Get(1)
+
+	tests := []struct {
+		name string
+		err  error
+		code oracleErrors.ErrorCode
+	}{
+		{name: "nil scan receiver", err: nilValue.Scan(nil), code: oracleErrors.JSONNilReceiver},
+		{name: "non-OSON bytes", err: value.Scan([]byte(`{}`)), code: oracleErrors.OsonHeaderError},
+		{name: "unsupported scan source", err: value.Scan("{}"), code: oracleErrors.JSONScanTypeUnsupportedError},
+		{name: "uninitialized value", err: func() error {
+			_, err := value.GetValue(JSONOptDefault)
+			return err
+		}(), code: oracleErrors.JSONNilReceiver},
+		{name: "kind mismatch", err: kindMismatchErr, code: oracleErrors.JSONAccessError},
+		{name: "array index", err: indexErr, code: oracleErrors.JSONArrayIndexOutOfRangeError},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.err == nil {
+				t.Fatal("error = nil, want failure")
+			}
+			cause := errors.Unwrap(test.err)
+			if cause == nil || cause.Error() == "" {
+				t.Fatalf("error %v has no detailed cause", test.err)
+			}
+			sqlErr, ok := test.err.(oracleErrors.SQLError)
+			if !ok {
+				t.Fatalf("error type = %T, want oracleErrors.SQLError", test.err)
+			}
+			if got := sqlErr.ErrorCode(); got != string(test.code) {
+				t.Fatalf("ErrorCode() = %s, want %s", got, test.code)
+			}
+		})
+	}
+}
 
 // TestJSONScanCopiesSourceBytes verifies that JSON.Scan takes ownership of OSON
 // bytes instead of retaining the caller-provided source slice.

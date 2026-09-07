@@ -39,6 +39,7 @@
 package oson
 
 import (
+	"errors"
 	"math"
 	"reflect"
 	"strconv"
@@ -637,6 +638,17 @@ func assertOracleErrorCode(t *testing.T, err error, want oracleErrors.ErrorCode)
 	}
 	if got := oraErr.ErrorCode(); got != string(want) {
 		t.Fatalf("error code = %v, want %v", got, want)
+	}
+	switch want {
+	case oracleErrors.OsonBufferError,
+		oracleErrors.OsonHeaderError,
+		oracleErrors.OsonParsingError,
+		oracleErrors.OsonEncodingError,
+		oracleErrors.OsonUnsupportedScalarError,
+		oracleErrors.JSONRenderingError:
+		if errors.Unwrap(err) == nil {
+			t.Fatalf("OSON error %s has no cause", want)
+		}
 	}
 }
 
