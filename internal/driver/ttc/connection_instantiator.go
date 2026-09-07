@@ -121,6 +121,14 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 
 	// Add connection properties to shelf for downstream consumers
 	shelf.UpdateConnectionProperties(connInstantiator.drvierConfig.DriverProperties)
+	// Negotiation creates the marshaller before connection properties are
+	// attached to the shelf. Apply the configured LOB prefetch size now so the
+	// marshaller's CLR safety limit follows the connection configuration.
+	if marshalEngine, ok := shelf.GetMarshaller().(*MarshalEngine); ok {
+		marshalEngine.setDefaultLobPrefetchSize(
+			int64(connInstantiator.drvierConfig.DriverProperties.GetDefaultLobPrefetchSize()),
+		)
+	}
 	shelf.RegisterLocalizationService(connInstantiator.localizationService)
 	shelf.registerProviderRegistry(connInstantiator.providerRegistry)
 

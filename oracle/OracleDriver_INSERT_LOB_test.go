@@ -45,6 +45,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/oracle/go-oracledb/v26/oracle/lob"
 )
 
 type clobRowData struct {
@@ -59,10 +61,27 @@ type blobRowData struct {
 	b  []byte
 }
 
-// TestDriver_Prepared_Insert_Clob_Small ensures the driver can bind and transmit
+// binaryFixture returns a non-uniform payload that includes both zero and
+// high-bit bytes. Exact byte comparisons catch same-length corruption that a
+// repeated-byte fixture could conceal.
+func binaryFixture(size int) []byte {
+	payload := make([]byte, size)
+	for index := range payload {
+		payload[index] = byte(index*131 + 17)
+	}
+	if size > 0 {
+		payload[0] = 0x00
+	}
+	if size > 1 {
+		payload[1] = 0xFF
+	}
+	return payload
+}
+
+// TestDriver_LobPreparedInsertClobSmall ensures the driver can bind and transmit
 // CLOB payloads up to 32KB via prepared statements. It exercises INSERT
 // execution and verifies the RowsAffected metadata returned by the driver.
-func TestDriver_Prepared_Insert_Clob_Small(t *testing.T) {
+func TestDriver_LobPreparedInsertClobSmall(t *testing.T) {
 	t.Parallel()
 	rows := []clobRowData{
 		{
@@ -87,96 +106,56 @@ func TestDriver_Prepared_Insert_Clob_Small(t *testing.T) {
 		},
 	}
 
-	runPreparedInsertClob(t, createObjectName("clob1_small"), rows)
+	runPreparedInsertBindClob(t, createLOBObjectName(t), rows)
 }
 
-// TestDriver_Prepared_Insert_Clob_Large covers CLOB payloads larger than 32KB to
+// TestDriver_LobPreparedInsertClobLarge covers CLOB payloads larger than 32KB to
 // ensure the driver can stream large data through prepared statements.
-func TestDriver_Prepared_Insert_Clob_Large(t *testing.T) {
+func TestDriver_LobPreparedInsertClobLarge(t *testing.T) {
 	t.Parallel()
 	rows := []clobRowData{
-		{
-			id: 5,
-			n:  "eee",
-			c:  strings.Repeat("o", 11534336), // 11MB
-		},
-		{
-			id: 6,
-			n:  "fff",
-			c:  strings.Repeat("m", 33554432), // 32MB
-		},
-		{
-			id: 7,
-			n:  "ggg",
-			c:  strings.Repeat("t", 41943040), // 40MB
-		},
+		{id: 5, n: "eee", c: strings.Repeat("o", 64*1024)},
+		{id: 6, n: "fff", c: strings.Repeat("m", 256*1024)},
+		{id: 7, n: "ggg", c: strings.Repeat("t", 1024*1024)},
 	}
 
-	runPreparedInsertClob(t, createObjectName("clob1_large"), rows)
+	runPreparedInsertBindClob(t, createLOBObjectName(t), rows)
 }
 
-// TestDriver_Prepared_Insert_Blob_Small mirrors the CLOB small insertion test
-// but uses BLOB columns bound from Go []byte values (RAW bind type).
-func TestDriver_Prepared_Insert_Blob_Small(t *testing.T) {
+// TestDriver_LobPreparedInsertBlobSmall mirrors the CLOB small insertion test
+// but uses BLOB columns bound through the public BindBlob marker.
+func TestDriver_LobPreparedInsertBlobSmall(t *testing.T) {
 	t.Parallel()
 	rows := []blobRowData{
-		{
-			id: 1,
-			n:  "aaa",
-			b:  []byte("hello prepared"),
-		},
-		{
-			id: 2,
-			n:  "bbb",
-			b:  bytes.Repeat([]byte{0xAB}, 4000),
-		},
-		{
-			id: 3,
-			n:  "ccc",
-			b:  bytes.Repeat([]byte{0xBC}, 20000),
-		},
-		{
-			id: 4,
-			n:  "ddd",
-			b:  bytes.Repeat([]byte{0xCD}, 32768),
-		},
+		{id: 1, n: "aaa", b: []byte{0x00, 0xFF, 0x01, 0x7F, 0x80, 0x42}},
+		{id: 2, n: "bbb", b: binaryFixture(4000)},
+		{id: 3, n: "ccc", b: binaryFixture(20000)},
+		{id: 4, n: "ddd", b: binaryFixture(32768)},
 	}
 
-	runPreparedInsertBlob(t, createObjectName("blob1_small"), rows)
+	runPreparedInsertBindBlob(t, createLOBObjectName(t), rows)
 }
 
-// TestDriver_Prepared_Insert_Blob_Large covers large BLOB payloads to verify
+// TestDriver_LobPreparedInsertBlobLarge covers large BLOB payloads to verify
 // inserts via prepared statements continues to work for >32KB data.
-func TestDriver_Prepared_Insert_Blob_Large(t *testing.T) {
+func TestDriver_LobPreparedInsertBlobLarge(t *testing.T) {
 	t.Parallel()
 	rows := []blobRowData{
-		{
-			id: 5,
-			n:  "eee",
-			b:  bytes.Repeat([]byte{0xDE}, 11534336), // 11MB
-		},
-		{
-			id: 6,
-			n:  "fff",
-			b:  bytes.Repeat([]byte{0xEF}, 33554432), // 32MB
-		},
-		{
-			id: 7,
-			n:  "ggg",
-			b:  bytes.Repeat([]byte{0xFA}, 41943040), // 40MB
-		},
+		{id: 5, n: "eee", b: binaryFixture(64 * 1024)},
+		{id: 6, n: "fff", b: binaryFixture(256 * 1024)},
+		{id: 7, n: "ggg", b: binaryFixture(1024 * 1024)},
 	}
 
-	runPreparedInsertBlob(t, createObjectName("blob1_large"), rows)
+	runPreparedInsertBindBlob(t, createLOBObjectName(t), rows)
 }
 
-func runPreparedInsertClob(t *testing.T, table string, rows []clobRowData) {
+func runPreparedInsertBindClob(t *testing.T, table string, rows []clobRowData) {
 	t.Helper()
+	t.Logf("CLOB prepared bind: table=%s rows=%d", table, len(rows))
 
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	prefetchSize := 33554432 // 32 MB
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
@@ -191,8 +170,7 @@ func runPreparedInsertClob(t *testing.T, table string, rows []clobRowData) {
 	}
 
 	if err := createTable(ctx, db, table, cols); err != nil {
-		t.Skipf("Skipping prepared insert CLOB test (create failed): %v", err)
-		return
+		t.Fatalf("create prepared insert CLOB table: %v", err)
 	}
 	t.Cleanup(func() {
 		if e := dropTable(ctx, db, table); e != nil {
@@ -209,10 +187,11 @@ func runPreparedInsertClob(t *testing.T, table string, rows []clobRowData) {
 	defer func() { _ = insStmt.Close() }()
 
 	for _, rr := range rows {
+		t.Logf("CLOB prepared bind: inserting id=%d bytes=%d", rr.id, len(rr.c))
 		result, err := insStmt.ExecContext(ctx,
 			sql.Named("id", rr.id),
 			sql.Named("n", rr.n),
-			sql.Named("c", rr.c),
+			sql.Named("c", BindClob(rr.c)),
 		)
 
 		if err != nil {
@@ -226,25 +205,25 @@ func runPreparedInsertClob(t *testing.T, table string, rows []clobRowData) {
 		if affected != 1 {
 			t.Fatalf("unexpected rows affected for id=%d: got %d want 1", rr.id, affected)
 		}
+		t.Logf("CLOB prepared bind: inserted id=%d", rr.id)
 
-		if len(rr.c) > prefetchSize {
-			t.Skip()
-		}
-		var gotClob string
+		t.Logf("CLOB prepared bind: verifying id=%d", rr.id)
+		var gotClob lob.Text
 		err = db.QueryRowContext(ctx,
 			fmt.Sprintf("SELECT clob FROM %s WHERE id = %d", table, rr.id),
 		).Scan(&gotClob)
 		if err != nil {
 			t.Fatalf("select inserted row failed for id=%d: %v", rr.id, err)
 		}
-		if gotClob != rr.c {
+		if string(gotClob) != rr.c {
 			t.Fatalf("unexpected clob for id=%d: got length %d want %d", rr.id, len(gotClob), len(rr.c))
 		}
 	}
 }
 
-func runPreparedInsertBlob(t *testing.T, table string, rows []blobRowData) {
+func runPreparedInsertBindBlob(t *testing.T, table string, rows []blobRowData) {
 	t.Helper()
+	t.Logf("BLOB prepared bind: table=%s rows=%d", table, len(rows))
 
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -264,8 +243,7 @@ func runPreparedInsertBlob(t *testing.T, table string, rows []blobRowData) {
 	}
 
 	if err := createTable(ctx, db, table, cols); err != nil {
-		t.Skipf("Skipping prepared insert BLOB test (create failed): %v", err)
-		return
+		t.Fatalf("create prepared insert BLOB table: %v", err)
 	}
 	t.Cleanup(func() {
 		if e := dropTable(ctx, db, table); e != nil {
@@ -282,10 +260,11 @@ func runPreparedInsertBlob(t *testing.T, table string, rows []blobRowData) {
 	defer func() { _ = insStmt.Close() }()
 
 	for _, rr := range rows {
+		t.Logf("BLOB prepared bind: inserting id=%d bytes=%d", rr.id, len(rr.b))
 		result, err := insStmt.ExecContext(ctx,
 			sql.Named("id", rr.id),
 			sql.Named("n", rr.n),
-			sql.Named("b", rr.b),
+			sql.Named("b", BindBlob(rr.b)),
 		)
 
 		if err != nil {
@@ -299,19 +278,18 @@ func runPreparedInsertBlob(t *testing.T, table string, rows []blobRowData) {
 		if affected != 1 {
 			t.Fatalf("unexpected rows affected for id=%d: got %d want 1", rr.id, affected)
 		}
+		t.Logf("BLOB prepared bind: inserted id=%d", rr.id)
 
-		if len(rr.b) > 33554432 {
-			t.Skip()
-		}
-		var gotBlob []byte
+		t.Logf("BLOB prepared bind: verifying id=%d", rr.id)
+		var gotBlob lob.Bytes
 		err = db.QueryRowContext(ctx,
 			fmt.Sprintf("SELECT blob FROM %s WHERE id = %d", table, rr.id),
 		).Scan(&gotBlob)
 		if err != nil {
 			t.Fatalf("select inserted row failed for id=%d: %v", rr.id, err)
 		}
-		if len(gotBlob) != len(rr.b) {
-			t.Fatalf("unexpected clob for id=%d: got length %d want %d", rr.id, len(gotBlob), len(rr.b))
+		if !bytes.Equal(gotBlob, rr.b) {
+			t.Fatalf("unexpected BLOB content for id=%d: got length %d want %d", rr.id, len(gotBlob), len(rr.b))
 		}
 	}
 }

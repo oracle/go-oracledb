@@ -56,7 +56,7 @@ type tTIrxd struct {
 	numberOfColumns driverCommon.UB4
 	// rowCount is the zero-based index of the row currently being processed/unmarshalled.
 	rowCount driverCommon.UB4
-	// row holds, for the current row, a common.B1Array (wire-format bytes) for each column.
+	// row holds, for the current row, a driverCommon.B1Array (wire-format bytes) for each column.
 	// row[i] gives the raw data for column i for this row.
 	row []driverCommon.B1Array
 	// prevRow contains each column's data from the previous unmarshalled row, used for column-carry (BVC logic).
@@ -69,8 +69,8 @@ type tTIrxd struct {
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
 	bvcFound bool
 
-	// Outgoing bind payload for TTIRXD when marshalling bind values (Phase 1: single row binds).
-	bindRow        []driverCommon.B1Array
+	// bindRow holds outgoing bind payloads for one TTIRXD row.
+	bindRow        []encodedBind
 	columnContexts []columnContext
 	lobColContext  []*lobColumnContext
 
@@ -80,6 +80,14 @@ type tTIrxd struct {
 	// session character set
 	sessCharSet  driverCommon.UB2
 	sessNCharSet driverCommon.UB2
+}
+
+// encodedBind is one TTC-ready SQL bind value. A temporary LOB locator uses a
+// distinct RXD representation: its TTC UB4 byte length precedes its CLR bytes.
+// Keeping that rule with the payload avoids fragile parallel metadata slices.
+type encodedBind struct {
+	data       driverCommon.B1Array
+	lobLocator bool
 }
 
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
@@ -146,16 +154,8 @@ func (rxd *tTIrxd) getLobColumnContext() []*lobColumnContext {
 	return rxd.lobColContext
 }
 
-/*
-
-setBindValues sets the outgoing bind payload for marshalling as an RXD message.
-
-Parameters:
-- row: row is the encoded data for one row: a slice of CLR-ready byte arrays, one per column.
-       Each element should contain the wire-format bytes for that column (nil indicates SQL NULL).
-*/
-
-func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array) {
+// setEncodedBinds assigns one fully described outgoing bind row.
+func (rxd *tTIrxd) setEncodedBinds(row []encodedBind) {
 	rxd.bindRow = row
 }
 
@@ -173,7 +173,8 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 	}
 	bindCount := len(rxd.bindRow)
 	for i := 0; i < bindCount; i++ {
-		val := rxd.bindRow[i]
+		bind := rxd.bindRow[i]
+		val := bind.data
 		if val == nil {
 			// Write CLR null indicator
 			if err := engine.MarshalUB1(ctx, driverCommon.UB1(0)); err != nil {
@@ -182,6 +183,15 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 			}
 			continue
+		}
+		if bind.lobLocator {
+			// A LOB bind carries the locator's byte length before its CLR value.
+			// This is distinct from RAW/VARCHAR binds, which use CLR alone.
+			if err := engine.MarshalUB4(ctx, driverCommon.UB4(len(val))); err != nil {
+				common.Odl.Error("tTIrxd.MarshalTo: failed to write LOB locator length",
+					"error", err, "stage", "lob-locator-length", "index", i)
+				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+			}
 		}
 		// Write as CLR (short or long form depending on size)
 		if err := engine.MarshalCLR(ctx, val, 0, len(val)); err != nil {
@@ -397,12 +407,12 @@ func (rxd *tTIrxd) _unmarshalClobColumn(ctx context.Context, mar driverCommon.Ma
 	// length
 	lob := &lobColumnContext{}
 	var err error
-	if lob.LobLength, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read LOB length",
-			"error", err, "stage", "lob-length", "index", col)
+	if lob.locatorByteLength, err = mar.UnmarshalUB4(ctx); err != nil {
+		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read locator byte length",
+			"error", err, "stage", "locator-byte-length", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
-	if lob.LobLength == 0 {
+	if lob.locatorByteLength == 0 {
 		rxd.row[col] = nil
 		rxd.lobColContext = append(rxd.lobColContext, lob)
 		return nil
@@ -410,14 +420,15 @@ func (rxd *tTIrxd) _unmarshalClobColumn(ctx context.Context, mar driverCommon.Ma
 
 	// prefetched: always for V1
 	// ------------------------------------------
-	// prefetched length
-	if lob.PrefetchLength, err = mar.UnmarshalUB8(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read prefetch length",
-			"error", err, "stage", "prefetch-length", "index", col)
+	// total logical LOB length
+	if lob.totalLobLength, err = mar.UnmarshalUB8(ctx); err != nil {
+		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read total LOB length",
+			"error", err, "stage", "total-lob-length", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
-	// prefetched chunk size
-	if lob.PrefetchChunkSize, err = mar.UnmarshalUB4(ctx); err != nil {
+	// Consume the server's prefetch-size field to keep the RXD stream aligned.
+	// Streamed reads use their own bounded client chunk size, so it is not stored.
+	if _, err = mar.UnmarshalUB4(ctx); err != nil {
 		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read prefetch chunk size",
 			"error", err, "stage", "prefetch-chunk-size", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
@@ -432,7 +443,7 @@ func (rxd *tTIrxd) _unmarshalClobColumn(ctx context.Context, mar driverCommon.Ma
 	dbVary = byte(ub1) == 0x1
 	if dbVary {
 		// characterset
-		if lob.CharsetID, err = mar.UnmarshalUB2(ctx); err != nil {
+		if lob.charsetID, err = mar.UnmarshalUB2(ctx); err != nil {
 			common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read charset ID",
 				"error", err, "stage", "charset-id", "index", col)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
@@ -440,7 +451,7 @@ func (rxd *tTIrxd) _unmarshalClobColumn(ctx context.Context, mar driverCommon.Ma
 	}
 
 	// the form of use
-	if lob.CharsetForm, err = mar.UnmarshalUB1(ctx); err != nil {
+	if lob.charsetForm, err = mar.UnmarshalUB1(ctx); err != nil {
 		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read charset form",
 			"error", err, "stage", "charset-form", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
@@ -448,11 +459,11 @@ func (rxd *tTIrxd) _unmarshalClobColumn(ctx context.Context, mar driverCommon.Ma
 
 	// If the character set ID was not returned by the server, use the session
 	// character set
-	if lob.CharsetID == 0 {
-		if lob.CharsetForm == 2 {
-			lob.CharsetID = rxd.sessNCharSet
+	if lob.charsetID == 0 {
+		if lob.charsetForm == 2 {
+			lob.charsetID = rxd.sessNCharSet
 		} else {
-			lob.CharsetID = rxd.sessCharSet
+			lob.charsetID = rxd.sessCharSet
 		}
 	}
 
@@ -470,7 +481,7 @@ func (rxd *tTIrxd) _unmarshalClobColumn(ctx context.Context, mar driverCommon.Ma
 	// ------------------------------------------
 
 	// locator??
-	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
+	if lob.lobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
 		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read LOB locator",
 			"error", err, "stage", "lob-locator", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
@@ -554,12 +565,12 @@ func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Ma
 	// length
 	lob := &lobColumnContext{}
 	var err error
-	if lob.LobLength, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read LOB length",
-			"error", err, "stage", "lob-length", "index", col)
+	if lob.locatorByteLength, err = mar.UnmarshalUB4(ctx); err != nil {
+		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read locator byte length",
+			"error", err, "stage", "locator-byte-length", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
-	if lob.LobLength == 0 {
+	if lob.locatorByteLength == 0 {
 		rxd.row[col] = nil
 		rxd.lobColContext = append(rxd.lobColContext, lob)
 		if dtyType == DtyJSON {
@@ -572,14 +583,15 @@ func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Ma
 
 	// prefetched: always for V1
 	// ------------------------------------------
-	// prefetched length
-	if lob.PrefetchLength, err = mar.UnmarshalUB8(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read prefetch length",
-			"error", err, "stage", "prefetch-length", "index", col)
+	// total logical LOB length
+	if lob.totalLobLength, err = mar.UnmarshalUB8(ctx); err != nil {
+		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read total LOB length",
+			"error", err, "stage", "total-lob-length", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
-	// prefetched chunk size
-	if lob.PrefetchChunkSize, err = mar.UnmarshalUB4(ctx); err != nil {
+	// Consume the server's prefetch-size field to keep the RXD stream aligned.
+	// Streamed reads use their own bounded client chunk size, so it is not stored.
+	if _, err = mar.UnmarshalUB4(ctx); err != nil {
 		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read prefetch chunk size",
 			"error", err, "stage", "prefetch-chunk-size", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
@@ -599,7 +611,7 @@ func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Ma
 	// ------------------------------------------
 
 	// locator
-	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
+	if lob.lobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
 		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read LOB locator",
 			"error", err, "stage", "lob-locator", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])

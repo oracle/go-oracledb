@@ -41,19 +41,38 @@ package ttc
 import (
 	"context"
 	"database/sql/driver"
-	"time"
 )
 
 // Implementation of Pinger and Validator interfaces
 
 // *** Pinger ***
 
-// Ping pings the database to check if the connection is in a valid state
+// Ping verifies the physical connection with one serialized TTC ping exchange.
+// It checks the connection state before and after waiting for session admission.
+// Context cancellation while waiting for admission is returned unchanged;
+// failure of the TTC ping is reported as driver.ErrBadConn.
 //
-// Returns: driver.ErrBadConn if the connection is not in a valid state,
-//
-//	otherwise nil
+// Returns:
+//   - driver.ErrBadConn if the connection is closed or invalid, or the TTC ping fails.
+//   - the context error if admission is canceled before the ping starts.
+//   - nil when the ping completes successfully.
 func (c *connection) Ping(ctx context.Context) error {
+	closed, valid := c.connectionState()
+	if closed || !valid {
+		return driver.ErrBadConn
+	}
+	release, guardErr := c.shelf.synchronizer.begin(ctx)
+	if guardErr != nil {
+		return guardErr
+	}
+	defer release()
+
+	// Close or invalidation may have won while Ping was waiting for admission.
+	closed, valid = c.connectionState()
+	if closed || !valid {
+		return driver.ErrBadConn
+	}
+
 	err := c.runFunctionWithFunHeader(ctx, ping)
 	if err != nil {
 		return driver.ErrBadConn
@@ -63,18 +82,18 @@ func (c *connection) Ping(ctx context.Context) error {
 
 // *** Validator ***
 
-const (
-	// timeout duration to prevent the IsValid function from blocking indefinitely
-	_pingTimeout time.Duration = 10000000000 // 10s
-)
-
 // IsValid checks if the connection is valid
 //
 // Returns: true if the connection is valid otherwise false
 func (c *connection) IsValid() bool {
-
+	closed, valid := c.connectionState()
+	if closed || !valid {
+		return false
+	}
 	// Check if inband notification has been received.
-	c._isValid = c._isValid && !c.ns.CheckInbandNotification()
-
-	return c._isValid
+	if c.ns.CheckInbandNotification() {
+		c.invalidate()
+	}
+	closed, valid = c.connectionState()
+	return !closed && valid
 }

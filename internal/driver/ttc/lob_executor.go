@@ -40,11 +40,70 @@ package ttc
 
 import (
 	"context"
+	"errors"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+// completedLobResponseError marks a failed LOB operation whose terminal TTC
+// response was consumed. Unlike ambiguous push, flush, and pull failures, it
+// proves the exchange was fully delimited and does not by itself make the TTC
+// stream unsafe for reuse.
+type completedLobResponseError struct {
+	err error
+}
+
+// Error implements error.
+func (e *completedLobResponseError) Error() string { return e.err.Error() }
+
+// ErrorCode preserves the public SQLError contract while retaining the private
+// synchronization marker. It forwards the first coded error in the chain.
+func (e *completedLobResponseError) ErrorCode() string {
+	var sqlErr oracleErrors.SQLError
+	if errors.As(e.err, &sqlErr) {
+		return sqlErr.ErrorCode()
+	}
+	return string(oracleErrors.LobExecError)
+}
+
+// Unwrap exposes the original Oracle error to errors.Is/errors.As callers.
+func (e *completedLobResponseError) Unwrap() error { return e.err }
+
+// isCompletedLobResponseError reports whether err contains proof that the
+// failed LOB operation's terminal TTC response was consumed.
+func isCompletedLobResponseError(err error) bool {
+	var completed *completedLobResponseError
+	return errors.As(err, &completed)
+}
+
+// operationError wraps a failed LOB transport stage. If the operation context
+// was canceled, it first performs break/reset and consumes the terminal TTIOER.
+// A successful recovery is marked as completed so callers may keep the
+// physical connection; failed recovery remains unmarked and requires discard.
+func (e *lobExecutor) operationError(ctx context.Context, err error, stage string) error {
+	wrapped := common.NewOracleError(oracleErrors.LobExecError, err, stage)
+	if ctx.Err() == nil {
+		return wrapped
+	}
+	streamer, ok := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	if !ok {
+		return wrapped
+	}
+	terminal, restoreErr := restoreTTCStreamAfterCancellation(ctx, streamer)
+	if restoreErr != nil {
+		return common.NewOracleError(oracleErrors.LobExecError, errors.Join(err, restoreErr), stage)
+	}
+	if terminal != nil {
+		if oer, ok := terminal.(tTIOerIface); ok {
+			if serverErr := oer.getError(); serverErr != nil {
+				wrapped = common.NewOracleError(oracleErrors.LobExecError, errors.Join(ctx.Err(), serverErr), stage)
+			}
+		}
+	}
+	return &completedLobResponseError{err: wrapped}
+}
 
 // lobExecutor provides the base TTC RPC implementation that every LOB executor builds
 // on. It owns the message plumbing and shared helpers so higher-level BLOB/CLOB
@@ -52,14 +111,6 @@ import (
 type lobExecutor struct {
 	// shelf provides access to cached TTC message factories and streamers scoped to a connection.
 	shelf *driverCommon.Shelf[driverCommon.MessageType]
-	// tempLobFreeOffset tracks the number of bytes currently populated in tempLobsToFree.
-	tempLobFreeOffset driverCommon.UB4
-	// tempLobsToFree caches serialized temporary LOB locators queued for piggyback frees.
-	tempLobsToFree driverCommon.B1Array
-	// tempLobFreeCount records how many temporary LOB locators have been queued for freeing.
-	tempLobFreeCount driverCommon.UB4
-	// lastBytesTransferred stores the bytes moved during the most recent read or write call.
-	lastBytesTransferred driverCommon.UB8
 	// openOperation stores the lob operation code used for open requests.
 	openOperation lobOperationCode
 	// closeOperation stores the lob operation code used for close requests.
@@ -69,69 +120,63 @@ type lobExecutor struct {
 }
 
 // newLobExecutor allocates a lobExecutor pre-configured with the default LOB operation codes
-// (open, close, and is-open). Callers typically embed the returned instance inside type-specific
-// executors such as clobExecutor and rely on the TTC defaults unless a specialised verb is
-// required.
+// (open, close, and is-open) and the required message shelf. Callers typically embed the returned
+// instance inside type-specific executors such as clobExecutor and rely on the TTC defaults unless
+// a specialised verb is required.
 //
-// Outputs:
-//   - *lobExecutor: executor instance wired with the default operation codes.
+// Parameters:
+//   - shelf: message shelf shared by the executor.
 //
-// Note: Callers must inject the Shelf via SetShelf to align with the ShelfUser lifecycle used across
-// the TTC package.
-func newLobExecutor() *lobExecutor {
+// Returns:
+//   - *lobExecutor: executor instance wired with the shelf and default operation codes.
+func newLobExecutor(shelf *driverCommon.Shelf[driverCommon.MessageType]) *lobExecutor {
 	return &lobExecutor{
+		shelf:           shelf,
 		openOperation:   kplobOpen,
 		closeOperation:  kplobClose,
 		isOpenOperation: kplobIsOpen,
 	}
 }
 
-// SetShelf injects the shared TTC shelf, satisfying the ShelfUser contract.
-func (e *lobExecutor) SetShelf(shelf *driverCommon.Shelf[driverCommon.MessageType]) {
-	e.shelf = shelf
-}
-
 // read constructs and dispatches an OLOBOPS request using the kplobRead function code.
 //
-// Input:
+// Parameters:
 //   - lobLocator: locator for the server-side LOB to read from.
 //   - offset: position within the LOB where the read should begin.
 //   - numBytes: maximum number of bytes to transfer from the LOB.
 //   - outBuffer: destination buffer that receives the LOB data.
 //
-// Output:
-//   - common.UB8: number of bytes written into outBuffer for the request.
+// Returns:
+//   - driverCommon.UB8: number of bytes written into outBuffer for the request.
+//   - driverCommon.UB8: server-reported lobAmt from TTIRPA.
 //
 // Errors:
 //   - LobExecError("read") wrapping TTC, protocol, or network failures raised while exchanging
 //     TTIRPA/TTILOBD messages to satisfy the read.
-func (e *lobExecutor) read(ctx context.Context, lobLocator *locator, numBytes driverCommon.UB8, outBuffer driverCommon.B1Array) (driverCommon.UB8, error) {
+func (e *lobExecutor) read(ctx context.Context, lobLocator *locator, numBytes driverCommon.UB8, outBuffer driverCommon.B1Array) (driverCommon.UB8, driverCommon.UB8, error) {
 	common.Odl.Debug("lobExecutor.read: begin", "offset", lobLocator.offset, "numBytes", numBytes)
-	def := NewLobDefinitionForReadOperation(lobLocator, numBytes)
-
-	// updated during TTILOBD post unmarshal callback
-	e.lastBytesTransferred = 0
+	def := newLobDefinitionForReadOperation(lobLocator, numBytes)
 
 	if err := e.executeRead(ctx, def, outBuffer); err != nil {
 		common.Odl.Error("lobExecutor.read: executeRead failed", "error", err)
-		return 0, common.NewOracleError(oracleErrors.LobExecError, err, "read")
+		return 0, 0, common.NewOracleError(oracleErrors.LobExecError, err, "read")
 	}
 
-	common.Odl.Debug("lobExecutor.read: completed", "bytesRead", e.lastBytesTransferred)
-	return e.lastBytesTransferred, nil
+	common.Odl.Debug("lobExecutor.read: completed", "bytesRead", def.bytesTransferred, "lobAmt", def.lobAmt)
+	return def.bytesTransferred, def.lobAmt, nil
 }
 
 // write builds and sends an OLOBOPS request using the kplobWrite function code along with the
 // accompanying TTILOBD payload carrying client data.
 //
-// Input:
+// Parameters:
 //   - lobLocator: locator that identifies the destination LOB.
 //   - offset: position within the LOB where the write should begin.
 //   - inBuffer: client buffer that supplies the bytes to be written.
 //   - numBytes: number of bytes requested for transfer.
 //
-// Output:
-//   - common.UB8: number of bytes written into the destination LOB.
+// Returns:
+//   - driverCommon.UB8: number of bytes written into the destination LOB.
 //
 // Errors:
 //   - Returns buffer validation failures or any TTC/protocol/network errors encountered while
@@ -146,7 +191,7 @@ func (e *lobExecutor) write(ctx context.Context, lobLocator *locator, inBuffer d
 		return 0, err
 	}
 
-	def := NewLobDefinitionForWriteOperation(lobLocator, numBytes)
+	def := newLobDefinitionForWriteOperation(lobLocator, numBytes)
 
 	if err := e.executeWrite(ctx, def, inBuffer); err != nil {
 		common.Odl.Error("lobExecutor.write: executeWrite failed", "error", err)
@@ -160,18 +205,18 @@ func (e *lobExecutor) write(ctx context.Context, lobLocator *locator, inBuffer d
 // GetLength builds and sends an OLOBOPS request using the kplobGetLength function code and
 // expects a TTIRPA response conveying the result.
 //
-// Input:
+// Parameters:
 //   - lobLocator: locator identifying the LOB whose length should be retrieved.
 //
-// Output:
-//   - common.UB8: length of the specified LOB as reported by the server.
+// Returns:
+//   - driverCommon.UB8: length of the specified LOB as reported by the server.
 //
 // Errors:
 //   - LobExecError("get-length") wraps TTC/protocol/network failures raised while exchanging
 //     TTIRPA messages required to obtain the length.
-func (e *lobExecutor) GetLength(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
+func (e *lobExecutor) getLength(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
 	common.Odl.Debug("lobExecutor.getLength: begin")
-	def := NewLobDefinitionForGetLengthOperation(lobLocator)
+	def := newLobDefinitionForGetLengthOperation(lobLocator)
 
 	if err := e.execute(ctx, def); err != nil {
 		common.Odl.Error("lobExecutor.getLength: execute failed", "error", err)
@@ -185,18 +230,18 @@ func (e *lobExecutor) GetLength(ctx context.Context, lobLocator *locator) (drive
 // GetChunkSize sends an OLOBOPS request with the kplobPageSize function code and expects a
 // TTIRPA response carrying the server page size.
 //
-// Input:
+// Parameters:
 //   - lobLocator: locator identifying the LOB for which the chunk size is requested.
 //
-// Output:
-//   - common.UB8: page size reported by the server for the specified LOB.
+// Returns:
+//   - driverCommon.UB8: page size reported by the server for the specified LOB.
 //
 // Errors:
 //   - LobExecError("get-chunk-size") wraps TTC/protocol/network failures raised while exchanging
 //     TTIRPA messages required to obtain the chunk size.
-func (e *lobExecutor) GetChunkSize(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
+func (e *lobExecutor) getChunkSize(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
 	common.Odl.Debug("lobExecutor.getChunkSize: begin")
-	def := NewLobDefinitionForGetChunkSizeOperation(lobLocator)
+	def := newLobDefinitionForGetChunkSizeOperation(lobLocator)
 
 	if err := e.execute(ctx, def); err != nil {
 		common.Odl.Error("lobExecutor.getChunkSize: execute failed", "error", err)
@@ -210,23 +255,23 @@ func (e *lobExecutor) GetChunkSize(ctx context.Context, lobLocator *locator) (dr
 // Trim sends an OLOBOPS request using the kplobTrim function code and expects a TTIRPA response
 // that reports the resulting size.
 //
-// Input:
+// Parameters:
 //   - lobLocator: locator identifying the LOB to be truncated or extended.
 //   - newLength: length the server should apply to the target LOB.
 //
-// Output:
-//   - common.UB8: resulting LOB length returned by the server.
+// Returns:
+//   - driverCommon.UB8: resulting LOB length returned by the server.
 //
 // Errors:
 //   - LobExecError("trim") wraps TTC/protocol/network failures raised while exchanging TTIRPA
 //     messages required to perform the Trim.
-func (e *lobExecutor) Trim(ctx context.Context, lobLocator *locator, newLength driverCommon.UB8) (driverCommon.UB8, error) {
+func (e *lobExecutor) trim(ctx context.Context, lobLocator *locator, newLength driverCommon.UB8) (driverCommon.UB8, error) {
 	common.Odl.Debug("lobExecutor.trim: begin", "newLength", newLength)
 	if err := validateLobOperation(lobLocator, kplobTrim); err != nil {
 		common.Odl.Error("lobExecutor.trim: validate failed", "error", err)
 		return 0, err
 	}
-	def := NewLobDefinitionForTrimOperation(lobLocator, newLength)
+	def := newLobDefinitionForTrimOperation(lobLocator, newLength)
 
 	if err := e.execute(ctx, def); err != nil {
 		common.Odl.Error("lobExecutor.trim: execute failed", "error", err)
@@ -242,12 +287,12 @@ func (e *lobExecutor) Trim(ctx context.Context, lobLocator *locator, newLength d
 // adjust the operation stored on the executor when alternate TTC verbs (for example, BFILE open)
 // are required.
 //
-// Input:
+// Parameters:
 //   - ctx: execution context propagated to TTC calls.
 //   - locator: locator identifying the LOB/BFILE whose open state should be established.
 //   - mode: marshaling mode requested for the open (for example, read/write).
 //
-// Output:
+// Returns:
 //   - bool: true when the locator was opened locally (temporary/abstract locator) and the open flag was toggled.
 //     Persistent locators return false because the open state is held on the server.
 //   - error: error describing validation or TTC failures encountered while attempting the open.
@@ -261,7 +306,7 @@ func (e *lobExecutor) Trim(ctx context.Context, lobLocator *locator, newLength d
 //   - InvalidLOBBuffer when the locator is empty or already open in a context that disallows it.
 //   - LobExecError("open") wrapping TTC/protocol/network failures raised while executing OLOBOPS.
 
-func (e *lobExecutor) open(ctx context.Context, lobLocator *locator, mode LobOpenMode) (bool, error) {
+func (e *lobExecutor) open(ctx context.Context, lobLocator *locator, mode lobOpenMode) (bool, error) {
 	didOpen := false
 	common.Odl.Debug("lobExecutor.open: begin", "mode", mode, "operation", e.openOperation)
 	if lobLocator.isQuasiLocator() {
@@ -289,7 +334,7 @@ func (e *lobExecutor) open(ctx context.Context, lobLocator *locator, mode LobOpe
 
 	// Lob is not temporary -- must send message to server
 	// initialize lobdefinition structure
-	def := NewLobDefinitionForOpenOperation(lobLocator, mode, e.openOperation)
+	def := newLobDefinitionForOpenOperation(lobLocator, mode, e.openOperation)
 
 	if err := e.execute(ctx, def); err != nil {
 		common.Odl.Error("lobExecutor.open: execute failed", "error", err)
@@ -308,7 +353,7 @@ func (e *lobExecutor) open(ctx context.Context, lobLocator *locator, mode LobOpe
 // close resets the open flag for the locator and optionally issues a server side
 // close request if the locator represents a persistent LOB/BFILE.
 //
-// Input:
+// Parameters:
 //   - ctx: execution context propagated to TTC calls.
 //   - locator: locator that identifies the LOB or BFILE whose open state should be cleared.
 //
@@ -338,7 +383,7 @@ func (e *lobExecutor) close(ctx context.Context, lobLocator *locator) error {
 
 	// Lob is not temporary -- must send message to server
 	// initialize lobdef structure
-	def := NewLobDefinitionForCloseOperation(lobLocator, e.closeOperation)
+	def := newLobDefinitionForCloseOperation(lobLocator, e.closeOperation)
 
 	if err := e.execute(ctx, def); err != nil {
 		common.Odl.Error("lobExecutor.close: execute failed", "error", err)
@@ -353,13 +398,13 @@ func (e *lobExecutor) close(ctx context.Context, lobLocator *locator) error {
 // BFILE. When the locator references a persistent LOB/BFILE, it expects the server
 // to return a TTIRPA response conveying the open state.
 //
-// Input:
+// Parameters:
 //   - ctx: execution context propagated to TTC calls.
 //   - locator: locator referencing the LOB whose open state should be queried.
 //
 // Errors:
 //   - LobExecError("is-open") wrapping TTC/protocol/network failures raised while executing OLOBOPS.
-func (e *lobExecutor) IsOpen(ctx context.Context, lobLocator *locator) (bool, error) {
+func (e *lobExecutor) isOpen(ctx context.Context, lobLocator *locator) (bool, error) {
 	common.Odl.Debug("lobExecutor.isOpen: begin", "operation", e.isOpenOperation)
 	if lobLocator.isQuasiLocator() {
 		return false, nil
@@ -374,7 +419,7 @@ func (e *lobExecutor) IsOpen(ctx context.Context, lobLocator *locator) (bool, er
 	}
 
 	// Lob is persistent so must send message to server
-	def := NewLobDefinitionForIsOpenOperation(lobLocator, e.isOpenOperation)
+	def := newLobDefinitionForIsOpenOperation(lobLocator, e.isOpenOperation)
 
 	if err := e.execute(ctx, def); err != nil {
 		common.Odl.Error("lobExecutor.isOpen: execute failed", "error", err)
@@ -441,13 +486,13 @@ func (e *lobExecutor) execute(ctx context.Context, lobDefinition *lobDefinition)
 
 	if err := e._pushLobRequest(ctx, lobDefinition); err != nil {
 		common.Odl.Error("lobExecutor.execute: push lob request failed", "error", err)
-		return err
+		return e.operationError(ctx, err, "push")
 	}
 	common.Odl.Debug("lobExecutor.execute: pushed lob request")
 
 	if err := stmr.Flush(ctx); err != nil {
 		common.Odl.Error("lobExecutor.execute: Flush failed", "error", err)
-		return common.NewOracleError(oracleErrors.LobExecError, err, "flush")
+		return e.operationError(ctx, err, "flush")
 	}
 	common.Odl.Debug("lobExecutor.execute: flush completed")
 
@@ -468,7 +513,7 @@ func (e *lobExecutor) executeRead(ctx context.Context, lobDefinition *lobDefinit
 
 	// Read operations stream payload bytes from TTILOBD frames into the caller-provided buffer.
 	// Register the callbacks only when the request expects those frames to avoid unnecessary handlers.
-	if err := e._registerLobdCallback(buffer); err != nil {
+	if err := e._registerLobdCallback(buffer, lobDefinition); err != nil {
 		common.Odl.Error("lobExecutor.executeRead: register LOBD callback failed", "error", err)
 		return err
 	}
@@ -482,13 +527,13 @@ func (e *lobExecutor) executeRead(ctx context.Context, lobDefinition *lobDefinit
 
 	if err := e._pushLobRequest(ctx, lobDefinition); err != nil {
 		common.Odl.Error("lobExecutor.executeRead: push lob request failed", "error", err)
-		return err
+		return e.operationError(ctx, err, "push")
 	}
 	common.Odl.Debug("lobExecutor.executeRead: pushed lob request")
 
 	if err := stmr.Flush(ctx); err != nil {
 		common.Odl.Error("lobExecutor.executeRead: Flush failed", "error", err)
-		return common.NewOracleError(oracleErrors.LobExecError, err, "flush")
+		return e.operationError(ctx, err, "flush")
 	}
 	common.Odl.Debug("lobExecutor.executeRead: flush completed")
 
@@ -503,7 +548,12 @@ func (e *lobExecutor) executeRead(ctx context.Context, lobDefinition *lobDefinit
 // completion or failure.
 func (e *lobExecutor) executeWrite(ctx context.Context, lobDefinition *lobDefinition, buffer driverCommon.B1Array) error {
 	common.Odl.Debug("lobExecutor.executeWrite: start", "operation", lobDefinition.operation, "definition", lobDefinition)
-
+	common.Odl.Debug("lobExecutor.executeWrite: request", "operation", lobDefinition.operation,
+		"locatorOffset", lobDefinition.sourceLocator.offsetForLog(),
+		"lobAmount", lobDefinition.lobAmt, "sendLobAmount", lobDefinition.sendLobAmt,
+		"sourceLocatorLength", lobDefinition.sourceLocator.lengthForLog(),
+		"destinationLocatorLength", lobDefinition.destinationLocator.lengthForLog(),
+		"payloadLength", len(buffer))
 	stmr, _ := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
 	e._registerLobRPACallback(lobDefinition)
@@ -512,7 +562,7 @@ func (e *lobExecutor) executeWrite(ctx context.Context, lobDefinition *lobDefini
 
 	if err := e._pushLobRequest(ctx, lobDefinition); err != nil {
 		common.Odl.Error("lobExecutor.executeWrite: push lob request failed", "error", err)
-		return err
+		return e.operationError(ctx, err, "push")
 	}
 	common.Odl.Debug("lobExecutor.executeWrite: pushed lob request")
 
@@ -520,22 +570,23 @@ func (e *lobExecutor) executeWrite(ctx context.Context, lobDefinition *lobDefini
 	// Non-write verbs (read/metadata) bypass this path because no client data needs to be transmitted.
 	if err := e._pushWritePayload(ctx, buffer); err != nil {
 		common.Odl.Error("lobExecutor.executeWrite: push write payload failed", "error", err)
-		return err
+		return e.operationError(ctx, err, "push-data")
 	}
-	common.Odl.Debug("lobExecutor.executeWrite: pushed write payload")
+	common.Odl.Debug("lobExecutor.executeWrite: pushed write payload", "payloadLength", len(buffer))
 
 	if err := stmr.Flush(ctx); err != nil {
 		common.Odl.Error("lobExecutor.executeWrite: Flush failed", "error", err)
-		return common.NewOracleError(oracleErrors.LobExecError, err, "flush")
+		return e.operationError(ctx, err, "flush")
 	}
 	common.Odl.Debug("lobExecutor.executeWrite: flush completed")
 
 	return e._consumeLobResponses(ctx)
 }
 
-// _registerLobdCallback wires the TTILOBD unmarshalling callback for read operations and ensures an
-// output buffer is available.
-func (e *lobExecutor) _registerLobdCallback(buffer driverCommon.B1Array) error {
+// _registerLobdCallback wires the TTILOBD unmarshalling callback for one read
+// operation and ensures its output buffer is available. The byte count is
+// stored on def so concurrent executor instances cannot share operation state.
+func (e *lobExecutor) _registerLobdCallback(buffer driverCommon.B1Array, def *lobDefinition) error {
 	stmr, _ := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTILOBD, func(*messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
 		msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTILOBD)
@@ -544,7 +595,10 @@ func (e *lobExecutor) _registerLobdCallback(buffer driverCommon.B1Array) error {
 			return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "registerLobdCallback failed")
 		}
 		lobd, _ := msg.(*tTIlobd)
-		lobd.setBuffer(buffer)
+		if def.bytesTransferred > driverCommon.UB8(len(buffer)) {
+			return nil, common.NewOracleError(oracleErrors.InvalidLOBBuffer, nil, "read", "lob", "LOBD total exceeds buffer")
+		}
+		lobd.setBuffer(buffer[int(def.bytesTransferred):])
 		return lobd, nil
 	})
 
@@ -553,7 +607,12 @@ func (e *lobExecutor) _registerLobdCallback(buffer driverCommon.B1Array) error {
 		if prevErr != nil {
 			return false, prevErr
 		}
-		e.lastBytesTransferred = lobd.getLastBytesRead()
+		read := lobd.getLastBytesRead()
+		remaining := driverCommon.UB8(len(buffer)) - def.bytesTransferred
+		if read > remaining {
+			return false, common.NewOracleError(oracleErrors.InvalidLOBBuffer, nil, "read", "lob", "LOBD frame exceeds buffer")
+		}
+		def.bytesTransferred += read
 		return true, nil
 	})
 	return nil
@@ -610,7 +669,7 @@ func (e *lobExecutor) _consumeLobResponses(ctx context.Context) error {
 		msg, err := stmr.Pull(ctx, TTILOBD, TTIRPA, TTIOER, TTISTA)
 		if err != nil {
 			common.Odl.Error("lobExecutor.consumeLobResponses: Pull failed", "error", err)
-			return common.NewOracleError(oracleErrors.LobExecError, err, "pull")
+			return e.operationError(ctx, err, "pull")
 		}
 
 		switch msg.GetMsgCode() {
@@ -623,7 +682,7 @@ func (e *lobExecutor) _consumeLobResponses(ctx context.Context) error {
 			oer := msg.(tTIOerIface)
 			if lobErr := oer.getError(); lobErr != nil {
 				common.Odl.Error("lobExecutor.consumeLobResponses: TTIOER error", "error", lobErr)
-				return lobErr
+				return &completedLobResponseError{err: lobErr}
 			}
 			common.Odl.Debug("lobExecutor.consumeLobResponses: completed with TTIOER")
 			return nil
@@ -634,103 +693,3 @@ func (e *lobExecutor) _consumeLobResponses(ctx context.Context) error {
 		}
 	}
 }
-
-// ==================================================================================================== //
-// THIS CODE IS FOR FREE TEMP LOB REFERENCE
-
-// // copyTemporaryLobToFree queues one or more temporary LOB locators so they are freed on the next
-// // TTC round-trip that supports piggybacked temporary LOB drops.
-// //
-// // Input:
-// //   - lobLocators: contiguous bytes representing one or more temporary LOB locators to queue. Must
-// //     be non-empty.
-// //
-// // Behaviour:
-// //   - Ensures the piggyback buffer is large enough to store the supplied locators, growing it when
-// //     necessary.
-// //   - Copies the locators into the buffer so doFreeLobPiggyback can transmit them during the next
-// //     database call.
-// func (e *lobExecutor) copyTemporaryLobToFree(lobLocators common.B1Array) {
-// 	common.Odl.Debug("lobExecutor.copyTemporaryLobToFree: queue", "locatorsLen", len(lobLocators))
-
-// 	needed := int(e.tempLobFreeOffset) + len(lobLocators)
-// 	if len(e.tempLobsToFree) < needed {
-// 		// need to resize
-// 		newBuf := make(common.B1Array, max(len(e.tempLobsToFree)*2, needed))
-// 		copy(newBuf, e.tempLobsToFree)
-// 		e.tempLobsToFree = newBuf
-// 	}
-
-// 	// Save the locator for piggyback later
-// 	copy(e.tempLobsToFree[e.tempLobFreeOffset:], lobLocators)
-// 	e.tempLobFreeOffset += common.UB4(len(lobLocators))
-// }
-
-// // setTempLobFreeState installs the piggyback buffer state used to defer temporary LOB frees.
-// func (e *lobExecutor) setTempLobFreeState(offset common.UB4, locators common.B1Array) {
-// 	common.Odl.Debug("lobExecutor.setTempLobFreeState", "offset", offset, "locatorsLen", len(locators))
-// 	e.tempLobFreeOffset = offset
-// 	e.tempLobsToFree = locators
-// 	e.tempLobFreeCount = 0
-// }
-
-// // resetLobPiggyback clears the queued temporary LOB free buffer so it can be reused.
-// func (e *lobExecutor) resetLobPiggyback() {
-// 	e.tempLobFreeOffset = 0
-// }
-
-// // doFreeLobPiggyback emits a piggyback request to free any queued temporary LOB locators.
-// func (e *lobExecutor) doFreeLobPiggyback(ctx context.Context) error {
-// 	if e.tempLobFreeOffset == 0 || len(e.tempLobsToFree) == 0 {
-// 		return nil
-// 	}
-
-// 	dropped := make(common.B1Array, e.tempLobFreeOffset)
-// 	copy(dropped, e.tempLobsToFree[:e.tempLobFreeOffset])
-
-// 	def := &lobDefinition{
-// 		sourceLocator: dropped,
-// 		sendLobAmt:    false,
-// 		operation:     kplobArrayTmpFree,
-// 	}
-
-// 	if err := e.execute(ctx, def); err != nil {
-// 		return err
-// 	}
-
-// 	e.resetLobPiggyback()
-// 	return nil
-// }
-
-// freeTemporaryLob piggybacks temporary LOB frees when negotiated to do so. When piggybacking, the method saves the locator into the
-// piggyback storage so the next TTC call drops the temporary LOB.
-//
-// Errors:
-//   - InvalidLOBBuffer when the locator flags do not represent a valid temporary LOB state.
-// func (e *lobExecutor) freeTemporaryLob(ctx context.Context, lobLocator *locator, ttcVersion common.UB2) error {
-// 	if lobLocator.isQuasiLocator() || !lobLocator.isTemporaryLocator() {
-// 		return nil
-// 	}
-
-// 	// these next tests ensure we behave exactly the same as the code in KPU
-// 	if len(lobLocator.locatorBytes) <= koll2FlagOffset || (lobLocator.locatorBytes[koll2FlagOffset]&kolblInitializedFlag) == 0 {
-// 		err := common.NewOracleError(common.InvalidLOBBuffer, nil, "freeTemporary", "lob", "uninitialized locator")
-// 		common.Odl.Error("lobExecutor.freeTemporaryLob: uninitialized locator", "error", err)
-// 		return err
-// 	}
-// 	if !lobLocator.isAbstractLocator() && !lobLocator.isTemporaryLocator() {
-// 		err := common.NewOracleError(common.InvalidLOBBuffer, nil, "freeTemporary", "lob", "invalid locator flags")
-// 		common.Odl.Error("lobExecutor.freeTemporaryLob: invalid locator flags", "error", err)
-// 		return err
-// 	}
-
-// 	e.copyTemporaryLobToFree(lobLocator.locatorBytes)
-
-// 	// Modify the original locator to mark as closed.
-// 	// The KPU piggyback code clears these flags so we'll do that too.
-// 	lobLocator.locatorBytes[koll1FlagOffset] &^= kolblAbstractLocatorFlag
-// 	lobLocator.locatorBytes[koll2FlagOffset] &^= kolblInitializedFlag
-// 	lobLocator.locatorBytes[koll4FlagOffset] &^= kolblTemporaryFlagByte
-
-// 	return nil
-// }

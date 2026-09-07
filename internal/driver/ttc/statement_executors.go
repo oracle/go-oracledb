@@ -48,6 +48,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	internallob "github.com/oracle/go-oracledb/v26/internal/lob"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -64,16 +65,18 @@ database/sql/driver.Rows.
 Implementations:
   - Must honor ctx cancellation and deadlines; network I/O and server work should
     be aborted promptly when ctx is done.
-  - Interpret args as positional bind values aligned with placeholders in query.
-    Values should already be convertible to database/sql/driver.Value by the caller.
+  - Interpret args as driver.NamedValue values and validate/extract them according
+    to the placeholders recorded in query.
   - Typical TTC-based implementations build and push an OALL8/OEXFEN request, push TTIRXD
     rows for bind payloads when present, flush the stream, and pull TTIDCB/TTIBVC/
     TTIRXD messages until completion.
 
 Contract:
-  - The returned Rows streams result data; callers must iterate to completion and
-    call Close to release resources.
-  - The passed query host the request cursor Id that would be updated after round-trips
+  - The returned Rows owns the result lifecycle; callers must iterate to
+    completion and call Close to release resources.
+  - The passed query holds the cursor ID updated after round trips.
+  - args contains only Oracle bind values; public LOB bind markers have already
+    been converted to prepared locator binds by the Statement layer.
 
 Parameters:
 - ctx: request-scoped context for cancellation and timeouts.
@@ -85,11 +88,8 @@ Returns:
 - error on failure (e.g., factory/push/flush/pull issues or server-side errors).
 */
 type QueryWithContext interface {
-	// QueryContext defines the ability to execute a query with context and positional args.
-	// returns:
-	//   - the selected rows
-	//   - the cursorId ID, of this request
-	//   - error if request has failed
+	// QueryContext executes query with Oracle SQL binds and returns lifecycle-
+	// owning Rows or an error, never both on failure.
 	QueryContext(ctx context.Context, query *qualifiedSQLStatement, args []driver.NamedValue) (driver.Rows, error)
 }
 
@@ -100,15 +100,18 @@ database/sql/driver.Result.
 Implementations:
   - Must honor ctx cancellation and deadlines; underlying operations should stop
     promptly when ctx is done.
-  - Interpret args as positional bind values aligned with placeholders in query.
+  - Interpret args as driver.NamedValue values and validate/extract them according
+    to the placeholders recorded in query.
   - Typical TTC-based implementations build and push an OALL8 request, push TTIRXD
     rows if binds exist, flush the stream, and pull TTIOER to detect completion.
     For DML, implementations may expose rows-affected metadata when available.
 
 Contract:
-- Intended for DML/DDL/PL/SQL statements that do not produce a result set.
-- Should return a Result that may include RowsAffected when provided by the server.
-- The passed query host the request cursor Id that would be updated after round-trips
+  - Intended for DML/DDL/PL/SQL statements that do not produce a result set.
+  - Should return a Result that may include RowsAffected when provided by the server.
+  - The passed query holds the cursor ID updated after round trips.
+  - args contains only Oracle bind values; public LOB bind markers have already
+    been converted to prepared locator binds by the Statement layer.
 
 Parameters:
 - ctx: request-scoped context for cancellation and timeouts.
@@ -120,7 +123,7 @@ Returns:
 - error on failure (e.g., factory/push/flush/pull issues or server-side errors).
 */
 type ExecWithContext interface {
-	// ExecContext defines the ability to execute a statement with context and positional args.
+	// ExecContext executes a statement with context and named SQL bind values.
 	ExecContext(ctx context.Context, query *qualifiedSQLStatement, args []driver.NamedValue) (driver.Result, error)
 }
 
@@ -132,15 +135,16 @@ type statementProcessor struct {
 	opts          driverCommon.UB4                    // OALL8 option bitmask (parse/execute/commit/no-PLSQL/binds-present flags etc).
 	al8i4         []driverCommon.UB4                  // AL8I4 options vector attached to OALL8 (iterations, select flag, extra protocol flags).
 	bindValues    []any                               // Original bind values (ordered by position) for the current execution.
-	encodedValues [][]driverCommon.B1Array            // Wire-encoded bind payloads per iteration (each inner slice is a TTIRXD bind row).
+	encodedValues [][]encodedBind                     // TTC-ready bind payloads per iteration.
 	currentOacs   []driverCommon.Marshallable         // Per-bind OAC descriptors (type/size metadata) sent alongside bind values.
 	previousOacs  []driverCommon.Marshallable         // Cached OACs from previous execution of the statement
 }
 
-// SetShelf injects the message shelf used by the SELECT executor.
+// SetShelf injects the physical TTC shelf used by the statement executor.
 func (e *statementProcessor) SetShelf(s *ttiShelf[driverCommon.MessageType]) { e.shelf = s }
 
-// SetSessionContext injects the session context used by the executor.
+// SetSessionContext injects negotiated character-set metadata used by result
+// decoding and locator-backed CLOB/NCLOB values.
 func (e *statementProcessor) SetSessionContext(sessCtx *driverCommon.SessionContext) {
 	e.sessCtx = sessCtx
 }
@@ -182,25 +186,36 @@ func (m selectResultMetadata) newRows(shelf *ttiShelf[driverCommon.MessageType])
 	return rows
 }
 
-// queryRunState contains state whose lifetime is one runQuery invocation. BVC
-// carry data, LOB metadata, and rows must never be reused by a later protocol
-// round trip.
+// queryRunState contains state whose lifetime is exactly one runQuery TTC
+// exchange. BVC carry data, row buffers, and LOB metadata must never leak into
+// a later execution of a reusable Statement.
 type queryRunState struct {
-	rowCount   driverCommon.UB4
+	// rowCount is assigned to newly decoded RXD messages in receive order.
+	rowCount driverCommon.UB4
+	// bvcColSent is the current bit vector describing columns present in the next
+	// BVC-compressed row.
 	bvcColSent *driverCommon.BitSet
-	bvcFound   bool
+	// bvcFound reports whether bvcColSent should be applied to the next RXD.
+	bvcFound bool
 	// prevRow and prevLobColContext form the aligned previous-row state used by
 	// BVC carry.
 	prevRow           []driverCommon.B1Array
 	prevLobColContext []*lobColumnContext
-	rows              *ttcRows
+	// rows accumulates decoded results.
+	rows *ttcRows
 }
 
 // newQueryRunState creates clean row and BVC state for one runQuery invocation.
 // When result metadata is already cached, it also creates a fresh rows object
 // so an OEXFEN response can be decoded without receiving another DCB message.
 func (e *statementExecutorSelect) newQueryRunState() *queryRunState {
-	return &queryRunState{rows: e.resultMetadata.newRows(e.shelf)}
+	state := &queryRunState{
+		rows: e.resultMetadata.newRows(e.shelf),
+	}
+	if state.rows != nil {
+		state.rows.SetSessionContext(e.sessCtx)
+	}
+	return state
 }
 
 // newStatementExecutorSelect constructs a SELECT executor with server-parse and execute flags,
@@ -348,8 +363,8 @@ func isNoDataFoundError(err error) bool {
 	return ok && sqlErr.ErrorCode() == string(oracleErrors.NoDataFound)
 }
 
-// QueryContext builds and submits an OALL8 request for SELECT statements and
-// runs the TTC pipeline to fetch rows.
+// QueryContext builds and submits the OALL8 parse/execute and optional
+// define/fetch exchanges for a SELECT. namedValues contains only SQL binds.
 func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *qualifiedSQLStatement, namedValues []driver.NamedValue) (sqldriver.Rows, error) {
 	var err error
 	// validate the arguments against the parsed bind placeholders.
@@ -392,7 +407,7 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 	}
 	// If rows were returned, or the server reported NoDataFound, this execution
 	// is complete and no define/fetch round trip is required.
-	if err != nil || (state.rows != nil && state.rows.numOfRows > 0) {
+	if err != nil || (state.rows != nil && len(state.rows.rowData) > 0) {
 		return state.rows, nil
 	}
 	// define needs to be sent in other cases
@@ -427,7 +442,7 @@ Parameters:
     false for the initial parse/execute request.
 
 Returns:
-  - common.UB4: OALL8 options appropriate for either parse/execute or define/fetch.
+  - driverCommon.UB4: OALL8 options appropriate for either parse/execute or define/fetch.
 */
 func (e *statementExecutorSelect) buildOAll8Options(isDefine bool) driverCommon.UB4 {
 	if isDefine {
@@ -516,7 +531,7 @@ Description:
     SQL text, and the AL8I4 options vector.
   - If bind arguments are supplied, it:
   - Normalizes sql/driver.NamedValue into a 0-based []any slice aligned to bind positions.
-  - Encodes bind values into wire format [][]common.B1Array (currently 1 iteration).
+  - Encodes bind values into wire format [][]driverCommon.B1Array (currently 1 iteration).
   - Builds per-bind OAC descriptors and sets bind-related fields and flags on the OALL8.
 
 Parameters:
@@ -608,7 +623,7 @@ Parameters:
 - flags: Bitmask of AL8I4 extra flags (stored in AL8I4[9]).
 
 Returns:
-- []common.UB4: Fully initialized AL8I4 vector.
+- []driverCommon.UB4: Fully initialized AL8I4 vector.
 */
 func buildAl8i4(iterations driverCommon.UB4, selectStmt bool, flags driverCommon.UB4, parseOption driverCommon.UB4) []driverCommon.UB4 {
 	common.Odl.Debug("buildAl8i4: called",
@@ -632,6 +647,8 @@ prepareBindsAndOAC prepares bind payloads and OAC descriptors for an OALL8 execu
 Description:
   - Encodes each bind value using the TypeCodecFactory encoder for reflect.TypeOf(value)
     and stores the result in e.encodedValues as a single "iteration" (one TTIRXD row).
+  - Encodes prepared LOB locator binds with their LOB-specific RXD representation
+    and OAC metadata; an unprepared streamed input is rejected.
   - Creates an OAC for each bind using the TypeCodecFactory OAC builder for reflect.TypeOf(value),
     and sizes the OAC using the encoded byte length for that bind.
 
@@ -644,7 +661,8 @@ Notes / limitations:
     provide args in the final bind position order.
 
 Returns:
-  - error: non-nil if encoder/OAC factory lookup fails or if encoding fails for any bind value.
+  - error: non-nil if a bind encoder/OAC lookup fails, a value cannot be encoded,
+    or a streamed LOB reaches this layer without locator preparation.
 */
 func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value) error {
 	n := len(args)
@@ -652,12 +670,24 @@ func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value) error {
 	e.bindValues = make([]any, n)
 	// TODO : currently, just do it for single row, later when
 	//        batching support is added, make it dynamic.
-	e.encodedValues = make([][]driverCommon.B1Array, 1)
+	e.encodedValues = make([][]encodedBind, 1)
 	currentRow := 0
-	e.encodedValues[currentRow] = make([]driverCommon.B1Array, n)
+	e.encodedValues[currentRow] = make([]encodedBind, n)
 	e.currentOacs = make([]driverCommon.Marshallable, n)
 	for i, v := range args {
 		e.bindValues[i] = v
+		if bind, isLobLocatorBind := v.(lobLocatorBind); isLobLocatorBind {
+			encoded, oac, err := encodeLobLocatorBind(bind)
+			if err != nil {
+				return err
+			}
+			e.encodedValues[currentRow][i] = encodedBind{data: encoded, lobLocator: true}
+			e.currentOacs[i] = oac
+			continue
+		}
+		if _, isLobInput := v.(internallob.Input); isLobInput {
+			return common.NewOracleError(oracleErrors.InvalidLobInput, nil, "bind preparation")
+		}
 		// sql.Out{}, int, float, string,time
 		var err error
 		normalized := normalizeBindValue(v)
@@ -666,14 +696,15 @@ func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value) error {
 			return err
 		}
 
-		e.encodedValues[currentRow][i], err = encoder(normalized.value)
-		if err != nil {
-			return err
+		encoded, encodeErr := encoder(normalized.value)
+		if encodeErr != nil {
+			return encodeErr
 		}
+		e.encodedValues[currentRow][i] = encodedBind{data: encoded}
 
 		e.currentOacs[i], err = e.shelf.GetCodecFactory().getBindOac(
 			normalized,
-			e.getMaxLengthForOac(i, len(e.encodedValues[currentRow][i])),
+			e.getMaxLengthForOac(i, len(e.encodedValues[currentRow][i].data)),
 		)
 		if err != nil {
 			return err
@@ -713,7 +744,7 @@ func (e *statementProcessor) pushBindRows(
 			return common.NewOracleError(errCode, gerr, "push")
 		}
 		rxd := msg.(*tTIrxd)
-		rxd.setBindValues(row)
+		rxd.setEncodedBinds(row)
 		if err := stmr.Push(ctx, rxd); err != nil {
 			common.Odl.Error(caller+": Push RXD failed", "error", err, "stage", "push", "msgCode", rxd.GetMsgCode())
 			return common.NewOracleError(errCode, err, "push")
@@ -760,7 +791,7 @@ Parameters:
   - currLength: byte length of the currently encoded value for that bind.
 
 Returns:
-  - common.UB4: the maximum of the previous OAC maxLength (if present) and the current value length.
+  - driverCommon.UB4: the maximum of the previous OAC maxLength (if present) and the current value length.
 */
 func (e *statementProcessor) getMaxLengthForOac(position int, currLength int) driverCommon.UB4 {
 	if e.previousOacs == nil || len(e.previousOacs) <= position {
@@ -858,9 +889,6 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCo
 		}
 	}
 	common.Odl.Debug("runQuery: End of function")
-	if state.rows != nil {
-		state.rows.numOfRows = len(state.rows.rowData)
-	}
 	return state, returnedCursorID, err
 }
 
@@ -904,7 +932,7 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 	if err != nil {
 		return nil, err
 	}
-	e.registerPlSqlCallbacks(ctx)
+	e.registerPlSqlCallbacks()
 	defer e.unregisterPlSqlCallbacks()
 	result, cursorId, err := e.runExec(ctx, messageToExecute)
 	if err == nil {
@@ -934,18 +962,14 @@ Description:
   - Limits the registration scope to the active PL/SQL execution and relies on
     unregisterPlSqlCallbacks to remove the callbacks afterward.
 
-Parameters:
-  - ctx: execution context associated with the current PL/SQL execution. It is
-    forwarded to the shared IOV callback registration flow.
-
 Notes:
   - This helper is used by PL/SQL exec paths only; query-style row handling is
     not configured here.
 */
-func (e *statementExecutorPlSql) registerPlSqlCallbacks(ctx context.Context) {
+func (e *statementExecutorPlSql) registerPlSqlCallbacks() {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTIRXD, e.createRXD)
-	e.registerIOVCallbacks(ctx)
+	e.registerIOVCallbacks()
 }
 
 func (e *statementExecutorPlSql) createRXD(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
@@ -1052,25 +1076,23 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 	return &ttcResult{rowsAffected: rowsAffected, shelf: e.shelf}, receivedCursorID, nil
 }
 
-// handleContextCancelled cancels statement execution and reads TTIOER message
-//
-//	returned by the server
+// handleContextCancelled restores the TTC stream after context cancellation.
+// It runs break/reset through the operation-cancellation coordinator, consumes
+// the terminal TTIOER, and marks the session stale when recovery cannot prove
+// that the stream is synchronized.
 func (e *statementProcessor) handleContextCancelled(ctx context.Context) (driverCommon.Message[driverCommon.MessageType], error) {
-	cancellationState, ok := ctx.Value(statementCancellationContextKey{}).(*statementCancellationState)
-	if ok && cancellationState != nil {
-		common.Odl.Debug("Context error received using break-reset protocol, allow after function to start")
-		// allow after func to start break-reset
-		cancellationCtx, started := cancellationState.requestBreakReset()
-		if !started {
-			return nil, ctx.Err()
-		}
-		defer cancellationCtx.CancelFunc()
-		common.Odl.Debug("Break-reset completed, fetch OER")
-		// The context has been cancelled, cancel current execution and return
-		// error
-		return e.shelf.GetMessageStreamer().Pull(cancellationCtx.Context, TTIOER)
+	common.Odl.Debug("Context error received; restoring TTC synchronization with break/reset")
+	streamer, ok := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	if !ok {
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
-	return nil, ctx.Err()
+	message, err := e.shelf.cancellation.restoreTTCStream(ctx, streamer)
+	if err != nil {
+		// A successful break without its terminal TTIOER is still ambiguous: the
+		// next user must never inherit a partially drained TTC response.
+		e.shelf.getEventService().post(streamerStaleEvent)
+	}
+	return message, err
 }
 
 // handleDCB refreshes the SELECT statement's result metadata and creates a
@@ -1086,6 +1108,7 @@ func (e *statementExecutorSelect) handleDCB(state *queryRunState, msg driverComm
 	}
 	e.resultMetadata.replace(columns)
 	state.rows = e.resultMetadata.newRows(e.shelf)
+	state.rows.SetSessionContext(e.sessCtx)
 	return nil
 }
 
@@ -1157,7 +1180,7 @@ Parameters:
     provided to satisfy the pre-unmarshal callback signature.
 
 Returns:
-  - common.Message[common.MessageType]: the initialized *tTIrxd instance.
+  - driverCommon.Message[driverCommon.MessageType]: the initialized *tTIrxd instance.
   - error: non-nil if the message factory cannot allocate TTIRXD.
 */
 func (e *statementExecutorDML) createRXD(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
@@ -1300,7 +1323,7 @@ func (e *statementExecutorDML) registerDMLCallbacks(ctx context.Context) {
 		}
 		return true, nil
 	})
-	e.registerIOVCallbacks(ctx)
+	e.registerIOVCallbacks()
 }
 
 /*
@@ -1317,16 +1340,11 @@ Description:
     without surfacing it to the main execution loop, since the relevant state is
     consumed during unmarshalling.
 
-Parameters:
-  - ctx: execution context associated with the current statement execution. It is
-    currently unused in this helper but kept to align with the surrounding callback
-    registration flow.
-
 Notes:
   - Callers must unregister the TTIIOV callbacks after execution completes to avoid
     leaking IOV-specific unmarshalling behavior into subsequent statements.
 */
-func (e *statementExecutorExec) registerIOVCallbacks(ctx context.Context) {
+func (e *statementExecutorExec) registerIOVCallbacks() {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTIIOV, func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
 		msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIIOV)
@@ -1360,11 +1378,11 @@ func (s *queryRunState) handleRXDRow(msg driverCommon.Message[driverCommon.Messa
 		for i := range rxd.row {
 			currRow[i] = append(driverCommon.B1Array(nil), rxd.row[i]...)
 		}
-		// RXD messages are created per row and their LOB contexts are read-only
-		// after unmarshalling, so rows and BVC state can safely share this slice.
-		currLobColContext := rxd.getLobColumnContext()
+		// LOB values outlive the RXD decoder. Copy metadata and opaque locator
+		// bytes so later message reuse cannot mutate an escaped reader.
+		currLobColContext := copyLobColumnContexts(rxd.getLobColumnContext())
 		s.rows.rowData = append(s.rows.rowData, currRow)
-		s.rows.lobColContext = append(s.rows.lobColContext, currLobColContext)
+		s.rows.lobColumnContexts = append(s.rows.lobColumnContexts, currLobColContext)
 		s.prevRow = currRow
 		common.Odl.Debug("handleRXDRow: appended RXD row", "len", len(rxd.row))
 		s.prevLobColContext = currLobColContext
@@ -1372,6 +1390,24 @@ func (s *queryRunState) handleRXDRow(msg driverCommon.Message[driverCommon.Messa
 	}
 	s.bvcColSent = nil
 	s.bvcFound = false
+}
+
+// copyLobColumnContexts returns row-owned metadata and locator storage. Nil
+// entries remain nil so the result stays column-aligned for BVC carry.
+func copyLobColumnContexts(source []*lobColumnContext) []*lobColumnContext {
+	if source == nil {
+		return nil
+	}
+	copied := make([]*lobColumnContext, len(source))
+	for index, metadata := range source {
+		if metadata == nil {
+			continue
+		}
+		copyOfMetadata := *metadata
+		copyOfMetadata.lobLocator = append(driverCommon.B1Array(nil), metadata.lobLocator...)
+		copied[index] = &copyOfMetadata
+	}
+	return copied
 }
 
 // registerRunQueryCallbacks sets up all required pre-unmarshal callbacks for a query context.
@@ -1431,26 +1467,6 @@ func registerOallRpaCallbacks(stmr MessageStreamerInterface, shelf *ttiShelf[dri
 			return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "registerOallRpaCallback failed")
 		}
 		return msg, nil
-	})
-}
-
-// registerDMLOallRpaCallbacks registers OALLRPA for TTIRPA (used in both query and exec contexts).
-func registerDMLOallRpaCallbacks(ctx context.Context, stmr MessageStreamerInterface, shelf *ttiShelf[driverCommon.MessageType]) {
-	common.Odl.Debug("registerDMLOallRpaCallbacks: registering II-RPA callback")
-	stmr.RegisterPostUnmarshallCallback(TTIRPA, func(msg driverCommon.Message[driverCommon.MessageType], prevErr error) (bool, error) {
-		if prevErr != nil {
-			return false, prevErr
-		}
-		if rpa, ok := msg.(*ttioallrpa); ok {
-			// map DML row count parsing failure -> OGD-00060 RunExecError("unmarshal-dml-rows")
-			// todo: once ttcResult is implemented, consume the rows returned.
-			if err := rpa.UnMarshalDMLRows(ctx, shelf.GetMarshaller()); err != nil {
-				common.Odl.Error("StatementExecutorDML.ExecContext: UnMarshalDMLRows failed",
-					"error", err, "stage", "unmarshal-dml-rows")
-				return false, common.NewOracleError(oracleErrors.RunExecError, err, "ExecContext failed")
-			}
-		}
-		return true, nil
 	})
 }
 

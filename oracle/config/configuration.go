@@ -58,6 +58,10 @@ import (
 // configuration root node name
 const configurationRootName = "oracle.go"
 
+// DefaultLobPrefetchSize is the default amount of LOB data, in bytes, fetched
+// inline when reading LOB columns.
+const DefaultLobPrefetchSize = 32 * 1024 * 1024
+
 // OracleDriverProperties defines driver-level configuration options that affect
 // how Oracle driver behavior upon request exchanges with the remote database.
 type OracleDriverProperties struct {

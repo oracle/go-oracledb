@@ -46,15 +46,17 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/oracle/go-oracledb/v26/oracle/lob"
 )
 
-// TestDriver_Table_Select_CLOB
+// TestDriver_LobTableSelectClob verifies materialized CLOB selection.
 // What it does: Creates a table with a CLOB column, inserts a large string, then selects it back.
 // Expectation: Selecting the CLOB column and scanning into string returns the exact text inserted.
 // Notes:
 //   - Uses TO_CLOB(:val) to ensure we bind a CLOB even for large values.
 //   - Includes a NULL CLOB scan case.
-func TestDriver_Table_Select_CLOB(t *testing.T) {
+func TestDriver_LobTableSelectClob(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -97,17 +99,17 @@ func TestDriver_Table_Select_CLOB(t *testing.T) {
 	}
 
 	// Select back (small)
-	var outSmall string
+	var outSmall lob.Text
 	selSQL := fmt.Sprintf("SELECT txt FROM %s WHERE id = :id", table)
 	if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", int64(1))).Scan(&outSmall); err != nil {
 		t.Fatalf("select/scan small clob failed: %v", err)
 	}
-	if outSmall != clobSmall {
+	if string(outSmall) != clobSmall {
 		t.Fatalf("small clob mismatch:\n got: %q\nwant: %q", outSmall, clobSmall)
 	}
 
 	// Select back (large) - compare hash to keep failure messages manageable
-	var outLarge string
+	var outLarge lob.Text
 	if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", int64(2))).Scan(&outLarge); err != nil {
 		t.Fatalf("select/scan large clob failed: %v", err)
 	}
@@ -128,13 +130,13 @@ func TestDriver_Table_Select_CLOB(t *testing.T) {
 	}
 }
 
-// TestDriver_Table_Select_BLOB
+// TestDriver_LobTableSelectBlob verifies materialized BLOB selection.
 // What it does: Creates a table with a BLOB column, inserts raw bytes, then selects it back.
 // Expectation: Selecting the BLOB column and scanning into []byte returns the exact bytes inserted.
 // Notes:
 //   - Uses EMPTY_BLOB() + RETURNING to reliably store a BLOB value without implicit conversions.
 //   - Includes a NULL BLOB scan case.
-func TestDriver_Table_Select_BLOB(t *testing.T) {
+func TestDriver_LobTableSelectBlob(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -198,7 +200,7 @@ func TestDriver_Table_Select_BLOB(t *testing.T) {
 
 	// Select back (small)
 	selSQL := fmt.Sprintf("SELECT bin FROM %s WHERE id = :id", table)
-	var outSmall []byte
+	var outSmall lob.Bytes
 	if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", int64(1))).Scan(&outSmall); err != nil {
 		t.Fatalf("select/scan small blob failed: %v", err)
 	}
@@ -207,7 +209,7 @@ func TestDriver_Table_Select_BLOB(t *testing.T) {
 	}
 
 	// Select back (large) - compare hash
-	var outLarge []byte
+	var outLarge lob.Bytes
 	if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", int64(2))).Scan(&outLarge); err != nil {
 		t.Fatalf("select/scan large blob failed: %v", err)
 	}
@@ -218,24 +220,20 @@ func TestDriver_Table_Select_BLOB(t *testing.T) {
 		)
 	}
 
-	// Select back (NULL) - validate NULL handling; scanning NULL into *[]byte yields nil with some drivers,
-	// but database/sql recommends sql.RawBytes or sql.Null* types. We use sql.RawBytes and check nil/len.
-	var outNull []byte
-	if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", int64(3))).Scan(&outNull); err != nil {
-		t.Fatalf("select/scan null blob failed: %v", err)
-	}
-	if outNull != nil && len(outNull) != 0 {
-		t.Fatalf("expected NULL blob to scan as nil/empty, got len=%d", len(outNull))
+	// Materializing SQL NULL into lob.Bytes is intentionally rejected.
+	var outNull lob.Bytes
+	if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", int64(3))).Scan(&outNull); err == nil {
+		t.Fatal("select/scan NULL BLOB into lob.Bytes succeeded")
 	}
 }
 
-// TestDriver_Table_Insert_Select_CLOB_BLOB_MultiRows
+// TestDriver_LobTableInsertSelectClobBlobMultiRows verifies multi-row LOB round trips.
 // What it does: Inserts 15 rows containing both CLOB and BLOB data, then reads them back using SELECT *.
 // Expectation: Every row selected from the table matches exactly what was inserted.
 // Notes:
 //   - CLOB/BLOB payload sizes are kept <= 20 for each row.
 //   - Query uses `SELECT * FROM <table>` as requested.
-func TestDriver_Table_Insert_Select_CLOB_BLOB_MultiRows(t *testing.T) {
+func TestDriver_LobTableInsertSelectClobBlobMultiRows(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -311,8 +309,8 @@ func TestDriver_Table_Insert_Select_CLOB_BLOB_MultiRows(t *testing.T) {
 	for rows.Next() {
 		var (
 			id  int64
-			txt string
-			bin []byte
+			txt lob.Text
+			bin lob.Bytes
 		)
 
 		// Keep SELECT * while making scan resilient to table column order.
@@ -340,7 +338,7 @@ func TestDriver_Table_Insert_Select_CLOB_BLOB_MultiRows(t *testing.T) {
 			t.Fatalf("unexpected id returned from select: %d", id)
 		}
 
-		if txt != exp.clob {
+		if string(txt) != exp.clob {
 			t.Fatalf("clob mismatch for id=%d: got=%q want=%q", id, txt, exp.clob)
 		}
 
@@ -362,7 +360,9 @@ func TestDriver_Table_Insert_Select_CLOB_BLOB_MultiRows(t *testing.T) {
 	}
 }
 
-func TestDriver_Prepared_Insert_Nclob_Small(t *testing.T) {
+// TestDriver_LobPreparedInsertNclobSmall verifies a small prepared NCLOB bind
+// preserves its Unicode content through insertion and retrieval.
+func TestDriver_LobPreparedInsertNclobSmall(t *testing.T) {
 	t.Parallel()
 	rows := []clobRowData{
 		{
@@ -462,7 +462,7 @@ func runPreparedInsertNclob(t *testing.T, table string, rows []clobRowData) {
 			t.Fatalf("unexpected rows affected for id=%d: got %d want 1", rr.id, affected)
 		}
 
-		var gotNclob string
+		var gotNclob lob.Text
 		err = db.QueryRowContext(ctx,
 			fmt.Sprintf("SELECT nclob FROM %s WHERE id = %d", table, rr.id),
 		).Scan(&gotNclob)
@@ -470,7 +470,7 @@ func runPreparedInsertNclob(t *testing.T, table string, rows []clobRowData) {
 			t.Fatalf("select inserted row failed for id=%d: %v", rr.id, err)
 		}
 
-		if gotNclob != rr.c {
+		if string(gotNclob) != rr.c {
 			t.Logf("---- NCLOB MISMATCH DEBUG (id=%d) ----", rr.id)
 
 			// Length diagnostics

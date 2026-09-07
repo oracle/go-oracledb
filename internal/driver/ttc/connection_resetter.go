@@ -52,17 +52,24 @@ import (
 func (c *connection) ResetSession(ctx context.Context) error {
 	common.Odl.Debug("ResetSession called", "cnx", (*c).String())
 
-	if c._isClosed || !c._isValid {
+	closed, valid := c.connectionState()
+	if closed || !valid {
 		return driver.ErrBadConn
 	}
 	statements := c.shelf.GetStatements(true)
 	for _, statement := range statements {
 		if err := statement.Close(); err != nil {
 			common.Odl.Warn("Stale statement left in connection cannot be closed", "error", err)
-			c._isValid = false
+			c.invalidate()
 			return driver.ErrBadConn
 		}
 	}
+
+	unlock, guardErr := c.shelf.synchronizer.begin(ctx)
+	if guardErr != nil {
+		return driver.ErrBadConn
+	}
+	defer unlock()
 
 	c.sessCtx.GetSessionProperties().Reset()
 	err := c.shelf.GetMessageStreamer().Flush(ctx)

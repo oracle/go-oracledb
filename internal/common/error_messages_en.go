@@ -442,6 +442,44 @@ func initMessagesEn() {
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidIdentifier), "invalid SQL identifier")
 
+	// Locator-backed LOB API and query-option errors.
+	// Document: No
+	// Cause:    An operation was attempted after the locator-backed LOB value was closed.
+	// Action:   Scan a new value before reuse, or do not perform operations after Close.
+	// Comment:  Arg[0]: operation-specific detail.
+	message.SetString(language.English, string(oracleErrors.LobValueClosed), "LOB value is closed and cannot be used: %s")
+	// Document: No
+	// Cause:    The Rows, statement, transaction, or connection owning the LOB locator is no longer usable.
+	// Action:   Re-run the query and scan a new LOB value.
+	// Comment:  Arg[0]: invalidation detail.
+	message.SetString(language.English, string(oracleErrors.LobValueInvalidated), "LOB value is invalid because its owner is no longer usable: %s")
+	// Document: No
+	// Cause:    A locator-backed LOB source is invalid or cannot be used by the requested operation.
+	// Action:   Use a valid locator-backed LOB value from the driver and verify its LOB kind and metadata.
+	// Comment:  Arg[0]: source validation detail.
+	message.SetString(language.English, string(oracleErrors.InvalidLobSource), "invalid locator-backed LOB source: %s")
+	// Document: No
+	// Cause:    A data operation was requested for a NULL LOB value.
+	// Action:   Check LOB.Valid before reading or obtaining the size.
+	// Comment:  Arg[0]: NULL-value operation detail.
+	message.SetString(language.English, string(oracleErrors.NullLobValue), "LOB value is NULL and cannot be read or sized: %s")
+	// Document: No
+	// Cause:    A streamed LOB bind input has an invalid reader, kind, or declared size.
+	// Action:   Supply a non-nil reader, a supported LOB kind, and a valid size when specified.
+	// Comment:  Arg[0]: input validation detail.
+	message.SetString(language.English, string(oracleErrors.InvalidLobInput), "streamed LOB bind input is invalid: %s")
+	// Document: No
+	// Cause:    The requested operation is not supported for this LOB locator or access mode.
+	// Action:   Use an operation supported by the selected LOB family.
+	// Comment:  Arg[0]: compact operation and LOB-family detail.
+	message.SetString(language.English, string(oracleErrors.UnsupportedLobOperation), "LOB operation is not supported: %s")
+
+	// Document: No
+	// Cause:    The requested operation is not supported for this LOB locator or access mode.
+	// Action:   Use an operation supported by the selected LOB family.
+	// Comment:  Arg[0]: compact operation and LOB-family detail.
+	message.SetString(language.English, string(oracleErrors.UnsupportedLobOperation), "LOB operation is not supported: %s")
+
 	// Document: No
 	message.SetString(language.English, string(oracleErrors.CancelOperationError), "cancel operation failed")
 

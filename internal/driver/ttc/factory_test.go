@@ -39,10 +39,38 @@
 package ttc
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
+
+// TestRegistry_ConcurrentRegisterAndLookup exercises the global-registry usage
+// pattern during concurrent connection negotiation: capability registration can
+// replace a message implementation while another connection resolves it.
+func TestRegistry_ConcurrentRegisterAndLookup(t *testing.T) {
+	registry := NewRegistry[common.MessageType]()
+	const workers = 16
+	const iterations = 100
+	var group sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for iteration := 0; iteration < iterations; iteration++ {
+				if err := registry.Register(TTIPRO, 1, newTestDummyMessage1); err != nil {
+					t.Errorf("Register: %v", err)
+					return
+				}
+				if candidates := registry.getCandidates(TTIPRO); len(candidates) != 1 {
+					t.Errorf("candidate count = %d, want 1", len(candidates))
+					return
+				}
+			}
+		}()
+	}
+	group.Wait()
+}
 
 // Dummy message structs for testing
 // testDummyMessage is a dummy implementation of the Message interface

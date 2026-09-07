@@ -45,9 +45,15 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
+// transaction implements driver.Tx for one transaction registered on a
+// physical Connection. Commit and Rollback serialize their entire TTC exchange
+// through the connection-wide operation guard; their context is also observed
+// by statement cancellation and, later, locator-backed LOB operations.
 type transaction struct {
+	// _underlyingConnection owns the physical session and transaction registry.
 	_underlyingConnection *connection
-	// the current transaction context
+	// _transactionContext controls statement and future LOB cancellation for the
+	// lifetime of this transaction.
 	_transactionContext context.Context
 }
 
@@ -69,46 +75,72 @@ func (t *transaction) getTransactionContext() context.Context {
 	return t._transactionContext
 }
 
-// Commit commits the transaction
+// Commit implements driver.Tx.Commit. It completes the TTC exchange and
+// unregisters the transaction only after success.
 func (t *transaction) Commit() error {
-	common.Odl.Debug("Transaction commit")
-	if !t._underlyingConnection.shelf.isInTransaction() {
+	if !t._underlyingConnection.shelf.isCurrentTransaction(t) {
 		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
 	}
-
-	ctx := t._underlyingConnection.shelf.getTransaction().getTransactionContext()
+	ctx := t.getTransactionContext()
+	unlock, err := t._underlyingConnection.shelf.synchronizer.begin(ctx)
+	if err != nil {
+		return t._underlyingConnection.shelf.LocalizeError(err)
+	}
+	// Another terminal transaction call may have won while this call waited
+	// for the physical TTC stream. Recheck ownership under exclusive stream
+	// access so Commit and Rollback cannot both reach the server.
+	if !t._underlyingConnection.shelf.isCurrentTransaction(t) {
+		unlock()
+		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
+	}
+	common.Odl.Debug("Transaction commit")
 	readFuncError := t._underlyingConnection.runFunctionWithFunHeader(ctx, commit)
 
 	if err := t._underlyingConnection.shelf.checkCurrentState(ctx); err != nil {
+		unlock()
 		return err
 	}
 
 	if readFuncError != nil {
+		unlock()
 		return t._underlyingConnection.shelf.LocalizeError(common.NewOracleError(oracleErrors.ErrorInTransaction, readFuncError, "Commit"))
 	}
 
-	t._underlyingConnection.shelf.unregisterTransaction()
+	t._underlyingConnection.shelf.unregisterTransaction(t)
+	unlock()
 	return nil
 }
 
-// Rollback rolls back the transaction
+// Rollback implements driver.Tx.Rollback. It rolls back using the driver's
+// background context and unregisters the transaction only after success.
 func (t *transaction) Rollback() error {
-	common.Odl.Debug("Transaction rollback")
-	if !t._underlyingConnection.shelf.isInTransaction() {
+	if !t._underlyingConnection.shelf.isCurrentTransaction(t) {
 		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
 	}
+	ctx := common.BackgroundContext
+	unlock, err := t._underlyingConnection.shelf.synchronizer.begin(ctx)
+	if err != nil {
+		return t._underlyingConnection.shelf.LocalizeError(err)
+	}
+	if !t._underlyingConnection.shelf.isCurrentTransaction(t) {
+		unlock()
+		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
+	}
+	common.Odl.Debug("Transaction rollback")
+	runFuncErr := t._underlyingConnection.runFunctionWithFunHeader(ctx, rollback)
 
-	runFuncErr := t._underlyingConnection.runFunctionWithFunHeader(common.BackgroundContext, rollback)
-
-	if err := t._underlyingConnection.shelf.checkCurrentState(common.BackgroundContext); err != nil {
+	if err := t._underlyingConnection.shelf.checkCurrentState(ctx); err != nil {
+		unlock()
 		return err
 	}
 
 	if runFuncErr != nil {
+		unlock()
 		return t._underlyingConnection.shelf.LocalizeError(common.NewOracleError(oracleErrors.ErrorInTransaction, runFuncErr, "Rollback"))
 	}
 
-	t._underlyingConnection.shelf.unregisterTransaction()
+	t._underlyingConnection.shelf.unregisterTransaction(t)
+	unlock()
 	return nil
 }
 

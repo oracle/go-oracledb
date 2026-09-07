@@ -42,6 +42,7 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -50,6 +51,31 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
+
+// TestConnection_StateIsSynchronized verifies concurrent state reads,
+// formatting, and invalidation leave the connection in a consistent state.
+func TestConnection_StateIsSynchronized(t *testing.T) {
+	t.Parallel()
+
+	connection := &connection{shelf: newShelf[driverCommon.MessageType](), _isValid: true}
+	var wait sync.WaitGroup
+	for index := 0; index < 16; index++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			for iteration := 0; iteration < 100; iteration++ {
+				_, _ = connection.connectionState()
+				_ = connection.String()
+				connection.invalidate()
+			}
+		}()
+	}
+	wait.Wait()
+	closed, valid := connection.connectionState()
+	if closed || valid {
+		t.Fatalf("connection state = closed:%v valid:%v, want false/false", closed, valid)
+	}
+}
 
 func init() {
 	message.SetString(language.French, string(oracleErrors.InternalError), "erreur interne factice.")
@@ -80,12 +106,11 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 				}
 			}()
 
-			h, m, err := parseTimeZone(tt.input)
+			_, _, err := parseTimeZone(tt.input)
 			if tt.wantValid {
 				if err != nil {
 					t.Fatalf("parseTimeZone(%q) should be valid: %v", tt.input, err)
 				}
-				fmt.Printf("PASS: accepted valid input %q -> (%d, %d)\n", tt.input, h, m)
 				return
 			}
 
@@ -95,7 +120,6 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 			if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.ServerTimeZoneError) {
 				t.Fatalf("parseTimeZone(%q) should return %s, got %T: %v", tt.input, oracleErrors.ServerTimeZoneError, err, err)
 			}
-			fmt.Printf("PASS: rejected malformed input %q with error: %v\n", tt.input, err)
 		})
 	}
 }
@@ -261,6 +285,7 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 		},
 	}
 
+	expectedValid := true
 	for _, connInvalidationMsg := range tests {
 		t.Run(fmt.Sprintf("Running with %v", connInvalidationMsg), func(t *testing.T) {
 			// The factory will return the expected message
@@ -278,8 +303,12 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 			if !ok {
 				t.Fatal("Message should implement connectionStatusReceiver")
 			}
-			if connection._isValid != !connectionStatus.isBeingDrainned() {
-				t.Fatalf("isValid should be %t, but was %t", !connectionStatus.isBeingDrainned(), connection._isValid)
+			if connectionStatus.isBeingDrainned() {
+				expectedValid = false
+			}
+			_, valid := connection.connectionState()
+			if valid != expectedValid {
+				t.Fatalf("isValid should remain %t, but was %t", expectedValid, valid)
 			}
 		})
 	}

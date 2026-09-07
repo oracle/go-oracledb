@@ -109,6 +109,19 @@ func TestTTIlob_GetMsgCode(t *testing.T) {
 	}
 }
 
+// TestTTIlobPiggyback_GetMsgCode verifies that a piggyback LOB message uses
+// the TTIPFN message code.
+func TestTTIlobPiggyback_GetMsgCode(t *testing.T) {
+	t.Parallel()
+	msg := newTTIlobPiggyback().(*tTIlob)
+	if got := msg.GetMsgCode(); got != TTIPFN {
+		t.Fatalf("GetMsgCode mismatch: want %v, got %v", TTIPFN, got)
+	}
+	if got := msg.GetFuncCode(); got != oLobOps {
+		t.Fatalf("GetFuncCode mismatch: want %v, got %v", oLobOps, got)
+	}
+}
+
 // TestTTIlob_GetFuncCode ensures oLobOps opcode is emitted for the function code.
 func TestTTIlob_GetFuncCode(t *testing.T) {
 	t.Parallel()

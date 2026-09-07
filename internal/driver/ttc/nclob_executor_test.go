@@ -75,17 +75,14 @@ func TestClobExecutor_ReadNCLOB(t *testing.T) {
 	wantMarshal, shelf, dbuf, marshalWritePosition := setUpReadScenario(t, nclobReadMarshalGoldenPayload, nclobReadResponseGoldenPayload, 131072)
 
 	lobExec := newClobExecutor(shelf, newTestSessionContext())
-	totalRuneCapacity := int(nclobReadNumChars)
-	charOutBuffer := make([]rune, totalRuneCapacity)
-
-	readAmt, err := lobExec.read(ctx, newLocator(nclobReadLocator, nclobReadOffset), nclobReadNumChars, nclobReadIsNCLOB, charOutBuffer)
+	payload, logical, err := lobExec.read(ctx, newLocator(nclobReadLocator, nclobReadOffset), nclobReadNumChars, nclobReadIsNCLOB, 0)
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
-	if readAmt == 0 {
+	if logical == 0 {
 		t.Fatalf("expected read to return a positive amount")
 	}
-	decoded := string(charOutBuffer[:int(readAmt)])
+	decoded := string(payload)
 	// Update once NCLOB response payload is available.
 	// Skip the first five characters rather than five bytes so multi-byte runes are
 	// handled correctly when slicing the expected NCLOB payload.
@@ -93,6 +90,9 @@ func TestClobExecutor_ReadNCLOB(t *testing.T) {
 	expected := string(expectedRunes[5:])
 	if decoded != expected {
 		t.Fatalf("decoded payload mismatch:\n got: %q\nwant: %q", decoded, expected)
+	}
+	if wantLogical := driverCommon.UB8(lobCharacterUnits([]rune(expected))); logical != wantLogical {
+		t.Fatalf("logical units = %d, want %d", logical, wantLogical)
 	}
 
 	gotMarshal := dbuf.bytes[marshalWritePosition:dbuf.currentWritePosition]

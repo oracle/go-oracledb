@@ -41,7 +41,6 @@ package ttc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -116,7 +115,7 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 
 	// Encoded bind data set before calling MarshalTo (nil, then 3-byte value)
 	val := common.B1Array{0x01, 0x02, 0x03}
-	rxd.setBindValues([]common.B1Array{nil, val})
+	rxd.setEncodedBinds([]encodedBind{{data: nil}, {data: val}})
 
 	// Use ArrayBasedDataBuffer via NewMarshalEngineTest so we can inspect bytes directly
 	buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 64)
@@ -133,12 +132,34 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 	}
 }
 
+// TestTTIrxd_MarshalTo_LobLocatorBind verifies the distinct locator-bind
+// representation: UB4 locator length followed by the usual CLR locator.
+func TestTTIrxd_MarshalTo_LobLocatorBind(t *testing.T) {
+	t.Parallel()
+	rxd := newTTIrxd().(*tTIrxd)
+	locator := common.B1Array{0x01, 0x02, 0x03}
+	rxd.setEncodedBinds([]encodedBind{{data: locator, lobLocator: true}})
+
+	buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 64)
+	if err := rxd.MarshalTo(context.Background(), eng); err != nil {
+		t.Fatalf("MarshalTo returned error: %v", err)
+	}
+
+	got := buf.bytes[:buf.currentWritePosition]
+	// MarshalUB4 uses the driver's TTC variable-width UB4 representation:
+	// one length byte followed by the one-byte value for this small locator.
+	want := []byte{0x01, 0x03, 0x03, 0x01, 0x02, 0x03}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("MarshalTo wrote unexpected LOB locator bind bytes.\nGot:  %v\nWant: %v", got, want)
+	}
+}
+
 // TestTTIrxd_MarshalTo_FailOnNullIndicator simulates a failure when writing the null indicator byte.
 // Uses FaultyArrayBasedDataBuffer (via createMarshaller) to fail WriteByte on first call.
 func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.setBindValues([]common.B1Array{nil})
+	rxd.setEncodedBinds([]encodedBind{{data: nil}})
 
 	// Fail the first WriteByteWithContext call (which writes the null indicator)
 	mar := createMarshaller(make([]byte, 8), failOnWriteByte, 1)
@@ -162,7 +183,7 @@ func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {
 func TestTTIrxd_MarshalTo_FailOnCLRDataWrite(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.setBindValues([]common.B1Array{{0xAA, 0xBB, 0xCC}})
+	rxd.setEncodedBinds([]encodedBind{{data: common.B1Array{0xAA, 0xBB, 0xCC}}})
 
 	// First WriteBytesWithContext call should fail (after successful length byte write)
 	mar := createMarshaller(make([]byte, 8), failOnWriteBytes, 1)
@@ -503,9 +524,6 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 			if err != nil {
 				t.Fatalf("UnMarshalFrom BVC failed: %v", err)
 			}
-			// print state to terminal (debug/test visibility)
-			fmt.Printf("Row %v: BVC %v\n", rowCount, bvc.bvcColSent.String())
-
 		default:
 			// Unknown code - skip (defensive)
 			break
@@ -581,7 +599,7 @@ func TestTTIrxd_BvcCarriedNullKeepsLobContextAligned(t *testing.T) {
 
 // TestTTIrxd_BvcCarriedClobPreservesLobContext verifies that BVC carry moves a
 // non-NULL CLOB's metadata together with its raw bytes. Losing the context leaves
-// DecodeClob with a nil LobContext and causes a nil-pointer panic during Rows.Next.
+// DecodeClob with nil private LOB context and causes a nil-pointer panic during Rows.Next.
 func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 	t.Parallel()
 	const numCols = 2
@@ -600,7 +618,7 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 	state := &queryRunState{rows: exec.resultMetadata.newRows(shelf)}
 
 	clobData := common.B1Array("hello")
-	previousLobContext := &lobColumnContext{CharsetID: al16Utf16CharSet}
+	previousLobContext := &lobColumnContext{charsetID: al16Utf16CharSet}
 	state.handleRXDRow(&tTIrxd{
 		row:           []common.B1Array{{0x11}, clobData},
 		lobColContext: []*lobColumnContext{nil, previousLobContext},

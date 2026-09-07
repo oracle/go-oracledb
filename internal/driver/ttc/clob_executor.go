@@ -47,37 +47,99 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	internallob "github.com/oracle/go-oracledb/v26/internal/lob"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // clobExecutor orchestrates CLOB operations on top of the shared lobExecutor while capturing
-// session-specific charset metadata required for amount calculations.
+// session-specific charset metadata required for payload conversion.
 type clobExecutor struct {
 	*lobExecutor
-	policy lobAmtPolicy
+	policy lobCharacterSetPolicy
+}
+
+// lobCharacterSetPolicy holds negotiated character sets used solely to select
+// CLOB and NCLOB payload encodings. It does not affect Oracle LOB offsets or
+// amounts, which always use UCS-2 units.
+type lobCharacterSetPolicy struct {
+	driverCS driverCommon.UB2
+	ncharCS  driverCommon.UB2
+}
+
+// bytesPerUTF16CodeUnit is the number of bytes consumed by a UTF-16 code unit.
+const bytesPerUTF16CodeUnit = 2
+
+// lobCharacterUnits returns Oracle's logical unit count for CLOB and NCLOB
+// LOB operations. Oracle defines their offsets and amounts in UCS-2 units for
+// every database and national character set. Supplementary characters therefore
+// occupy two units, just as they do in UTF-16.
+func lobCharacterUnits(runes []rune) int {
+	units := len(runes)
+	for _, r := range runes {
+		if r >= 0x10000 && r <= utf8.MaxRune {
+			units++
+		}
+	}
+	return units
+}
+
+// boundedClobReadAmount converts a public refill request to a safe CLOB
+// character request.
+//
+// Parameters:
+//   - requested: requested refill capacity in bytes.
+//
+// Returns:
+//   - driverCommon.UB8: character amount capped at the driver's CLOB read
+//     limit. A supplementary code point can require four bytes in both TTC
+//     UTF-16 and returned UTF-8.
+func boundedClobReadAmount(requested driverCommon.UB8) driverCommon.UB8 {
+	maximum := driverCommon.UB8(internallob.DefaultCharacterLobChunkChars)
+	if maximum == 0 {
+		maximum = 1
+	}
+	if requested > maximum {
+		return maximum
+	}
+	return requested
+}
+
+// logicalAmount returns the Oracle locator offset units represented by runes.
+// Oracle defines CLOB and NCLOB LOB-operation offsets and amounts in UCS-2
+// units, independent of their database or national character-set encodings.
+// It is used by streamed binds to verify each TTIRPA acknowledgement before
+// advancing a locator offset.
+//
+// Parameters:
+//   - runes: Unicode code points whose locator offset units are required.
+//
+// Returns:
+//   - driverCommon.UB8: Oracle offset units for runes.
+//   - error: always nil.
+func (c *clobExecutor) logicalAmount(runes []rune) (driverCommon.UB8, error) {
+	return driverCommon.UB8(lobCharacterUnits(runes)), nil
 }
 
 // newClobExecutor wires a clobExecutor with the supplied base executor and initialises the
-// LOB amount policy based on the negotiated character sets stored in the session context.
+// payload character-set policy based on the negotiated character sets stored in the session context.
 //
-// Inputs:
+// Parameters:
 //   - shelf: message shelf shared across TTC executors.
 //   - sessionCtx: negotiated session metadata used to derive character-set aware policies.
 //
-// Outputs:
+// Returns:
 //   - *clobExecutor: executor backed by the shared lobExecutor.
 //
 // Errors:
 //   - None.
 func newClobExecutor(shelf *driverCommon.Shelf[driverCommon.MessageType], sessionCtx *driverCommon.SessionContext) *clobExecutor {
-	base := newLobExecutor()
-	base.SetShelf(shelf)
+	base := newLobExecutor(shelf)
 
 	driverCS := sessionCtx.DriverCharacterSet()
 	ncharCS := sessionCtx.SessionNCharCharacterSet()
 
 	clob := &clobExecutor{lobExecutor: base}
-	clob.policy = newLobAmtPolicy(driverCS, ncharCS)
+	clob.policy = lobCharacterSetPolicy{driverCS: driverCS, ncharCS: ncharCS}
 
 	return clob
 }
@@ -85,21 +147,21 @@ func newClobExecutor(shelf *driverCommon.Shelf[driverCommon.MessageType], sessio
 // open invokes the shared open helper with the supplied locator and mode, ensuring the mode is
 // correctly translated to the expected lobMarshalingMode for the base executor.
 //
-// Inputs:
+// Parameters:
 //   - ctx: request-scoped context for cancellation and deadlines.
 //   - locator: locator to open on the server.
 //   - mode: desired LOB open mode (read/write or read-only).
 //
-// Outputs:
+// Returns:
 //   - bool: true when the locator was opened by the server, false when already open.
 //
 // Errors:
-//   - Returns InvalidLOBBuffer when attempting to open with BFILE-only read mode.
+//   - Returns UnsupportedLobOperation when attempting to open with BFILE-only read mode.
 //   - Propagates failures from the underlying lobExecutor open call.
-func (c *clobExecutor) open(ctx context.Context, lobLocator *locator, mode LobOpenMode) (bool, error) {
-	if mode == BfileOpenModeReadOnly {
-		err := common.NewOracleError(oracleErrors.InvalidLOBBuffer, nil, "open", "clob", "unsupported BFILE open mode")
-		common.Odl.Error("ClobExecutor.Open: invalid open mode", "mode", mode, "error", err)
+func (c *clobExecutor) open(ctx context.Context, lobLocator *locator, mode lobOpenMode) (bool, error) {
+	if mode == bfileOpenModeReadOnly {
+		err := common.NewOracleError(oracleErrors.UnsupportedLobOperation, nil, "BFILE open")
+		common.Odl.Error("clobExecutor.open: invalid open mode", "mode", mode, "error", err)
 		return false, err
 	}
 
@@ -108,11 +170,11 @@ func (c *clobExecutor) open(ctx context.Context, lobLocator *locator, mode LobOp
 
 // close closes the locator and clears client side flags via the base executor.
 //
-// Inputs:
+// Parameters:
 //   - ctx: request-scoped context for cancellation and deadlines.
 //   - locator: locator to close on the server.
 //
-// Outputs:
+// Returns:
 //   - error: nil when the operation succeeds.
 //
 // Errors:
@@ -121,82 +183,83 @@ func (c *clobExecutor) close(ctx context.Context, lobLocator *locator) error {
 	return c.lobExecutor.close(ctx, lobLocator)
 }
 
-// GetChunkSize delegates to the shared executor to retrieve the server-reported chunk size
+// getChunkSize delegates to the shared executor to retrieve the server-reported chunk size
 // (page size) for the provided locator.
 //
-// Inputs:
+// Parameters:
 //   - ctx: request-scoped context for cancellation and deadlines.
 //   - locator: locator whose chunk size is requested.
 //
-// Outputs:
-//   - common.UB8: chunk size reported by the server.
+// Returns:
+//   - driverCommon.UB8: chunk size reported by the server.
 //   - error: nil on success.
 //
 // Errors:
 //   - Propagates failures from the underlying lobExecutor.
 func (c *clobExecutor) getChunkSize(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
-	return c.lobExecutor.GetChunkSize(ctx, lobLocator)
+	return c.lobExecutor.getChunkSize(ctx, lobLocator)
 }
 
 // getLength retrieves the server-reported length for the supplied locator.
 //
-// Inputs:
+// Parameters:
 //   - ctx: request-scoped context for cancellation and deadlines.
 //   - locator: locator whose length is requested.
 //
-// Outputs:
-//   - common.UB8: length in characters for CLOBs or code units for NCLOBs.
+// Returns:
+//   - driverCommon.UB8: length in the UTF-16 code-unit offset space used by TTC LOB
+//     locator operations.
 //   - error: nil on success.
 //
 // Errors:
 //   - Propagates failures from the underlying lobExecutor.
 func (c *clobExecutor) getLength(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
-	return c.lobExecutor.GetLength(ctx, lobLocator)
+	return c.lobExecutor.getLength(ctx, lobLocator)
 }
 
 // trim truncates or extends the LOB to the provided length.
 //
-// Inputs:
+// Parameters:
 //   - ctx: request-scoped context for cancellation and deadlines.
 //   - locator: locator whose length should be adjusted.
 //   - newLength: desired size after trimming.
 //
-// Outputs:
-//   - common.UB8: resulting length as reported by the server.
+// Returns:
+//   - driverCommon.UB8: resulting length as reported by the server.
 //   - error: nil on success.
 //
 // Errors:
 //   - Propagates failures from the underlying lobExecutor trim call.
 func (c *clobExecutor) trim(ctx context.Context, lobLocator *locator, newLength driverCommon.UB8) (driverCommon.UB8, error) {
-	return c.lobExecutor.Trim(ctx, lobLocator, newLength)
+	return c.lobExecutor.trim(ctx, lobLocator, newLength)
 }
 
 // isOpen interrogates the locator open state using the base executor helper.
 //
-// Inputs:
+// Parameters:
 //   - ctx: request-scoped context for cancellation and deadlines.
 //   - locator: locator to check for open state.
 //
-// Outputs:
+// Returns:
 //   - bool: true when the locator is open on the server.
 //   - error: nil on success.
 //
 // Errors:
 //   - Propagates failures from the underlying lobExecutor isOpen call.
 func (c *clobExecutor) isOpen(ctx context.Context, lobLocator *locator) (bool, error) {
-	return c.lobExecutor.IsOpen(ctx, lobLocator)
+	return c.lobExecutor.isOpen(ctx, lobLocator)
 }
 
-// CreateTemporaryLob provisions a temporary CLOB/NCLOB locator
+// createTemporaryLob provisions a temporary CLOB/NCLOB locator
 //
-// Inputs:
+// Parameters:
 //   - ctx: request-scoped context for cancellation and deadlines.
 //   - cache: specifies if LOB should be read into buffer cache or not.
 //   - duration: duration hint for the temporary LOB lifecycle.
 //   - formOfUse: character form (char vs nchar) requested by the caller.
 //
-// Outputs:
-//   - common.B1Array: locator representing the newly created temporary LOB.
+// Returns:
+//   - driverCommon.B1Array: locator representing the newly created temporary LOB.
 //   - error: nil on success.
 //
 // Errors:
@@ -208,21 +271,20 @@ func (c *clobExecutor) isOpen(ctx context.Context, lobLocator *locator) (bool, e
 func (c *clobExecutor) createTemporaryLob(ctx context.Context, cache bool, duration driverCommon.UB4, formOfUse driverCommon.UB2) (driverCommon.B1Array, error) {
 	tempSize := kolllTempWithSignature
 
-	// FormChar LOBs inherit the session database character set advertised by the driver
-	// policy. This keeps locator creation aligned with the negotiated server character set which
-	// is AL32UTF8.
+	// FormChar LOBs use the driver's configured database-character-set policy. The
+	// current supported and validated profile is AL32UTF8.
 	charsetID := c.policy.driverCS
 	if formOfUse != FormChar {
-		// FormNChar LOBs must advertise the session's national character set so the server
-		// materialises the NCLOB using the negotiated NCHAR semantics.
+		// FormNChar LOBs use the configured national-character-set policy. The
+		// current supported and validated profile is AL16UTF16.
 		charsetID = c.policy.ncharCS
 	}
 
-	def := NewLobDefinitionForTemporaryCreate(tempSize, formOfUse, driverCommon.UB8(DtyClob), duration, cache, charsetID)
+	def := newLobDefinitionForTemporaryCreate(tempSize, formOfUse, driverCommon.UB8(DtyClob), duration, cache, charsetID)
 
 	if common.Odl.Enabled(ctx, slog.LevelDebug) {
 		common.Odl.Debug(
-			"ClobExecutor.CreateTemporaryLob: before execute",
+			"clobExecutor.createTemporaryLob: before execute",
 			"cache", cache,
 			"duration", duration,
 			"formOfUse", formOfUse,
@@ -238,7 +300,7 @@ func (c *clobExecutor) createTemporaryLob(ctx context.Context, cache bool, durat
 	}
 
 	if err := c.lobExecutor.execute(ctx, def); err != nil {
-		common.Odl.Error("ClobExecutor.CreateTemporaryLob: execute failed",
+		common.Odl.Error("clobExecutor.createTemporaryLob: execute failed",
 			"error", err,
 			"operation", def.operation,
 		)
@@ -248,19 +310,19 @@ func (c *clobExecutor) createTemporaryLob(ctx context.Context, cache bool, durat
 	return def.sourceLocator.locatorBytes, nil
 }
 
-// Write mirrors the database CLOB write path, performing character to byte conversion before
-// delegating to the shared lobExecutor write helper. The current implementation uses placeholder
-// charset conversion logic and should be replaced once the converter package is available.
+// write mirrors the database CLOB write path, converting characters according
+// to the current LOB character-set policy before delegating to the shared
+// lobExecutor write helper.
 //
-// Inputs:
+// Parameters:
 //   - ctx: request-scoped context for cancellation and deadlines.
 //   - locator: destination locator to write into.
 //   - isNCLOB: indicates whether the locator represents an NCLOB.
 //   - inBuffer: rune slice containing source characters to write.
 //   - numChars: number of characters to write from the buffer.
 //
-// Outputs:
-//   - common.UB8: number of characters reported written to the LOB.
+// Returns:
+//   - driverCommon.UB8: number of characters reported written to the LOB.
 //   - error: nil on success.
 //
 // Errors:
@@ -281,27 +343,32 @@ func (c *clobExecutor) write(
 ) (driverCommon.UB8, error) {
 	// validateLobOperation ensures mutating operations honor locator capabilities.
 	if err := validateLobOperation(lobLocator, kplobWrite); err != nil {
-		common.Odl.Error("ClobExecutor.Write: validateLobOperation failed",
+		common.Odl.Error("clobExecutor.write: validateLobOperation failed",
 			"error", err,
 		)
 		return 0, err
 	}
 
 	// first see if variable length character set.
+	// Temporary CLOB locators do not reliably carry the variable-width flag
+	// before their first write. For database CLOBs, use the configured driver
+	// character-set policy; NCLOB retains locator-derived AL16UTF16 semantics.
 	varWidthChar := lobLocator.isLobCharsetVariableWidth()
+	if !isNCLOB && c.policy.driverCS == al32Utf8CharSet {
+		varWidthChar = true
+	}
 	littleEndian := lobLocator.isLobCharsetLittleEndian()
 
 	// Estimate byte buffer size based on the requested characters.
 	byteBufferSize := getByteBufferSizeForConversion(varWidthChar, numChars)
 	binaryWriteBuffer := make([]byte, byteBufferSize)
 
-	bytesConverted, codeUnits, codePoints := c.encodeLobCharPayload(
+	bytesConverted, codeUnits, _ := c.encodeLobCharPayload(
 		inBuffer,
 		0,
 		numChars,
 		binaryWriteBuffer,
 		varWidthChar,
-		isNCLOB,
 		littleEndian,
 	)
 	if bytesConverted < 0 {
@@ -312,43 +379,34 @@ func (c *clobExecutor) write(
 			"clob",
 			"character encoding failed",
 		)
-		common.Odl.Error("ClobExecutor.Write: encodeLobCharPayload failed",
+		common.Odl.Error("clobExecutor.write: encodeLobCharPayload failed",
 			"error", err,
 			"isNCLOB", isNCLOB,
 		)
 		return 0, err
 	}
 
-	count, sendLobAmt, err := c.policy.Translate(isNCLOB, codeUnits, codePoints)
-	if err != nil {
-		common.Odl.Error("ClobExecutor.Write: unsupported charset in Translate",
-			"error", err,
-			"isNCLOB", isNCLOB,
-		)
-		return 0, err
-	}
-	lobAmt := driverCommon.UB8(0)
-	if sendLobAmt {
-		lobAmt = driverCommon.UB8(count)
-	}
+	// Oracle defines CLOB and NCLOB LOB-operation amounts in UCS-2 units,
+	// independent of the negotiated character set and payload encoding.
+	lobAmt := driverCommon.UB8(codeUnits)
 
 	writeBuffer := driverCommon.B1Array(binaryWriteBuffer[:bytesConverted])
-	def := NewLobDefinitionForWriteOperation(lobLocator, lobAmt)
-	def.sendLobAmt = sendLobAmt
+	def := newLobDefinitionForWriteOperation(lobLocator, lobAmt)
+	def.sendLobAmt = true
 
 	if common.Odl.Enabled(ctx, slog.LevelDebug) {
 		common.Odl.Debug(
-			"ClobExecutor.Write: prepared definition",
+			"clobExecutor.write: prepared definition",
 			"offset", lobLocator.offset,
 			"isNCLOB", isNCLOB,
 			"bytesConverted", bytesConverted,
 			"lobAmt", lobAmt,
-			"sendLobAmt", sendLobAmt,
+			"sendLobAmt", true,
 		)
 	}
 
 	if err := c.lobExecutor.executeWrite(ctx, def, writeBuffer); err != nil {
-		common.Odl.Error("ClobExecutor.Write: executeWrite failed",
+		common.Odl.Error("clobExecutor.write: executeWrite failed",
 			"error", err,
 			"offset", lobLocator.offset,
 			"isNCLOB", isNCLOB,
@@ -359,7 +417,7 @@ func (c *clobExecutor) write(
 
 	if common.Odl.Enabled(ctx, slog.LevelDebug) {
 		common.Odl.Debug(
-			"ClobExecutor.Write: completed",
+			"clobExecutor.write: completed",
 			"offset", lobLocator.offset,
 			"isNCLOB", isNCLOB,
 			"charsWritten", def.lobAmt,
@@ -369,8 +427,11 @@ func (c *clobExecutor) write(
 	return def.lobAmt, nil
 }
 
-// Read fetches TTC encoded bytes using the shared lobExecutor and converts them into Go runes using
-// placeholder charset logic. Conversion follows these rules:
+// read fetches one complete TTC CLOB or NCLOB locator response and converts it
+// to UTF-8. Ordinary locator reads are character-boundary aligned. A streamed
+// query LOB may, however, have a high UTF-16 surrogate in its prefetched RXD
+// prefix, with the matching low surrogate arriving in the first locator read;
+// prefixHighSurrogate carries that state into this same read method.
 //
 //	CLOB read:
 //	  #1 When the database character set is fixed width, LOB data is sent in the network character
@@ -384,15 +445,18 @@ func (c *clobExecutor) write(
 //	  #2 When the database character set is variable width, LOB data is sent as a UB2 slice; each
 //	     element represents a UCS2 character so no conversion is required.
 //
-// Inputs:
+// Parameters:
 //   - ctx: request-scoped context for cancellation and deadlines.
 //   - locator: source locator to read from.
-//   - numChars: maximum number of characters to read.
+//   - numUnits: maximum Oracle UCS-2/UTF-16 units to read.
 //   - isNCLOB: indicates whether the locator represents an NCLOB.
-//   - charOutBuffer: destination rune buffer for decoded characters.
+//   - prefixHighSurrogate: high surrogate already consumed from a prefetched
+//     prefix, or zero when no carry is pending.
 //
-// Outputs:
-//   - common.UB8: number of characters decoded into the output buffer.
+// Returns:
+//   - []byte: UTF-8 payload decoded from the locator response.
+//   - driverCommon.UB8: Oracle logical units consumed, expressed as UTF-16
+//     code units for both CLOB and NCLOB.
 //   - error: nil on success.
 //
 // Errors:
@@ -401,89 +465,240 @@ func (c *clobExecutor) write(
 func (c *clobExecutor) read(
 	ctx context.Context,
 	lobLocator *locator,
-	numChars driverCommon.UB8,
+	numUnits driverCommon.UB8,
 	isNCLOB bool,
-	charOutBuffer []rune,
-) (driverCommon.UB8, error) {
+	prefixHighSurrogate uint16,
+) ([]byte, driverCommon.UB8, error) {
+	numUnits = boundedClobReadAmount(numUnits)
 	// now see if variable length character set.
 	variableWidth := lobLocator.isLobCharsetVariableWidth()
-	// If LE, we will have to swap bytes
-	littleEndian := lobLocator.isLobCharsetLittleEndian()
-
 	// Calculate how many bytes we need for the byte buffer:
-	bufferSize := getByteBufferSizeForConversion(variableWidth, int(numChars))
+	bufferSize := getByteBufferSizeForConversion(variableWidth, int(numUnits))
 	binaryReadBuffer := make(driverCommon.B1Array, bufferSize)
 
 	common.Odl.Debug(
-		"ClobExecutor.Read: initiating read",
+		"clobExecutor.read: initiating read",
 		"offset", lobLocator.offset,
-		"numChars", numChars,
+		"numUnits", numUnits,
 		"isNCLOB", isNCLOB,
 	)
 
-	bytesTransferred, err := c.lobExecutor.read(ctx, lobLocator, numChars, binaryReadBuffer)
+	bytesTransferred, serverUnits, err := c.lobExecutor.read(ctx, lobLocator, numUnits, binaryReadBuffer)
 	if err != nil {
-		common.Odl.Error("ClobExecutor.Read: base read failed",
+		common.Odl.Error("clobExecutor.read: base read failed",
 			"error", err,
 			"offset", lobLocator.offset,
-			"numChars", numChars,
+			"numUnits", numUnits,
 		)
-		return 0, err
+		return nil, 0, err
+	}
+	if serverUnits > numUnits {
+		common.Odl.Error("clobExecutor.read: server amount exceeds request",
+			"serverUnits", serverUnits,
+			"numUnits", numUnits,
+		)
+		return nil, 0, &completedLobResponseError{err: common.NewOracleError(
+			oracleErrors.InvalidLOBBuffer,
+			nil,
+			"read",
+			"clob",
+			"lobAmt exceeds requested amount",
+		)}
 	}
 
-	byteSlice := binaryReadBuffer[:bytesTransferred]
-
-	decodedChars, err := c.decodeLobCharPayload(
-		byteSlice,
-		charOutBuffer,
-		0,
-		variableWidth,
+	payload, derivedUnits, _, err := c.decodeReadPayload(
+		lobLocator,
 		isNCLOB,
-		littleEndian,
+		binaryReadBuffer[:bytesTransferred],
+		prefixHighSurrogate,
+		false,
 	)
 	if err != nil {
-		common.Odl.Error("ClobExecutor.Read: decodeLobCharPayload failed",
+		common.Odl.Error("clobExecutor.read: decodeLobCharPayload failed",
 			"error", err,
 			"bytesTransferred", bytesTransferred,
 			"isNCLOB", isNCLOB,
 		)
-		return 0, err
+		return nil, 0, &completedLobResponseError{err: err}
+	}
+	if derivedUnits != serverUnits {
+		common.Odl.Error("clobExecutor.read: lobAmt mismatch",
+			"serverUnits", serverUnits,
+			"derivedUnits", derivedUnits,
+		)
+		return nil, 0, &completedLobResponseError{err: common.NewOracleError(
+			oracleErrors.InvalidLOBBuffer,
+			nil,
+			"read",
+			"clob",
+			"lobAmt mismatch",
+		)}
 	}
 
 	if common.Odl.Enabled(ctx, slog.LevelDebug) {
 		common.Odl.Debug(
-			"ClobExecutor.Read: completed",
+			"clobExecutor.read: completed",
 			"offset", lobLocator.offset,
-			"numCharsRequested", numChars,
-			"decodedChars", decodedChars,
+			"numUnitsRequested", numUnits,
+			"logicalUnits", serverUnits,
 		)
 	}
 
-	return driverCommon.UB8(decodedChars), nil
+	return payload, serverUnits, nil
+}
+
+// decodeReadPayload converts a TTC CLOB/NCLOB payload to UTF-8 and reports its
+// Oracle UTF-16 logical-unit count. When allowTrailingHighSurrogate is true,
+// the payload is an inline RXD prefix and a trailing high surrogate is returned
+// as carry for the next locator read. Otherwise the payload must be complete.
+func (c *clobExecutor) decodeReadPayload(
+	lobLocator *locator,
+	isNCLOB bool,
+	payload []byte,
+	prefixHighSurrogate uint16,
+	allowTrailingHighSurrogate bool,
+) ([]byte, driverCommon.UB8, uint16, error) {
+	if len(payload) == 0 {
+		if prefixHighSurrogate != 0 {
+			return nil, 0, 0, invalidUTF16SurrogateError()
+		}
+		return nil, 0, 0, nil
+	}
+	variableWidth := lobLocator.isLobCharsetVariableWidth()
+	if prefixHighSurrogate != 0 && !variableWidth && !isNCLOB {
+		return nil, 0, 0, invalidUTF16SurrogateError()
+	}
+	if !variableWidth && !isNCLOB && !utf8.Valid(payload) {
+		return nil, 0, 0, common.NewOracleError(
+			oracleErrors.InvalidLOBBuffer,
+			nil,
+			"read",
+			"clob",
+			"invalid UTF-8 payload",
+		)
+	}
+	if variableWidth || isNCLOB {
+		return decodeUTF16Payload(
+			payload,
+			lobLocator.isLobCharsetLittleEndian(),
+			prefixHighSurrogate,
+			allowTrailingHighSurrogate,
+		)
+	}
+	runes := make([]rune, len(payload))
+	decoded, err := c.decodeLobCharPayload(payload, runes, 0, variableWidth, isNCLOB, lobLocator.isLobCharsetLittleEndian())
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	runes = runes[:decoded]
+	return []byte(string(runes)), driverCommon.UB8(lobCharacterUnits(runes)), 0, nil
+}
+
+// decodeUTF16Payload decodes a UTF-16 payload while optionally joining a high
+// surrogate retained from an earlier payload. logical is deliberately based
+// only on units in payload, because a carried prefix unit was already counted
+// by the caller's LOB offset.
+func decodeUTF16Payload(
+	payload []byte,
+	littleEndian bool,
+	prefixHighSurrogate uint16,
+	allowTrailingHighSurrogate bool,
+) ([]byte, driverCommon.UB8, uint16, error) {
+	units, err := readUTF16CodeUnits(payload, littleEndian)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	logical := driverCommon.UB8(len(units))
+	if prefixHighSurrogate != 0 {
+		if !isUTF16HighSurrogate(prefixHighSurrogate) || len(units) == 0 || !isUTF16LowSurrogate(units[0]) {
+			return nil, 0, 0, invalidUTF16SurrogateError()
+		}
+		joined := make([]uint16, 0, len(units)+1)
+		joined = append(joined, prefixHighSurrogate)
+		joined = append(joined, units...)
+		units = joined
+	}
+
+	var nextHighSurrogate uint16
+	if allowTrailingHighSurrogate && len(units) > 0 && isUTF16HighSurrogate(units[len(units)-1]) {
+		nextHighSurrogate = units[len(units)-1]
+		units = units[:len(units)-1]
+	}
+	if err := validateCompleteUTF16Units(units); err != nil {
+		return nil, 0, 0, err
+	}
+	return []byte(string(utf16.Decode(units))), logical, nextHighSurrogate, nil
+}
+
+func invalidUTF16SurrogateError() error {
+	return common.NewOracleError(
+		oracleErrors.InvalidLOBBuffer,
+		nil,
+		"read",
+		"clob",
+		"invalid UTF-16 surrogate pair",
+	)
+}
+
+func isUTF16HighSurrogate(unit uint16) bool {
+	return unit >= 0xD800 && unit <= 0xDBFF
+}
+
+func isUTF16LowSurrogate(unit uint16) bool {
+	return unit >= 0xDC00 && unit <= 0xDFFF
+}
+
+// validateCompleteUTF16Payload rejects a partial code unit or surrogate pair
+// before conversion can replace it with U+FFFD.
+func validateCompleteUTF16Payload(payload []byte, littleEndian bool) error {
+	units, err := readUTF16CodeUnits(payload, littleEndian)
+	if err != nil {
+		return err
+	}
+	return validateCompleteUTF16Units(units)
+}
+
+func validateCompleteUTF16Units(units []uint16) error {
+	for index := 0; index < len(units); index++ {
+		unit := units[index]
+		switch {
+		case isUTF16HighSurrogate(unit):
+			if index+1 >= len(units) || !isUTF16LowSurrogate(units[index+1]) {
+				return invalidUTF16SurrogateError()
+			}
+			index++
+		case isUTF16LowSurrogate(unit):
+			return invalidUTF16SurrogateError()
+		}
+	}
+	return nil
 }
 
 // getByteBufferSizeForConversion calculates the byte buffer size required for TTC conversions.
 //
 // Description:
 //
-//	Variable-width database character sets are transmitted as UCS2 (2 bytes per character) while
-//	fixed-width sets are sent as UTF-8 and therefore assume the worst-case of 3 bytes per
-//	character. The function applies these heuristics to size temporary buffers before conversion.
+//	The current TTC conversion paths encode both variable-width and fixed-width locator payloads
+//	as UTF-16 code units. A supplementary Unicode code point requires a surrogate pair, so every
+//	requested rune needs capacity for as many as two two-byte code units.
 //
-// Inputs:
+// Parameters:
 //   - variableWidth: true when the locator uses variable-width storage.
 //   - numChars: number of characters slated for conversion.
 //
-// Outputs:
+// Returns:
 //   - int: buffer length in bytes
 //
 // Errors:
 //   - None.
 func getByteBufferSizeForConversion(variableWidth bool, numChars int) int {
-	if variableWidth {
-		return numChars * bytesPerUTF16CodeUnit
+	if numChars <= 0 {
+		return 0
 	}
-	return numChars * 3
+	// Keep the width argument in the helper signature because callers derive it from locator
+	// metadata and future charset-aware converters may size these representations differently.
+	_ = variableWidth
+	return numChars * utf8.UTFMax
 }
 
 // encodeLobCharPayload converts rune slices into the TTC network representation expected by the
@@ -491,20 +706,19 @@ func getByteBufferSizeForConversion(variableWidth bool, numChars int) int {
 //
 // Description:
 //
-//	Distinguishes between AL16UTF16/AL16UTF16LE (fixed-width) and AL32UTF8 (variable-width)
-//	encodings. Fixed-width and NCLOB locators emit UTF-16 code units, honouring the little endian
-//	storage flag (KOLBLVLE) when set, while variable-width locators emit UTF-8.
+//	Uses locator metadata to choose the TTC payload conversion path and byte
+//	order. That transport conversion is independent of CLOB and NCLOB LOB
+//	amounts, which are always counted in UCS-2 units.
 //
-// Inputs:
+// Parameters:
 //   - source: rune slice containing characters to encode.
 //   - offset: index within the rune slice where encoding begins.
 //   - numChars: number of characters to encode.
 //   - destinationBuffer: byte buffer that receives the encoded payload.
 //   - variableWidth: true when the locator expects variable-width encoding.
-//   - isNCLOB: indicates whether the locator represents an NCLOB.
 //   - littleEndian: toggles byte ordering for UTF-16 output.
 //
-// Outputs:
+// Returns:
 //   - int: number of bytes written into destinationBuffer (-1 when the buffer lacks capacity.)
 //   - int: number of UTF-16 code units generated (or -1 when not applicable).
 //   - int: number of Unicode code points processed from source.
@@ -514,7 +728,6 @@ func (c *clobExecutor) encodeLobCharPayload(
 	numChars int,
 	destinationBuffer []byte,
 	variableWidth bool,
-	isNCLOB bool,
 	littleEndian bool,
 ) (int, int, int) {
 	// Clamp the upper bound so slicing never exceeds the source length; callers may request
@@ -536,24 +749,23 @@ func (c *clobExecutor) encodeLobCharPayload(
 		return c.encodeVariableWidthCharSet(runesToEncode, destinationBuffer, littleEndian)
 	}
 
-	bytesWritten, codeUnits := c.encodeFixedWidthCharSet(runesToEncode, destinationBuffer, isNCLOB, littleEndian)
+	bytesWritten, codeUnits := c.encodeFixedWidthCharSet(runesToEncode, destinationBuffer, littleEndian)
 	return bytesWritten, codeUnits, len(runesToEncode)
 }
 
-// encodeVariableWidthCharSet emits UTF-16 code units for variable-width locator encodings.
+// encodeVariableWidthCharSet emits UTF-16 code units for this TTC payload path.
 //
 // Description:
 //
-//	Produces UTF-16 code units for variable-width locator encodings (AL16UTF16/AL16UTF16LE),
-//	respecting the locator byte-order flag and optionally recording the number of UTF-16 code units
-//	produced so callers can populate OLOBOPS fields consistently.
+//	Produces UTF-16 code units, respecting the locator byte-order flag. The
+//	transport representation does not determine the Oracle LOB amount unit.
 //
-// Inputs:
+// Parameters:
 //   - runes: characters to encode.
 //   - destinationBuffer: byte buffer that receives UTF-16 encoded data.
 //   - littleEndian: toggles byte ordering for the UTF-16 emission.
 //
-// Outputs:
+// Returns:
 //   - int: number of bytes copied into destinationBuffer, or -1 when the buffer lacks capacity.
 //   - int: number of UTF-16 code units produced, or -1 when emission fails.
 //   - int: number of Unicode code points consumed from runes.
@@ -562,19 +774,18 @@ func (c *clobExecutor) encodeVariableWidthCharSet(
 	destinationBuffer []byte,
 	littleEndian bool,
 ) (int, int, int) {
-	// Encode the rune slice into UTF-16 code units so we can emit TTC payloads in the
-	// locator's variable-width character set (AL16UTF16/AL16UTF16LE).
+	// Encode the rune slice into UTF-16 code units for the TTC payload.
 	codeUnits := utf16.Encode(runes)
 
-	// Write the UTF-16 code units into the destination buffer, honouring the locator
+	// write the UTF-16 code units into the destination buffer, honouring the locator
 	// endianness. The helper returns -1 when the supplied buffer is too small.
 	bytesWritten := writeUTF16ToBuffer(codeUnits, destinationBuffer, littleEndian)
 	if bytesWritten < 0 {
 		return -1, -1, len(runes)
 	}
 
-	// Surface the number of code units and runes produced so callers can compute LOB
-	// amount metadata when required.
+	// Surface the number of code units and runes produced. LOB amounts use the
+	// code-unit count under Oracle's UCS-2 LOB API semantics.
 	return bytesWritten, len(codeUnits), len(runes)
 }
 
@@ -582,47 +793,23 @@ func (c *clobExecutor) encodeVariableWidthCharSet(
 //
 // Description:
 //
-//	For NCLOBs the data is emitted as UTF-16 code units using the locator-provided endianness,
-//	matching the wire format expected by the server. For other CLOBs this remains a best-effort
-//	implementation until charset-aware converters are available, while still recording the number of
-//	UTF-16 code units when amount is supplied.
+//	The emitted bytes follow locator encoding metadata. CLOB data is stored in
+//	the database character set and NCLOB data in the national character set;
+//	this conversion is separate from the UCS-2 unit rule for LOB amounts.
 //
-// Inputs:
+// Parameters:
 //   - runes: characters to encode.
 //   - destinationBuffer: byte buffer that receives UTF-16 encoded data.
-//   - isNCLOB: indicates whether the locator represents an NCLOB.
 //   - littleEndian: toggles byte ordering for the UTF-16 emission.
 //
-// Outputs:
+// Returns:
 //   - int: number of bytes copied into destinationBuffer, or -1 when the buffer lacks capacity.
-//   - int: amount value corresponding to the emitted payload (code units or code points), or -1 when
-//     amount computation is unsupported for the negotiated charset.
+//   - int: number of UTF-16 code units emitted, or -1 when encoding fails.
 func (c *clobExecutor) encodeFixedWidthCharSet(
 	runes []rune,
 	destinationBuffer []byte,
-	isNCLOB bool,
 	littleEndian bool,
 ) (int, int) {
-	// Use the negotiated character sets cached inside the lobAmtPolicy. For NCLOBs the session
-	// NCHAR set is required on both legs, while CLOBs transmit AL32UTF8 but rely on the database
-	// character set when determining amount semantics.
-	encodedCharSet := c.policy.driverCS
-	if isNCLOB {
-		encodedCharSet = c.policy.ncharCS
-	}
-
-	// Determine which LOB amount unit (code units vs. code points) should be reported so the caller
-	// can populate TTC amount fields consistently.
-	unit, err := resolveLobAmtUnit(encodedCharSet)
-	if err != nil {
-		common.Odl.Error("ClobExecutor.encodeFixedWidthCharSet: unsupported charset",
-			"encodedCharSet", encodedCharSet,
-			"error", err,
-		)
-		return -1, -1
-	}
-	amount := -1
-
 	// Encode the runes into UTF-16 code units so they can be emitted in the locator's fixed-width
 	// representation.
 	codeUnits := utf16.Encode(runes)
@@ -634,22 +821,11 @@ func (c *clobExecutor) encodeFixedWidthCharSet(
 		return -1, -1
 	}
 
-	// Translate the byte emission into an amount value when the LOB protocol expects one, either in
-	// code points or UTF-16 code units depending on the negotiated unit.
-	switch unit {
-	case lobAmtCodePoint:
-		amount = len(runes)
-	case lobAmtCodeUnit:
-		amount = len(codeUnits)
-	default:
-		amount = -1
-	}
-
-	return bytesWritten, amount
+	return bytesWritten, len(codeUnits)
 }
 
-// decodeLobCharPayload converts TTC-encoded bytes into runes using the placeholder charset rules
-// shared with encodeLobCharPayload.
+// decodeLobCharPayload converts TTC-encoded bytes into runes using the same
+// locator-metadata-based character-set rules as encodeLobCharPayload.
 //
 // Description:
 //
@@ -658,7 +834,7 @@ func (c *clobExecutor) encodeFixedWidthCharSet(
 //	Both branches populate the caller-provided rune slice starting at the requested offset and
 //	return the number of decoded runes.
 //
-// Inputs:
+// Parameters:
 //   - source: TTC byte payload read from the server.
 //   - charOutBuffer: rune slice that receives decoded characters.
 //   - offsetInOutBuffer: index in charOutBuffer where decoded runes should be written.
@@ -666,7 +842,7 @@ func (c *clobExecutor) encodeFixedWidthCharSet(
 //   - isNCLOB: indicates whether the locator represents an NCLOB; currently informational only.
 //   - littleEndian: true when UTF-16 payloads are stored in little-endian order.
 //
-// Outputs:
+// Returns:
 //   - int: number of Unicode code points written to charOutBuffer.
 //   - error: non-nil when decoding fails or the destination buffer is undersized.
 //
@@ -697,13 +873,13 @@ func (c *clobExecutor) decodeLobCharPayload(
 //	content before that position. Buffer bounds are enforced before writing so callers receive an
 //	error instead of partially written output.
 //
-// Inputs:
+// Parameters:
 //   - source: TTC byte payload containing UTF-16 code units.
 //   - charOutBuffer: destination rune slice for decoded characters.
 //   - offsetInOutBuffer: index in charOutBuffer where decoding begins.
 //   - littleEndian: true when code units are stored in little-endian order.
 //
-// Outputs:
+// Returns:
 //   - int: number of runes decoded into charOutBuffer.
 //   - error: non-nil when decoding fails or the destination buffer is undersized.
 //
@@ -739,14 +915,14 @@ func (c *clobExecutor) decodeVariableWidthCharSet(
 // code units on the wire, so they reuse decodeVariableWidthCharSet to handle endianness and surrogate
 // pairs without duplicating logic.
 //
-// Inputs:
+// Parameters:
 //   - source: TTC byte payload containing character data.
 //   - charOutBuffer: destination rune slice for decoded characters.
 //   - offsetInOutBuffer: index in charOutBuffer where decoded runes should be written.
 //   - isNCLOB: true when the payload was read from an NCLOB locator.
 //   - littleEndian: indicates whether UTF-16 payloads are little endian; ignored for UTF-8 paths.
 //
-// Outputs:
+// Returns:
 //   - int: number of runes written to charOutBuffer.
 //   - error: non-nil when decoding fails or the destination buffer is undersized.
 //
@@ -805,11 +981,11 @@ func (c *clobExecutor) decodeFixedWidthCharSet(
 //	resulting slice. The caller-provided littleEndian flag controls byte ordering so the helper can
 //	service both AL16UTF16 and AL16UTF16LE encodings without duplicating logic.
 //
-// Inputs:
+// Parameters:
 //   - data: UTF-16 encoded byte payload.
 //   - littleEndian: toggles byte ordering when constructing code units.
 //
-// Outputs:
+// Returns:
 //   - []uint16: decoded UTF-16 code units.
 //   - error: non-nil when data length is not divisible by two.
 func readUTF16CodeUnits(data []byte, littleEndian bool) ([]uint16, error) {
@@ -841,12 +1017,12 @@ func readUTF16CodeUnits(data []byte, littleEndian bool) ([]uint16, error) {
 //	Iterates over the provided code units, emitting bytes in the requested endianness. When the
 //	destination buffer is too small the function returns -1 without writing partial data.
 //
-// Inputs:
+// Parameters:
 //   - codeUnits: UTF-16 code units to serialise.
 //   - destinationBuffer: byte buffer that receives the encoded payload.
 //   - littleEndian: toggles byte ordering for encoding.
 //
-// Outputs:
+// Returns:
 //   - int: number of bytes written, or -1 when the destination lacks sufficient capacity.
 //
 // Errors:

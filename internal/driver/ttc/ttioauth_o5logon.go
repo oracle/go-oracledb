@@ -389,7 +389,7 @@ func _applyZeroPadding(msg []byte, blockSize int) []byte {
 // After the server decrypts the password, it will decode the bytes into
 // characters using the network character set. The server always expects the
 // encoding to be based on the character set negotiated on the network, no
-// matter it comes from sqlplus client or jdbc client.
+// matter which client supplied it.
 //
 // The network label code here does not have the context to generate the
 // network character set encoded bytes, therefore it needs to be passed from

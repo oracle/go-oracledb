@@ -44,6 +44,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -293,10 +294,12 @@ func _createAndRegisterMarshaller(
 		mar = NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		common.Odl.Debug("connectionNegotiator: Creating TTC Marshaller")
 	}
-	if props := shelf.GetConnectionProperties(); props != nil {
-		if marshalEngine, ok := mar.(*MarshalEngine); ok {
-			marshalEngine.setDefaultLobPrefetchSize(int64(props.GetDefaultLobPrefetchSize()))
+	if marshalEngine, ok := mar.(*MarshalEngine); ok {
+		prefetchSize := oracleconfig.DefaultLobPrefetchSize
+		if props := shelf.GetConnectionProperties(); props != nil {
+			prefetchSize = props.GetDefaultLobPrefetchSize()
 		}
+		marshalEngine.setDefaultLobPrefetchSize(int64(prefetchSize))
 	}
 	shelf.RegisterMarshaller(mar)
 	common.Odl.Debug("connectionNegotiator: Marshaller created/updated and registered")

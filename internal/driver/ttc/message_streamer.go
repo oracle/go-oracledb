@@ -113,8 +113,10 @@ type MessageStreamerInterface interface {
 type MessageStreamer struct {
 	incomingMessages *list.List
 	outgoingMessages *list.List
-	// Add a shelf field to hold context.
-	shelf          *ttiShelf[driverCommon.MessageType]
+	shelf            *ttiShelf[driverCommon.MessageType]
+	// lobFreeBatches keeps the registry batch associated with each queued
+	// array-free piggyback until the enclosing transport flush succeeds.
+	lobFreeBatches map[*tTIlob]*lobFreeBatch
 	postUCallbacks map[driverCommon.MessageType]StreamerPostUnmarshallCallback
 	preUCallbacks  map[driverCommon.MessageType]StreamerPreUnmarshallCallback
 }
@@ -136,6 +138,7 @@ func NewMessageStreamer(shelf *ttiShelf[driverCommon.MessageType]) *MessageStrea
 		preUCallbacks:    make(map[driverCommon.MessageType]StreamerPreUnmarshallCallback),
 		postUCallbacks:   make(map[driverCommon.MessageType]StreamerPostUnmarshallCallback),
 		shelf:            shelf,
+		lobFreeBatches:   make(map[*tTIlob]*lobFreeBatch),
 	}
 	// register the streamer as a state validator
 	shelf.registerStateValidator(streamer)
@@ -159,8 +162,79 @@ func (ms *MessageStreamer) Push(ctx context.Context, msg driverCommon.Message[dr
 			ms.Drain(common.BackgroundContext, driverCommon.OUT)
 		}
 	}
+
+	// Temporary-LOB cleanup is carried immediately before the next
+	// ordinary TTC function. LOGOFF is the exception: physical session teardown
+	// releases all session-duration LOBs, so queued local state is discarded.
+	// This runs after the emergency overflow flush so TTIPFN is never separated
+	// from the ordinary function that gives it its piggyback transport.
+	if msg.GetMsgCode() == TTIFUN {
+		if function, ok := msg.(driverCommon.Function); ok && function.GetFuncCode() == logOff {
+			// LOGOFF terminates the physical session, so Oracle reclaims
+			// session-duration temporary LOBs as part of teardown. Do not add a
+			// temporary-free RPC to the closing exchange.
+			// Remove cleanup piggybacks queued for earlier functions that have not
+			// been flushed yet.
+			ms.discardQueuedLobFreeBatches()
+			discardLobSessionState(ms.shelf)
+		} else {
+			// Reserve the released locators before constructing the piggyback. A
+			// reserved batch cannot be selected again until this queued exchange
+			// either completes or is restored after a pre-transport failure.
+			batch, err := ms.shelf.lobState.lobReferenceRegistry.reservePending()
+			if err != nil {
+				return err
+			}
+			if batch != nil {
+				definition := &lobDefinition{
+					sourceLocator: newLocator(batch.locators, 0),
+					sendLobAmt:    false,
+					operation:     kplobArrayTmpFree,
+				}
+				piggyback := newTTIlobPiggyback().(*tTIlob)
+				if err := piggyback.SetDefinition(definition); err != nil {
+					ms.shelf.lobState.lobReferenceRegistry.restorePending(batch)
+					return err
+				}
+				// Queue cleanup immediately before the ordinary function that
+				// carries it in the same TTC transport flush.
+				ms.lobFreeBatches[piggyback] = batch
+				ms.outgoingMessages.PushBack(piggyback)
+			}
+		}
+	}
 	ms.outgoingMessages.PushBack(msg)
 	return nil
+}
+
+// discardQueuedLobFreeBatches removes temporary-free piggybacks that are
+// still waiting in the outgoing queue and clears their streamer bookkeeping.
+// LOGOFF uses this because session teardown makes those server-side frees
+// redundant.
+func (ms *MessageStreamer) discardQueuedLobFreeBatches() {
+	ms.removeQueuedLobFreeBatches(false)
+}
+
+// removeQueuedLobFreeBatches removes tracked LOB-free piggybacks from the
+// outgoing queue and releases their streamer reservations. When restore is
+// true, the registry entries become pending again for a later retry; when it
+// is false, the caller is discarding the physical session.
+func (ms *MessageStreamer) removeQueuedLobFreeBatches(restore bool) {
+	for outgoing := ms.outgoingMessages.Front(); outgoing != nil; {
+		next := outgoing.Next()
+		if piggyback, ok := outgoing.Value.(*tTIlob); ok {
+			if _, tracked := ms.lobFreeBatches[piggyback]; tracked {
+				ms.outgoingMessages.Remove(outgoing)
+			}
+		}
+		outgoing = next
+	}
+	for piggyback, batch := range ms.lobFreeBatches {
+		if restore {
+			ms.shelf.lobState.lobReferenceRegistry.restorePending(batch)
+		}
+		delete(ms.lobFreeBatches, piggyback)
+	}
 }
 
 // _isExpectedType checks if a given type is part of the type array
@@ -274,7 +348,7 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 // This overwriting existing registration
 // Parameters:
 //   - msgType: type the message type we register the callback for.
-//   - stmtCancellation: the callback to be called.
+//   - cb: the callback to be called.
 func (ms *MessageStreamer) RegisterPreUnmarshallCallback(
 	msgType driverCommon.MessageType,
 	cb StreamerPreUnmarshallCallback,
@@ -289,7 +363,7 @@ func (ms *MessageStreamer) RegisterPreUnmarshallCallback(
 // This overwriting existing registration
 // Parameters:
 //   - msgType: type the message type we register the callback for.
-//   - stmtCancellation: the callback to be called.
+//   - cb: the callback to be called.
 func (ms *MessageStreamer) RegisterPostUnmarshallCallback(
 	msgType driverCommon.MessageType,
 	cb StreamerPostUnmarshallCallback,
@@ -343,23 +417,49 @@ func (ms *MessageStreamer) Flush(ctx context.Context) error {
 		err = header.MarshalTo(ctx, ms.shelf.GetMarshaller())
 		if err != nil {
 			common.Odl.Warn("Failed to flush, can't marshall message code", "error", err)
+			ms.restorePendingLobFreeBatches()
 			return common.NewOracleError(oracleErrors.StreamerWriteError, err, nil)
 		}
 
 		err = marshalable.MarshalTo(ctx, ms.shelf.GetMarshaller())
 		if err != nil {
 			common.Odl.Warn("Failed to flush, can't mashall message", "error", err)
+			ms.restorePendingLobFreeBatches()
 			return common.NewOracleError(oracleErrors.StreamerWriteError, err, nil)
 		}
 		ms.outgoingMessages.Remove(outgoing)
 	}
 
+	// Do not complete reserved batches until every queued message has been
+	// marshalled and the underlying transport flush has succeeded. Before that
+	// point a later failure can still leave the piggyback unsent.
 	err = ms.shelf.GetMarshaller().Flush(ctx)
 	if err != nil {
 		common.Odl.Warn("Failed to flush, can't flush underlying layer", "error", err)
+		// The transport may have committed some or all of the piggyback. Retrying
+		// it could free an already-freed LOB, so abandon session-local state and
+		// invalidate the physical connection.
+		discardLobSessionState(ms.shelf)
+		clear(ms.lobFreeBatches)
+		ms.shelf.getEventService().post(streamerStaleEvent)
 		return common.NewOracleError(oracleErrors.StreamerWriteError, err, nil)
 	}
+	// A successful marshaller flush is the commit point for the reserved
+	// cleanup batches: the transport has accepted the piggybacks, so their
+	// local registry entries can now be removed.
+	for piggyback, batch := range ms.lobFreeBatches {
+		ms.shelf.lobState.lobReferenceRegistry.completePending(batch)
+		delete(ms.lobFreeBatches, piggyback)
+	}
 	return err
+}
+
+// restorePendingLobFreeBatches returns reserved batches to the pending registry
+// when queued messages are discarded before the transport flush is attempted.
+// It must not be used after a transport failure because the server may have
+// already processed the array-free piggyback.
+func (ms *MessageStreamer) restorePendingLobFreeBatches() {
+	ms.removeQueuedLobFreeBatches(true)
 }
 
 // Drain implementation. See Streamer interface
@@ -376,6 +476,9 @@ func (ms *MessageStreamer) Drain(ctx context.Context, direction driverCommon.Str
 		ms.incomingMessages.Init()
 	}
 	if direction == driverCommon.OUT || direction == driverCommon.INOUT {
+		// Batches still tracked here have not reached Marshaller.Flush. Restore
+		// them because Drain is discarding the queued, unsent messages.
+		ms.restorePendingLobFreeBatches()
 		oRes = ms.outgoingMessages.Len()
 		ms.outgoingMessages.Init()
 	}

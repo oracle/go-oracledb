@@ -43,24 +43,103 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestTransactionCommitSuccess verifies that commit succeeds for supported
 // transaction options and that a second commit is rejected.
+// TestConnectionTransaction_ConcurrentTerminationExecutesOnce verifies
+// concurrent commit and rollback attempts perform one terminal exchange.
+func TestConnectionTransaction_ConcurrentTerminationExecutesOnce(t *testing.T) {
+	t.Parallel()
+
+	messageRegistry := NewRegistry[driverCommon.MessageType]()
+	messageRegistry.Register(TTIOER, 1, newTTIoer)
+	functionRegistry := NewRegistry[functionRegistryKey]()
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: commit}, 1, newCommit)
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 1, newRollback)
+	streamer := &transactionBlockingStreamer{
+		mockStreamer: &mockStreamer{pullMsg: &mockOer{}},
+		flushStarted: make(chan struct{}),
+		allowFlush:   make(chan struct{}),
+	}
+	var allowFlushOnce sync.Once
+	allowFlush := func() { allowFlushOnce.Do(func() { close(streamer.allowFlush) }) }
+	defer allowFlush()
+	shelf := newShelf[driverCommon.MessageType]()
+	shelf.RegisterMessageFactory(&SimpleFactory{
+		ttcVersion:   1,
+		msgregistry:  messageRegistry,
+		funcregistry: functionRegistry,
+	}).RegisterMessageStreamer(streamer)
+	connection := newTestConnection(shelf, nil, nil)
+	transaction := newTransaction(connection, context.Background())
+	shelf.registerTransaction(transaction)
+
+	hold, err := shelf.synchronizer.begin(context.Background())
+	if err != nil {
+		t.Fatalf("beginOperation returned error: %v", err)
+	}
+	results := make(chan error, 2)
+	go func() { results <- transaction.Commit() }()
+	go func() { results <- transaction.Rollback() }()
+
+	// Release the guard so the first terminal exchange can reach its
+	// fake-streamer barrier. The other terminal call must remain outside the
+	// stream until the first exchange is drained.
+	hold()
+	<-streamer.flushStarted
+	allowFlush()
+
+	first, second := <-results, <-results
+	successes := 0
+	notInTransaction := 0
+	for _, result := range []error{first, second} {
+		if result == nil {
+			successes++
+			continue
+		}
+		if sqlErr, ok := result.(oracleErrors.SQLError); ok && sqlErr.ErrorCode() == string(oracleErrors.NotInTransaction) {
+			notInTransaction++
+		}
+	}
+	if successes != 1 || notInTransaction != 1 {
+		t.Fatalf("termination results = [%v, %v], want one success and one NotInTransaction", first, second)
+	}
+	if streamer.pushedMsg.Len() != 1 {
+		t.Fatalf("terminal TTC request count = %d, want 1", streamer.pushedMsg.Len())
+	}
+}
+
+type transactionBlockingStreamer struct {
+	*mockStreamer
+	flushStarted chan struct{}
+	allowFlush   chan struct{}
+}
+
+func (streamer *transactionBlockingStreamer) Flush(ctx context.Context) error {
+	close(streamer.flushStarted)
+	<-streamer.allowFlush
+	return streamer.mockStreamer.Flush(ctx)
+}
+
+// TestTransactionCommitSuccess verifies that commit succeeds for supported
+// transaction options and that a second commit is rejected.
 func TestTransactionCommitSuccess(t *testing.T) {
 	t.Parallel()
-	messageRegistry := NewRegistry[common.MessageType]()
+	messageRegistry := NewRegistry[driverCommon.MessageType]()
 	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: commit}, 1, newCommit)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
 	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	mockStr := &mockStreamer{}
-	shelf := newShelf[common.MessageType]()
+	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageFactory(messageFactory).RegisterMessageStreamer(mockStr)
 
 	conn := newTestConnection(shelf, nil, nil)
@@ -113,14 +192,14 @@ func TestTransactionCommitSuccess(t *testing.T) {
 				t.Errorf("Missing transaction setup statement %s", expectedSQL)
 				break
 			}
-			pushedMsg := setupElement.Value.(*common.Message[common.MessageType])
+			pushedMsg := setupElement.Value.(*driverCommon.Message[driverCommon.MessageType])
 			oAll8, ok := (*pushedMsg).(*tTIOall)
 			if !ok {
 				t.Errorf("Message pushed was not oAll8")
 				setupElement = setupElement.Next()
 				continue
 			}
-			if sql := common.B1ArrayToString(oAll8.sql); sql != expectedSQL {
+			if sql := driverCommon.B1ArrayToString(oAll8.sql); sql != expectedSQL {
 				t.Errorf("Expected transaction setup statement %s, but was %s", expectedSQL, sql)
 			}
 			if oAll8.options&commitAfterExecution != 0 {
@@ -134,7 +213,7 @@ func TestTransactionCommitSuccess(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected error %v", err)
 		}
-		msg := mockStr.pushedMsg.Front().Value.(*common.Message[common.MessageType])
+		msg := mockStr.pushedMsg.Front().Value.(*driverCommon.Message[driverCommon.MessageType])
 		msgHeader, ok := (*msg).(*ttiFunHeader)
 		if !ok {
 			t.Errorf("Message pushed was not ttiFunHeader")
@@ -169,14 +248,14 @@ func TestTransactionCommitSuccess(t *testing.T) {
 // transaction options and that a second rollback is rejected.
 func TestTransactionRollbackSuccess(t *testing.T) {
 	t.Parallel()
-	messageRegistry := NewRegistry[common.MessageType]()
+	messageRegistry := NewRegistry[driverCommon.MessageType]()
 	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 1, newRollback)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
 	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	mockStr := &mockStreamer{pullMsg: &mockOer{err: nil}}
-	shelf := newShelf[common.MessageType]()
+	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageFactory(messageFactory).RegisterMessageStreamer(mockStr)
 
 	conn := newTestConnection(shelf, nil, nil)
@@ -228,14 +307,14 @@ func TestTransactionRollbackSuccess(t *testing.T) {
 				t.Errorf("Missing transaction setup statement %s", expectedSQL)
 				break
 			}
-			pushedMsg := setupElement.Value.(*common.Message[common.MessageType])
+			pushedMsg := setupElement.Value.(*driverCommon.Message[driverCommon.MessageType])
 			oAll8, ok := (*pushedMsg).(*tTIOall)
 			if !ok {
 				t.Errorf("Message pushed was not oAll8")
 				setupElement = setupElement.Next()
 				continue
 			}
-			if sql := common.B1ArrayToString(oAll8.sql); sql != expectedSQL {
+			if sql := driverCommon.B1ArrayToString(oAll8.sql); sql != expectedSQL {
 				t.Errorf("Expected transaction setup statement %s, but was %s", expectedSQL, sql)
 			}
 			if oAll8.options&commitAfterExecution != 0 {
@@ -249,7 +328,7 @@ func TestTransactionRollbackSuccess(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected error %v", err)
 		}
-		msg := mockStr.pushedMsg.Front().Value.(*common.Message[common.MessageType])
+		msg := mockStr.pushedMsg.Front().Value.(*driverCommon.Message[driverCommon.MessageType])
 		msgHeader, ok := (*msg).(*ttiFunHeader)
 		if !ok {
 			t.Errorf("Message pushed was not ttiFunHeader")
@@ -275,7 +354,7 @@ func TestTransactionRollbackSuccess(t *testing.T) {
 func TestCallBeginTxTwice(t *testing.T) {
 	t.Parallel()
 	mockNs := &mockNetworkSession{disconnectCalls: 0, disconnectErr: nil, sleepDuration: 0}
-	messageRegistry := NewRegistry[common.MessageType]()
+	messageRegistry := NewRegistry[driverCommon.MessageType]()
 	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: logOff}, 1, newLogOff)
@@ -283,7 +362,7 @@ func TestCallBeginTxTwice(t *testing.T) {
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
 	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	mockStr := &mockStreamer{pullMsg: &mockOer{err: nil}}
-	shelf := newShelf[common.MessageType]()
+	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageFactory(messageFactory).RegisterMessageStreamer(mockStr)
 
 	conn := newTestConnection(shelf, nil, mockNs)

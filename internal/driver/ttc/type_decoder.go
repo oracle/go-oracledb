@@ -478,7 +478,7 @@ Errors:
 */
 func DecodeClob(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	// LOB columns supply their own charset metadata via LobContext.
-	if columnContext.LobContext.CharsetID == al16Utf16CharSet {
+	if columnContext.lobContext.charsetID == al16Utf16CharSet {
 		return converters.DecodeUTF16BEToString(data)
 	}
 	// Default path: assume payload is UTF-8 compatible.

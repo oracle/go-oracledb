@@ -54,6 +54,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 func TestMain(m *testing.M) {
@@ -84,6 +85,17 @@ func InitConfig() error {
 	return nil
 }
 
+// requireErrorCode verifies that err or one of its wrapped errors implements
+// oracleErrors.SQLError with the expected stable error code.
+func requireErrorCode(t testing.TB, err error, want oracleErrors.ErrorCode) {
+	t.Helper()
+	var sqlErr oracleErrors.SQLError
+	ok := errors.As(err, &sqlErr)
+	if !ok || sqlErr.ErrorCode() != string(want) {
+		t.Fatalf("error = %T %v, want driver error code %s", err, err, want)
+	}
+}
+
 var testCases = []struct {
 	name       string
 	categories string
@@ -101,15 +113,19 @@ var testCases = []struct {
 	{"TestConnectionCloser_Close", "unitary", false, TestConnectionCloser_Close},
 	{"TestConnectionCloser_CloseWithTimeout", "unitary", false, TestConnectionCloser_CloseWithTimeout},
 	{"TestEventServiceRegisterAndPost", "unitary", false, TestEventServiceRegisterAndPost},
+	{"TestEventService_ConcurrentRegisterAndPost", "unitary", false, TestEventService_ConcurrentRegisterAndPost},
 	{"TestAuthencationFactoryWithNilParameters", "unitary", false, TestAuthencationFactoryWithNilParameters},
 	{"TestAuthencationFactoryBasic", "unitary", false, TestAuthencationFactoryBasic},
 	{"TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken", "unitary", false, TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken},
 	{"TestGetAuthenticator_UsesTokenAuthenticatorForOAuth", "unitary", false, TestGetAuthenticator_UsesTokenAuthenticatorForOAuth},
 	{"TestGetConnection", "unitary", false, TestGetConnection},
 	{"TestConnectionPinger_Ping", "unitary", false, TestConnectionPinger_Ping},
+	{"TestConnectionPinger_PingRejectsCloseAfterAdmissionWait", "unitary", false, TestConnectionPinger_PingRejectsCloseAfterAdmissionWait},
+	{"TestConnectionPinger_PingReturnsAdmissionContextError", "unitary", false, TestConnectionPinger_PingReturnsAdmissionContextError},
 	{"TestConnectionPinger_IsValid", "unitary", false, TestConnectionPinger_IsValid},
 	{"TestConnectionPinger_IsValidWithInband", "unitary", false, TestConnectionPinger_IsValidWithInband},
 	{"TestFactoryRegistries", "unitary", false, TestFactoryRegistries},
+	{"TestRegistry_ConcurrentRegisterAndLookup", "unitary", false, TestRegistry_ConcurrentRegisterAndLookup},
 	{"TestReplaceMessage", "unitary", false, TestReplaceMessage},
 	{"TestFactoryGetMessage", "unitary", false, TestFactoryGetMessage},
 	{"TestFactoryGetMessageFromFunction", "unitary", false, TestFactoryGetMessageFromFunction},
@@ -415,6 +431,7 @@ var testCases = []struct {
 	{"TestTTIrxd_BvcCarriedNullKeepsLobContextAligned", "unitary", false, TestTTIrxd_BvcCarriedNullKeepsLobContextAligned},
 	{"TestTTIrxd_BvcCarriedClobPreservesLobContext", "unitary", false, TestTTIrxd_BvcCarriedClobPreservesLobContext},
 	{"TestTTIrxd_MarshalTo_Success", "unitary", false, TestTTIrxd_MarshalTo_Success},
+	{"TestTTIrxd_MarshalTo_LobLocatorBind", "unitary", false, TestTTIrxd_MarshalTo_LobLocatorBind},
 	{"TestTTIrxd_MarshalTo_FailOnNullIndicator", "unitary", false, TestTTIrxd_MarshalTo_FailOnNullIndicator},
 	{"TestTTIrxd_MarshalTo_FailOnCLRDataWrite", "unitary", false, TestTTIrxd_MarshalTo_FailOnCLRDataWrite},
 	{"TestTTIrxhConstructor", "unitary", false, TestTTIrxhConstructor},
@@ -464,6 +481,9 @@ var testCases = []struct {
 	{"TestCodecFactory_getEncoder", "unitary", false, TestCodecFactory_getEncoder},
 	{"TestCodecFactory_getDecoder", "unitary", false, TestCodecFactory_getDecoder},
 	{"TestCodecFactory_RegisterEncoderGeneric", "unitary", false, TestCodecFactory_RegisterEncoderGeneric},
+	{"TestTTIShelf_SessionSynchronizerSerializesAccess", "unitary", false, TestTTIShelf_SessionSynchronizerSerializesAccess},
+	{"TestTTIShelf_SessionSynchronizerAcquisitionHonorsContext", "unitary", false, TestTTIShelf_SessionSynchronizerAcquisitionHonorsContext},
+	{"TestTTIShelf_ConcurrentStatementRegistry", "unitary", false, TestTTIShelf_ConcurrentStatementRegistry},
 	{"TestTTIShelf_NewShelf", "unitary", false, TestTTIShelf_NewShelf},
 	{"TestTTIShelf_RegisterCodecFactoryAndGetter", "unitary", false, TestTTIShelf_RegisterCodecFactoryAndGetter},
 
@@ -479,6 +499,45 @@ var testCases = []struct {
 	{"TestStatementExecutor_DML_Insert_Prepared_MarshalAndExec", "unitary", false, TestStatementExecutor_DML_Insert_Prepared_MarshalAndExec},
 	{"TestStatementExecutor_Select_Prepared_MarshalAndQuery", "unitary", false, TestStatementExecutor_Select_Prepared_MarshalAndQuery},
 
+	{"TestLobManager_OwnsTemporaryLease", "unitary", false, TestLobManager_OwnsTemporaryLease},
+	{"TestLobManager_RejectsUnsupportedKind", "unitary", false, TestLobManager_RejectsUnsupportedKind},
+	{"TestLobManager_SharesSessionExecutors", "unitary", false, TestLobManager_SharesSessionExecutors},
+	{"TestLobManager_SharedExecutorExchangesAreAdmissionSerialized", "unitary", false, TestLobManager_SharedExecutorExchangesAreAdmissionSerialized},
+	{"TestLobManager_DispatchesAllLOBOperations", "unitary", false, TestLobManager_DispatchesAllLOBOperations},
+	{"TestLobManager_HandlesSessionAbandonmentAndLeaseErrors", "unitary", false, TestLobManager_HandlesSessionAbandonmentAndLeaseErrors},
+	{"TestLobManager_RejectsIncompleteSession", "unitary", false, TestLobManager_RejectsIncompleteSession},
+	{"TestLobSessionState_InitializesAndCachesExecutors", "unitary", false, TestLobSessionState_InitializesAndCachesExecutors},
+	{"TestLobSessionState_Invalidation", "unitary", false, TestLobSessionState_Invalidation},
+	{"TestConnectionLob_LocatorOperationsRejectEmptyLocator", "unitary", false, TestConnectionLob_LocatorOperationsRejectEmptyLocator},
+	{"TestConnectionLob_ReadReturnsPayloadAndLogicalAmount", "unitary", false, TestConnectionLob_ReadReturnsPayloadAndLogicalAmount},
+	{"TestConnectionLob_ReadRejectsCloseAfterAdmissionWait", "unitary", false, TestConnectionLob_ReadRejectsCloseAfterAdmissionWait},
+	{"TestConnectionLob_LobOperationsRejectUnknownKind", "unitary", false, TestConnectionLob_LobOperationsRejectUnknownKind},
+	{"TestConnectionLob_LobSessionKeyReturnsPhysicalSession", "unitary", false, TestConnectionLob_LobSessionKeyReturnsPhysicalSession},
+	{"TestStreamedLob_BoundedClobReadAmountUsesCharacterChunk", "unitary", false, TestStreamedLob_BoundedClobReadAmountUsesCharacterChunk},
+	{"TestStreamedLob_ValueConsumesPrefixThenUsesBoundedOffsets", "unitary", false, TestStreamedLob_ValueConsumesPrefixThenUsesBoundedOffsets},
+	{"TestStreamedLob_OpenPersistentRejectsConsumedData", "unitary", false, TestStreamedLob_OpenPersistentRejectsConsumedData},
+	{"TestStreamedLob_OpenPersistentAllowsUnreadPrefetch", "unitary", false, TestStreamedLob_OpenPersistentAllowsUnreadPrefetch},
+	{"TestStreamedLob_InlinePrefixCannotExceedDeclaredLength", "unitary", false, TestStreamedLob_InlinePrefixCannotExceedDeclaredLength},
+	{"TestStreamedLob_ClobReadUsesDeclaredLengthAndStopsAtEOF", "unitary", false, TestStreamedLob_ClobReadUsesDeclaredLengthAndStopsAtEOF},
+	{"TestStreamedLob_RefillRejectsInconsistentPayload", "unitary", false, TestStreamedLob_RefillRejectsInconsistentPayload},
+	{"TestStreamedLob_ReadCancellationBeforeRPCInvalidatesValue", "unitary", false, TestStreamedLob_ReadCancellationBeforeRPCInvalidatesValue},
+	{"TestStreamedLob_RowsCloseInvalidatesLob", "unitary", false, TestStreamedLob_RowsCloseInvalidatesLob},
+	{"TestStreamedLob_ConnectionInvalidationRejectsBeforeRPC", "unitary", false, TestStreamedLob_ConnectionInvalidationRejectsBeforeRPC},
+	{"TestStreamedLob_RowsCloseDoesNotWaitForStalledLobRead", "unitary", false, TestStreamedLob_RowsCloseDoesNotWaitForStalledLobRead},
+	{"TestStreamedLob_InFlightSuccessAfterRowsCloseIsRejected", "unitary", false, TestStreamedLob_InFlightSuccessAfterRowsCloseIsRejected},
+	{"TestStreamedLob_RPCFailuresApplySessionSafetyPolicy", "unitary", false, TestStreamedLob_RPCFailuresApplySessionSafetyPolicy},
+	{"TestStreamedLob_CloseReleasesRowsOwnershipAndIsIdempotent", "unitary", false, TestStreamedLob_CloseReleasesRowsOwnershipAndIsIdempotent},
+	{"TestStreamedLob_ClobPrefixConversionUsesCorrectLogicalUnits", "unitary", false, TestStreamedLob_ClobPrefixConversionUsesCorrectLogicalUnits},
+	{"TestStreamedLob_QueryRowCopiesLobPrefixLocatorAndMetadata", "unitary", false, TestStreamedLob_QueryRowCopiesLobPrefixLocatorAndMetadata},
+	{"TestStreamedLob_AdmissionCancellationInvalidatesOperations", "unitary", false, TestStreamedLob_AdmissionCancellationInvalidatesOperations},
+	{"TestStreamedLob_MetadataRPCFailuresApplySessionSafetyPolicy", "unitary", false, TestStreamedLob_MetadataRPCFailuresApplySessionSafetyPolicy},
+	{"TestStreamedLob_ConstructorRejectsUnsupportedSources", "unitary", false, TestStreamedLob_ConstructorRejectsUnsupportedSources},
+	{"TestStreamedLob_DetachRejectsWrongOwnerAndInvalidatedValues", "unitary", false, TestStreamedLob_DetachRejectsWrongOwnerAndInvalidatedValues},
+	{"TestStreamedLob_BufferedRefillIsConsumedBeforeAnotherRPC", "unitary", false, TestStreamedLob_BufferedRefillIsConsumedBeforeAnotherRPC},
+	{"TestStreamedLob_MetadataOperationsUseCachedAndServerLengths", "unitary", false, TestStreamedLob_MetadataOperationsUseCachedAndServerLengths},
+	{"TestStreamedLob_WriteToPropagatesWriterAndReadFailures", "unitary", false, TestStreamedLob_WriteToPropagatesWriterAndReadFailures},
+	{"TestStreamedLob_InvalidateAndLengthOverflow", "unitary", false, TestStreamedLob_InvalidateAndLengthOverflow},
+
 	{"TestOexfen_New_Getters", "unitary", false, TestOexfen_New_Getters},
 	{"TestOexfen_MarshalTo_MatchesGolden", "unitary", false, TestOexfen_MarshalTo_MatchesGolden},
 	{"TestOexfen_MarshalTo_Exeflg_NoCommit_And_Commit", "unitary", false, TestOexfen_MarshalTo_Exeflg_NoCommit_And_Commit},
@@ -490,7 +549,10 @@ var testCases = []struct {
 	{"TestClobExecutor_CreateTemporaryLobErrors", "unitary", false, TestClobExecutor_CreateTemporaryLobErrors},
 	{"TestClobExecutor_Write", "unitary", false, TestClobExecutor_Write},
 	{"TestClobExecutor_WriteErrors", "unitary", false, TestClobExecutor_WriteErrors},
+	{"TestClobExecutor_CLOBAndNCLOBAmountsUseUCS2Units", "unitary", false, TestClobExecutor_CLOBAndNCLOBAmountsUseUCS2Units},
 	{"TestClobExecutor_Read", "unitary", false, TestClobExecutor_Read},
+	{"TestClobExecutor_ReadRejectsResponseBeyondRequest", "unitary", false, TestClobExecutor_ReadRejectsResponseBeyondRequest},
+	{"TestClobExecutor_DecodeReadPayloadRejectsIncompleteCharacter", "unitary", false, TestClobExecutor_DecodeReadPayloadRejectsIncompleteCharacter},
 	{"TestClobExecutor_ReadErrors", "unitary", false, TestClobExecutor_ReadErrors},
 	{"TestClobExecutor_IsOpen", "unitary", false, TestClobExecutor_IsOpen},
 	{"TestClobExecutor_IsOpenErrors", "unitary", false, TestClobExecutor_IsOpenErrors},
@@ -498,15 +560,55 @@ var testCases = []struct {
 	{"TestClobExecutor_GetLengthErrors", "unitary", false, TestClobExecutor_GetLengthErrors},
 	{"TestClobExecutor_Trim", "unitary", false, TestClobExecutor_Trim},
 	{"TestClobExecutor_TrimErrors", "unitary", false, TestClobExecutor_TrimErrors},
+	{"TestClobExecutor_CharacterConversionHelpers", "unitary", false, TestClobExecutor_CharacterConversionHelpers},
+	{"TestClobExecutor_OpenRejectsBFileMode", "unitary", false, TestClobExecutor_OpenRejectsBFileMode},
+	{"TestClobExecutor_ReadRejectsLogicalAmountMismatch", "unitary", false, TestClobExecutor_ReadRejectsLogicalAmountMismatch},
 	{"TestLobExecutor_ConsumeLobResponses_DelayedOER", "unitary", false, TestLobExecutor_ConsumeLobResponses_DelayedOER},
 	{"TestLobExecutor_ConsumeLobResponses_OERTermination", "unitary", false, TestLobExecutor_ConsumeLobResponses_OERTermination},
 	{"TestLobExecutor_ConsumeLobResponses_PullError", "unitary", false, TestLobExecutor_ConsumeLobResponses_PullError},
+	{"TestLobExecutor_ErrorClassificationAndCancellation", "unitary", false, TestLobExecutor_ErrorClassificationAndCancellation},
+	{"TestLobExecutor_ExecutionFailurePaths", "unitary", false, TestLobExecutor_ExecutionFailurePaths},
+	{"TestLobExecutor_LobCallbacks", "unitary", false, TestLobExecutor_LobCallbacks},
+	{"TestLobExecutor_LocalLocatorAndValidationBranches", "unitary", false, TestLobExecutor_LocalLocatorAndValidationBranches},
+	{"TestLobExecutor_PersistentOperationFailures", "unitary", false, TestLobExecutor_PersistentOperationFailures},
+	{"TestOperationCancellation_RequestBreakResetIsSingleUse", "unitary", false, TestOperationCancellation_RequestBreakResetIsSingleUse},
+	{"TestOperationCancellation_RestoreRejectsUnavailableState", "unitary", false, TestOperationCancellation_RestoreRejectsUnavailableState},
+	{"TestOperationCancellation_RestoreRejectsWrongTerminalMessage", "unitary", false, TestOperationCancellation_RestoreRejectsWrongTerminalMessage},
+	{"TestLobBindPipeline_CanceledLobExchangeUsesBreakResetAndRestoresStream", "unitary", false, TestLobBindPipeline_CanceledLobExchangeUsesBreakResetAndRestoresStream},
+	{"TestLobBindPipeline_CanceledLobExchangeDiscardsStreamWhenRecoveryFails", "unitary", false, TestLobBindPipeline_CanceledLobExchangeDiscardsStreamWhenRecoveryFails},
 	{"TestClobExecutor_ReadNCLOB", "unitary", false, TestClobExecutor_ReadNCLOB},
 	{"TestConnection_FaultyOnDrain", "unitary", false, TestConnection_FaultyOnDrain},
 	{"TestConnection_FaultyOnDrainInStatement", "unitary", false, TestConnection_FaultyOnDrainInStatement},
 	{"TestClobExecutor_WriteNCLOB", "unitary", false, TestClobExecutor_WriteNCLOB},
+	{"TestBlobExecutor_CreateTemporaryLob", "unitary", false, TestBlobExecutor_CreateTemporaryLob},
+	{"TestBlobExecutor_TemporaryOpenCloseIsOpen", "unitary", false, TestBlobExecutor_TemporaryOpenCloseIsOpen},
+	{"TestBlobExecutor_ReadRejectsAmountOutsideGoBufferRange", "unitary", false, TestBlobExecutor_ReadRejectsAmountOutsideGoBufferRange},
+	{"TestBlobExecutor_Write", "unitary", false, TestBlobExecutor_Write},
+	{"TestBlobExecutor_Read", "unitary", false, TestBlobExecutor_Read},
+	{"TestBlobExecutor_ReadRejectsOversizedServerResponse", "unitary", false, TestBlobExecutor_ReadRejectsOversizedServerResponse},
+	{"TestBlobExecutor_Errors", "unitary", false, TestBlobExecutor_Errors},
+	{"TestLobReferenceRegistry_ReferenceCountDefersFreeUntilLastAlias", "unitary", false, TestLobReferenceRegistry_ReferenceCountDefersFreeUntilLastAlias},
+	{"TestLobReferenceRegistry_LastReleasePiggybacksBeforeNextFunction", "unitary", false, TestLobReferenceRegistry_LastReleasePiggybacksBeforeNextFunction},
+	{"TestLobReferenceRegistry_RejectsRetainAfterFreeQueued", "unitary", false, TestLobReferenceRegistry_RejectsRetainAfterFreeQueued},
+	{"TestLobReferenceRegistry_ArrayPiggybackMarshalsWithOrdinaryFunction", "unitary", false, TestLobReferenceRegistry_ArrayPiggybackMarshalsWithOrdinaryFunction},
+	{"TestLobReferenceRegistry_PiggybackBatchesPendingLocators", "unitary", false, TestLobReferenceRegistry_PiggybackBatchesPendingLocators},
+	{"TestLobReferenceRegistry_LogoffDiscardsPendingFree", "unitary", false, TestLobReferenceRegistry_LogoffDiscardsPendingFree},
+	{"TestLobReferenceRegistry_UsesStableLobIDNotMutableFlags", "unitary", false, TestLobReferenceRegistry_UsesStableLobIDNotMutableFlags},
+	{"TestLobReferenceRegistry_ReferenceRejectsLocatorWithoutCompleteID", "unitary", false, TestLobReferenceRegistry_ReferenceRejectsLocatorWithoutCompleteID},
+	{"TestLobReferenceRegistry_PiggybackMarshallingFailureRestoresPendingBatch", "unitary", false, TestLobReferenceRegistry_PiggybackMarshallingFailureRestoresPendingBatch},
+	{"TestLobReferenceRegistry_PiggybackTransportFailureInvalidatesAndDiscards", "unitary", false, TestLobReferenceRegistry_PiggybackTransportFailureInvalidatesAndDiscards},
+	{"TestLobReferenceRegistry_PiggybackIsNotRestoredAfterMainResponseFailure", "unitary", false, TestLobReferenceRegistry_PiggybackIsNotRestoredAfterMainResponseFailure},
+	{"TestLobReferenceRegistry_PiggybackRejectsPayloadBeyondOLOBOPSLengthLimit", "unitary", false, TestLobReferenceRegistry_PiggybackRejectsPayloadBeyondOLOBOPSLengthLimit},
+	{"TestLobReferenceRegistry_PiggybackPreservesExistingPiggybackOrdering", "unitary", false, TestLobReferenceRegistry_PiggybackPreservesExistingPiggybackOrdering},
+	{"TestLobReferenceRegistry_ReleaseReferenceAcceptsNil", "unitary", false, TestLobReferenceRegistry_ReleaseReferenceAcceptsNil},
+	{"TestLobReferenceRegistry_LogoffRemovesQueuedFree", "unitary", false, TestLobReferenceRegistry_LogoffRemovesQueuedFree},
+	{"TestLobReferenceRegistry_ExtractAcceptsAbstractLocator", "unitary", false, TestLobReferenceRegistry_ExtractAcceptsAbstractLocator},
+	{"TestLobReferenceRegistry_ExtractRejectsIneligibleLocators", "unitary", false, TestLobReferenceRegistry_ExtractRejectsIneligibleLocators},
+	{"TestLobReferenceRegistry_ReleaseReportsOwnershipErrors", "unitary", false, TestLobReferenceRegistry_ReleaseReportsOwnershipErrors},
+	{"TestLobReferenceRegistry_ReserveSkipsUnavailableEntries", "unitary", false, TestLobReferenceRegistry_ReserveSkipsUnavailableEntries},
 
 	{"TestConnection_InvalidateOnOEROrSTA", "unitary", false, TestConnection_InvalidateOnOEROrSTA},
+	{"TestConnection_StateIsSynchronized", "unitary", false, TestConnection_StateIsSynchronized},
 	{"TestTransactionCommitSuccess", "unitary", false, TestTransactionCommitSuccess},
 	{"TestTransactionRollbackSuccess", "unitary", false, TestTransactionRollbackSuccess},
 	{"TestCallBeginTxTwice", "unitary", false, TestCallBeginTxTwice},
@@ -515,9 +617,43 @@ var testCases = []struct {
 	{"TestConnectionBeginTxUnregistersAfterSetupErrors", "unitary", false, TestConnectionBeginTxUnregistersAfterSetupErrors},
 	{"TestTransactionOperationErrors", "unitary", false, TestTransactionOperationErrors},
 	{"TestTransactionOperationRejectsStaleMessages", "unitary", false, TestTransactionOperationRejectsStaleMessages},
+	{"TestConnectionTransaction_ConcurrentTerminationExecutesOnce", "unitary", false, TestConnectionTransaction_ConcurrentTerminationExecutesOnce},
 
 	{"TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination", "unitary", false, TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination},
 	{"TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError", "unitary", false, TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError},
+	{"TestStatementProcessor_RejectsUnpreparedStreamedLobInput", "unitary", false, TestStatementProcessor_RejectsUnpreparedStreamedLobInput},
+	{"TestStatement_QueryContextRejectsUnexpectedRowsType", "unitary", false, TestStatement_QueryContextRejectsUnexpectedRowsType},
+	{"TestStatement_CloseFlushesCursorClose", "unitary", false, TestStatement_CloseFlushesCursorClose},
+	{"TestStatement_ValidatesBindShapeBeforeConsumingLobSource", "unitary", false, TestStatement_ValidatesBindShapeBeforeConsumingLobSource},
+	{"TestStatement_HandleContextCancelledInvalidatesOnRestoreFailure", "unitary", false, TestStatement_HandleContextCancelledInvalidatesOnRestoreFailure},
+	{"TestRowsResult_StatementOwnership", "unitary", false, TestRowsResult_StatementOwnership},
+	{"TestRowsResult_NextAfterCloseReturnsEOF", "unitary", false, TestRowsResult_NextAfterCloseReturnsEOF},
+	{"TestRowsResult_LocatorValueSurvivesRowsNext", "unitary", false, TestRowsResult_LocatorValueSurvivesRowsNext},
+	{"TestRowsResult_ReaderModeRejectsNonNullLobWithoutLocator", "unitary", false, TestRowsResult_ReaderModeRejectsNonNullLobWithoutLocator},
+	{"TestRowsResult_ReaderModeRejectsTemporaryLocator", "unitary", false, TestRowsResult_ReaderModeRejectsTemporaryLocator},
+	{"TestRowsResult_ReaderModeAllowsProtocolNullWithoutLocator", "unitary", false, TestRowsResult_ReaderModeAllowsProtocolNullWithoutLocator},
+	{"TestRowsResult_ReaderModePreservesEmptyNonNullLob", "unitary", false, TestRowsResult_ReaderModePreservesEmptyNonNullLob},
+	{"TestRowsResult_ReaderModePreservesEmptyNonNullClob", "unitary", false, TestRowsResult_ReaderModePreservesEmptyNonNullClob},
+	{"TestRowsResult_CloseClearsBufferedRowsAndLobOwnership", "unitary", false, TestRowsResult_CloseClearsBufferedRowsAndLobOwnership},
+	{"TestRowsResult_NextAndCloseCoordinateLifecycle", "unitary", false, TestRowsResult_NextAndCloseCoordinateLifecycle},
+	{"TestLobBindPipeline_StreamBlobInputIsBoundedAndHonorsDeclaredSize", "unitary", false, TestLobBindPipeline_StreamBlobInputIsBoundedAndHonorsDeclaredSize},
+	{"TestLobBindPipeline_NormalizeLobBindInputsConvertsMarkersToInputs", "unitary", false, TestLobBindPipeline_NormalizeLobBindInputsConvertsMarkersToInputs},
+	{"TestLobBindPipeline_NormalizeLobBindInputsLeavesOrdinaryValuesUntouched", "unitary", false, TestLobBindPipeline_NormalizeLobBindInputsLeavesOrdinaryValuesUntouched},
+	{"TestLobBindPipeline_CheckNamedValueAcceptsLOBMarkers", "unitary", false, TestLobBindPipeline_CheckNamedValueAcceptsLOBMarkers},
+	{"TestLobBindPipeline_NormalizeAndValidateInputsBeforeReading", "unitary", false, TestLobBindPipeline_NormalizeAndValidateInputsBeforeReading},
+	{"TestLobBindPipeline_IsTerminalOracleError", "unitary", false, TestLobBindPipeline_IsTerminalOracleError},
+	{"TestLobBindPipeline_StreamBlobInputRejectsShortSourceAndAcknowledgement", "unitary", false, TestLobBindPipeline_StreamBlobInputRejectsShortSourceAndAcknowledgement},
+	{"TestLobBindPipeline_StreamBlobInputAbandonsCleanupAfterAmbiguousWriteFailure", "unitary", false, TestLobBindPipeline_StreamBlobInputAbandonsCleanupAfterAmbiguousWriteFailure},
+	{"TestLobBindPipeline_StreamCLOBAndNCLOBInputUseUCS2AmountsAndOffsets", "unitary", false, TestLobBindPipeline_StreamCLOBAndNCLOBInputUseUCS2AmountsAndOffsets},
+	{"TestLobBindPipeline_StreamClobInputRejectsMalformedUTF8", "unitary", false, TestLobBindPipeline_StreamClobInputRejectsMalformedUTF8},
+	{"TestLobBindPipeline_EncodeLobLocatorBindUsesLobOAC", "unitary", false, TestLobBindPipeline_EncodeLobLocatorBindUsesLobOAC},
+	{"TestLobBindPipeline_EnqueueLobFreeDefersAndInvalidatesLocator", "unitary", false, TestLobBindPipeline_EnqueueLobFreeDefersAndInvalidatesLocator},
+	{"TestLobBindPipeline_CleanupDispositionClassifiesRPCResults", "unitary", false, TestLobBindPipeline_CleanupDispositionClassifiesRPCResults},
+	{"TestLobBindPipeline_PrepareAndRunHelpers", "unitary", false, TestLobBindPipeline_PrepareAndRunHelpers},
+	{"TestLobBindPipeline_PreparedLobBindsLifecycle", "unitary", false, TestLobBindPipeline_PreparedLobBindsLifecycle},
+	{"TestLobBindPipeline_StreamBlobInputRejectsSourceFailures", "unitary", false, TestLobBindPipeline_StreamBlobInputRejectsSourceFailures},
+	{"TestLobBindPipeline_StreamClobInputHandlesBoundaries", "unitary", false, TestLobBindPipeline_StreamClobInputHandlesBoundaries},
+	{"TestLobBindPipeline_StreamClobInputRejectsSourceAndAcknowledgementFailures", "unitary", false, TestLobBindPipeline_StreamClobInputRejectsSourceAndAcknowledgementFailures},
 	{"TestNormalizeBindValue_SQLNullTypes", "unitary", false, TestNormalizeBindValue_SQLNullTypes},
 	{"TestUnmarshalCLRColumnDataRejectsInvalidLongChunkLengths", "unitary", false, TestUnmarshalCLRColumnDataRejectsInvalidLongChunkLengths},
 	{"TestNeedToSendOACs_CountChanged", "unitary", false, TestNeedToSendOACs_CountChanged},
@@ -525,6 +661,8 @@ var testCases = []struct {
 	{"TestAuthRPARejectsOversizedKeyValueListAllocations", "unitary", false, TestAuthRPARejectsOversizedKeyValueListAllocations},
 	{"TestCodecFactory_getBindOac", "unitary", false, TestCodecFactory_getBindOac},
 	{"TestCodecFactory_getDefineOac", "unitary", false, TestCodecFactory_getDefineOac},
+	{"TestCodecFactory_GetDefineOacUsesConnectionLobPrefetch", "unitary", false, TestCodecFactory_GetDefineOacUsesConnectionLobPrefetch},
+	{"TestCodecFactory_GetDefineOacUsesDefaultLobPrefetchWithoutProperties", "unitary", false, TestCodecFactory_GetDefineOacUsesDefaultLobPrefetchWithoutProperties},
 	{"TestConnectionResetter_Reset", "unitary", false, TestConnectionResetter_Reset},
 	{"TestConnection_ExecContext_LocalizesError", "unitary", false, TestConnection_ExecContext_LocalizesError},
 	{"TestConnection_LocalizationStaysBoundToEachShelf", "unitary", false, TestConnection_LocalizationStaysBoundToEachShelf},
@@ -554,7 +692,7 @@ var testCases = []struct {
 	{"TestNeedToSendOACs_TypeChanged", "unitary", false, TestNeedToSendOACs_TypeChanged},
 	{"TestNewConnectionReturnsServerTimezoneError", "unitary", false, TestNewConnectionReturnsServerTimezoneError},
 	{"TestPasswordAuthenticatorValidatePasswordLength", "unitary", false, TestPasswordAuthenticatorValidatePasswordLength},
-	{"TestStatementCancellationCleanupReleasesStartedAfterFunc", "unitary", false, TestStatementCancellationCleanupReleasesStartedAfterFunc},
+	{"TestStatementCancellationCleanupAbortsBreakReset", "unitary", false, TestStatementCancellationCleanupAbortsBreakReset},
 	{"TestStatementExecContextTransactionCancellationBeforeSetup", "unitary", false, TestStatementExecContextTransactionCancellationBeforeSetup},
 	{"TestStatementExecutor_Select_SuccessOERWithoutDCB", "unitary", false, TestStatementExecutor_Select_SuccessOERWithoutDCB},
 	{"TestStatementHandleContextCancelledRunsBreakReset", "unitary", false, TestStatementHandleContextCancelledRunsBreakReset},
@@ -568,6 +706,7 @@ var testCases = []struct {
 	{"TestTTILobd_MarshalTo_Success", "unitary", false, TestTTILobd_MarshalTo_Success},
 	{"TestTTILobd_UnMarshalFrom_Fail", "unitary", false, TestTTILobd_UnMarshalFrom_Fail},
 	{"TestTTILobd_UnMarshalFrom_Success", "unitary", false, TestTTILobd_UnMarshalFrom_Success},
+	{"TestTTIlobPiggyback_GetMsgCode", "unitary", false, TestTTIlobPiggyback_GetMsgCode},
 	{"TestTTIShelf_LocalizedStatementExecError", "unitary", false, TestTTIShelf_LocalizedStatementExecError},
 	{"TestTTIShelf_StatementDrain", "unitary", false, TestTTIShelf_StatementDrain},
 	{"TestTTIShelf_ValidateConnection", "unitary", false, TestTTIShelf_ValidateConnection},
@@ -964,7 +1103,6 @@ func (t *TestDataBuffer) WriteBytesWithContext(ctx context.Context, b []byte) er
 
 // Flush the test buffer
 func (t *TestDataBuffer) Flush(ctx context.Context) error {
-	fmt.Printf("Flush called ... \n")
 	if t.OnFlush != nil {
 		t.OnFlush(t)
 	}
@@ -997,15 +1135,16 @@ func (t *TestDataBuffer) ReadBytesWithContext(ctx context.Context, n int32) (*[]
 
 // mockStreamer implements common.Streamer[common.MessageType] for testing
 type mockStreamer struct {
-	pushCalled bool
-	pushedMsg  list.List
-	pushErr    error
-	pullCalled bool
-	pullTypes  []common.MessageType
-	pullMsg    common.Message[common.MessageType]
-	pullMsgs   []common.Message[common.MessageType]
-	pullErr    error
-	drainIn    int
+	pushCalled  bool
+	pushedMsg   list.List
+	pushErr     error
+	pullCalled  bool
+	pullTypes   []common.MessageType
+	pullMsg     common.Message[common.MessageType]
+	pullMsgs    []common.Message[common.MessageType]
+	pullErr     error
+	flushCalled bool
+	drainIn     int
 }
 
 // wrapped mock stream combines both a pre-filled message incoming queue
@@ -1093,6 +1232,7 @@ func (m *mockStreamer) Pull(_ context.Context, types ...common.MessageType) (com
 }
 
 func (m *mockStreamer) Flush(_ context.Context) error {
+	m.flushCalled = true
 	return nil
 }
 
