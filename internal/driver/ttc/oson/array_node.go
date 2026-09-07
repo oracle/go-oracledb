@@ -47,7 +47,19 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// arrayNode implements drvCommon.JSONArrayNode.
+// arrayNode implements JSONArrayNode for an OSON array.
+//
+// The concrete type is scoped to package oson. Callers obtain an array node
+// through Parse, which exposes it as JSONNode and keeps the OSON wire
+// representation inside this package. Because JSONArrayNode embeds JSONNode,
+// *arrayNode satisfies both interfaces. After checking Kind, a caller can type
+// assert the returned JSONNode to JSONArrayNode for indexed access.
+//
+// Creating an arrayNode reads only the array metadata: its opcode, element
+// count, and child-offset table. nodeBase retains the OSON document context,
+// while childOffsets identifies the opcode of each element. Element payloads
+// remain encoded until Get creates a node for one element or Value materializes
+// the complete array.
 type arrayNode struct {
 	nodeBase
 	// childOffsets contains the absolute document offset of each array element opcode.
@@ -108,7 +120,7 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int) (*
 	}, nil
 }
 
-// Kind implements drvCommon.JSONNode.Kind.
+// Kind implements the JSONNode interface.
 //
 // Input:
 //   - none.
@@ -122,7 +134,7 @@ func (array *arrayNode) Kind() drvCommon.Kind {
 	return drvCommon.KindArray
 }
 
-// GetValue implements drvCommon.JSONNode.GetValue.
+// GetValue implements the JSONNode interface.
 //
 // Input:
 //   - opts: JSON materialization options.
@@ -136,7 +148,7 @@ func (array *arrayNode) GetValue(opts drvCommon.JSONOption) (any, error) {
 	return array.Value(opts)
 }
 
-// StringWithOption implements drvCommon.JSONNode.StringWithOption.
+// StringWithOption implements the JSONNode interface.
 //
 // Input:
 //   - opts: JSON materialization options.
@@ -160,7 +172,7 @@ func (array *arrayNode) StringWithOption(opts drvCommon.JSONOption) (string, err
 	return string(jsonBytes), nil
 }
 
-// Get implements drvCommon.JSONArrayNode.Get.
+// Get implements the JSONArrayNode interface.
 //
 // Input:
 //   - index: zero-based array element index.
@@ -183,7 +195,7 @@ func (array *arrayNode) Get(index int) (drvCommon.JSONNode, bool) {
 	return childNode, true
 }
 
-// Len implements drvCommon.JSONArrayNode.Len.
+// Len implements the JSONArrayNode interface.
 //
 // Input:
 //   - none.
@@ -197,7 +209,7 @@ func (array *arrayNode) Len() int {
 	return len(array.childOffsets)
 }
 
-// Value implements drvCommon.JSONArrayNode.Value.
+// Value implements the JSONArrayNode interface.
 //
 // Input:
 //   - opts: JSON materialization options.

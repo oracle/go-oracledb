@@ -50,14 +50,26 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// scalarNode implements drvCommon.JSONScalarNode.
+// scalarNode implements JSONScalarNode for an OSON scalar.
+//
+// The concrete type is scoped to package oson. Callers obtain a scalar node
+// through Parse, which exposes it as JSONNode and keeps the OSON wire
+// representation inside this package. Because JSONScalarNode embeds JSONNode,
+// *scalarNode satisfies both interfaces. After checking Kind, a caller can type
+// assert the returned JSONNode to JSONScalarNode for scalar-specific
+// access.
+//
+// Creating a scalarNode reads only the scalar opcode. nodeBase retains the OSON
+// document context and opcode identifies how to decode the payload. The payload
+// remains encoded until Value, GetValue, or StringWithOption requests its Go or
+// JSON representation.
 type scalarNode struct {
 	nodeBase
 	// opcode identifies the scalar type.
 	opcode drvCommon.UB1
 }
 
-// Kind implements drvCommon.JSONNode.Kind.
+// Kind implements the JSONNode interface.
 //
 // Input:
 //   - none.
@@ -101,7 +113,7 @@ func newScalarNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*scalarNo
 	}, nil
 }
 
-// GetValue implements drvCommon.JSONNode.GetValue.
+// GetValue implements the JSONNode interface.
 //
 // Input:
 //   - opt: JSON materialization option.
@@ -115,7 +127,7 @@ func (scalar *scalarNode) GetValue(opt drvCommon.JSONOption) (any, error) {
 	return scalar.Value(opt)
 }
 
-// StringWithOption implements drvCommon.JSONNode.StringWithOption.
+// StringWithOption implements the JSONNode interface.
 //
 // Input:
 //   - opts: JSON materialization option.
@@ -148,7 +160,7 @@ func (scalar *scalarNode) StringWithOption(opts drvCommon.JSONOption) (string, e
 	return string(text), nil
 }
 
-// Value implements drvCommon.JSONScalarNode.Value.
+// Value implements the JSONScalarNode interface.
 //
 // Input:
 //   - opts: JSON materialization option.
@@ -498,7 +510,7 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONOption) (any, err
 // decodeOracleNumberValue decodes an Oracle NUMBER payload and preserves its
 // decimal text when JSONOptNumberAsString is requested.
 func decodeOracleNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONOption) (any, error) {
-	text, err := converters.DecodeExactDecimal(payload)
+	text, err := converters.DecodeExactDecimalAsString(payload)
 	if err != nil {
 		return nil, err
 	}

@@ -47,7 +47,19 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// objectNode implements drvCommon.JSONObjectNode.
+// objectNode implements JSONObjectNode for an OSON object.
+//
+// The concrete type is scoped to package oson. Callers obtain an object node
+// through Parse, which exposes it as JSONNode and keeps the OSON wire
+// representation inside this package. Because JSONObjectNode embeds JSONNode,
+// *objectNode satisfies both interfaces. After checking Kind, a caller can type
+// assert the returned JSONNode to JSONObjectNode for keyed access.
+//
+// Creating an objectNode reads only the object metadata: its opcode, member
+// count, field IDs, and child-offset table. The field IDs are resolved through
+// the OSON dictionary, and childrenOffsets records each field name with the
+// offset of its value opcode. Child payloads remain encoded until Get creates a
+// node for one member or Value materializes the complete object.
 type objectNode struct {
 	nodeBase
 	// childrenOffsets maps each decoded member name to its absolute value-opcode offset.
@@ -294,7 +306,7 @@ func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode dr
 	}
 }
 
-// Kind implements drvCommon.JSONNode.Kind.
+// Kind implements the JSONNode interface.
 //
 // Input:
 //   - none.
@@ -308,7 +320,7 @@ func (obj *objectNode) Kind() drvCommon.Kind {
 	return drvCommon.KindObject
 }
 
-// GetValue implements drvCommon.JSONNode.GetValue.
+// GetValue implements the JSONNode interface.
 //
 // Input:
 //   - opts: JSON materialization options.
@@ -322,7 +334,7 @@ func (obj *objectNode) GetValue(opts drvCommon.JSONOption) (any, error) {
 	return obj.Value(opts)
 }
 
-// StringWithOption materializes the object as JSON text.
+// StringWithOption implements the JSONNode interface.
 //
 // Input:
 //   - opts: JSON materialization options.
@@ -346,7 +358,7 @@ func (obj *objectNode) StringWithOption(opts drvCommon.JSONOption) (string, erro
 	return string(text), nil
 }
 
-// Get creates a node for key without decoding its value.
+// Get implements the JSONObjectNode interface.
 //
 // Input:
 //   - key: object field name.
@@ -370,7 +382,7 @@ func (obj *objectNode) Get(key string) (drvCommon.JSONNode, bool) {
 	return child, true
 }
 
-// Len returns the number of members addressable through keyed access.
+// Len implements the JSONObjectNode interface.
 //
 // Input:
 //   - none.
@@ -384,7 +396,7 @@ func (obj *objectNode) Len() int {
 	return len(obj.childrenOffsets)
 }
 
-// Keys returns the object member names.
+// Keys implements the JSONObjectNode interface.
 //
 // Input:
 //   - none.
@@ -402,7 +414,7 @@ func (obj *objectNode) Keys() []string {
 	return fieldNames
 }
 
-// Value materializes the object into a Go map.
+// Value implements the JSONObjectNode interface.
 //
 // Input:
 //   - opts: JSON materialization options.

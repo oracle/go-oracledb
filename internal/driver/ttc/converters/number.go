@@ -465,7 +465,7 @@ func DecodeDecimal(inputData []byte, precision, scale int) (string, error) {
 }
 
 /*
-DecodeExactDecimal decodes an Oracle NUMBER wire payload to its exact
+DecodeExactDecimalAsString decodes an Oracle NUMBER wire payload to its exact
 decimal string without applying declared precision/scale formatting.
 
 Input:
@@ -475,10 +475,9 @@ Output:
 - string representation of the exact value
 
 Errors:
-- OGD-00021 (ConverterEmptyInput) when inputData is empty
-- OGD-00023 (ConverterExpectedFormat) for invalid wire format or digit ranges
+- Propagates errors from underlying converters
 */
-func DecodeExactDecimal(inputData []byte) (string, error) {
+func DecodeExactDecimalAsString(inputData []byte) (string, error) {
 	// Oracle zero is encoded as a single byte.
 	if len(inputData) == 1 && inputData[0] == _numberZeroWireByte {
 		return "0", nil

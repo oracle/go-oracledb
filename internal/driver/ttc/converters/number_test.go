@@ -804,9 +804,10 @@ func TestEncodeBinary_ReturnsSameBytes(t *testing.T) {
 	}
 }
 
-// TestDecodeExactDecimal_DecimalWireFormats verifies that DecodeExactDecimal
-// reconstructs the exact decimal string for known Oracle NUMBER decimal cases.
-func TestDecodeExactDecimal_DecimalWireFormats(t *testing.T) {
+// TestDecodeExactDecimalAsString_DecimalWireFormats verifies that
+// DecodeExactDecimalAsString reconstructs the exact decimal string for known
+// Oracle NUMBER decimal cases.
+func TestDecodeExactDecimalAsString_DecimalWireFormats(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -821,12 +822,12 @@ func TestDecodeExactDecimal_DecimalWireFormats(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.decimalStr, func(t *testing.T) {
-			got, err := DecodeExactDecimal(tc.wire)
+			got, err := DecodeExactDecimalAsString(tc.wire)
 			if err != nil {
-				t.Fatalf("DecodeExactDecimal(%#v) returned error: %v", tc.wire, err)
+				t.Fatalf("DecodeExactDecimalAsString(%#v) returned error: %v", tc.wire, err)
 			}
 			if got != tc.decimalStr {
-				t.Fatalf("DecodeExactDecimal(%#v) = %q, want %q", tc.wire, got, tc.decimalStr)
+				t.Fatalf("DecodeExactDecimalAsString(%#v) = %q, want %q", tc.wire, got, tc.decimalStr)
 			}
 		})
 	}
