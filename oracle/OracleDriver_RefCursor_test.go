@@ -43,6 +43,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"io"
+	"strconv"
 	"testing"
 )
 
@@ -181,6 +182,76 @@ END;`)
 	}
 	if rows.NextResultSet() {
 		t.Fatal("unexpected third implicit result")
+	}
+}
+
+// TestDriver_ImplicitResultsPrefetchesAllRows verifies that TTIIMPLRES carries
+// complete buffered data for two large implicit result sets. A later lazy fetch
+// would not be required to consume either cursor.
+func TestDriver_ImplicitResultsPrefetchesAllRows(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx := context.Background()
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	tableNames := []string{createObjectName("implres_a"), createObjectName("implres_b")}
+	for _, tableName := range tableNames {
+		if _, err := db.ExecContext(ctx, "CREATE TABLE "+tableName+" (id NUMBER PRIMARY KEY, label VARCHAR2(30))"); err != nil {
+			t.Fatalf("create table %s: %v", tableName, err)
+		}
+		t.Cleanup(func() { _ = dropTable(ctx, db, tableName) })
+		if _, err := db.ExecContext(ctx, "INSERT INTO "+tableName+" SELECT LEVEL, 'row-' || LEVEL FROM dual CONNECT BY LEVEL <= 1000"); err != nil {
+			t.Fatalf("insert rows into %s: %v", tableName, err)
+		}
+	}
+
+	rows, err := db.QueryContext(ctx, `
+DECLARE
+  c1 SYS_REFCURSOR;
+  c2 SYS_REFCURSOR;
+BEGIN
+  OPEN c1 FOR SELECT id, label FROM `+tableNames[0]+` ORDER BY id;
+  DBMS_SQL.RETURN_RESULT(c1);
+  OPEN c2 FOR SELECT id, label FROM `+tableNames[1]+` ORDER BY id;
+  DBMS_SQL.RETURN_RESULT(c2);
+END;`)
+	if err != nil {
+		t.Fatalf("query implicit results: %v", err)
+	}
+	t.Cleanup(func() { _ = rows.Close() })
+
+	for resultSet := 0; resultSet < len(tableNames); resultSet++ {
+		rowCount := 0
+		for rows.Next() {
+			var id int
+			var label string
+			if err := rows.Scan(&id, &label); err != nil {
+				t.Fatalf("scan result set %d row %d: %v", resultSet+1, rowCount+1, err)
+			}
+			rowCount++
+			wantLabel := "row-" + strconv.Itoa(rowCount)
+			if id != rowCount || label != wantLabel {
+				t.Fatalf("result set %d row %d = (%d, %q), want (%d, %q)", resultSet+1, rowCount, id, label, rowCount, wantLabel)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("read result set %d: %v", resultSet+1, err)
+		}
+		if rowCount != 1000 {
+			t.Fatalf("result set %d row count = %d, want 1000", resultSet+1, rowCount)
+		}
+		if resultSet+1 < len(tableNames) && !rows.NextResultSet() {
+			t.Fatalf("missing implicit result set %d: %v", resultSet+2, rows.Err())
+		}
+	}
+	if rows.NextResultSet() {
+		t.Fatal("unexpected third implicit result set")
 	}
 }
 

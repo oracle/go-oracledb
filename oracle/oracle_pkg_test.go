@@ -92,6 +92,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_RefCursorOut", Categories: "functional", Exclusive: false, Fn: TestDriver_RefCursorOut},
 	{Name: "TestDriver_RefCursorMultipleOut", Categories: "functional", Exclusive: false, Fn: TestDriver_RefCursorMultipleOut},
 	{Name: "TestDriver_ImplicitResults", Categories: "functional", Exclusive: false, Fn: TestDriver_ImplicitResults},
+	{Name: "TestDriver_ImplicitResultsPrefetchesAllRows", Categories: "functional", Exclusive: false, Fn: TestDriver_ImplicitResultsPrefetchesAllRows},
 	{Name: "TestDriver_RefCursorOutWithScalar", Categories: "functional", Exclusive: false, Fn: TestDriver_RefCursorOutWithScalar},
 	{Name: "TestDriver_PLSQL_BreakCausedByTimeout", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_BreakCausedByTimeout},
 	{Name: "TestDriver_Select_BooleanTypes_23c", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BooleanTypes_23c},
