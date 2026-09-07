@@ -273,7 +273,7 @@ var testCases = []struct {
 	{"TestTTIdcb24Constructor", "unitary", false, TestTTIdcb24Constructor},
 	{"TestTTIdcbProtocolVersionConstructors", "unitary", false, TestTTIdcbProtocolVersionConstructors},
 	{"TestTTIdcbGetNumberOfColumns", "unitary", false, TestTTIdcbGetNumberOfColumns},
-	{"TestKeyValueListEqualsAndString", "unitary", false, TestKeyValueListEqualsAndString},
+	{"TestKeyValueListEquals", "unitary", false, TestKeyValueListEquals},
 	{"TestLobDefinitionConstructors", "unitary", false, TestLobDefinitionConstructors},
 	{"TestTTIdcb_GetMsgCode", "unitary", false, TestTTIdcb_GetMsgCode},
 	{"TestTTIdcb24UnMarshalFrom_Success", "unitary", false, TestTTIdcb24UnMarshalFrom_Success},

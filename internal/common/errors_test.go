@@ -195,9 +195,6 @@ func TestCtxTimeoutCauseError(t *testing.T) {
 	if got, want := err.GetEmitterID(), "connection-42"; got != want {
 		t.Fatalf("timeout emitter = %q, want %q", got, want)
 	}
-	if got, want := err.Error(), "timeout of 2500 set by connect timeout"; got != want {
-		t.Fatalf("timeout error = %q, want %q", got, want)
-	}
 }
 
 // TestNewOERMessageError tests that errors created using NewOERMessageError

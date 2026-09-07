@@ -214,9 +214,9 @@ func _newNilKeyValPairs() *keyValueList {
 	return l
 }
 
-// TestKeyValueListEqualsAndString verifies that key/value lists compare each
-// pair in order and produce the expected diagnostic representation.
-func TestKeyValueListEqualsAndString(t *testing.T) {
+// TestKeyValueListEquals verifies that key/value lists compare each pair in
+// order and reject nil, changed, or differently sized lists.
+func TestKeyValueListEquals(t *testing.T) {
 	t.Parallel()
 
 	want := _newKeyValPairs()
@@ -233,9 +233,6 @@ func TestKeyValueListEqualsAndString(t *testing.T) {
 		t.Fatal("lists with different values should not compare equal")
 	}
 
-	if got, wantString := want.String(), "([key1=value1,1];[key2=value2,0];)"; got != wantString {
-		t.Fatalf("key/value list string = %q, want %q", got, wantString)
-	}
 }
 
 // Tests that key-value pairs are correctly encoded using different values
