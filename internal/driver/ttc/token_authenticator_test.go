@@ -237,6 +237,9 @@ func TestGetAuthenticator_SelectionLogic(t *testing.T) {
 	}
 }
 
+// TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken verifies that when
+// a signed-token provider is registered and that no username or password as
+// passed the authenticator selected in a the token authenticator.
 func TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken(t *testing.T) {
 	t.Parallel()
 
@@ -256,6 +259,9 @@ func TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken(t *testing.T) {
 	}
 }
 
+// TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken verifies that when
+// a OAuth provider is registered and that no username or password as passed
+// the authenticator selected in a the token authenticator.
 func TestGetAuthenticator_UsesTokenAuthenticatorForOAuth(t *testing.T) {
 	t.Parallel()
 
@@ -273,6 +279,8 @@ func TestGetAuthenticator_UsesTokenAuthenticatorForOAuth(t *testing.T) {
 	}
 }
 
+// TestProviderRegistryReturnsFirstRegisteredTokenProvider verifies that the
+// first matching token provider is returned from the registry.
 func TestProviderRegistryReturnsFirstRegisteredTokenProvider(t *testing.T) {
 	t.Parallel()
 
@@ -296,6 +304,8 @@ func TestProviderRegistryReturnsFirstRegisteredTokenProvider(t *testing.T) {
 	}
 }
 
+// TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature verifies that
+// token, header, and signature values are encoded in the message.
 func TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature(t *testing.T) {
 	t.Parallel()
 
@@ -331,6 +341,8 @@ func TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature(t *testing.T) {
 	}
 }
 
+// TestSignedTokenProviderGenerateTokenHeader verifies that a signed provider's
+// header contains the service name, host, port, and GMT timestamp.
 func TestSignedTokenProviderGenerateTokenHeader(t *testing.T) {
 	t.Parallel()
 
@@ -359,6 +371,8 @@ func TestSignedTokenProviderGenerateTokenHeader(t *testing.T) {
 	}
 }
 
+// TestProviderRegistryReturnsNilWhenTokenProviderMissing verifies that lookup
+// returns no provider when the registry has no token provider.
 func TestProviderRegistryReturnsNilWhenTokenProviderMissing(t *testing.T) {
 	t.Parallel()
 
@@ -375,6 +389,8 @@ func TestProviderRegistryReturnsNilWhenTokenProviderMissing(t *testing.T) {
 	}
 }
 
+// TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader verifies that an
+// unsigned OAuth message contains only the token value.
 func TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader(t *testing.T) {
 	t.Parallel()
 
@@ -398,6 +414,8 @@ func TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader(t *testing.T) {
 	}
 }
 
+// TestTokenAuthenticatorSignHeaderForSignedProvider verifies that signed
+// providers produce a base64-encoded signature and receive the token.
 func TestTokenAuthenticatorSignHeaderForSignedProvider(t *testing.T) {
 	t.Parallel()
 
@@ -434,6 +452,8 @@ func TestTokenAuthenticatorSignHeaderForSignedProvider(t *testing.T) {
 	}
 }
 
+// TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty verifies that
+// OAuth providers do not produce a separate signature header.
 func TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -454,6 +474,7 @@ func TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty(t *testing.T) 
 	}
 }
 
+// TestValidateJWTExpirationExpired verifies that an expired JWT is rejected.
 func TestValidateJWTExpirationExpired(t *testing.T) {
 	t.Parallel()
 
@@ -476,6 +497,8 @@ func tokenAuthErrorCode(t *testing.T, err error) oracleErrors.ErrorCode {
 	return oracleErrors.ErrorCode(sqlErr.ErrorCode())
 }
 
+// TestTokenAuthenticatorAuthenticateValidation verifies Authenticate's input,
+// provider, token, JWT, and signed-provider validation errors.
 func TestTokenAuthenticatorAuthenticateValidation(t *testing.T) {
 	t.Parallel()
 
@@ -502,6 +525,8 @@ func TestTokenAuthenticatorAuthenticateValidation(t *testing.T) {
 
 }
 
+// TestTokenAuthenticatorAuthenticateBuildsOAuthMessage verifies that
+// Authenticate sends the expected OAuth message and token fields.
 func TestTokenAuthenticatorAuthenticateBuildsOAuthMessage(t *testing.T) {
 	t.Parallel()
 	shelf, _, _ := newAuthTestShelf(1 << 16)
@@ -546,6 +571,8 @@ func TestTokenAuthenticatorAuthenticateBuildsOAuthMessage(t *testing.T) {
 	}
 }
 
+// TestTokenAuthenticatorAuthenticateRequiresRPAForSuccessfulOER verifies that
+// a successful OER response is valid only after an RPA response.
 func TestTokenAuthenticatorAuthenticateRequiresRPAForSuccessfulOER(t *testing.T) {
 	t.Parallel()
 	newAuthenticator := func(responses ...driverCommon.Message[driverCommon.MessageType]) (*tokenAuthenticator, *mockStreamer) {
@@ -573,6 +600,8 @@ func TestTokenAuthenticatorAuthenticateRequiresRPAForSuccessfulOER(t *testing.T)
 	}
 }
 
+// TestTokenAuthenticatorHelpers verifies token-provider modes and helper
+// functions for service names and required session properties.
 func TestTokenAuthenticatorHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -619,6 +648,8 @@ func TestTokenAuthenticatorHelpers(t *testing.T) {
 	}
 }
 
+// TestTokenAuthenticatorSettersAndHeaderValidation verifies setter behavior
+// and validation of the fields required to build a signed-token header.
 func TestTokenAuthenticatorSettersAndHeaderValidation(t *testing.T) {
 	t.Parallel()
 	shelf, _, _ := newAuthTestShelf(1 << 12)
@@ -661,6 +692,8 @@ func TestTokenAuthenticatorSettersAndHeaderValidation(t *testing.T) {
 	}
 }
 
+// TestTokenAuthenticatorSignHeaderErrors verifies signing failures for invalid
+// keys, malformed PEM data, and unsupported key types.
 func TestTokenAuthenticatorSignHeaderErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -701,6 +734,8 @@ func TestTokenAuthenticatorSignHeaderErrors(t *testing.T) {
 	}
 }
 
+// TestTokenAuthenticatorAuthenticateStreamerErrors verifies that Authenticate
+// reports message factory, streamer, and response errors.
 func TestTokenAuthenticatorAuthenticateStreamerErrors(t *testing.T) {
 	t.Parallel()
 	newAuth := func() (*tokenAuthenticator, *ttiShelf[driverCommon.MessageType], *mockStreamer) {
@@ -744,6 +779,8 @@ func TestTokenAuthenticatorAuthenticateStreamerErrors(t *testing.T) {
 	}
 }
 
+// TestValidateJWTExpirationNonExpiredAndMalformed verifies that non-expired and
+// malformed-but-non-expiring tokens are accepted.
 func TestValidateJWTExpirationNonExpiredAndMalformed(t *testing.T) {
 	t.Parallel()
 	for _, token := range []string{
