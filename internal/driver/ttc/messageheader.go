@@ -58,14 +58,20 @@ func (mh *messageHeader) UnMarshalFrom(ctx context.Context, engine driverCommon.
 	msgType, err := engine.UnmarshalUB1(ctx)
 	if err != nil {
 		common.Odl.Warn("An error occurred while unmarshalling the message type", "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "header")
 	}
+
 	mh.messageType = driverCommon.MessageType(msgType)
+	if !isValid(mh.messageType) {
+		common.Odl.Warn("Invalid header message type received", "message type", mh.messageType)
+		return common.NewOracleError(oracleErrors.ProtocolViolation, nil)
+	}
+
 	if isFunction(mh.messageType) {
 		funcType, err := engine.UnmarshalUB1(ctx)
 		if err != nil {
 			common.Odl.Warn("An error occurred while unmarshalling the function type", "error", err)
-			return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailUnmarshal, err, "function type")
 		}
 		mh.functionType = driverCommon.FunctionType(funcType)
 	}

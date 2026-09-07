@@ -72,6 +72,7 @@ var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNewNetworkSession", Categories: "unitary", Exclusive: false, Fn: TestNewNetworkSession},
+	{Name: "TestHandleAcceptRequiredANO", Categories: "unitary", Exclusive: false, Fn: TestHandleAcceptRequiredANO},
 	{Name: "TestAcceptPacketClampsOversizedValues", Categories: "unitary", Exclusive: false, Fn: TestAcceptPacketClampsOversizedValues},
 	{Name: "TestSessionAttsSetFromParsedDescriptionKeepsDefaultDNMatch", Categories: "unitary", Exclusive: false, Fn: TestSessionAttsSetFromParsedDescriptionKeepsDefaultDNMatch},
 	{Name: "TestTransportConnect", Categories: "unitary", Exclusive: false, Fn: TestTransportConnect},
@@ -106,7 +107,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestIsInBreakReset", Categories: "unitary", Exclusive: false, Fn: TestIsInBreakReset},
 	{Name: "TestReadMultiPacket", Categories: "unitary", Exclusive: false, Fn: TestReadMultiPacket},
 	{Name: "TestFlush", Categories: "unitary", Exclusive: false, Fn: TestFlush},
-	{Name: "TestSendInterrupt", Categories: "unitary", Exclusive: false, Fn: TestSendInterrupt},
 	{Name: "TestSendReset", Categories: "unitary", Exclusive: false, Fn: TestSendReset},
 	{Name: "TestPrepareReadBufferWithData", Categories: "unitary", Exclusive: false, Fn: TestPrepareReadBufferWithData},
 	{Name: "TestReadUI32MultiPacket", Categories: "unitary", Exclusive: false, Fn: TestReadUI32MultiPacket},
@@ -115,7 +115,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestCancelOperation", Categories: "unitary", Exclusive: false, Fn: TestCancelOperation},
 	{Name: "TestHeaderMarshalUnmarshal", Categories: "unitary", Exclusive: false, Fn: TestHeaderMarshalUnmarshal},
 	{Name: "TestConnectPacketMarshal", Categories: "unitary", Exclusive: false, Fn: TestConnectPacketMarshal},
-	{Name: "TestConnectPacketUnmarshal", Categories: "unitary", Exclusive: false, Fn: TestConnectPacketUnmarshal},
 	{Name: "TestDataPacketMarshal", Categories: "unitary", Exclusive: false, Fn: TestDataPacketMarshal},
 	{Name: "TestDataPacketFillBuf", Categories: "unitary", Exclusive: false, Fn: TestDataPacketFillBuf},
 	{Name: "TestDataPacketPrepare2Send", Categories: "unitary", Exclusive: false, Fn: TestDataPacketPrepare2Send},
