@@ -246,6 +246,13 @@ func (t *TestConfig) GetConnectionStringWithMergedConfig(config *TestConfig) str
 	return merged.GetConnectionStringWithProperties(nil)
 }
 
+func (t *TestConfig) IsAutonomousDatabase() bool {
+	if strings.Contains(t.Database.Host, "oraclecloud.com") && strings.Contains(t.Database.ServiceName, "adb.oraclecloud.com") {
+		return true
+	}
+	return false
+}
+
 // TestingEnvironment holds all parsed test configurations.
 type TestingEnvironment struct {
 	driverConfigs []TestConfig

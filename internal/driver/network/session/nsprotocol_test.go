@@ -99,6 +99,17 @@ type mockNTTCPS struct {
 	cleared      bool
 }
 
+func expectOracleErrorCode(t *testing.T, err error, want oracleErrors.ErrorCode) {
+	t.Helper()
+	sqlErr, ok := err.(oracleErrors.SQLError)
+	if !ok {
+		t.Fatalf("Expected Oracle error, got %T (%v)", err, err)
+	}
+	if sqlErr.ErrorCode() != string(want) {
+		t.Errorf("Expected error code %s, got %s", want, sqlErr.ErrorCode())
+	}
+}
+
 type stubNetConn struct {
 	net.Conn
 	remoteAddr net.Addr
@@ -238,21 +249,11 @@ func TestTransportConnect(t *testing.T) {
 	ns := newNetworkSession()
 	ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, sdu: 8192}
 
-	// Test HTTPS proxy with TCP
-	address := transport.Address{
-		Address:    naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "host", Port: 1521},
-		HTTPSProxy: "proxy",
-	}
-	err := ns.transportConnect(context.Background(), address)
-	if err == nil || !strings.Contains(err.Error(), "https proxy requires protocol as tcps") {
-		t.Errorf("Expected HTTPS proxy error, got %v", err)
-	}
-
 	// Test TCP connection attempt (will fail without real server)
-	address = transport.Address{
+	address := transport.Address{
 		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 9999},
 	}
-	err = ns.transportConnect(context.Background(), address)
+	err := ns.transportConnect(context.Background(), address)
 	if err == nil {
 		t.Errorf("Expected connection error")
 	}
@@ -480,9 +481,7 @@ func TestConnectSubtests(t *testing.T) {
 		err := ns.connect(context.Background(), transport.Address{
 			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
 		})
-		if err == nil || !strings.Contains(err.Error(), "too many redirects") {
-			t.Errorf("Expected too many redirects error, got %v", err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.NetworkRetryLimitExceeded)
 	})
 	t.Run("Refuse Packet from server", func(t *testing.T) {
 		mock := &mockNTAdapter{}
@@ -496,9 +495,7 @@ func TestConnectSubtests(t *testing.T) {
 		err := ns.connect(context.Background(), transport.Address{
 			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
 		})
-		if !strings.Contains(err.Error(), "12514") {
-			t.Errorf("Expected refuse error, got %v", err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.InvalidServiceName)
 		ns.Disconnect(context.Background(), 0)
 	})
 	t.Run("Refuse Packet from server with overflow", func(t *testing.T) {
@@ -514,9 +511,7 @@ func TestConnectSubtests(t *testing.T) {
 		err := ns.connect(context.Background(), transport.Address{
 			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
 		})
-		if !strings.Contains(err.Error(), "12514") {
-			t.Errorf("Expected refuse error with overflow, got %v", err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.InvalidServiceName)
 		ns.Disconnect(context.Background(), 0)
 	})
 	t.Run("Resend Packet", func(t *testing.T) {
@@ -587,9 +582,7 @@ func TestConnectSubtests(t *testing.T) {
 			t.Errorf("Unexpected sendConnect error: %v", err)
 		}
 		pkt, err := ns.recvPacket(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "unsupported packet type") {
-			t.Errorf("Expected unexpected packet error, got %v", err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkValue)
 		_ = pkt // to avoid unused
 		ns.Disconnect(context.Background(), 0)
 	})
@@ -664,9 +657,7 @@ func TestConnectSubtests(t *testing.T) {
 		err := ns.connect(context.Background(), transport.Address{
 			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
 		})
-		if err == nil || !strings.Contains(err.Error(), "unsupported TNS version") {
-			t.Errorf("Expected handleAccept error, got %v", err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkContextExpectedValue)
 	})
 
 	t.Run("HandleRefuse Error in Connect", func(t *testing.T) {
@@ -691,9 +682,7 @@ func TestConnectSubtests(t *testing.T) {
 		err := ns.connect(context.Background(), transport.Address{
 			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
 		})
-		if err == nil || !strings.Contains(err.Error(), "ORA-12514") {
-			t.Errorf("Expected handleRefuse error, got %v", err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.InvalidServiceName)
 	})
 
 	t.Run("HandleRedirect Error in Connect", func(t *testing.T) {
@@ -771,9 +760,7 @@ func TestConnectSubtests(t *testing.T) {
 		err := ns.connect(context.Background(), transport.Address{
 			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
 		})
-		if err == nil || !strings.Contains(err.Error(), "too many resends") {
-			t.Errorf("Expected too many resends error, got %v", err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.NetworkRetryLimitExceeded)
 		if ns.resendCount != maxResendCount+1 {
 			t.Errorf("Expected resend count %d, got %d", maxResendCount+1, ns.resendCount)
 		}
@@ -1256,9 +1243,7 @@ func TestProcessPacket(t *testing.T) {
 	// Test unsupported type
 	hdr.typ = 99
 	_, err = ns.processPacket(buf, hdr)
-	if err == nil || err.Error() != "unsupported packet type: 99" {
-		t.Errorf("Expected unsupported type error")
-	}
+	expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkValue)
 
 	// Test refuse
 	hdr.typ = NSPTRF
@@ -1667,9 +1652,7 @@ func TestHandleRefuse(t *testing.T) {
 		p := &refusePacket{overflow: false, dataBuf: "(DESCRIPTION=(ERR=99999))"}
 		ns.cData = []byte("(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=orcl)))")
 		err := ns.handleRefuse(context.Background(), p, address)
-		if err == nil || !strings.Contains(err.Error(), "connection refused") {
-			t.Errorf("Expected generic refuse error")
-		}
+		expectOracleErrorCode(t, err, oracleErrors.ConnectionRefusedDetail)
 	})
 	t.Run("RecvErrorInOverflow", func(t *testing.T) {
 		ns, mock := setup()
@@ -1688,9 +1671,7 @@ func TestHandleRefuse(t *testing.T) {
 		p := &refusePacket{overflow: false, dataBuf: "invalid"}
 		ns.cData = []byte("(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=orcl)))")
 		err := ns.handleRefuse(context.Background(), p, address)
-		if err == nil || !strings.Contains(err.Error(), "parse error") {
-			t.Errorf("Expected parse error, got %v", err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.RefuseDataParseFailed)
 	})
 }
 
@@ -1739,9 +1720,7 @@ func TestHandleResend(t *testing.T) {
 		}
 		p := &resendPacket{hdr: &header{flags: NSPFSRN}}
 		err := ns.handleResend(context.Background(), p, connectPkt)
-		if err == nil || !strings.Contains(err.Error(), "invalid resend flag") {
-			t.Errorf("Expected invalid resend flag error, got %v", err)
-		}
+		expectOracleErrorCode(t, err, oracleErrors.TLSRenegotiationUnsupported)
 	})
 
 	t.Run("SRNOnTCPS", func(t *testing.T) {

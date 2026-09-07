@@ -368,8 +368,14 @@ func TestDriver_Bind_ReusedNamedParameter(t *testing.T) {
 		}
 	}()
 
-	if _, err := db.ExecContext(ctx, "INSERT INTO "+table+" (id, name) VALUES (1, 'alpha'), (2, 'beta')"); err != nil {
-		t.Fatalf("seed insert failed: %v", err)
+	sqlStaement := "INSERT INTO " + table + " (id, name) VALUES (1, 'alpha')"
+	if _, err := db.ExecContext(ctx, sqlStaement); err != nil {
+		t.Fatalf("seed insert failed [%s]: %v", sqlStaement, err)
+	}
+
+	sqlStaement = "INSERT INTO " + table + " (id, name) VALUES(2, 'beta')"
+	if _, err := db.ExecContext(ctx, sqlStaement); err != nil {
+		t.Fatalf("seed insert failed [%s]: %v", sqlStaement, err)
 	}
 
 	updateSQL := "UPDATE " + table + " SET name = :new_name WHERE id = :shared_id"

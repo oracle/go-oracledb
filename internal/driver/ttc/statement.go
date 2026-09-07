@@ -221,14 +221,8 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 		s._rows = selectedRows.(*ttcRows)
 	}
 
-	msgIn, _ := s.shelf.GetMessageStreamer().Drain(ctx, driverCommon.IN)
-	// no message should be left at this point
-	if msgIn != 0 {
-		// should drop connection.
-		common.Odl.Error("unexpected messages remained after query; invalidating connection",
-			"remaining messageCount", msgIn)
-		s.shelf.getEventService().post(streamerStaleEvent)
-		return nil, s.shelf.LocalizeError(common.NewOracleError(oracleErrors.InternalError, nil))
+	if err := s.shelf.checkCurrentState(ctx); err != nil {
+		return nil, err
 	}
 
 	return selectedRows, s.shelf.LocalizeError(e)
@@ -326,15 +320,8 @@ func (s *Statement) ExecContext(ctx context.Context, args []driver.NamedValue) (
 		defer stopTransAfterFunction()
 	}
 	result, err := s.execStatementExecutor.ExecContext(subContext, s.qualifiedQuery, args)
-	// no message should be left at this point
-	msgIn, _ := s.shelf.GetMessageStreamer().Drain(ctx, driverCommon.IN)
-	// no message should be left at this point
-	if msgIn != 0 {
-		// should drop connection.
-		common.Odl.Error("unexpected messages remained after exec; invalidating connection",
-			"remaining messageCount", msgIn)
-		s.shelf.getEventService().post(streamerStaleEvent)
-		return nil, s.shelf.LocalizeError(common.NewOracleError(oracleErrors.InternalError, nil))
+	if err := s.shelf.checkCurrentState(ctx); err != nil {
+		return nil, err
 	}
 	return result, s.shelf.LocalizeError(err)
 }
