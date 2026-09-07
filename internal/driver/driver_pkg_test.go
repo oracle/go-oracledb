@@ -46,6 +46,7 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
+	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 )
 
 type factoryTestNetworkSession struct{}
@@ -82,7 +83,7 @@ func TestGetConnectionInstantiator(t *testing.T) {
 	cfg.Credentials.Password = "tiger"
 
 	var ns driverCommon.NetworkSession = factoryTestNetworkSession{}
-	instantiator, err := GetConnectionInstantiator(cfg, ns, common.NewProviderRegistry())
+	instantiator, err := GetConnectionInstantiator(cfg, ns, common.NewSafeRegistry[oracleProviders.Provider]())
 	if err != nil {
 		t.Fatalf("GetConnectionInstantiator returned error: %v", err)
 	}
