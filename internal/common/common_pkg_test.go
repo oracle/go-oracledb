@@ -81,6 +81,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestError3113NoLanguage", Categories: "unitary", Exclusive: false, Fn: TestError3113NoLanguage},
 	{Name: "TestErrorUnwrap", Categories: "unitary", Exclusive: false, Fn: TestErrorUnwrap},
 	{Name: "TestError3113InvalidLanguage", Categories: "unitary", Exclusive: false, Fn: TestError3113InvalidLanguage},
+	{Name: "TestCtxTimeoutCauseError", Categories: "unitary", Exclusive: false, Fn: TestCtxTimeoutCauseError},
 	{Name: "TestNewOERMessageError", Categories: "unitary", Exclusive: false, Fn: TestNewOERMessageError},
 	{Name: "TestConstants_GetLogonModeFromString", Categories: "unitary", Exclusive: false, Fn: TestConstants_GetLogonModeFromString},
 	{Name: "TestConstants_LogonModeEnabled", Categories: "unitary", Exclusive: false, Fn: TestConstants_LogonModeEnabled},

@@ -227,6 +227,85 @@ func TestConfiguration_AssignFromEnvClientLanguageTag(t *testing.T) {
 	}
 }
 
+// TestConfiguration_LoggingConfigAssignFromEnv verifies that logging options
+// are read from their documented environment variables and that the logging
+// level is normalized to the slog level name.
+func TestConfiguration_LoggingConfigAssignFromEnv(t *testing.T) {
+	t.Setenv("ORACLE_GO_LOGGING_LEVEL", "debug")
+	t.Setenv("ORACLE_GO_LOGGING_DESTINATION", "STDOUT")
+	t.Setenv("ORACLE_GO_LOGGING_INCLUDESENSITIVE", "true")
+	t.Setenv("ORACLE_GO_LOGGING_TRUNCATE", "true")
+
+	config := oracleconfig.NewOracleLoggingConfig()
+	if err := config.AssignFromEnv(); err != nil {
+		t.Fatalf("AssignFromEnv failed: %v", err)
+	}
+	if got, want := config.GetLevel(), "DEBUG"; got != want {
+		t.Fatalf("logging level = %q, want %q", got, want)
+	}
+	if got, want := config.GetDestination(), "STDOUT"; got != want {
+		t.Fatalf("logging destination = %q, want %q", got, want)
+	}
+	if !config.GetIncludeSensitive() {
+		t.Fatal("IncludeSensitive = false, want true")
+	}
+	if !config.GetTruncate() {
+		t.Fatal("Truncate = false, want true")
+	}
+}
+
+// TestConfiguration_LoggingConfigAssignFromEnvValidation verifies that an
+// empty logging level uses the documented ERROR default and an invalid level
+// is rejected instead of being silently accepted.
+func TestConfiguration_LoggingConfigAssignFromEnvValidation(t *testing.T) {
+	t.Run("empty level uses error", func(t *testing.T) {
+		t.Setenv("ORACLE_GO_LOGGING_LEVEL", "")
+		config := oracleconfig.NewOracleLoggingConfig()
+		if err := config.AssignFromEnv(); err != nil {
+			t.Fatalf("AssignFromEnv failed: %v", err)
+		}
+		if got, want := config.GetLevel(), "ERROR"; got != want {
+			t.Fatalf("logging level = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("invalid level is rejected", func(t *testing.T) {
+		t.Setenv("ORACLE_GO_LOGGING_LEVEL", "not-a-level")
+		config := oracleconfig.NewOracleLoggingConfig()
+		if err := config.AssignFromEnv(); err == nil {
+			t.Fatal("AssignFromEnv accepted an invalid logging level")
+		}
+	})
+}
+
+// TestConfiguration_LoggingConfigAssignFromFlags verifies that explicitly
+// supplied logging flags override the defaults on a logging configuration.
+func TestConfiguration_LoggingConfigAssignFromFlags(t *testing.T) {
+	if err := flag.Set("oracle.go.logging.Level", "WARN"); err != nil {
+		t.Fatalf("setting logging level flag failed: %v", err)
+	}
+	if err := flag.Set("oracle.go.logging.Destination", "STDERR"); err != nil {
+		t.Fatalf("setting logging destination flag failed: %v", err)
+	}
+	if err := flag.Set("oracle.go.logging.IncludeSensitive", "true"); err != nil {
+		t.Fatalf("setting sensitive logging flag failed: %v", err)
+	}
+
+	config := oracleconfig.NewOracleLoggingConfig()
+	if err := config.AssignFromFlags(); err != nil {
+		t.Fatalf("AssignFromFlags failed: %v", err)
+	}
+	if got, want := config.GetLevel(), "WARN"; got != want {
+		t.Fatalf("logging level = %q, want %q", got, want)
+	}
+	if got, want := config.GetDestination(), "STDERR"; got != want {
+		t.Fatalf("logging destination = %q, want %q", got, want)
+	}
+	if !config.GetIncludeSensitive() {
+		t.Fatal("IncludeSensitive = false, want true")
+	}
+}
+
 // TestConfiguration_AssignFromEmptyFlags checks AssignFromFlags
 // expectations:
 //

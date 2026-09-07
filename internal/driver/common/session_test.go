@@ -117,3 +117,27 @@ func TestSessionContext_UpdateSessionProperties(t *testing.T) {
 		t.Fatalf("expected EDITION to be %q, got %q", "dev", edition)
 	}
 }
+
+// TestSessionContext_UpdateClientProperties verifies that client properties
+// are merged into the existing context and that new values are available to
+// later connection setup code.
+func TestSessionContext_UpdateClientProperties(t *testing.T) {
+	t.Parallel()
+
+	session := NewSessionContext()
+	existing := session.GetClientProperties()
+	existing.SetProperty("CLIENT_IDENTIFIER", "before")
+
+	updates := NewProperties[string]()
+	updates.SetProperty("CLIENT_IDENTIFIER", "after")
+	updates.SetProperty("MODULE", "coverage-test")
+
+	session.UpdateClientProperties(updates)
+
+	if got := session.GetClientProperties().GetProperty("CLIENT_IDENTIFIER"); got != "after" {
+		t.Fatalf("CLIENT_IDENTIFIER = %v, want after", got)
+	}
+	if got := session.GetClientProperties().GetProperty("MODULE"); got != "coverage-test" {
+		t.Fatalf("MODULE = %v, want coverage-test", got)
+	}
+}

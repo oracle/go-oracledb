@@ -221,6 +221,73 @@ func TestVerifyDNAllowsRepeatedAttributeAcrossRDNs(t *testing.T) {
 	}
 }
 
+// TestParseDNAttributeDecodesEscapedValues verifies that configured DN
+// attributes preserve escaped separators, decode hexadecimal escapes, and
+// retain an explicitly escaped space inside the value.
+func TestParseDNAttributeDecodesEscapedValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "escaped separator and hexadecimal comma",
+			input: `CN=db\=primary\2Cnode`,
+			want:  "db=primary,node",
+		},
+		{
+			name:  "escaped space is part of the value",
+			input: `CN=service\ name`,
+			want:  "service name",
+		},
+		{
+			name:  "unescaped trailing spaces are trimmed",
+			input: "CN=service   ",
+			want:  "service",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attribute, err := parseDNAttribute(tt.input)
+			if err != nil {
+				t.Fatalf("parseDNAttribute(%q) failed: %v", tt.input, err)
+			}
+			if got, ok := attribute.Value.(string); !ok || got != tt.want {
+				t.Fatalf("attribute value = %#v, want %q", attribute.Value, tt.want)
+			}
+		})
+	}
+}
+
+// TestNTTCPSRemoteAddr verifies that RemoteAddr reports the active TLS
+// transport address and returns nil before a transport is connected.
+func TestNTTCPSRemoteAddr(t *testing.T) {
+	t.Parallel()
+
+	nt := NewNTTCPS(NTattributes{})
+	if nt.RemoteAddr() != nil {
+		t.Fatal("RemoteAddr should be nil before a stream is connected")
+	}
+
+	client, server := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = server.Close()
+	})
+	nt.stream = client
+
+	got := nt.RemoteAddr()
+	if got == nil {
+		t.Fatal("RemoteAddr returned nil for an active stream")
+	}
+	if got.String() != client.RemoteAddr().String() {
+		t.Fatalf("RemoteAddr = %q, want %q", got.String(), client.RemoteAddr().String())
+	}
+}
+
 func TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse(t *testing.T) {
 	t.Parallel()
 	walletContent := testWalletWithRootCert(t)

@@ -65,6 +65,54 @@ func TestTTIdcb24Constructor(t *testing.T) {
 	}
 }
 
+// TestTTIdcbProtocolVersionConstructors verifies that each supported protocol
+// version selects the matching UDS factory for column metadata decoding.
+func TestTTIdcbProtocolVersionConstructors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		new   func() common.Message[common.MessageType]
+		check func(common.UnMarshallable) bool
+	}{
+		{name: "version 17", new: newTTIdcb17, check: func(value common.UnMarshallable) bool {
+			_, ok := value.(*tTIuds17)
+			return ok
+		}},
+		{name: "version 20", new: newTTIdcb20, check: func(value common.UnMarshallable) bool {
+			_, ok := value.(*tTIuds20)
+			return ok
+		}},
+		{name: "version 24", new: newTTIdcb24, check: func(value common.UnMarshallable) bool {
+			_, ok := value.(*tTIuds24)
+			return ok
+		}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			msg, ok := tc.new().(*tTIdcb)
+			if !ok || msg.newUDS == nil {
+				t.Fatal("constructor did not initialize a tTIdcb UDS factory")
+			}
+			if value := msg.newUDS(); !tc.check(value) {
+				t.Fatalf("UDS factory returned %T", value)
+			}
+		})
+	}
+}
+
+// TestTTIdcbGetNumberOfColumns verifies that the DCB reports the number of
+// UDS entries stored in its protocol payload.
+func TestTTIdcbGetNumberOfColumns(t *testing.T) {
+	t.Parallel()
+
+	msg := &tTIdcb{numUDS: 7}
+	if got, want := msg.getNumberOfColumns(), common.UB4(7); got != want {
+		t.Fatalf("getNumberOfColumns() = %d, want %d", got, want)
+	}
+}
+
 // TestTTIdcb_GetMsgCode ensures the GetMsgCode method of tTIdcb
 // returns the correct message type code (TTIDCB).
 func TestTTIdcb_GetMsgCode(t *testing.T) {
