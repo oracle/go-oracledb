@@ -569,7 +569,7 @@ func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) e
 func (enc *osonEncoder) writeSignedIntScalar(tree *osonWriteBuffer, value int64, opcodeMask drvCommon.UB1, platformSize drvCommon.UB1) error {
 	payload, err := converters.EncodeInt(value)
 	if err != nil {
-		return enc.scalarEncodingError("writeSignedIntScalar", err, value)
+		return _wrapScalarEncodingError("writeSignedIntScalar", err)
 	}
 	if len(payload) == 0 {
 		cause := fmt.Errorf("encoding signed integer %d produced an empty Oracle NUMBER payload", value)
@@ -592,7 +592,7 @@ func (enc *osonEncoder) writeSignedIntScalar(tree *osonWriteBuffer, value int64,
 func (enc *osonEncoder) writeUnsignedIntScalar(tree *osonWriteBuffer, value uint64) error {
 	payload, err := converters.EncodeUInt(value)
 	if err != nil {
-		return enc.scalarEncodingError("writeUnsignedIntScalar", err, value)
+		return _wrapScalarEncodingError("writeUnsignedIntScalar", err)
 	}
 
 	if len(payload) == 0 {
@@ -668,7 +668,7 @@ func isJSONNumber(value string) bool {
 func (enc *osonEncoder) writeBinaryFloatScalar(tree *osonWriteBuffer, value float32) error {
 	payload, err := converters.EncodeBinaryFloat(value)
 	if err != nil {
-		return enc.scalarEncodingError("writeBinaryFloatScalar", err, value)
+		return _wrapScalarEncodingError("writeBinaryFloatScalar", err)
 	}
 
 	tree.writeUB1(osonOpBinaryFloat)
@@ -682,7 +682,7 @@ func (enc *osonEncoder) writeBinaryFloatScalar(tree *osonWriteBuffer, value floa
 func (enc *osonEncoder) writeBinaryDoubleScalar(tree *osonWriteBuffer, value float64) error {
 	payload, err := converters.EncodeBinaryDouble(value)
 	if err != nil {
-		return enc.scalarEncodingError("writeBinaryDoubleScalar", err, value)
+		return _wrapScalarEncodingError("writeBinaryDoubleScalar", err)
 	}
 
 	tree.writeUB1(osonOpBinaryDouble)
@@ -716,7 +716,7 @@ func (enc *osonEncoder) writeBinaryScalar(tree *osonWriteBuffer, value drvCommon
 func (enc *osonEncoder) writeTimestampScalar(tree *osonWriteBuffer, value time.Time) error {
 	payload, err := converters.EncodeTimestamp(value)
 	if err != nil {
-		return enc.scalarEncodingError("writeTimestampScalar", err, value)
+		return _wrapScalarEncodingError("writeTimestampScalar", err)
 	}
 
 	tree.writeUB1(osonOpTimestamp)
@@ -725,9 +725,9 @@ func (enc *osonEncoder) writeTimestampScalar(tree *osonWriteBuffer, value time.T
 	return nil
 }
 
-// scalarEncodingError logs converter failures and returns the public OSON
+// _wrapScalarEncodingError logs converter failures and returns the public OSON
 // encoding error used by scalar writers.
-func (enc *osonEncoder) scalarEncodingError(operation string, cause error, value any) error {
+func _wrapScalarEncodingError(operation string, cause error) error {
 	common.Odl.Debug("osonEncoder."+operation+": failed", "error", cause)
 	return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 }
