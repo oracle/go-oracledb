@@ -319,6 +319,8 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 	return nil
 }
 
+// handleOAuthResponse shared function among authenticators that handles
+// sending the TTC OAUTH message and receiving the response.
 func handleOAuthResponse(ctx context.Context, streamer MessageStreamerInterface, shelf *ttiShelf[driverCommon.MessageType]) (*OAuthRPA, error) {
 	var oauthrpa *OAuthRPA = nil
 

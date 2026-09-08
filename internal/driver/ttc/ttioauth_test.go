@@ -66,6 +66,8 @@ func TestNewOAuth_Success(t *testing.T) {
 	}
 }
 
+// TestOAuth_prepareForTokenOAUTH verifies that token-based OAuth sets the
+// token logon mode and adds the required session initialization values.
 func TestOAuth_prepareForTokenOAUTH(t *testing.T) {
 	t.Parallel()
 	oauth := NewOAuth().(*oAuth)
