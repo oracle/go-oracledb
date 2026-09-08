@@ -71,7 +71,6 @@ func main() {
 
 	// Recreate the example table so the program can be run repeatedly.
 	const table = "go_driver_json_example"
-	_, _ = db.ExecContext(ctx, "drop table "+table+" purge")
 	if _, err := db.ExecContext(ctx, "create table "+table+" (id number primary key, doc JSON)"); err != nil {
 		log.Fatal(err)
 	}

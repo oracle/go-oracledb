@@ -163,7 +163,9 @@ func TestDriver_Table_Select_JSON(t *testing.T) {
 
 // TestDriver_Table_Select_NullJSON
 // What it does: Creates a table with a JSON column, inserts a NULL JSON value, then selects it back.
-// Expectation: Selecting the JSON column and scanning into sql.NullString reports an invalid value.
+// Expectation: SQL NULL scans into sql.Null[JSON] as invalid; scanning it
+// directly into JSON returns an error. This differs from a JSON null document,
+// which is a valid JSON scalar that materializes as nil.
 // Notes:
 //   - JSON data type is supported in Oracle 21c+ (and enhanced in 23c). If unsupported in the test DB,
 //     CREATE TABLE will fail and this test will Skip.

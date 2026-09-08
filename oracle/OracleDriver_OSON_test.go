@@ -49,10 +49,13 @@ import (
 	ojson "github.com/oracle/go-oracledb/v26/oracle/json"
 )
 
-// TestDriver_OSON_ScalarDocuments inserts scalar-root JSON documents using JSON.
+// TestDriver_OSON_ScalarDocuments
+// What it does: Inserts non-null scalar-root JSON documents using the public
+// JSON bind type, then fetches and materializes them.
+// Expectation: The scalar type and value are preserved, including exact
+// numeric text when JSONOptNumberAsString is used.
 func TestDriver_OSON_ScalarDocuments(t *testing.T) {
 	tests := []osonFunctionalCase{
-		{name: "null", input: nil, want: nil},
 		{name: "string", input: "oracle-json", want: "oracle-json"},
 		{name: "true", input: true, want: true},
 		{name: "false", input: false, want: false},
@@ -65,8 +68,43 @@ func TestDriver_OSON_ScalarDocuments(t *testing.T) {
 	runOSONFunctionalCases(t, "t_oson_scalar", tests)
 }
 
-// TestDriver_OSON_NestedObject inserts a representative object with nested
-// maps, arrays, nulls, booleans, Unicode strings, and numbers.
+// TestDriver_OSON_NullDocument
+// What it does: Inserts a JSON null document through the OSON JSON bind path
+// and fetches it through sql.Null[JSON].
+// Expectation: JSON null is a valid scalar JSON document that materializes as
+// nil; it is distinct from SQL NULL, which makes sql.Null invalid.
+func TestDriver_OSON_NullDocument(t *testing.T) {
+	table := createObjectName("t_oson_null")
+	db, ctx := setupOSONFunctionalTable(t, table)
+
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO "+table+" (id, jdoc) VALUES (:id, :jdoc)",
+		sql.Named("id", int64(1)),
+		sql.Named("jdoc", ojson.JSON{Data: nil}),
+	); err != nil {
+		t.Fatalf("insert JSON null document failed: %v", err)
+	}
+
+	var got sql.Null[ojson.JSON]
+	if err := db.QueryRowContext(ctx,
+		"SELECT jdoc FROM "+table+" WHERE id = :id",
+		sql.Named("id", int64(1)),
+	).Scan(&got); err != nil {
+		t.Fatalf("select/scan JSON null document failed: %v", err)
+	}
+	if !got.Valid {
+		t.Fatal("JSON null document scanned as SQL NULL")
+	}
+	if kind, err := got.V.Kind(); err != nil || kind != ojson.JSONScalarKind {
+		t.Fatalf("JSON null Kind() = (%v, %v), want (%v, nil)", kind, err, ojson.JSONScalarKind)
+	}
+	assertOSONDocument(t, got.V, nil)
+}
+
+// TestDriver_OSON_NestedObject
+// What it does: Inserts and fetches an object with nested maps, arrays, nulls,
+// booleans, Unicode strings, and numbers.
+// Expectation: The materialized document matches the original nested value.
 func TestDriver_OSON_NestedObject(t *testing.T) {
 	value := map[string]any{
 		"id":      ojson.Number("42"),
@@ -90,8 +128,10 @@ func TestDriver_OSON_NestedObject(t *testing.T) {
 	})
 }
 
-// TestDriver_OSON_NestedArray inserts an array-root document with
-// traversal after the database stores and returns the JSON document.
+// TestDriver_OSON_NestedArray
+// What it does: Inserts and fetches an array-root document containing nested
+// arrays and objects.
+// Expectation: The materialized document matches the original nested value.
 func TestDriver_OSON_NestedArray(t *testing.T) {
 	value := []any{
 		nil,
@@ -117,7 +157,9 @@ func TestDriver_OSON_NestedArray(t *testing.T) {
 	})
 }
 
-// TestDriver_OSON_LargeDocument tests inserting and fetching large JSON documents.
+// TestDriver_OSON_LargeDocument
+// What it does: Inserts and fetches a multi-megabyte JSON document.
+// Expectation: The full document materializes without truncation or corruption.
 func TestDriver_OSON_LargeDocument(t *testing.T) {
 	const rowCount = 1024
 
@@ -142,8 +184,10 @@ func TestDriver_OSON_LargeDocument(t *testing.T) {
 	})
 }
 
-// TestDriver_OSON_LongUTF8DictionaryKey inserts an object with a field
-// name longer than 255 UTF-8 bytes.
+// TestDriver_OSON_LongUTF8DictionaryKey
+// What it does: Inserts and fetches an object with a field name longer than
+// 255 UTF-8 bytes.
+// Expectation: The long dictionary key and its value are preserved.
 func TestDriver_OSON_LongUTF8DictionaryKey(t *testing.T) {
 	longKey := strings.Repeat("é", 200) //  > 255 UTF-8 bytes.
 	value := map[string]any{
@@ -159,8 +203,11 @@ func TestDriver_OSON_LongUTF8DictionaryKey(t *testing.T) {
 	})
 }
 
-// TestDriver_OSON_JSONWrappers verifies the oracle/json wrappers over
-// OSON values produced by the database after normal bind and fetch flows.
+// TestDriver_OSON_JSONWrappers
+// What it does: Exercises the oracle/json wrappers over OSON values produced
+// by normal bind and fetch flows.
+// Expectation: Object, array, scalar, text, and rebind operations expose the
+// expected values and reject incompatible wrapper access.
 func TestDriver_OSON_JSONWrappers(t *testing.T) {
 	table := createObjectName("t_oson_public_api")
 	db, ctx := setupOSONFunctionalTable(t, table)
@@ -298,9 +345,11 @@ func TestDriver_OSON_JSONWrappers(t *testing.T) {
 	assertOSONDocument(t, fetch(5), wantObject)
 }
 
-// TestDriver_OSON_JSONWrapperErrors verifies wrapper behavior
-// that cannot arise from a successful database scan, such as zero values and
-// invalid client input.
+// TestDriver_OSON_JSONWrapperErrors
+// What it does: Exercises zero-value wrappers and invalid client inputs that
+// cannot arise from a successful database scan.
+// Expectation: Unsupported access returns an API error, while a zero JSON value
+// binds and renders as the JSON value null.
 func TestDriver_OSON_JSONWrapperErrors(t *testing.T) {
 	assertError := func(operation string, err error) {
 		t.Helper()

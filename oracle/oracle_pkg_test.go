@@ -263,6 +263,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestIssue_DecodeBinaryColumnType", Categories: "functional", Exclusive: false, Fn: TestIssue_DecodeBinaryColumnType},
 	{Name: "TestServerError", Categories: "functional", Exclusive: false, Fn: TestServerError},
 	{Name: "TestDriver_OSON_ScalarDocuments", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_ScalarDocuments},
+	{Name: "TestDriver_OSON_NullDocument", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NullDocument},
 	{Name: "TestDriver_OSON_NestedObject", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NestedObject},
 	{Name: "TestDriver_OSON_NestedArray", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NestedArray},
 	{Name: "TestDriver_OSON_LargeDocument", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_LargeDocument},
