@@ -352,7 +352,7 @@ func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 	}
 }
 
-// TestEncodeScalarValues_SupportsEveryIntegerType verifies the JSONValue
+// TestEncodeScalarValues_SupportsEveryIntegerType verifies the JSON
 // integer surface is encoded and materialized without changing the value.
 func TestEncodeScalarValues_SupportsEveryIntegerType(t *testing.T) {
 	var signedIntOpcodeMask drvCommon.UB1 = osonOpCompactSigned64Prefix

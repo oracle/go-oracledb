@@ -41,10 +41,45 @@ package json
 import (
 	"bytes"
 	"errors"
+	"math"
 	"testing"
 
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+func TestJSONStringRendersDataAndJSONNumbers(t *testing.T) {
+	tests := []struct {
+		name string
+		data any
+		want string
+	}{
+		{name: "nil", data: nil, want: "null"},
+		{name: "number", data: Number("9007199254740993"), want: "9007199254740993"},
+		{name: "nested number", data: map[string]any{"value": Number("1.25")}, want: `{"value":1.25}`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			text, err := (JSON{Data: test.data}).String()
+			if err != nil {
+				t.Fatalf("JSON.String() failed: %v", err)
+			}
+			if text != test.want {
+				t.Fatalf("JSON.String() = %q, want %q", text, test.want)
+			}
+		})
+	}
+}
+
+func TestJSONStringRendersDataErrors(t *testing.T) {
+	_, err := (JSON{Data: math.Inf(1)}).String()
+	if err == nil {
+		t.Fatal("JSON.String() error = nil, want JSON rendering error")
+	}
+	if got := err.(oracleErrors.SQLError).ErrorCode(); got != string(oracleErrors.JSONRenderingError) {
+		t.Fatalf("JSON.String() error code = %s, want %s", got, oracleErrors.JSONRenderingError)
+	}
+}
 
 // TestJSONErrorsIncludeCause verifies locally constructed public JSON errors
 // retain a concrete explanation of the failed condition.
@@ -52,9 +87,9 @@ func TestJSONErrorsIncludeCause(t *testing.T) {
 	var value JSON
 	var nilValue *JSON
 
-	driverValue, err := (JSONValue{Data: []any{true}}).Value()
+	driverValue, err := (JSON{Data: []any{true}}).Value()
 	if err != nil {
-		t.Fatalf("JSONValue.Value() failed: %v", err)
+		t.Fatalf("JSON.Value() failed: %v", err)
 	}
 	var arrayValue JSON
 	if err := arrayValue.Scan(driverValue); err != nil {
@@ -106,7 +141,7 @@ func TestJSONErrorsIncludeCause(t *testing.T) {
 // TestJSONScanCopiesSourceBytes verifies that JSON.Scan takes ownership of OSON
 // bytes instead of retaining the caller-provided source slice.
 func TestJSONScanCopiesSourceBytes(t *testing.T) {
-	input := JSONValue{
+	input := JSON{
 		Data: map[string]any{
 			"id":   int64(1),
 			"name": "first",
@@ -115,12 +150,12 @@ func TestJSONScanCopiesSourceBytes(t *testing.T) {
 
 	driverValue, err := input.Value()
 	if err != nil {
-		t.Fatalf("JSONValue.Value() failed: %v", err)
+		t.Fatalf("JSON.Value() failed: %v", err)
 	}
 
 	src, ok := driverValue.([]byte)
 	if !ok {
-		t.Fatalf("JSONValue.Value() returned %T, want []byte", driverValue)
+		t.Fatalf("JSON.Value() returned %T, want []byte", driverValue)
 	}
 
 	var got JSON

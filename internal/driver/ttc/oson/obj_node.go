@@ -334,7 +334,7 @@ func (obj *objectNode) GetValue(opts drvCommon.JSONOption) (any, error) {
 	return obj.Value(opts)
 }
 
-// StringWithOption implements the JSONNode interface.
+// String implements the JSONNode interface.
 //
 // Input:
 //   - opts: JSON materialization options.
@@ -344,15 +344,15 @@ func (obj *objectNode) GetValue(opts drvCommon.JSONOption) (any, error) {
 //
 // Errors:
 //   - child node construction, value decoding, or JSON encoding failure.
-func (obj *objectNode) StringWithOption(opts drvCommon.JSONOption) (string, error) {
-	value, err := obj.Value(opts)
+func (obj *objectNode) String() (string, error) {
+	value, err := obj.Value(drvCommon.JSONOptNumberAsString)
 	if err != nil {
 		return "", err
 	}
 
 	text, err := json.Marshal(jsonCompatibleValue(value))
 	if err != nil {
-		common.Odl.Debug("objectNode.StringWithOption: failed", "error", err, "offset", obj.offset)
+		common.Odl.Debug("objectNode.String: failed", "error", err, "offset", obj.offset)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
 	return string(text), nil

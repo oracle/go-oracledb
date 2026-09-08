@@ -155,16 +155,16 @@ func TestObjectNode_SimpleObjectTraversal(t *testing.T) {
 		t.Fatalf("Value() = %#v, want %#v", gotValue, wantValue)
 	}
 
-	text, err := obj.StringWithOption(drvCommon.JSONOptDefault)
+	text, err := obj.String()
 	if err != nil {
-		t.Fatalf("StringWithOption() error = %v", err)
+		t.Fatalf("String() error = %v", err)
 	}
 	var decoded map[string]any
 	if err := json.Unmarshal([]byte(text), &decoded); err != nil {
-		t.Fatalf("StringWithOption() produced invalid JSON %q: %v", text, err)
+		t.Fatalf("String() produced invalid JSON %q: %v", text, err)
 	}
 	if decoded["name"] != "Alice" || decoded["role"] != "Developer" || decoded["active"] != true {
-		t.Fatalf("StringWithOption() decoded = %#v, want simple object fields", decoded)
+		t.Fatalf("String() decoded = %#v, want simple object fields", decoded)
 	}
 }
 

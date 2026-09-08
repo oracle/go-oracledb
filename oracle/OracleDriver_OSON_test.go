@@ -49,7 +49,7 @@ import (
 	ojson "github.com/oracle/go-oracledb/v26/oracle/json"
 )
 
-// TestDriver_OSON_ScalarDocuments inserts scalar-root JSON documents using JSONValue.
+// TestDriver_OSON_ScalarDocuments inserts scalar-root JSON documents using JSON.
 func TestDriver_OSON_ScalarDocuments(t *testing.T) {
 	tests := []osonFunctionalCase{
 		{name: "null", input: nil, want: nil},
@@ -192,17 +192,17 @@ func TestDriver_OSON_JSONWrappers(t *testing.T) {
 		"active": true,
 		"items":  []any{"go", ojson.Number("2"), map[string]any{"enabled": true}},
 	}
-	insert(1, ojson.JSONValue{Data: wantObject})
+	insert(1, ojson.JSON{Data: wantObject})
 	objectJSON := fetch(1)
 	if kind, err := objectJSON.Kind(); err != nil || kind != ojson.JSONObjectKind {
 		t.Fatalf("object JSON.Kind() = (%v, %v), want (%v, nil)", kind, err, ojson.JSONObjectKind)
 	}
 	assertOSONDocument(t, objectJSON, wantObject)
-	if text := objectJSON.String(); text == "" {
-		t.Fatal("JSON.String() returned empty text")
+	if _, err := objectJSON.String(); err != nil {
+		t.Fatalf("JSON.String() returned err %v", err)
 	}
-	if text, err := objectJSON.StringWithOption(ojson.JSONOptNumberAsString); err != nil || text == "" {
-		t.Fatalf("JSON.StringWithOption() = (%q, %v), want non-empty text and nil error", text, err)
+	if text, err := objectJSON.String(); err != nil || text == "" {
+		t.Fatalf("JSON.String() = (%q, %v), want non-empty text and nil error", text, err)
 	}
 
 	object, err := objectJSON.GetJSONObject(ojson.JSONOptNumberAsString)
@@ -224,7 +224,7 @@ func TestDriver_OSON_JSONWrappers(t *testing.T) {
 	if got, err := object.GetValue(); err != nil || !reflect.DeepEqual(got, wantObject) {
 		t.Fatalf("JSONObject.GetValue() = (%#v, %v), want (%#v, nil)", got, err, wantObject)
 	}
-	if text := object.String(); text == "" {
+	if text, err := object.String(); err != nil || text == "" {
 		t.Fatal("JSONObject.String() returned empty text")
 	}
 
@@ -255,7 +255,7 @@ func TestDriver_OSON_JSONWrappers(t *testing.T) {
 	}
 
 	wantArray := []any{true, "entry", ojson.Number("3.5")}
-	insert(2, ojson.JSONValue{Data: wantArray})
+	insert(2, ojson.JSON{Data: wantArray})
 	arrayJSON := fetch(2)
 	if kind, err := arrayJSON.Kind(); err != nil || kind != ojson.JSONArrayKind {
 		t.Fatalf("array JSON.Kind() = (%v, %v), want (%v, nil)", kind, err, ojson.JSONArrayKind)
@@ -267,14 +267,14 @@ func TestDriver_OSON_JSONWrappers(t *testing.T) {
 	if got, err := array.GetValue(); err != nil || !reflect.DeepEqual(got, wantArray) {
 		t.Fatalf("JSONArray.GetValue() = (%#v, %v), want (%#v, nil)", got, err, wantArray)
 	}
-	if text := array.String(); text == "" {
+	if text, err := array.String(); err != nil || text == "" {
 		t.Fatal("JSONArray.String() returned empty text")
 	}
 	if _, err := arrayJSON.GetJSONObject(ojson.JSONOptNumberAsString); err == nil {
 		t.Fatal("array GetJSONObject() error = nil, want access error")
 	}
 
-	insert(3, ojson.JSONValue{Data: true})
+	insert(3, ojson.JSON{Data: true})
 	scalarJSON := fetch(3)
 	if kind, err := scalarJSON.Kind(); err != nil || kind != ojson.JSONScalarKind {
 		t.Fatalf("scalar JSON.Kind() = (%v, %v), want (%v, nil)", kind, err, ojson.JSONScalarKind)
@@ -290,7 +290,7 @@ func TestDriver_OSON_JSONWrappers(t *testing.T) {
 		t.Fatal("scalar GetJSONArray() error = nil, want access error")
 	}
 
-	insert(4, ojson.JSONString{Data: `{"source":"json-string"}`})
+	insert(4, ojson.JSONString(`{"source":"json-string"}`))
 	assertOSONDocument(t, fetch(4), map[string]any{"source": "json-string"})
 
 	// Bind the fetched public JSON value again; this exercises JSON.Value().
@@ -310,8 +310,17 @@ func TestDriver_OSON_JSONWrapperErrors(t *testing.T) {
 	}
 
 	var value ojson.JSON
-	_, err := value.Value()
-	assertError("JSON.Value", err)
+	driverValue, err := value.Value()
+	if err != nil {
+		t.Fatalf("zero JSON.Value() failed: %v", err)
+	}
+	var nullValue ojson.JSON
+	if err := nullValue.Scan(driverValue); err != nil {
+		t.Fatalf("JSON.Scan(JSON.Value()) failed: %v", err)
+	}
+	if text, err := nullValue.String(); err != nil || text != "null" {
+		t.Fatalf("zero JSON.Value() rendered as (%q, %v), want JSON null", text, err)
+	}
 	_, err = value.Kind()
 	assertError("JSON.Kind", err)
 	_, err = value.GetJSONObject(ojson.JSONOptDefault)
@@ -322,18 +331,16 @@ func TestDriver_OSON_JSONWrapperErrors(t *testing.T) {
 	assertError("JSON.GetJSONScalar", err)
 	_, err = value.GetValue(ojson.JSONOptDefault)
 	assertError("JSON.GetValue", err)
-	if got := value.String(); got != "" {
-		t.Fatalf("zero JSON.String() = %q, want empty string", got)
+	if text, err := value.String(); err != nil || text != "null" {
+		t.Fatalf("zero JSON.String() = (%q, %v), want JSON null text", text, err)
 	}
-	_, err = value.StringWithOption(ojson.JSONOptDefault)
-	assertError("JSON.StringWithOption", err)
 
 	var nilValue *ojson.JSON
 	assertError("nil JSON.Scan", nilValue.Scan([]byte{0xFF, 0x4A, 0x5A, 0x01}))
 	assertError("JSON.Scan text", value.Scan([]byte(`{"not":"oson"}`)))
 	assertError("JSON.Scan unsupported source", value.Scan("not bytes"))
-	_, err = (ojson.JSONValue{Data: struct{}{}}).Value()
-	assertError("JSONValue.Value unsupported input", err)
+	_, err = (ojson.JSON{Data: struct{}{}}).Value()
+	assertError("JSON.Value unsupported input", err)
 
 	var object ojson.JSONObject
 	if got := object.Len(); got != -1 {
@@ -350,8 +357,8 @@ func TestDriver_OSON_JSONWrapperErrors(t *testing.T) {
 	}
 	_, err = object.GetValue()
 	assertError("JSONObject.GetValue", err)
-	if got := object.String(); got != "" {
-		t.Fatalf("zero JSONObject.String() = %q, want empty string", got)
+	if _, err := object.String(); err == nil {
+		t.Fatal("zero JSONObject.String() error = nil, want error")
 	}
 
 	var array ojson.JSONArray
@@ -362,8 +369,8 @@ func TestDriver_OSON_JSONWrapperErrors(t *testing.T) {
 	assertError("JSONArray.GetValue", err)
 	_, err = array.Get(0)
 	assertError("JSONArray.Get", err)
-	if got := array.String(); got != "" {
-		t.Fatalf("zero JSONArray.String() = %q, want empty string", got)
+	if _, err := array.String(); err == nil {
+		t.Fatal("zero JSONArray.String() error = nil, want error")
 	}
 
 	var scalar ojson.JSONScalar
@@ -392,14 +399,14 @@ func runOSONFunctionalCases(t *testing.T, table string, cases []osonFunctionalCa
 			if _, err := db.ExecContext(ctx,
 				insSQL,
 				sql.Named("id", id),
-				sql.Named("jdoc", ojson.JSONValue{Data: tc.input}),
+				sql.Named("jdoc", ojson.JSON{Data: tc.input}),
 			); err != nil {
-				t.Fatalf("insert JSONValue %s failed: %v", tc.name, err)
+				t.Fatalf("insert JSON %s failed: %v", tc.name, err)
 			}
 
 			var gotJSON ojson.JSON
 			if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", id)).Scan(&gotJSON); err != nil {
-				t.Fatalf("select/scan JSONValue %s failed: %v", tc.name, err)
+				t.Fatalf("select/scan JSON %s failed: %v", tc.name, err)
 			}
 			assertOSONDocument(t, gotJSON, tc.want)
 		})
@@ -431,7 +438,7 @@ func setupOSONFunctionalTable(t *testing.T, table string) (*sql.DB, context.Cont
 
 	_ = dropTable(ctx, db, table)
 	if err := createTable(ctx, db, table, cols); err != nil {
-		t.Skipf("Skipping OSON JSONValue test (create failed): %v", err)
+		t.Skipf("Skipping OSON JSON test (create failed): %v", err)
 	}
 	t.Cleanup(func() { _ = dropTable(ctx, db, table) })
 
@@ -447,9 +454,9 @@ func assertOSONDocument(t *testing.T, gotJSON ojson.JSON, want any) {
 		t.Fatalf("JSON.GetValue(JSONOptNumberAsString) failed: %v", err)
 	}
 	if !reflect.DeepEqual(got, want) {
-		text, textErr := gotJSON.StringWithOption(ojson.JSONOptNumberAsString)
+		text, textErr := gotJSON.String()
 		if textErr != nil {
-			t.Fatalf("JSON mismatch and StringWithOption failed: %v", textErr)
+			t.Fatalf("JSON mismatch and String failed: %v", textErr)
 		}
 		t.Fatalf("OSON document mismatch:\n got value:  %#v\nwant value: %#v\n got text:  %s", got, want, text)
 	}

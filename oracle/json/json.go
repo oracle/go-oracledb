@@ -41,6 +41,7 @@ package json
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -74,19 +75,22 @@ const (
 	JSONScalarKind JSONKind = drvCommon.KindScalar
 )
 
-// JSONString is the bind-facing wrapper for JSON text.
-type JSONString struct {
-	// Data is the JSON text input.
-	Data string
-}
+// JSONString is the bind-facing for JSON text.
+type JSONString string
 
 // Value implements driver.Valuer.
 func (jz JSONString) Value() (driver.Value, error) {
-	return jz.Data, nil
+	if !json.Valid([]byte(jz)) {
+		cause := fmt.Errorf("JSONString contains invalid JSON text")
+		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, cause)
+	}
+	return string(jz), nil
 }
 
-// JSONValue is the bind-facing JSON value wrapper.
-type JSONValue struct {
+// JSON is the primary public container for Oracle JSON values.
+type JSON struct {
+	// node provides access to the underlying JSON representation.
+	node drvCommon.JSONNode
 	// Data is the Go value to encode as OSON for a JSON bind. It accepts:
 	//   - nil, bool, string, int, int8, int16, int32, int64, uint, uint8,
 	//     uint16, uint32, uint64, float32, float64, []byte, and time.Time
@@ -95,28 +99,13 @@ type JSONValue struct {
 	Data any
 }
 
-// Value implements driver.Valuer
-func (jz JSONValue) Value() (driver.Value, error) {
-	doc, err := oson.Encode(jz.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	return []byte(doc), nil
-}
-
-// JSON is the primary public container for Oracle JSON values.
-type JSON struct {
-	// node provides access to the underlying JSON representation.
-	node drvCommon.JSONNode
-}
-
 // Scan implements sql.Scanner.
 func (jz *JSON) Scan(src any) error {
 	if jz == nil {
 		cause := fmt.Errorf("cannot scan Oracle JSON into a nil *JSON receiver")
 		return common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "Scan")
 	}
+
 	switch value := src.(type) {
 	case []byte:
 		if len(value) >= 4 && oson.IsOson(value) {
@@ -140,18 +129,22 @@ func (jz *JSON) Scan(src any) error {
 
 // Value implements driver.Valuer.
 func (jz JSON) Value() (driver.Value, error) {
-	if jz.node == nil {
-		cause := fmt.Errorf("JSON has no parsed OSON node to encode")
-		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "Value")
+	data := jz.Data
+
+	if jz.node != nil {
+		var err error
+		data, err = jz.node.GetValue(drvCommon.JSONOptNumberAsString)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	node, err := jz.node.GetValue(JSONOptNumberAsString)
+	doc, err := oson.Encode(data)
 	if err != nil {
 		return nil, err
 	}
 
-	in := JSONValue{Data: node}
-	return in.Value()
+	return []byte(doc), nil
 }
 
 // Kind reports the high-level JSON value category.
@@ -227,25 +220,16 @@ func (jz JSON) GetValue(opts JSONOption) (any, error) {
 }
 
 // String returns the JSON text form.
-func (jz JSON) String() string {
-	if jz.node == nil {
-		return ""
+func (jz JSON) String() (string, error) {
+	if jz.node != nil {
+		return jz.node.String()
 	}
 
-	text, err := jz.StringWithOption(JSONOptNumberAsString)
+	text, err := json.Marshal(jz.Data)
 	if err != nil {
-		return ""
+		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
-	return text
-}
-
-// StringWithOption returns the JSON text form using the supplied options.
-func (jz JSON) StringWithOption(opts JSONOption) (string, error) {
-	if jz.node == nil {
-		cause := fmt.Errorf("JSON has no parsed OSON node to render")
-		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "StringWithOption")
-	}
-	return jz.node.StringWithOption(opts)
+	return string(text), nil
 }
 
 // JSONObject is a public JSON object wrapper.
@@ -304,15 +288,12 @@ func (obj JSONObject) Get(key string) (JSON, bool) {
 }
 
 // String returns the object as JSON text.
-func (obj JSONObject) String() string {
-	if obj.node != nil {
-		text, err := obj.node.StringWithOption(obj.opts)
-		if err != nil {
-			return ""
-		}
-		return text
+func (obj JSONObject) String() (string, error) {
+	if obj.node == nil {
+		cause := fmt.Errorf("JSONObject has no underlying object node to render")
+		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "String")
 	}
-	return ""
+	return obj.node.String()
 }
 
 // JSONArray is a public JSON array wrapper.
@@ -356,15 +337,12 @@ func (arr JSONArray) Get(i int) (JSON, error) {
 }
 
 // String returns the array as JSON text.
-func (arr JSONArray) String() string {
-	if arr.node != nil {
-		text, err := arr.node.StringWithOption(arr.opts)
-		if err != nil {
-			return ""
-		}
-		return text
+func (arr JSONArray) String() (string, error) {
+	if arr.node == nil {
+		cause := fmt.Errorf("JSONArray has no underlying array node to render")
+		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "String")
 	}
-	return ""
+	return arr.node.String()
 }
 
 // JSONScalar is a public JSON scalar wrapper.
@@ -382,4 +360,13 @@ func (scalar JSONScalar) GetValue() (any, error) {
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
 	return scalar.node.Value(scalar.opts)
+}
+
+// String returns the scalar as JSON text.
+func (scalar JSONScalar) String() (string, error) {
+	if scalar.node == nil {
+		cause := fmt.Errorf("JSONScalar has no underlying scalar node to render")
+		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "String")
+	}
+	return scalar.node.String()
 }

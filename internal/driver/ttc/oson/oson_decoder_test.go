@@ -75,9 +75,9 @@ func TestOsonDecoderFixtures(t *testing.T) {
 			if !test.checkJSON {
 				return
 			}
-			text, err := root.StringWithOption(drvCommon.JSONOptNumberAsString)
+			text, err := root.String()
 			if err != nil {
-				t.Fatalf("StringWithOption() error = %v", err)
+				t.Fatalf("String() error = %v", err)
 			}
 			assertSameJSON(t, text, test.sample.json)
 		})
@@ -85,7 +85,7 @@ func TestOsonDecoderFixtures(t *testing.T) {
 }
 
 // TestOsonDecoder_RejectsNonJSONBinaryFloatText verifies binary floating
-// values remain decodable while StringWithOption rejects values JSON cannot
+// values remain decodable while String rejects values JSON cannot
 // represent, including when nested inside containers.
 func TestOsonDecoder_RejectsNonJSONBinaryFloatText(t *testing.T) {
 	for _, test := range []struct {
@@ -105,8 +105,8 @@ func TestOsonDecoder_RejectsNonJSONBinaryFloatText(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Parse() error = %v", err)
 			}
-			if _, err := root.StringWithOption(drvCommon.JSONOptDefault); err == nil {
-				t.Fatal("StringWithOption() error = nil, want JSON encoding failure")
+			if _, err := root.String(); err == nil {
+				t.Fatal("String() error = nil, want JSON encoding failure")
 			} else {
 				assertOracleErrorCode(t, err, oracleErrors.JSONRenderingError)
 			}

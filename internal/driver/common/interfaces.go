@@ -151,7 +151,7 @@ const (
 // Decoding is lazy: creating a node reads only the OSON bytes needed to identify
 // that node and locate its direct children. It does not decode the child values.
 // Get creates another lazy node for one child. GetValue, Value, and
-// StringWithOption convert values to Go types and, for a container, decode the
+// String converts values to JSON text and, for a container, decodes the
 // complete subtree. This lets callers inspect a large document without
 // converting parts they do not need.
 //
@@ -173,10 +173,9 @@ type JSONNode interface {
 	// refine an any return type to map[string]any or []any.
 	GetValue(opts JSONOption) (any, error)
 
-	// StringWithOption returns the JSON text representation of the node using
-	// opts while materializing numeric descendants. It returns an error if the
-	// node cannot be decoded or represented as JSON.
-	StringWithOption(opts JSONOption) (string, error)
+	// String returns the JSON text representation of the node. It returns
+	// an error if the node cannot be decoded or represented as JSON.
+	String() (string, error)
 }
 
 // JSONObjectNode is a JSONNode whose Kind is KindObject.

@@ -208,12 +208,18 @@ func TestDriver_Table_Select_NullJSON(t *testing.T) {
 
 	selSQL := "SELECT JDOC FROM " + table + " WHERE id = :id"
 
-	var jsonOut sql.NullString
+	var jsonOut sql.Null[ojson.JSON]
 	if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", int64(1))).Scan(&jsonOut); err != nil {
 		t.Fatalf("select/scan null json failed: %v", err)
 	}
 	if jsonOut.Valid {
-		t.Fatalf("expected NULL json, got valid string: %q", jsonOut.String)
+		v, _ := jsonOut.V.Value()
+		t.Fatalf("expected NULL json, got valid string: %q", v)
+	}
+
+	var jsonOut2 ojson.JSON
+	if err := db.QueryRowContext(ctx, selSQL, sql.Named("id", int64(1))).Scan(&jsonOut2); err == nil {
+		t.Fatalf("select/scan NULL json column failed: expected error")
 	}
 }
 
@@ -342,9 +348,9 @@ func assertSameJSONDocument(t *testing.T, got ojson.JSON, wantText string) {
 
 	wantValue := decodeExpectedJSONValue(t, wantText)
 	if !reflect.DeepEqual(gotValue, wantValue) {
-		gotText, textErr := got.StringWithOption(ojson.JSONOptNumberAsString)
+		gotText, textErr := got.String()
 		if textErr != nil {
-			t.Fatalf("JSON mismatch and StringWithOption failed: %v", textErr)
+			t.Fatalf("JSON mismatch and String failed: %v", textErr)
 		}
 		t.Fatalf("JSON mismatch:\n got:  %s\nwant: %s", gotText, wantText)
 	}

@@ -61,7 +61,7 @@ import (
 //
 // Creating a scalarNode reads only the scalar opcode. nodeBase retains the OSON
 // document context and opcode identifies how to decode the payload. The payload
-// remains encoded until Value, GetValue, or StringWithOption requests its Go or
+// remains encoded until Value, GetValue, or String requests its Go or
 // JSON representation.
 type scalarNode struct {
 	nodeBase
@@ -127,7 +127,7 @@ func (scalar *scalarNode) GetValue(opt drvCommon.JSONOption) (any, error) {
 	return scalar.Value(opt)
 }
 
-// StringWithOption implements the JSONNode interface.
+// String implements the JSONNode interface.
 //
 // Input:
 //   - opts: JSON materialization option.
@@ -137,8 +137,8 @@ func (scalar *scalarNode) GetValue(opt drvCommon.JSONOption) (any, error) {
 //
 // Errors:
 //   - unsupported scalar opcode, payload decode failure, or JSON marshal failure.
-func (scalar *scalarNode) StringWithOption(opts drvCommon.JSONOption) (string, error) {
-	value, err := scalar.Value(opts)
+func (scalar *scalarNode) String() (string, error) {
+	value, err := scalar.Value(drvCommon.JSONOptNumberAsString)
 	if err != nil {
 		return "", err
 	}
@@ -154,7 +154,7 @@ func (scalar *scalarNode) StringWithOption(opts drvCommon.JSONOption) (string, e
 
 	text, err := json.Marshal(jsonCompatibleValue(value))
 	if err != nil {
-		common.Odl.Debug("scalarNode.StringWithOption: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
+		common.Odl.Debug("scalarNode.String: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
 	return string(text), nil

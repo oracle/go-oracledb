@@ -149,7 +149,7 @@ func (array *arrayNode) GetValue(opts drvCommon.JSONOption) (any, error) {
 	return array.Value(opts)
 }
 
-// StringWithOption implements the JSONNode interface.
+// String implements the JSONNode interface.
 //
 // Input:
 //   - opts: JSON materialization options.
@@ -159,15 +159,15 @@ func (array *arrayNode) GetValue(opts drvCommon.JSONOption) (any, error) {
 //
 // Errors:
 //   - child node construction, value decoding, or JSON encoding failure.
-func (array *arrayNode) StringWithOption(opts drvCommon.JSONOption) (string, error) {
-	materializedArray, err := array.Value(opts)
+func (array *arrayNode) String() (string, error) {
+	materializedArray, err := array.Value(drvCommon.JSONOptNumberAsString)
 	if err != nil {
 		return "", err
 	}
 
 	jsonBytes, err := json.Marshal(jsonCompatibleValue(materializedArray))
 	if err != nil {
-		common.Odl.Debug("arrayNode.StringWithOption: failed", "error", err, "offset", array.offset)
+		common.Odl.Debug("arrayNode.String: failed", "error", err, "offset", array.offset)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
 	return string(jsonBytes), nil

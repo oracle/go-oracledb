@@ -449,18 +449,18 @@ func TestScalarNode_DefaultOracleNumberAllowsLargePrecisionFloat(t *testing.T) {
 		t.Fatalf("Value(JSONOptNumberAsString) = %#v, want JSONNumber(%q)", gotString, text)
 	}
 
-	gotText, err := node.StringWithOption(drvCommon.JSONOptNumberAsString)
+	gotText, err := node.String()
 	if err != nil {
-		t.Fatalf("StringWithOption(JSONOptNumberAsString) error = %v", err)
+		t.Fatalf("String() error = %v", err)
 	}
 	if gotText != text {
-		t.Fatalf("StringWithOption(JSONOptNumberAsString) = %q, want %q", gotText, text)
+		t.Fatalf("String() = %q, want %q", gotText, text)
 	}
 }
 
-// TestScalarNode_KindAndStringWithOption verifies scalar kind classification
+// TestScalarNode_KindAndString verifies scalar kind classification
 // and JSON string rendering for a decoded scalar value.
-func TestScalarNode_KindAndStringWithOption(t *testing.T) {
+func TestScalarNode_KindAndString(t *testing.T) {
 	node, err := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{0x02, 'o', 'k'}), &osonHeader{}, 0)
 	if err != nil {
 		t.Fatalf("newScalarNodeAt() error = %v", err)
@@ -470,12 +470,12 @@ func TestScalarNode_KindAndStringWithOption(t *testing.T) {
 		t.Fatalf("Kind() = %v, want %v", got, want)
 	}
 
-	text, err := node.StringWithOption(drvCommon.JSONOptDefault)
+	text, err := node.String()
 	if err != nil {
-		t.Fatalf("StringWithOption() error = %v", err)
+		t.Fatalf("String() error = %v", err)
 	}
 	if text != `"ok"` {
-		t.Fatalf("StringWithOption() = %q, want %q", text, `"ok"`)
+		t.Fatalf("String() = %q, want %q", text, `"ok"`)
 	}
 }
 

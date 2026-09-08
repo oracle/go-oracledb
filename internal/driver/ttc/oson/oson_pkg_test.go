@@ -137,7 +137,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestScalarNode_ValueCoversSupportedDecodeUseCases", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_ValueCoversSupportedDecodeUseCases},
 	{Name: "TestScalarNode_NumberAsStringOption", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_NumberAsStringOption},
 	{Name: "TestScalarNode_DefaultOracleNumberAllowsLargePrecisionFloat", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_DefaultOracleNumberAllowsLargePrecisionFloat},
-	{Name: "TestScalarNode_KindAndStringWithOption", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_KindAndStringWithOption},
+	{Name: "TestScalarNode_KindAndString", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_KindAndString},
 	{Name: "TestScalarNode_MalformedScalarPayloads", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_MalformedScalarPayloads},
 	{Name: "TestScalarNode_BinaryFloatSpecialValue", Categories: "unitary", Exclusive: false, Fn: TestScalarNode_BinaryFloatSpecialValue},
 	{Name: "TestOsonHeader_RejectsTruncatedInput", Categories: "unitary", Exclusive: false, Fn: TestOsonHeader_RejectsTruncatedInput},
