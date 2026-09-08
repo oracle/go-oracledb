@@ -504,7 +504,7 @@ Errors:
 */
 func DecodeJson(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
 	if !oson.IsOson(data) {
-		cause := fmt.Errorf("database returned %d bytes for JSON column %q at index %d; expected an OSON document beginning with magic bytes FF 4A 5A", len(data), columnContext.Name, columnContext.Index)
+		cause := fmt.Errorf("JSON payload is not an OSON document")
 		return nil, common.NewOracleError(oracleErrors.OsonHeaderError, cause)
 	}
 

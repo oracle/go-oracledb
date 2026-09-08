@@ -93,10 +93,14 @@ const (
 	// osonTimestamp7PayloadSize is the fixed payload size of one 7-byte TIMESTAMP scalar.
 	osonTimestamp7PayloadSize = 7
 
+	// osonObjectOrArrayOpMask selects bits 7-6: 10 is an object and 11 is an array.
 	osonObjectOrArrayOpMask = 0xC0
+	// osonCompactSigned32Mask selects the 01000xxx compact signed-32 opcode; xxx is the payload length.
 	osonCompactSigned32Mask = 0xF8
+	// osonCompactSigned64Mask selects the 0101xxxx compact signed-64 opcode; xxxx is the payload length.
 	osonCompactSigned64Mask = 0xF0
-	osonCompactNumberMask   = 0xF0
+	// osonCompactNumberMask selects 0010xxxx NUMBER; xxxx encodes payload length.
+	osonCompactNumberMask = 0xF0
 )
 
 // FNV hash constants used to reproduce OSON field-name hash compatibility.
@@ -261,12 +265,6 @@ const (
 	osonOpID = 0x7e
 	// Binary float.
 	osonOpBinaryFloat = 0x7f
-)
-
-// int platform size
-const (
-	int32Size = 32
-	int64Size = 64
 )
 
 // isShortStringOpcode reports whether opcode matches `0b000xxxxx`.
