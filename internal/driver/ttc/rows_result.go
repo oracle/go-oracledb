@@ -398,6 +398,7 @@ func (r *ttcRows) Close() error {
 // closeServerCursor queues an OCCA for this server cursor. Push deliberately
 // does not flush, allowing the next normal round trip to carry the close.
 func (r *ttcRowsRefCursor) closeServerCursor() error {
+	common.Odl.Debug("Queueing REF CURSOR close", "cursorID", r.cursorID)
 	msg, err := r.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
 	if err != nil {
 		return r.shelf.LocalizeError(err)
@@ -415,10 +416,15 @@ func (r *ttcRowsRefCursor) closeServerCursor() error {
 // fetchRows invokes the deferred RefCursor fetch at most once.
 func (r *ttcRowsRefCursor) fetchRows() error {
 	if r.fetch != nil {
-		r.fetchOnce.Do(func() { r.fetchErr = r.fetch() })
+		r.fetchOnce.Do(func() {
+			common.Odl.Debug("Fetching REF CURSOR rows", "cursorID", r.cursorID)
+			r.fetchErr = r.fetch()
+		})
 		if r.fetchErr != nil {
+			common.Odl.Warn("REF CURSOR fetch failed", "cursorID", r.cursorID, "error", r.fetchErr)
 			return r.fetchErr
 		}
+		common.Odl.Debug("REF CURSOR rows fetched", "cursorID", r.cursorID, "rows", r.numOfRows)
 	}
 	return nil
 }

@@ -87,6 +87,7 @@ const (
 	kpccapCtbPrefetchRows          = "KPCCAP_CTB_PREFETCH_ROWS"
 	kpccapCtbImplicitPool          = "KPCCAP_CTB_IMPLICIT_POOL"
 	kpccapCtbOauthmsgOnerr         = "KPCCAP_CTB_OAUTHMSG_ONERR"
+	// kpccapCtbImplresPrefetch enables TTIIMPLRES row prefetch in the execute response.
 	kpccapCtbImplresPrefetch       = "KPCCAP_CTB_IMPLRES_PREFETCH"
 	kpccapCtScrollableCursor       = "KPCCAP_CT_SCROLLABLE_CURSOR"
 	kpccapCtTtcFldVsn              = "KPCCAP_CT_TTC_FLD_VSN"

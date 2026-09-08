@@ -117,9 +117,9 @@ func TestTTIimplres_ZeroResultSets(t *testing.T) {
 	}
 
 	implres := &tTIimplres{
-		newDCB: func() (*tTIdcb, error) {
+		newDCB: func() driverCommon.Message[driverCommon.MessageType] {
 			t.Fatal("newDCB called for an empty implicit-result message")
-			return nil, nil
+			return nil
 		},
 		newRows: func([]columnContext, driverCommon.SB4) *ttcRowsRefCursor {
 			t.Fatal("newRows called for an empty implicit-result message")
@@ -131,6 +131,28 @@ func TestTTIimplres_ZeroResultSets(t *testing.T) {
 	}
 	if len(implres.rows) != 0 {
 		t.Fatalf("implicit result rows = %d, want 0", len(implres.rows))
+	}
+}
+
+func TestTTIimplres_NewDCBUsesMessageVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		newImpl func() driverCommon.Message[driverCommon.MessageType]
+		valid   func(driverCommon.UnMarshallable) bool
+	}{
+		{"base", newTTIimplres, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds); return ok }},
+		{"17", newTTIimplres17, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds17); return ok }},
+		{"20", newTTIimplres20, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds20); return ok }},
+		{"24", newTTIimplres24, func(uds driverCommon.UnMarshallable) bool { _, ok := uds.(*tTIuds24); return ok }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			implres := test.newImpl().(*tTIimplres)
+			dcb, ok := implres.newDCB().(*tTIdcb)
+			if !ok || dcb == nil || dcb.newUDS == nil || !test.valid(dcb.newUDS()) {
+				t.Fatalf("newDCB() = %#v, does not use the expected version-specific UDS", dcb)
+			}
+		})
 	}
 }
 
@@ -147,7 +169,7 @@ func TestTTIimplres_MultipleResultSets(t *testing.T) {
 	}
 
 	implres := &tTIimplres{
-		newDCB: func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil },
+		newDCB: newTTIdcb,
 		newRows: func(columns []columnContext, cursorID driverCommon.SB4) *ttcRowsRefCursor {
 			if len(columns) != 1 || string(columns[0].Name) != "C" {
 				t.Fatalf("columns = %#v, want one column named C", columns)
@@ -176,7 +198,7 @@ func TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages(t *testing.T) {
 	}
 
 	implres := &tTIimplres{
-		newDCB: func() (*tTIdcb, error) { return &tTIdcb{}, nil },
+		newDCB: newTTIdcb,
 		newRows: func([]columnContext, driverCommon.SB4) *ttcRowsRefCursor {
 			return newRefCursorResultRows(newTTCRows(nil), 0)
 		},
@@ -221,7 +243,7 @@ func TestTTIimplres_PrefetchCompletion(t *testing.T) {
 	}
 
 	implres := &tTIimplres{
-		newDCB: func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil },
+		newDCB: newTTIdcb,
 		newRows: func(columns []columnContext, cursorID driverCommon.SB4) *ttcRowsRefCursor {
 			return newRefCursorResultRows(newTTCRows(columns), cursorID)
 		},
@@ -258,7 +280,7 @@ func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 	}
 
 	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: DtyChr}}), 0)
-	if err := (&tTIimplres{}).unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
+	if err := (&tTIimplres{newDCB: newTTIdcb}).unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
 		t.Fatalf("unmarshal implicit-result BVC: %v", err)
 	}
 	if rows.numOfRows != 0 || rows.fetch != nil {
@@ -271,9 +293,8 @@ func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
 	if !ok || implres.GetMsgCode() != TTIIMPLRES {
 		t.Fatalf("newTTIimplres() = %T with message code %v", implres, implres.GetMsgCode())
 	}
-	newDCB := func() (*tTIdcb, error) { return nil, nil }
 	newRows := func([]columnContext, driverCommon.SB4) *ttcRowsRefCursor { return nil }
-	implres.configure(newDCB, newRows, true)
+	implres.configure(newRows, true)
 	implres.setRefCursorRowsFactory(newRows)
 	implres.setSessionCharacterSets(873, 2000)
 	if implres.newDCB == nil || implres.newRows == nil || implres.newRefCursorRows == nil || !implres.prefetch || implres.sessCharSet != 873 || implres.sessNCharSet != 2000 {
@@ -298,24 +319,12 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 	}
 	configured := func() *tTIimplres {
 		return &tTIimplres{
-			newDCB: func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil },
+			newDCB: newTTIdcb,
 			newRows: func([]columnContext, driverCommon.SB4) *ttcRowsRefCursor {
 				return newRefCursorResultRows(newTTCRows(nil), 0)
 			},
 		}
 	}
-
-	t.Run("DCB factory", func(t *testing.T) {
-		mar := newMarshaller()
-		if err := mar.MarshalUB4(ctx, 1); err != nil {
-			t.Fatal(err)
-		}
-		implres := configured()
-		implres.newDCB = func() (*tTIdcb, error) { return nil, io.ErrUnexpectedEOF }
-		if err := implres.UnMarshalFrom(ctx, mar); err == nil {
-			t.Fatal("DCB factory failure returned nil error")
-		}
-	})
 
 	t.Run("truncated DCB", func(t *testing.T) {
 		mar := newMarshaller()

@@ -53,9 +53,9 @@ import (
 
 // Internal AL8I4 flags used in oall8Options[9]
 const (
-	_al8exGetPidmlrc         driverCommon.UB4 = 0x4000
-	_al8exImplResultsClient  driverCommon.UB4 = 0x8000
-	_al8exPfchCntEachImplCsr driverCommon.UB4 = 0x400000
+	_al8exGetPidmlrc                 driverCommon.UB4 = 0x4000
+	_al8exImplResultsClient          driverCommon.UB4 = 0x8000
+	_al8exPrefetchEachImplicitCursor driverCommon.UB4 = 0x400000
 )
 
 /*
@@ -193,8 +193,8 @@ type queryRunState struct {
 	// prevRow and prevLobColContext form the aligned previous-row state used by
 	// BVC carry.
 	prevRow           []driverCommon.B1Array
-	prevRefCursorRows []*ttcRowsRefCursor
 	prevLobColContext []*lobColumnContext
+	prevRefCursorRows []*ttcRowsRefCursor
 	rows              *ttcRowsRefCursor
 }
 
@@ -218,13 +218,17 @@ func newStatementExecutorSelect() *statementExecutorSelect {
 // executor owns the TTC OALL8/define/fetch protocol work.
 type refCursorExecutor struct {
 	statementExecutorSelect
+	// cursorID is the server-side cursor fetched by this executor.
 	cursorID driverCommon.SB4
-	columns  []columnContext
-	rows     *ttcRowsRefCursor
+	// columns are the descriptor contexts returned with the parent cursor value.
+	columns []columnContext
+	// rows holds the data delivered by the deferred fetch operation.
+	rows *ttcRowsRefCursor
 }
 
 var _ QueryWithContext = (*refCursorExecutor)(nil)
 
+// newRefCursorExecutor creates the deferred-fetch executor for one server REF CURSOR.
 func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *refCursorExecutor {
 	exec := &refCursorExecutor{
 		statementExecutorSelect: *newStatementExecutorSelect(),
@@ -242,6 +246,7 @@ func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *dr
 	return exec
 }
 
+// newRefCursorRows creates rows whose first Next triggers the server REF CURSOR fetch.
 func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
 	return newRefCursorExecutor(shelf, sessCtx, cursorID, columns).rows
 }
@@ -345,6 +350,7 @@ func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
 		e.opts &= ^noPLSQLMode
 		e.opts = e.opts | returnIOVVector
 	}
+	e.implicitRows = nil
 }
 
 // statementExecutorDML implements queries and statements for DMLs.
@@ -990,7 +996,6 @@ func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualif
 		return nil, err
 	}
 	e.initExecRunner(args)
-	e.implicitRows = nil
 	e.enableImplicitResultPrefetch()
 	messageToExecute, err := e.prepareForExec(query, args)
 	if err != nil {
@@ -1006,9 +1011,12 @@ func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualif
 	return newImplicitResultRows(e.implicitRows), nil
 }
 
+// enableImplicitResultPrefetch requests first-round-trip data for every implicit cursor
+// when the negotiated server capability supports it.
 func (e *statementExecutorPlSql) enableImplicitResultPrefetch() {
 	if capability, ok := e.shelf.GetCapabilities()[kpccapCtbImplresPrefetch]; ok && capability.IsSet {
-		e.al8i4[9] |= _al8exPfchCntEachImplCsr
+		common.Odl.Debug("Enabling implicit-result prefetch")
+		e.al8i4[9] |= _al8exPrefetchEachImplicitCursor
 	}
 }
 
@@ -1062,13 +1070,7 @@ func (e *statementExecutorPlSql) createImplRes(*messageHeader) (driverCommon.Mes
 	newRows := func(columns []columnContext, cursorID driverCommon.SB4) *ttcRowsRefCursor {
 		return newRefCursorRows(e.shelf, e.sessCtx, cursorID, columns)
 	}
-	implres.configure(func() (*tTIdcb, error) {
-		msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIDCB)
-		if err != nil {
-			return nil, err
-		}
-		return msg.(*tTIdcb), nil
-	}, newRows, prefetch)
+	implres.configure(newRows, prefetch)
 	implres.setRefCursorRowsFactory(newRows)
 	implres.setSessionCharacterSets(e.sessCtx.DriverCharacterSet(), e.sessCtx.SessionNCharCharacterSet())
 	return implres, nil
@@ -1308,14 +1310,10 @@ func (e *statementExecutorDML) createRXD(t *messageHeader) (driverCommon.Message
 	return rxd, nil
 }
 
+// configureRefCursorRXD supplies RXD with the rows factory for REF CURSOR descriptors.
+// The version-specific RXD constructor already supplies the matching DCB constructor.
 func (e *statementProcessor) configureRefCursorRXD(rxd *tTIrxd) {
-	rxd.setRefCursorFactories(func() (*tTIdcb, error) {
-		msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIDCB)
-		if err != nil {
-			return nil, err
-		}
-		return msg.(*tTIdcb), nil
-	}, func(columns []columnContext, cursorID driverCommon.SB4) *ttcRowsRefCursor {
+	rxd.setRefCursorRowsFactory(func(columns []columnContext, cursorID driverCommon.SB4) *ttcRowsRefCursor {
 		return newRefCursorRows(e.shelf, e.sessCtx, cursorID, columns)
 	})
 }
