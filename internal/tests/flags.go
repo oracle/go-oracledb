@@ -40,6 +40,7 @@ package tests
 import (
 	"flag"
 	"fmt"
+	"strings"
 )
 
 // Test configuration flag. This flag gives configuration file path
@@ -51,16 +52,30 @@ var ConfigFileName string
 // configuration to use.
 var ConfigName string
 
-// TestCategory category of tests to be un
-var TestCategory string
+
+
+type TestCategoryList []string
+
+func (s *TestCategoryList) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *TestCategoryList) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
+// TestCategories category of tests to be un
+var TestCategories TestCategoryList
+
 
 func init() {
 
 	flag.StringVar(&ConfigFileName, "driver.config.filename", "", "tests config name")
 	flag.StringVar(&ConfigName, "driver.config.name", "", "tests config name")
-
-	flag.StringVar(&TestCategory, "test.category", "", "tests category, can be unitary, functional, performance, robustness")
+	flag.Var(&TestCategories, "test.category", "tests category to be enabled, can be unitary,functional,robustness,... May be specified multiple times")
 }
+
 
 // InitConfig init the environment configuration
 // Main task is to parse dirver config flags and populate the

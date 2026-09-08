@@ -61,9 +61,6 @@ func TestDriver_TCPS_Pipeline_SelectDual(t *testing.T) {
 	if err != nil || config == nil {
 		t.Skipf("TCPS pipeline configuration %q not available: %v", pipelineTCPSConfigName, err)
 	}
-	/*if !config.Enabled {
-		t.Skipf("TCPS pipeline configuration %q is disabled", pipelineTCPSConfigName)
-	}*/
 
 	if !strings.EqualFold(config.Database.Protocol, "tcps") {
 		t.Fatalf("configuration %q must use protocol tcps, got %q", pipelineTCPSConfigName, config.Database.Protocol)

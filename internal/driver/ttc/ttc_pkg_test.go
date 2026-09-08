@@ -48,7 +48,6 @@ import (
 	"math"
 	"os"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 
@@ -57,15 +56,19 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	err := InitConfig()
+	err := oracleTest.InitConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
 		os.Exit(1)
-	} else {
-		os.Exit(m.Run())
 	}
+	TestEnvironement = oracleTest.TestEnvironement
+	TestingConfig = oracleTest.TestingConfig
+	DefaultTestConfig = oracleTest.DefaultTestConfig
+	os.Exit(m.Run())
 }
-
+func TestCategoryExecutor(t *testing.T) {
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
+}
 type Version = oracleTest.Version
 type TestConfig = oracleTest.TestConfig
 type TestingEnvironment = oracleTest.TestingEnvironment
@@ -74,22 +77,7 @@ var DefaultTestConfig *TestConfig
 var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
-func InitConfig() error {
-	if err := oracleTest.InitConfig(); err != nil {
-		return err
-	}
-	TestEnvironement = oracleTest.TestEnvironement
-	TestingConfig = oracleTest.TestingConfig
-	DefaultTestConfig = oracleTest.DefaultTestConfig
-	return nil
-}
-
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{
+var testCases = []oracleTest.CategorizedTestCase{
 	{"TestCapabilityNew", "unitary", false, TestCapabilityNew},
 	{"TestCapabilityNewDefault", "unitary", false, TestCapabilityNewDefault},
 	{"TestCapabilityMarshalTo_Success", "unitary", false, TestCapabilityMarshalTo_Success},
@@ -597,42 +585,6 @@ var testCases = []struct {
 	{"Test_ttiSTA_getConnectionShouldBeDropped", "unitary", false, Test_ttiSTA_getConnectionShouldBeDropped},
 
 	{"TestTypeRep_UnMarshalFrom_TooManyTypeRepresentations", "unitary", false, TestTypeRep_UnMarshalFrom_TooManyTypeRepresentations},
-}
-
-func TestCategoryExecutor(t *testing.T) {
-	var regularCases, exclusiveCases []struct {
-		name       string
-		categories string
-		exclusive  bool
-		f          func(t *testing.T)
-	}
-
-	for _, c := range testCases {
-		cats := strings.Split(c.categories, ",")
-		for _, p := range cats {
-			if strings.Compare(strings.TrimSpace(p), oracleTest.TestCategory) == 0 {
-				if c.exclusive {
-					exclusiveCases = append(exclusiveCases, c)
-				} else {
-					regularCases = append(regularCases, c)
-				}
-				break
-			}
-		}
-	}
-
-	if len(regularCases) > 0 {
-		t.Run("parallel", func(t *testing.T) {
-			t.Parallel()
-			for _, c := range regularCases {
-				t.Run(c.name, c.f)
-			}
-		})
-	}
-
-	for _, c := range exclusiveCases {
-		t.Run(c.name, c.f)
-	}
 }
 
 // ArrayBasedDataBuffer is an implementation of DataBuffer for testing purposes.

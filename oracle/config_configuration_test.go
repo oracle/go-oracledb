@@ -232,12 +232,16 @@ func TestConfiguration_AssignFromEnvClientLanguageTag(t *testing.T) {
 //
 //	no failure
 func TestConfiguration_AssignFromEmptyFlags(t *testing.T) {
-	t.Parallel()
+
 	conf := NewOracleDriverConfig()
 
 	flag.Set("oracle.go.Locale.Territory", "FOO")
-
 	flag.Set("oracle.go.Credentials.User", "myuser")
+
+	defer func() {
+		flag.Set("oracle.go.Credentials.User", "")
+		flag.Set("oracle.go.Locale.Territory", "")
+	}()
 
 	conf.AssignFromFlags()
 

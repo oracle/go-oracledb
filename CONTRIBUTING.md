@@ -47,6 +47,34 @@ can be accepted.
 1. We will assign the pull request to 2-3 people for review before it is merged.
 
 ## Coding style
+
+### Documentation
+
+All methods must be documented. THe documentation block should contain information about inputs and outputs
+including error case. 
+
+ex 
+```go
+// Foo multiplies a positive number given as parameter.
+// Parameters:
+//
+//	number : the number to be computed
+//
+// Returns:
+//
+//	. the multiplied number
+//	. En error if givne number is equal or less than zero
+func Foo(number int) (int, error) {
+  if (number <= 0) {
+    return 0, return NewOracleError(...)
+  }
+	return number * 2, nil
+}
+```
+
+All testing methods should be documented with information about test purpose and expectations. 
+
+
 ### Code format
 
 The code must be formatted the same way. Code format is one of the validation steps of pipelines run beside merge-request
@@ -133,11 +161,11 @@ import oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 // populates test categories
 var testCases = []oracleTest.CategorizedTestCase{ 
 	{"test foo", "functional", false, TestFoo},
-	{"test bar", "unitary", false, TestBar},
+	{"test bar", "unitary,sanity", false, TestBar},
 }
 // define a test suite executor as shown below
 func TestCategoryExecutor(t *testing.T) {
-   oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
+   oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 ```
 In the example above, two tests are registered: one unitary test named "test bar" that executes the TestBar test method
@@ -158,7 +186,7 @@ packages are tested at the same time.
 
 ```go
  # run all functional tests.
- go test -parallel=10  -shuffle=on  $(go list ./...) -v -run TestCategoryExecutor -test.category="functional"
+ go test -parallel=10  -shuffle=on  $(go list ./...) -v -run TestCategoryExecutor -test.category="functional" -test.category="unitary"
 ```
 
 

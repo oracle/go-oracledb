@@ -172,6 +172,7 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 		// grab user/password if any
 		parts := strings.SplitN(dsn, "@", 2)
 		if len(parts) == 2 {
+			// credentials specified in the DSN
 			cred = strings.SplitN(parts[0], "/", 2)
 			if len(cred) != 2 {
 				return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, nil, dsn)
@@ -184,6 +185,8 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 			// Credentials in config is not authorized when also specified
 			// in dsn
 			if confToUse.Credentials.User != "" || confToUse.Credentials.Password != "" {
+				fmt.Printf("\nDUPLICATE [%v]  [%v] [%v] [%v] [%v]\n",dsn,  dsnToUse,parts[0], confToUse.Credentials.User,confToUse.Credentials.Password )
+
 				return nil, common.NewOracleError(oracleErrors.ConflictingConnectionParameterSource, nil, "credentials")
 			}
 

@@ -1,0 +1,92 @@
+name: periodic stress, robustness and performance validation
+on:
+  schedule:
+    - cron: '0 1 * * 6'
+      timezone: "America/New_York"
+      inputs:
+        branch:
+          description: Branch name
+          required: false
+          default: main
+          type: string
+
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch name
+        required: true
+        type: string
+jobs:
+  bench_driver:
+    runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
+    strategy:
+      matrix:
+        include:
+          - rdbms: base-database-service-26ai
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-go-env
+      - uses: ./.github/actions/list-go-packages
+        id: go-packages
+      - name: Create test database
+        id: create_database
+        uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # 1.0.31
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: create
+          user: ${{ env.VALIDATION_USER_NAME }}
+          fully-qualified-names: true
+      - uses: ./.github/actions/setup-test-configuration
+        with:
+          database-version: ${{ steps.create_database.outputs.database_version }}
+          database-service: ${{ steps.create_database.outputs.database_service }}
+          database-host: ${{ steps.create_database.outputs.database_host }}
+          database-port: ${{ steps.create_database.outputs.database_port }}
+          database-protocol: ${{ steps.create_database.outputs.database_protocol }}
+          database-user: ${{ steps.create_database.outputs.database_user }}
+          database-password: ${{ steps.create_database.outputs.database_password }}
+      - run: go test -v ${{ steps.go-packages.outputs.packages }} -run=^$ -bench=. -benchmem -benchtime=10x -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test
+      - uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # 1.0.31
+        if: always()
+        with:
+          oci-service: ${{ matrix.rdbms }}
+          action: delete
+          user: ${{ env.VALIDATION_USER_NAME }}
+
+    heavy_driver:
+      runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
+      strategy:
+        matrix:
+          include:
+            - rdbms: base-database-service-26ai
+      timeout-minutes: 10
+      steps:
+        - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        - uses: ./.github/actions/setup-go-env
+        - uses: ./.github/actions/list-go-packages
+          id: go-packages
+        - name: Create test database
+          id: create_database
+          uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # 1.0.31
+          with:
+            oci-service: ${{ matrix.rdbms }}
+            action: create
+            user: ${{ env.VALIDATION_USER_NAME }}
+            fully-qualified-names: true
+        - uses: ./.github/actions/setup-test-configuration
+          with:
+            database-version: ${{ steps.create_database.outputs.database_version }}
+            database-service: ${{ steps.create_database.outputs.database_service }}
+            database-host: ${{ steps.create_database.outputs.database_host }}
+            database-port: ${{ steps.create_database.outputs.database_port }}
+            database-protocol: ${{ steps.create_database.outputs.database_protocol }}
+            database-user: ${{ steps.create_database.outputs.database_user }}
+            database-password: ${{ steps.create_database.outputs.database_password }}
+        - run: go test -parallel=10  -shuffle=on -v ${{ steps.go-packages.outputs.packages }}  -coverpkg=./... -cover -run TestCategoryExecutor -test.gocoverdir=${{ github.workspace }}/coverage/coverage/full_func -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="robustness" -test.category="stress"
+        - uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # 1.0.31
+          if: always()
+          with:
+            oci-service: ${{ matrix.rdbms }}
+            action: delete
+            user: ${{ env.VALIDATION_USER_NAME }}
