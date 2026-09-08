@@ -262,6 +262,15 @@ var testCases = []struct {
 	{"TestTokenAuthenticatorSignHeaderForSignedProvider", "unitary", false, TestTokenAuthenticatorSignHeaderForSignedProvider},
 	{"TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty", "unitary", false, TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty},
 	{"TestValidateJWTExpirationExpired", "unitary", false, TestValidateJWTExpirationExpired},
+	{"TestTokenAuthenticatorAuthenticateValidation", "unitary", false, TestTokenAuthenticatorAuthenticateValidation},
+	{"TestTokenAuthenticatorHelpers", "unitary", false, TestTokenAuthenticatorHelpers},
+	{"TestValidateJWTExpirationNonExpiredAndMalformed", "unitary", false, TestValidateJWTExpirationNonExpiredAndMalformed},
+	{"TestTokenAuthenticatorAuthenticateBuildsOAuthMessage", "unitary", false, TestTokenAuthenticatorAuthenticateBuildsOAuthMessage},
+	{"TestTokenAuthenticatorAuthenticateRequiresRPAForSuccessfulOER", "unitary", false, TestTokenAuthenticatorAuthenticateRequiresRPAForSuccessfulOER},
+	{"TestTokenAuthenticatorSettersAndHeaderValidation", "unitary", false, TestTokenAuthenticatorSettersAndHeaderValidation},
+	{"TestTokenAuthenticatorSignHeaderErrors", "unitary", false, TestTokenAuthenticatorSignHeaderErrors},
+	{"TestTokenAuthenticatorAuthenticateStreamerErrors", "unitary", false, TestTokenAuthenticatorAuthenticateStreamerErrors},
+	{"TestOAuth_prepareForTokenOAUTH", "unitary", false, TestOAuth_prepareForTokenOAUTH},
 	{"TestConnectionNegotiator_Negotiate_Fail", "unitary", false, TestConnectionNegotiator_Negotiate_Fail},
 	{"TestConnectionNegotiator_Negotiate_Success", "unitary", false, TestConnectionNegotiator_Negotiate_Success},
 	{"TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey", "unitary", false, TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey},
@@ -1000,6 +1009,7 @@ type mockStreamer struct {
 	pushCalled bool
 	pushedMsg  list.List
 	pushErr    error
+	flushErr   error
 	pullCalled bool
 	pullTypes  []common.MessageType
 	pullMsg    common.Message[common.MessageType]
@@ -1093,7 +1103,7 @@ func (m *mockStreamer) Pull(_ context.Context, types ...common.MessageType) (com
 }
 
 func (m *mockStreamer) Flush(_ context.Context) error {
-	return nil
+	return m.flushErr
 }
 
 func (m *mockStreamer) Drain(_ context.Context, direction common.StreamDirection) (int, int) {
