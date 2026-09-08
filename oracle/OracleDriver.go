@@ -185,8 +185,6 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 			// Credentials in config is not authorized when also specified
 			// in dsn
 			if confToUse.Credentials.User != "" || confToUse.Credentials.Password != "" {
-				fmt.Printf("\nDUPLICATE [%v]  [%v] [%v] [%v] [%v]\n",dsn,  dsnToUse,parts[0], confToUse.Credentials.User,confToUse.Credentials.Password )
-
 				return nil, common.NewOracleError(oracleErrors.ConflictingConnectionParameterSource, nil, "credentials")
 			}
 
