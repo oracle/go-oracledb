@@ -129,7 +129,7 @@ type Statement struct {
 	stmtCancellation       statemementCancellationFunction
 	queryStatementExecutor QueryWithContext
 	execStatementExecutor  ExecWithContext
-	_rows                  *ttcRows // reference on created Rows.
+	_rows                  driver.Rows // reference on created Rows.
 }
 
 /*
@@ -218,7 +218,7 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	selectedRows, e := s.queryStatementExecutor.QueryContext(subContext, s.qualifiedQuery, args)
 	if e == nil {
-		s._rows = selectedRows.(*ttcRows)
+		s._rows = selectedRows
 	}
 
 	msgIn, _ := s.shelf.GetMessageStreamer().Drain(ctx, driverCommon.IN)
@@ -239,22 +239,14 @@ func (s *Statement) _closeCursor() error {
 	if s.qualifiedQuery.cursorId == 0 {
 		return nil
 	}
-	// Build OCCA from factory.
-	factory := s.shelf.GetMessageFactory()
-	msg, err := factory.GetMessageForFunction(TTIPFN, occa)
+	msg, err := s.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
 	if err != nil {
-		common.Odl.Error("Statement.Close: GetMessageForFunction(TTIPFN,occa) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
-
-	common.Odl.Debug("Closing cursorId", "ID", s.qualifiedQuery.cursorId)
 	occaMsg := msg.(*tTIOcca)
 	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(s.qualifiedQuery.cursorId)})
-
-	// Push (no flush; keep existing previous behavior).
-	stmr := s.shelf.GetMessageStreamer().(MessageStreamerInterface)
-	if err := stmr.Push(context.Background(), occaMsg); err != nil {
-		common.Odl.Error("Statement.Close: Push(OCCA) failed", "error", err)
+	streamer := s.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	if err := streamer.Push(context.Background(), occaMsg); err != nil {
 		return s.shelf.LocalizeError(err)
 	}
 	s.qualifiedQuery.cursorId = 0

@@ -118,23 +118,21 @@ type columnContext struct {
 //   - RowsColumnTypePrecisionScale
 //   - RowsColumnTypeScanType
 type ttcRows struct {
-	// row buffer
+	// rowData holds raw TTC values and currentRowIdx identifies the next row.
 	rowData       [][]driverCommon.B1Array
-	refCursorData [][]*ttcRows
 	currentRowIdx int
 	numOfRows     int
-	cursorID      driverCommon.SB4
-	fetchOnce     sync.Once
-	fetch         func() error
-	fetchErr      error
 	closed        bool
 	closeErr      error
-	onClose       func() error
-
-	// implicitRows makes this value a driver.RowsNextResultSet wrapper.
-	// The contained rows retain their own cursor IDs and fetch state.
-	implicitRows     []*ttcRows
-	currentResultSet int
+	// beforeNext performs optional work, such as the first RefCursor fetch,
+	// before advancing through buffered rows.
+	beforeNext func() error
+	// columnDecoder optionally replaces the standard scalar decoder for rows
+	// containing protocol-specific values such as REF CURSOR columns.
+	columnDecoder func(int) (driver.Value, error)
+	// cleanup releases row-specific server resources before the rows are marked
+	// closed. It must be idempotent through the closed flag above.
+	cleanup func() error
 
 	// metadata caches for ColumnType* interfaces
 	columnContexts []columnContext
@@ -142,6 +140,30 @@ type ttcRows struct {
 	shelf          *ttiShelf[driverCommon.MessageType]
 
 	strictNullHandlingValue bool
+}
+
+// ttcRowsRefCursor owns the state specific to an already-open server cursor.
+type ttcRowsRefCursor struct {
+	*ttcRows
+	// refCursorData aligns with rowData and holds a child cursor for each REF
+	// CURSOR-valued column.
+	refCursorData [][]*ttcRowsRefCursor
+	// cursorID identifies the server cursor represented by these rows.
+	cursorID driverCommon.SB4
+	// fetchOnce and fetchErr cache the one deferred fetch for a server cursor.
+	fetchOnce sync.Once
+	// fetch issues the TTC fetch operation when rows were not pre-fetched.
+	fetch    func() error
+	fetchErr error
+}
+
+// ttcRowsRefCursorImplicitFetch exposes ordered implicit cursors as result sets.
+type ttcRowsRefCursorImplicitFetch struct {
+	*ttcRows
+	// implicitRows preserves the order of cursors returned by RETURN_RESULT.
+	implicitRows []*ttcRowsRefCursor
+	// currentResultSet identifies the implicit cursor currently exposed to the caller.
+	currentResultSet int
 }
 
 // SetShelf injects the shared TTC shelf instance used to resolve codecs and
@@ -158,9 +180,6 @@ func (r *ttcRows) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
 // Columns implements driver.Rows.Columns. It returns the column names prepared
 // during construction (newTTCRows) based on decoded column metadata.
 func (r *ttcRows) Columns() []string {
-	if current := r.activeImplicitResultSet(); current != nil {
-		return current.Columns()
-	}
 	res := make([]string, len(r.columnContexts))
 	for i, colCtx := range r.columnContexts {
 		res[i] = driverCommon.B1ArrayToString(colCtx.Name)
@@ -173,48 +192,27 @@ func (r *ttcRows) Columns() []string {
 // column's raw []common.B1Array value as a type provided in dest. Row count is
 // computed once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {
-	if current := r.activeImplicitResultSet(); current != nil {
-		return current.Next(dest)
-	}
-	if r.fetch != nil {
-		r.fetchOnce.Do(func() { r.fetchErr = r.fetch() })
-		if r.fetchErr != nil {
-			return r.fetchErr
+	if r.beforeNext != nil {
+		if err := r.beforeNext(); err != nil {
+			return err
 		}
+	}
+	decode := r.decodeColumnValue
+	if r.columnDecoder != nil {
+		decode = r.columnDecoder
 	}
 	if r.currentRowIdx >= r.numOfRows {
 		return io.EOF
 	}
 	rawRow := r.rowData[r.currentRowIdx]
 	for i := range rawRow {
-		val, err := r.decodeColumnValue(i)
+		val, err := decode(i)
 		if err != nil {
 			return r.shelf.LocalizeError(err)
 		}
 		dest[i] = val
 	}
 	r.currentRowIdx++
-	return nil
-}
-
-func (r *ttcRows) activeImplicitResultSet() *ttcRows {
-	if r.currentResultSet < len(r.implicitRows) {
-		return r.implicitRows[r.currentResultSet]
-	}
-	return nil
-}
-
-// HasNextResultSet and NextResultSet implement driver.RowsNextResultSet for
-// implicit cursors returned by DBMS_SQL.RETURN_RESULT.
-func (r *ttcRows) HasNextResultSet() bool {
-	return r.currentResultSet+1 < len(r.implicitRows)
-}
-
-func (r *ttcRows) NextResultSet() error {
-	if !r.HasNextResultSet() {
-		return io.EOF
-	}
-	r.currentResultSet++
 	return nil
 }
 
@@ -231,12 +229,6 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	// Fast-path locals to minimize repeated bounds checks and lookups
 	colCtx := r.columnContexts[i]
 	dtype := colCtx.DataType
-	if dtype == DtyCur {
-		if r.currentRowIdx < len(r.refCursorData) && i < len(r.refCursorData[r.currentRowIdx]) {
-			return r.refCursorData[r.currentRowIdx][i], nil
-		}
-		return nil, nil
-	}
 	scale := colCtx.Scale
 	data := r.rowData[r.currentRowIdx][i]
 	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]
@@ -389,63 +381,187 @@ func defaultNumericValue(scale int8) (driver.Value, bool) {
 	}
 }
 
-// Close implements driver.Rows.Close and closes nested and server-side cursors.
+// Close implements driver.Rows.Close and runs any row-specific cleanup.
 func (r *ttcRows) Close() error {
 	if r.closed {
 		return r.closeErr
 	}
+	if r.cleanup != nil {
+		if err := r.cleanup(); err != nil {
+			r.closeErr = err
+		}
+	}
 	r.closed = true
-	for _, resultSet := range r.implicitRows {
-		if resultSet != nil {
-			if err := resultSet.Close(); err != nil && r.closeErr == nil {
-				r.closeErr = err
-			}
-		}
-	}
-
-	for _, row := range r.refCursorData {
-		for _, cursor := range row {
-			if cursor != nil {
-				if err := cursor.Close(); err != nil && r.closeErr == nil {
-					r.closeErr = err
-				}
-			}
-		}
-	}
-	if r.cursorID != 0 {
-		if err := r.closeServerCursor(); err != nil && r.closeErr == nil {
-			r.closeErr = err
-		}
-	}
-	if r.onClose != nil {
-		if err := r.onClose(); err != nil && r.closeErr == nil {
-			r.closeErr = err
-		}
-		r.onClose = nil
-	}
 	return r.closeErr
 }
 
-func newImplicitResultRows(resultSets []*ttcRows) *ttcRows {
-	return &ttcRows{implicitRows: resultSets, strictNullHandlingValue: true}
-}
-
-func (r *ttcRows) closeServerCursor() error {
+// closeServerCursor queues an OCCA for this server cursor. Push deliberately
+// does not flush, allowing the next normal round trip to carry the close.
+func (r *ttcRowsRefCursor) closeServerCursor() error {
 	msg, err := r.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
 	if err != nil {
 		return r.shelf.LocalizeError(err)
 	}
 	occaMsg := msg.(*tTIOcca)
 	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(r.cursorID)})
-	stmr := r.shelf.GetMessageStreamer().(MessageStreamerInterface)
-	if err = stmr.Push(context.Background(), occaMsg); err != nil {
-		return r.shelf.LocalizeError(err)
-	}
-	if err = stmr.Flush(context.Background()); err != nil {
+	streamer := r.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	if err := streamer.Push(context.Background(), occaMsg); err != nil {
 		return r.shelf.LocalizeError(err)
 	}
 	r.cursorID = 0
 	return nil
+}
+
+// fetchRows invokes the deferred RefCursor fetch at most once.
+func (r *ttcRowsRefCursor) fetchRows() error {
+	if r.fetch != nil {
+		r.fetchOnce.Do(func() { r.fetchErr = r.fetch() })
+		if r.fetchErr != nil {
+			return r.fetchErr
+		}
+	}
+	return nil
+}
+
+// decodeColumnValue returns child rows for REF CURSOR columns and delegates
+// every other datatype to the embedded base row decoder.
+func (r *ttcRowsRefCursor) decodeColumnValue(i int) (driver.Value, error) {
+	if r.columnContexts[i].DataType != DtyCur {
+		return r.ttcRows.decodeColumnValue(i)
+	}
+	if r.currentRowIdx < len(r.refCursorData) && i < len(r.refCursorData[r.currentRowIdx]) {
+		return r.refCursorData[r.currentRowIdx][i], nil
+	}
+	return nil, nil
+}
+
+// closeRefCursors closes child cursors before queueing this cursor's OCCA.
+func (r *ttcRowsRefCursor) closeRefCursors() error {
+	var closeErr error
+	for _, row := range r.refCursorData {
+		for _, cursor := range row {
+			if cursor != nil {
+				if err := cursor.Close(); err != nil && closeErr == nil {
+					closeErr = err
+				}
+			}
+		}
+	}
+	if r.cursorID != 0 {
+		if err := r.closeServerCursor(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+	}
+	return closeErr
+}
+
+// newRefCursorResultRows wraps base rows with RefCursor state and installs the
+// hooks consumed by the single ttcRows Next and Close implementations.
+func newRefCursorResultRows(rows *ttcRows, cursorID driverCommon.SB4) *ttcRowsRefCursor {
+	result := &ttcRowsRefCursor{ttcRows: rows, cursorID: cursorID}
+	rows.beforeNext = result.fetchRows
+	rows.columnDecoder = result.decodeColumnValue
+	rows.cleanup = result.closeRefCursors
+	return result
+}
+
+// newImplicitResultRows returns a RowsNextResultSet implementation over the
+// ordered cursors returned by DBMS_SQL.RETURN_RESULT.
+func newImplicitResultRows(resultSets []*ttcRowsRefCursor) *ttcRowsRefCursorImplicitFetch {
+	result := &ttcRowsRefCursorImplicitFetch{ttcRows: newTTCRows(nil), implicitRows: resultSets}
+	result.ttcRows.cleanup = result.closeImplicitRows
+	return result
+}
+
+// activeImplicitResultSet returns the current implicit cursor, if one exists.
+func (r *ttcRowsRefCursorImplicitFetch) activeImplicitResultSet() *ttcRowsRefCursor {
+	if r.currentResultSet < len(r.implicitRows) {
+		return r.implicitRows[r.currentResultSet]
+	}
+	return nil
+}
+
+// Columns delegates column names to the current implicit result set.
+func (r *ttcRowsRefCursorImplicitFetch) Columns() []string {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.Columns()
+	}
+	return nil
+}
+
+// Next delegates row retrieval to the current implicit result set.
+func (r *ttcRowsRefCursorImplicitFetch) Next(dest []driver.Value) error {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.Next(dest)
+	}
+	return io.EOF
+}
+
+// HasNextResultSet reports whether another implicit cursor is available.
+func (r *ttcRowsRefCursorImplicitFetch) HasNextResultSet() bool {
+	return r.currentResultSet+1 < len(r.implicitRows)
+}
+
+// NextResultSet advances to the next implicit cursor.
+func (r *ttcRowsRefCursorImplicitFetch) NextResultSet() error {
+	if !r.HasNextResultSet() {
+		return io.EOF
+	}
+	r.currentResultSet++
+	return nil
+}
+
+// closeImplicitRows closes every implicit cursor held by this result wrapper.
+func (r *ttcRowsRefCursorImplicitFetch) closeImplicitRows() error {
+	var closeErr error
+	for _, resultSet := range r.implicitRows {
+		if resultSet != nil {
+			if err := resultSet.Close(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+		}
+	}
+	return closeErr
+}
+
+// ColumnTypeDatabaseTypeName delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypeDatabaseTypeName(i int) string {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeDatabaseTypeName(i)
+	}
+	return ""
+}
+
+// ColumnTypeLength delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypeLength(i int) (int64, bool) {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeLength(i)
+	}
+	return 0, false
+}
+
+// ColumnTypeNullable delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypeNullable(i int) (bool, bool) {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeNullable(i)
+	}
+	return false, false
+}
+
+// ColumnTypePrecisionScale delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypePrecisionScale(i int) (int64, int64, bool) {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypePrecisionScale(i)
+	}
+	return 0, 0, false
+}
+
+// ColumnTypeScanType delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypeScanType(i int) reflect.Type {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeScanType(i)
+	}
+	return reflect.TypeOf([]byte(nil))
 }
 
 // newTTCRows constructs a ttcRows instance from decoded column metadata.
@@ -470,9 +586,6 @@ func newTTCRows(columnContexts []columnContext) *ttcRows {
 // ColumnTypeDatabaseTypeName implements RowsColumnTypeDatabaseTypeName.
 // It returns the database-specific type name (e.g., VARCHAR2, NUMBER).
 func (r *ttcRows) ColumnTypeDatabaseTypeName(index int) string {
-	if current := r.activeImplicitResultSet(); current != nil {
-		return current.ColumnTypeDatabaseTypeName(index)
-	}
 	// inline translation here waiting for refactor of our type registry
 	switch r.columnContexts[index].DataType {
 	case DtyChr:
@@ -544,9 +657,6 @@ func (r *ttcRows) ColumnTypeDatabaseTypeName(index int) string {
 // ColumnTypeLength implements RowsColumnTypeLength. It returns the byte length
 // for variable-length types when available.
 func (r *ttcRows) ColumnTypeLength(index int) (int64, bool) {
-	if current := r.activeImplicitResultSet(); current != nil {
-		return current.ColumnTypeLength(index)
-	}
 	if index < 0 || index >= len(r.columnContexts) {
 		return 0, false
 	}
@@ -559,18 +669,12 @@ func (r *ttcRows) ColumnTypeLength(index int) (int64, bool) {
 // ColumnTypeNullable implements RowsColumnTypeNullable. It returns whether the
 // column may be NULL and whether the information is available.
 func (r *ttcRows) ColumnTypeNullable(index int) (bool, bool) {
-	if current := r.activeImplicitResultSet(); current != nil {
-		return current.ColumnTypeNullable(index)
-	}
 	return r.columnContexts[index].Nullable, true
 }
 
 // ColumnTypePrecisionScale implements RowsColumnTypePrecisionScale. It should return
 // the precision and scale for decimal types. If not applicable, ok should be false.
 func (r *ttcRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
-	if current := r.activeImplicitResultSet(); current != nil {
-		return current.ColumnTypePrecisionScale(index)
-	}
 	dty := r.columnContexts[index].DataType
 	if dty == DtyNum || dty == DtyVnu {
 		return r.columnContexts[index].Precision, int64(r.columnContexts[index].Scale), true
@@ -583,9 +687,6 @@ func (r *ttcRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
 // into which database values will be scanned. Currently, []byte is used for all
 // columns, matching the raw protocol representation returned by Next.
 func (r *ttcRows) ColumnTypeScanType(index int) reflect.Type {
-	if current := r.activeImplicitResultSet(); current != nil {
-		return current.ColumnTypeScanType(index)
-	}
 	if r.columnContexts[index].ScanType == nil {
 		decoder, err := r.shelf.GetCodecFactory().getDecoder(r.columnContexts[index].DataType)
 		if err != nil {

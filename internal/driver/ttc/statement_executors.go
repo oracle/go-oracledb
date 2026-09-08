@@ -174,13 +174,13 @@ func (m *selectResultMetadata) replace(columns []columnContext) {
 
 // newRows creates an empty result container using the cached result metadata.
 // It returns nil until the first DCB description has been received.
-func (m selectResultMetadata) newRows(shelf *ttiShelf[driverCommon.MessageType]) *ttcRows {
+func (m selectResultMetadata) newRows(shelf *ttiShelf[driverCommon.MessageType]) *ttcRowsRefCursor {
 	if len(m.columns) == 0 {
 		return nil
 	}
 	rows := newTTCRows(m.columns)
 	rows.SetShelf(shelf)
-	return rows
+	return newRefCursorResultRows(rows, 0)
 }
 
 // queryRunState contains state whose lifetime is one runQuery invocation. BVC
@@ -193,9 +193,9 @@ type queryRunState struct {
 	// prevRow and prevLobColContext form the aligned previous-row state used by
 	// BVC carry.
 	prevRow           []driverCommon.B1Array
-	prevRefCursorRows []*ttcRows
+	prevRefCursorRows []*ttcRowsRefCursor
 	prevLobColContext []*lobColumnContext
-	rows              *ttcRows
+	rows              *ttcRowsRefCursor
 }
 
 // newQueryRunState creates clean row and BVC state for one runQuery invocation.
@@ -220,7 +220,7 @@ type refCursorExecutor struct {
 	statementExecutorSelect
 	cursorID driverCommon.SB4
 	columns  []columnContext
-	rows     *ttcRows
+	rows     *ttcRowsRefCursor
 }
 
 var _ QueryWithContext = (*refCursorExecutor)(nil)
@@ -233,9 +233,8 @@ func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *dr
 	}
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(sessCtx)
-	exec.rows = newTTCRows(columns)
+	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
 	exec.rows.SetShelf(shelf)
-	exec.rows.cursorID = cursorID
 	exec.rows.fetch = func() error {
 		_, err := exec.QueryContext(context.Background(), &qualifiedSQLStatement{cursorId: cursorID}, nil)
 		return err
@@ -243,7 +242,7 @@ func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *dr
 	return exec
 }
 
-func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRows {
+func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
 	return newRefCursorExecutor(shelf, sessCtx, cursorID, columns).rows
 }
 
@@ -280,11 +279,11 @@ func (e *refCursorExecutor) QueryContext(ctx context.Context, query *qualifiedSQ
 // statementExecutorExec executes the statement.
 type statementExecutorExec struct {
 	statementProcessor
-	_currentRank        driverCommon.UB4 // currentRank represents current row in processing, incremented at each execution
-	numberOfInOutParams int              // Number of IN OUT bind positions detected for the current execution.
-	outDestPtrs         []any            // Destination pointers that receive decoded OUT or RETURNING values.
-	outColumnContexts   []columnContext  // Decoder contexts derived from bind OAC metadata for returned values.
-	implicitRows        []*ttcRows       // Result sets returned by DBMS_SQL.RETURN_RESULT.
+	_currentRank        driverCommon.UB4    // currentRank represents current row in processing, incremented at each execution
+	numberOfInOutParams int                 // Number of IN OUT bind positions detected for the current execution.
+	outDestPtrs         []any               // Destination pointers that receive decoded OUT or RETURNING values.
+	outColumnContexts   []columnContext     // Decoder contexts derived from bind OAC metadata for returned values.
+	implicitRows        []*ttcRowsRefCursor // Result sets returned by DBMS_SQL.RETURN_RESULT.
 }
 
 /*
@@ -1060,7 +1059,7 @@ func (e *statementExecutorPlSql) createImplRes(*messageHeader) (driverCommon.Mes
 	if capability, ok := e.shelf.GetCapabilities()[kpccapCtbImplresPrefetch]; ok {
 		prefetch = capability.IsSet
 	}
-	newRows := func(columns []columnContext, cursorID driverCommon.SB4) *ttcRows {
+	newRows := func(columns []columnContext, cursorID driverCommon.SB4) *ttcRowsRefCursor {
 		return newRefCursorRows(e.shelf, e.sessCtx, cursorID, columns)
 	}
 	implres.configure(func() (*tTIdcb, error) {
@@ -1316,7 +1315,7 @@ func (e *statementProcessor) configureRefCursorRXD(rxd *tTIrxd) {
 			return nil, err
 		}
 		return msg.(*tTIdcb), nil
-	}, func(columns []columnContext, cursorID driverCommon.SB4) *ttcRows {
+	}, func(columns []columnContext, cursorID driverCommon.SB4) *ttcRowsRefCursor {
 		return newRefCursorRows(e.shelf, e.sessCtx, cursorID, columns)
 	})
 }

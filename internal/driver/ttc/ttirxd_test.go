@@ -261,11 +261,11 @@ func TestTTIrxd_UnmarshalRefCursorColumn(t *testing.T) {
 	rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
 	rxd.setRefCursorFactories(
 		func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil },
-		func(columns []columnContext, cursorID common.SB4) *ttcRows {
+		func(columns []columnContext, cursorID common.SB4) *ttcRowsRefCursor {
 			if len(columns) != 1 || string(columns[0].Name) != "C" {
 				t.Fatalf("REF CURSOR columns = %#v, want one C column", columns)
 			}
-			return &ttcRows{cursorID: cursorID}
+			return newRefCursorResultRows(newTTCRows(nil), cursorID)
 		},
 	)
 	if err := rxd.UnMarshalFrom(ctx, mar); err != nil {
@@ -289,7 +289,9 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 		rxd := newTTIrxd().(*tTIrxd)
 		rxd.setNumberOfColumns(1)
 		rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
-		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil }, func([]columnContext, common.SB4) *ttcRows { return &ttcRows{} })
+		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil }, func([]columnContext, common.SB4) *ttcRowsRefCursor {
+			return newRefCursorResultRows(newTTCRows(nil), 0)
+		})
 		if err := rxd.UnMarshalFrom(ctx, mar); err != nil {
 			t.Fatal(err)
 		}
@@ -299,12 +301,12 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 	})
 
 	t.Run("BVC carries cursor", func(t *testing.T) {
-		cursor := &ttcRows{cursorID: 42}
+		cursor := newRefCursorResultRows(newTTCRows(nil), 42)
 		rxd := newTTIrxd().(*tTIrxd)
 		rxd.setNumberOfColumns(1)
 		rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
 		rxd.setPrevRow([]common.B1Array{nil})
-		rxd.setPrevRefCursorRows([]*ttcRows{cursor})
+		rxd.setPrevRefCursorRows([]*ttcRowsRefCursor{cursor})
 		rxd.setPrevLobColumnContext([]*lobColumnContext{nil})
 		rxd.setBvcState(common.NewBitSet(1), true)
 		if err := rxd.UnMarshalFrom(ctx, createMarshaller(nil, 0, 0)); err != nil {
@@ -336,7 +338,7 @@ func TestTTIrxd_RefCursorDecodeErrors(t *testing.T) {
 
 	t.Run("factory error", func(t *testing.T) {
 		rxd := newRXD()
-		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return nil, io.ErrUnexpectedEOF }, func([]columnContext, common.SB4) *ttcRows { return nil })
+		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return nil, io.ErrUnexpectedEOF }, func([]columnContext, common.SB4) *ttcRowsRefCursor { return nil })
 		if err := rxd.UnMarshalFrom(ctx, createMarshaller(nil, 0, 0)); err == nil {
 			t.Fatal("DCB factory error returned nil")
 		}
@@ -344,7 +346,7 @@ func TestTTIrxd_RefCursorDecodeErrors(t *testing.T) {
 
 	t.Run("truncated DCB", func(t *testing.T) {
 		rxd := newRXD()
-		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil }, func([]columnContext, common.SB4) *ttcRows { return nil })
+		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil }, func([]columnContext, common.SB4) *ttcRowsRefCursor { return nil })
 		if err := rxd.UnMarshalFrom(ctx, createMarshaller(nil, 0, 0)); err == nil {
 			t.Fatal("truncated DCB returned nil")
 		}
@@ -356,7 +358,7 @@ func TestTTIrxd_RefCursorDecodeErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		rxd := newRXD()
-		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil }, func([]columnContext, common.SB4) *ttcRows { return nil })
+		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil }, func([]columnContext, common.SB4) *ttcRowsRefCursor { return nil })
 		if err := rxd.UnMarshalFrom(ctx, createMarshaller(buf.bytes[:buf.currentWritePosition-4], 0, 0)); err == nil {
 			t.Fatal("truncated cursor ID returned nil")
 		}
@@ -385,7 +387,7 @@ func TestTTIrxd_RefCursorDecodeErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		rxd := newRXD()
-		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil }, func([]columnContext, common.SB4) *ttcRows { return nil })
+		rxd.setRefCursorFactories(func() (*tTIdcb, error) { return &tTIdcb{newUDS: newTTIuds}, nil }, func([]columnContext, common.SB4) *ttcRowsRefCursor { return nil })
 		if err := rxd.UnMarshalFrom(ctx, mar); err == nil {
 			t.Fatal("invalid DCB metadata returned nil")
 		}

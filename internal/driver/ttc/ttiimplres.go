@@ -53,19 +53,19 @@ import (
 // implicit-result prefetch.
 type tTIimplres struct {
 	newDCB           func() (*tTIdcb, error)
-	newRows          func([]columnContext, driverCommon.SB4) *ttcRows
-	newRefCursorRows func([]columnContext, driverCommon.SB4) *ttcRows
+	newRows          func([]columnContext, driverCommon.SB4) *ttcRowsRefCursor
+	newRefCursorRows func([]columnContext, driverCommon.SB4) *ttcRowsRefCursor
 	prefetch         bool
 	sessCharSet      driverCommon.UB2
 	sessNCharSet     driverCommon.UB2
-	rows             []*ttcRows
+	rows             []*ttcRowsRefCursor
 }
 
 func newTTIimplres() driverCommon.Message[driverCommon.MessageType] { return &tTIimplres{} }
 
 func (p *tTIimplres) GetMsgCode() driverCommon.MessageType { return TTIIMPLRES }
 
-func (p *tTIimplres) configure(newDCB func() (*tTIdcb, error), newRows func([]columnContext, driverCommon.SB4) *ttcRows, prefetch bool) {
+func (p *tTIimplres) configure(newDCB func() (*tTIdcb, error), newRows func([]columnContext, driverCommon.SB4) *ttcRowsRefCursor, prefetch bool) {
 	p.newDCB = newDCB
 	p.newRows = newRows
 	p.prefetch = prefetch
@@ -76,7 +76,7 @@ func (p *tTIimplres) setSessionCharacterSets(charSet, ncharSet driverCommon.UB2)
 	p.sessNCharSet = ncharSet
 }
 
-func (p *tTIimplres) setRefCursorRowsFactory(newRows func([]columnContext, driverCommon.SB4) *ttcRows) {
+func (p *tTIimplres) setRefCursorRowsFactory(newRows func([]columnContext, driverCommon.SB4) *ttcRowsRefCursor) {
 	p.newRefCursorRows = newRows
 }
 
@@ -89,7 +89,7 @@ func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	if err != nil {
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
-	p.rows = make([]*ttcRows, 0, resultSetCount)
+	p.rows = make([]*ttcRowsRefCursor, 0, resultSetCount)
 	for range resultSetCount {
 		dcb, err := p.newDCB()
 		if err != nil {
@@ -117,7 +117,7 @@ func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	return nil
 }
 
-func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Marshaller, rows *ttcRows, columns []columnContext) error {
+func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Marshaller, rows *ttcRowsRefCursor, columns []columnContext) error {
 	state := &queryRunState{rows: rows}
 	for {
 		code, err := mar.UnmarshalUB1(ctx)

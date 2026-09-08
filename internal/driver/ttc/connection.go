@@ -165,9 +165,6 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 		_ = stmt.Close()
 		return nil, c.shelf.LocalizeError(err)
 	}
-	if rows, ok := result.(*ttcRows); ok {
-		rows.onClose = stmt.Close
-	}
 	return result, c.shelf.LocalizeError(err)
 }
 
