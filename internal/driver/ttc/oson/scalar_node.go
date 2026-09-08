@@ -103,6 +103,7 @@ func newScalarNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*scalarNo
 		return nil, err
 	}
 
+	common.Odl.Debug("newScalarNodeAt: parsed", "offset", offset, "opcode", opcode)
 	return &scalarNode{
 		nodeBase: nodeBase{
 			buf:    buf,
@@ -157,6 +158,7 @@ func (scalar *scalarNode) String() (string, error) {
 		common.Odl.Debug("scalarNode.String: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
+	common.Odl.Debug("scalarNode.String: completed", "offset", scalar.offset, "opcode", scalar.opcode, "textBytes", len(text))
 	return string(text), nil
 }
 
@@ -171,12 +173,14 @@ func (scalar *scalarNode) String() (string, error) {
 // Errors:
 //   - unsupported scalar opcode or payload decode failure.
 func (scalar *scalarNode) Value(opts drvCommon.JSONOption) (any, error) {
+	common.Odl.Debug("scalarNode.Value: begin", "offset", scalar.offset, "opcode", scalar.opcode, "options", opts)
 	value, err := _decodeScalarValue(scalar, opts)
 	if err != nil {
 		common.Odl.Debug("scalarNode.Value: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
 		return nil, err
 	}
 
+	common.Odl.Debug("scalarNode.Value: completed", "offset", scalar.offset, "opcode", scalar.opcode, "options", opts)
 	return value, nil
 }
 

@@ -190,10 +190,13 @@ type JSONString string
 
 // Value implements driver.Valuer.
 func (jz JSONString) Value() (driver.Value, error) {
+	common.Odl.Debug("JSONString.Value: start", "length", len(jz))
 	if !json.Valid([]byte(jz)) {
 		cause := fmt.Errorf("JSONString contains invalid JSON text")
+		common.Odl.Debug("JSONString.Value: failed", "error", cause)
 		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
+	common.Odl.Debug("JSONString.Value: completed", "length", len(jz))
 	return string(jz), nil
 }
 
@@ -231,8 +234,10 @@ type JSON struct {
 
 // Scan implements sql.Scanner.
 func (jz *JSON) Scan(src any) error {
+	common.Odl.Debug("JSON.Scan: start", "source_type", fmt.Sprintf("%T", src))
 	if jz == nil {
 		cause := fmt.Errorf("cannot scan Oracle JSON into a nil *JSON receiver")
+		common.Odl.Debug("JSON.Scan: failed", "error", cause)
 		return common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "Scan")
 	}
 
@@ -244,36 +249,44 @@ func (jz *JSON) Scan(src any) error {
 			// creating a OSON node
 			node, err := oson.Parse(doc)
 			if err != nil {
+				common.Odl.Debug("JSON.Scan: failed", "error", err, "length", len(value))
 				return err
 			}
 			*jz = JSON{node: node}
+			common.Odl.Debug("JSON.Scan: completed", "length", len(value))
 			return nil
 		}
 		cause := fmt.Errorf("cannot scan %d-byte []byte as Oracle JSON: expected an OSON document beginning with magic bytes FF 4A 5A", len(value))
+		common.Odl.Debug("JSON.Scan: failed", "error", cause, "length", len(value))
 		return common.NewOracleError(oracleErrors.OsonHeaderError, cause)
 	default:
 		cause := fmt.Errorf("source type %T cannot be scanned as Oracle JSON", src)
+		common.Odl.Debug("JSON.Scan: failed", "error", cause)
 		return common.NewOracleError(oracleErrors.JSONScanTypeUnsupportedError, cause, fmt.Sprintf("%T", src))
 	}
 }
 
 // Value implements driver.Valuer.
 func (jz JSON) Value() (driver.Value, error) {
+	common.Odl.Debug("JSON.Value: start", "data_type", fmt.Sprintf("%T", jz.Data), "has_node", jz.node != nil)
 	data := jz.Data
 
 	if jz.node != nil {
 		var err error
 		data, err = jz.node.GetValue(drvCommon.JSONOptNumberAsString)
 		if err != nil {
+			common.Odl.Debug("JSON.Value: failed", "error", err)
 			return nil, err
 		}
 	}
 
 	doc, err := oson.Encode(data)
 	if err != nil {
+		common.Odl.Debug("JSON.Value: failed", "error", err)
 		return nil, err
 	}
 
+	common.Odl.Debug("JSON.Value: completed", "length", len(doc))
 	return []byte(doc), nil
 }
 

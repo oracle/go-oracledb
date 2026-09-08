@@ -125,6 +125,14 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*objectNo
 		members[fieldName] = memberOffsets[i]
 	}
 
+	common.Odl.Debug("newObjectNodeAt: parsed",
+		"offset", offset,
+		"opcode", opcode,
+		"members", memberCount,
+		"fieldIDWidth", header.numFieldIDBytes(),
+		"childOffsetWidth", childOffsetSize(opcode),
+		"fieldIDTable", fieldIDArrayStart,
+		"childOffsetTable", childOffsetArrayStart)
 	return &objectNode{
 		nodeBase: nodeBase{
 			buf:    buf,
@@ -355,6 +363,7 @@ func (obj *objectNode) String() (string, error) {
 		common.Odl.Debug("objectNode.String: failed", "error", err, "offset", obj.offset)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
+	common.Odl.Debug("objectNode.String: completed", "offset", obj.offset, "textBytes", len(text))
 	return string(text), nil
 }
 
@@ -379,6 +388,10 @@ func (obj *objectNode) Get(key string) (drvCommon.JSONNode, bool) {
 		common.Odl.Debug("objectNode.Get: failed", "error", err, "offset", obj.offset, "key", key)
 		return nil, false
 	}
+	common.Odl.Debug("objectNode.Get: completed",
+		"offset", obj.offset,
+		"childOffset", childOffset,
+		"childKind", child.Kind())
 	return child, true
 }
 
@@ -425,6 +438,7 @@ func (obj *objectNode) Keys() []string {
 // Errors:
 //   - child node construction or value decoding failure.
 func (obj *objectNode) Value(opts drvCommon.JSONOption) (map[string]any, error) {
+	common.Odl.Debug("objectNode.Value: begin", "offset", obj.offset, "members", len(obj.childrenOffsets), "options", opts)
 	values := make(map[string]any, len(obj.childrenOffsets))
 	for fieldName, offset := range obj.childrenOffsets {
 		child, err := newNodeAt(obj.buf, obj.header, offset)
@@ -439,5 +453,6 @@ func (obj *objectNode) Value(opts drvCommon.JSONOption) (map[string]any, error) 
 		}
 		values[fieldName] = value
 	}
+	common.Odl.Debug("objectNode.Value: completed", "offset", obj.offset, "members", len(values), "options", opts)
 	return values, nil
 }

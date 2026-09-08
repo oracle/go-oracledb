@@ -72,8 +72,25 @@ const (
 // Errors:
 // - common.OsonEncodingError for an unsupported value or an OSON encoding/size limit failure.
 func Encode(value any) (drvCommon.B1Array, error) {
+	inputType := fmt.Sprintf("%T", value)
+	common.Odl.Debug("oson.Encode: begin", "inputType", inputType)
+
 	enc := newOsonEncoder()
-	return enc.encode(value)
+	doc, err := enc.encode(value)
+	if err != nil {
+		common.Odl.Debug("oson.Encode: failed", "error", err, "inputType", inputType)
+		return nil, err
+	}
+
+	common.Odl.Debug("oson.Encode: completed",
+		"inputType", inputType,
+		"documentBytes", len(doc),
+		"version", enc.version,
+		"flags", enc.flags,
+		"primaryFields", len(enc.dict.primary),
+		"secondaryFields", len(enc.dict.secondary),
+		"treeBytes", len(enc.treeSegmentBytes))
+	return doc, nil
 }
 
 // osonEncoder keeps the state needed to build one OSON document.
@@ -145,6 +162,7 @@ func (enc *osonEncoder) encode(value any) (drvCommon.B1Array, error) {
 		common.Odl.Debug("osonEncoder.encode: failed", "error", err)
 		return nil, common.NewOracleError(oracleErrors.OsonEncodingError, err)
 	}
+	common.Odl.Debug("osonEncoder.encode: classified", "kind", kind)
 	switch kind {
 	case drvCommon.KindScalar:
 		return enc.encodeScalarDocument(value)
@@ -163,7 +181,14 @@ func (enc *osonEncoder) encodeScalarDocument(value any) (drvCommon.B1Array, erro
 	enc.treeSegmentBytes = tree.bytes()
 	enc.prepareScalarHeader()
 
-	return enc.emitScalarDocument(), nil
+	doc := enc.emitScalarDocument()
+	common.Odl.Debug("osonEncoder.encodeScalarDocument: completed",
+		"opcode", enc.treeSegmentBytes[0],
+		"treeBytes", len(enc.treeSegmentBytes),
+		"version", enc.version,
+		"flags", enc.flags,
+		"documentBytes", len(doc))
+	return doc, nil
 }
 
 // prepareScalarHeader sets the header for a scalar OSON document.
@@ -192,14 +217,27 @@ func (enc *osonEncoder) emitScalarDocument() drvCommon.B1Array {
 // encodeContainer converts a supported object or array into an OSON document.
 func (enc *osonEncoder) encodeContainer(value any) (drvCommon.B1Array, error) {
 	if err := enc.prepareDictionary(value); err != nil {
+		common.Odl.Debug("osonEncoder.encodeContainer: failed", "error", err, "stage", "dictionary")
 		return nil, err
 	}
 	if err := enc.prepareTreeSegment(value); err != nil {
+		common.Odl.Debug("osonEncoder.encodeContainer: failed", "error", err, "stage", "tree")
 		return nil, err
 	}
 
 	enc.prepareContainerHeader()
-	return enc.emitContainerDocument(), nil
+	doc := enc.emitContainerDocument()
+	common.Odl.Debug("osonEncoder.encodeContainer: completed",
+		"primaryFields", len(enc.dict.primary),
+		"secondaryFields", len(enc.dict.secondary),
+		"fieldIDWidth", enc.dict.fieldIDWidth,
+		"primaryHeapBytes", enc.primaryHeapSize,
+		"secondaryHeapBytes", enc.secondaryHeapSize,
+		"treeBytes", len(enc.treeSegmentBytes),
+		"version", enc.version,
+		"flags", enc.flags,
+		"documentBytes", len(doc))
+	return doc, nil
 }
 
 // prepareDictionary collects object keys and assigns their final dictionary ids.
@@ -367,6 +405,10 @@ func (enc *osonEncoder) processFieldNames() {
 	default:
 		enc.dict.fieldIDWidth = osonUB1Size
 	}
+	common.Odl.Debug("osonEncoder.processFieldNames: completed",
+		"primaryFields", len(enc.dict.primary),
+		"secondaryFields", len(enc.dict.secondary),
+		"fieldIDWidth", enc.dict.fieldIDWidth)
 }
 
 // sortFieldNames sorts one dictionary tier by hash, length, then bytes.
@@ -407,7 +449,12 @@ func (enc *osonEncoder) bufferPatchError(operation string, err error) error {
 
 // writeArrayNode writes one array node and its elements.
 func (enc *osonEncoder) writeArrayNode(tree *osonWriteBuffer, value []any, elementOffsetSize int) error {
+	nodeOffset := tree.position()
 	count := len(value)
+	common.Odl.Debug("osonEncoder.writeArrayNode: begin",
+		"treeOffset", nodeOffset,
+		"elements", count,
+		"childOffsetWidth", elementOffsetSize)
 	tree.writeUB1(containerOpcode(osonOpArrayType, count, elementOffsetSize))
 	tree.writeContainerCount(count)
 
@@ -420,15 +467,25 @@ func (enc *osonEncoder) writeArrayNode(tree *osonWriteBuffer, value []any, eleme
 			return err
 		}
 	}
+	common.Odl.Debug("osonEncoder.writeArrayNode: completed",
+		"treeOffset", nodeOffset,
+		"elements", count,
+		"encodedBytes", tree.position()-nodeOffset)
 	return nil
 }
 
 // writeObjectNode writes one object node and its member values.
 func (enc *osonEncoder) writeObjectNode(tree *osonWriteBuffer, value map[string]any, childOffsetSize int) error {
+	nodeOffset := tree.position()
 	members, err := enc.sortedObjectMembers(value)
 	if err != nil {
 		return err
 	}
+	common.Odl.Debug("osonEncoder.writeObjectNode: begin",
+		"treeOffset", nodeOffset,
+		"members", len(members),
+		"fieldIDWidth", enc.dict.fieldIDWidth,
+		"childOffsetWidth", childOffsetSize)
 	tree.writeUB1(containerOpcode(osonOpObjectType, len(members), childOffsetSize))
 	tree.writeContainerCount(len(members))
 
@@ -445,6 +502,10 @@ func (enc *osonEncoder) writeObjectNode(tree *osonWriteBuffer, value map[string]
 			return err
 		}
 	}
+	common.Odl.Debug("osonEncoder.writeObjectNode: completed",
+		"treeOffset", nodeOffset,
+		"members", len(members),
+		"encodedBytes", tree.position()-nodeOffset)
 	return nil
 }
 
@@ -482,12 +543,15 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 	switch v := value.(type) {
 	case nil:
 		tree.writeUB1(osonOpNull)
+		common.Odl.Debug("osonEncoder.writeScalarNode: null", "opcode", osonOpNull)
 		return nil
 	case bool:
 		if v {
 			tree.writeUB1(osonOpTrue)
+			common.Odl.Debug("osonEncoder.writeScalarNode: boolean", "opcode", osonOpTrue)
 		} else {
 			tree.writeUB1(osonOpFalse)
+			common.Odl.Debug("osonEncoder.writeScalarNode: boolean", "opcode", osonOpFalse)
 		}
 		return nil
 	case string:
@@ -543,6 +607,7 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 //	256..65535  => [0x37][UB2 length][bytes]
 //	65536..UB4  => [0x38][UB4 length][bytes]
 func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) error {
+	nodeOffset := tree.position()
 	raw := []byte(value)
 	if len(raw) > math.MaxUint32 {
 		cause := fmt.Errorf("string scalar length %d exceeds OSON UB4 length limit %d", len(raw), math.MaxUint32)
@@ -564,6 +629,9 @@ func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) e
 		tree.writeUB4(drvCommon.UB4(len(raw)))
 	}
 	tree.writeBytes(drvCommon.B1Array(raw))
+	common.Odl.Debug("osonEncoder.writeStringScalar: completed",
+		"opcode", tree.data[nodeOffset],
+		"payloadLength", len(raw))
 	return nil
 }
 
@@ -696,6 +764,7 @@ func (enc *osonEncoder) writeBinaryDoubleScalar(tree *osonWriteBuffer, value flo
 
 // writeBinaryScalar writes a variable-length binary scalar.
 func (enc *osonEncoder) writeBinaryScalar(tree *osonWriteBuffer, value drvCommon.B1Array) error {
+	nodeOffset := tree.position()
 	if len(value) > math.MaxUint32 {
 		cause := fmt.Errorf("binary scalar length %d exceeds OSON UB4 length limit %d", len(value), math.MaxUint32)
 		common.Odl.Debug("osonEncoder.writeBinaryScalar: failed", "error", cause, "length", len(value))
@@ -711,6 +780,9 @@ func (enc *osonEncoder) writeBinaryScalar(tree *osonWriteBuffer, value drvCommon
 	}
 
 	tree.writeBytes(value)
+	common.Odl.Debug("osonEncoder.writeBinaryScalar: completed",
+		"opcode", tree.data[nodeOffset],
+		"payloadLength", len(value))
 	return nil
 }
 
@@ -724,6 +796,9 @@ func (enc *osonEncoder) writeTimestampScalar(tree *osonWriteBuffer, value time.T
 	tree.writeUB1(osonOpTimestamp)
 	tree.writeBytes(payload)
 
+	common.Odl.Debug("osonEncoder.writeTimestampScalar: completed",
+		"opcode", osonOpTimestamp,
+		"payloadLength", len(payload))
 	return nil
 }
 

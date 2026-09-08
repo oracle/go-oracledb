@@ -111,6 +111,12 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int) (*
 		return nil, err
 	}
 
+	common.Odl.Debug("newArrayNodeAt: parsed",
+		"offset", arrayNodeOffset,
+		"opcode", opcode,
+		"elements", elementCount,
+		"childOffsetWidth", childOffsetSize(opcode),
+		"childOffsetTable", childOffsetArrayStart)
 	return &arrayNode{
 		nodeBase: nodeBase{
 			buf:    buf,
@@ -170,6 +176,7 @@ func (array *arrayNode) String() (string, error) {
 		common.Odl.Debug("arrayNode.String: failed", "error", err, "offset", array.offset)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
+	common.Odl.Debug("arrayNode.String: completed", "offset", array.offset, "textBytes", len(jsonBytes))
 	return string(jsonBytes), nil
 }
 
@@ -193,6 +200,11 @@ func (array *arrayNode) Get(index int) (drvCommon.JSONNode, bool) {
 		common.Odl.Debug("arrayNode.Get: failed", "error", err, "offset", array.offset, "index", index, "childOffset", array.childOffsets[index])
 		return nil, false
 	}
+	common.Odl.Debug("arrayNode.Get: completed",
+		"offset", array.offset,
+		"index", index,
+		"childOffset", array.childOffsets[index],
+		"childKind", childNode.Kind())
 	return childNode, true
 }
 
@@ -221,6 +233,7 @@ func (array *arrayNode) Len() int {
 // Errors:
 //   - child node construction or value decoding failure.
 func (array *arrayNode) Value(opts drvCommon.JSONOption) ([]any, error) {
+	common.Odl.Debug("arrayNode.Value: begin", "offset", array.offset, "elements", len(array.childOffsets), "options", opts)
 	elementValues := make([]any, len(array.childOffsets))
 	for elementIndex := range array.childOffsets {
 		// Get intentionally returns only a boolean for the public lazy-node API;
@@ -240,5 +253,6 @@ func (array *arrayNode) Value(opts drvCommon.JSONOption) ([]any, error) {
 		elementValues[elementIndex] = elementValue
 	}
 
+	common.Odl.Debug("arrayNode.Value: completed", "offset", array.offset, "elements", len(elementValues), "options", opts)
 	return elementValues, nil
 }
