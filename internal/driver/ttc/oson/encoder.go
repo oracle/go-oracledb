@@ -81,7 +81,9 @@ type osonEncoder struct {
 	// Field-name dictionary for this document.
 	dict fieldNameDictionary
 
-	// OSON document version.
+	// OSON format version for the document being built. Most documents use
+	// version 1. Documents with field names longer than 255 bytes use version 3
+	// because they require a secondary dictionary.
 	version drvCommon.UB1
 	// Header flags for the document.
 	flags drvCommon.UB2
