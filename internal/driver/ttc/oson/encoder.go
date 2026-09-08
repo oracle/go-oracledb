@@ -42,6 +42,7 @@ import (
 	stdjson "encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,11 +55,6 @@ import (
 )
 
 const (
-	// Local UB bounds keep length-width decisions tied to OSON field widths
-	_maxUB1 = 1<<8 - 1
-	_maxUB2 = 1<<16 - 1
-	_maxUB4 = 1<<32 - 1
-
 	// Compact Oracle NUMBER payloads use the 0x20 family when the payload fits
 	// in 8 bytes; the low nibble stores payload length minus one.
 	_compactOracleNumberMaxPayloadLen = 8
@@ -172,7 +168,7 @@ func (enc *osonEncoder) encodeScalarDocument(value any) (drvCommon.B1Array, erro
 func (enc *osonEncoder) prepareScalarHeader() {
 	enc.version = osonFormatMinVersion
 	enc.flags = osonFlagInlineLeafMask | osonFlagStringLengthInOpcodeMask | osonFlagScalarDocumentMask
-	if len(enc.treeSegmentBytes) > _maxUB2 {
+	if len(enc.treeSegmentBytes) > math.MaxUint16 {
 		enc.flags |= osonFlagTreeSegmentSizeUB4Mask
 	}
 }
@@ -242,10 +238,10 @@ func (enc *osonEncoder) prepareContainerHeader() {
 	case osonUB2Size:
 		enc.flags |= osonFlagDistinctFieldCountUB2Mask
 	}
-	if enc.primaryHeapSize > _maxUB2 {
+	if enc.primaryHeapSize > math.MaxUint16 {
 		enc.flags |= osonFlagFieldHeapSizeUB4Mask
 	}
-	if len(enc.treeSegmentBytes) > _maxUB2 {
+	if len(enc.treeSegmentBytes) > math.MaxUint16 {
 		enc.flags |= osonFlagTreeSegmentSizeUB4Mask
 	}
 	if len(enc.dict.secondary) > 0 {
@@ -362,9 +358,9 @@ func (enc *osonEncoder) processFieldNames() {
 	}
 
 	switch total := len(enc.dict.primary) + len(enc.dict.secondary); {
-	case total > _maxUB2:
+	case total > math.MaxUint16:
 		enc.dict.fieldIDWidth = osonUB4Size
-	case total > _maxUB1:
+	case total > math.MaxUint8:
 		enc.dict.fieldIDWidth = osonUB2Size
 	default:
 		enc.dict.fieldIDWidth = osonUB1Size
@@ -546,8 +542,8 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 //	65536..UB4  => [0x38][UB4 length][bytes]
 func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) error {
 	raw := []byte(value)
-	if len(raw) > _maxUB4 {
-		cause := fmt.Errorf("string scalar length %d exceeds OSON UB4 length limit %d", len(raw), _maxUB4)
+	if len(raw) > math.MaxUint32 {
+		cause := fmt.Errorf("string scalar length %d exceeds OSON UB4 length limit %d", len(raw), math.MaxUint32)
 		common.Odl.Debug("osonEncoder.writeStringScalar: failed", "error", cause, "length", len(raw))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
@@ -555,10 +551,10 @@ func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) e
 	switch {
 	case len(raw) <= int(osonOpShortStringMax):
 		tree.writeUB1(drvCommon.UB1(len(raw)))
-	case len(raw) <= _maxUB1:
+	case len(raw) <= math.MaxUint8:
 		tree.writeUB1(osonOpStringUB1)
 		tree.writeUB1(drvCommon.UB1(len(raw)))
-	case len(raw) <= _maxUB2:
+	case len(raw) <= math.MaxUint16:
 		tree.writeUB1(osonOpStringUB2)
 		tree.writeUB2(drvCommon.UB2(len(raw)))
 	default:
@@ -612,8 +608,8 @@ func (enc *osonEncoder) writeUnsignedIntScalar(tree *osonWriteBuffer, value uint
 		return nil
 	}
 
-	if len(payload) > _maxUB1 {
-		cause := fmt.Errorf("number payload length %d exceeds OSON UB1 length limit %d", len(payload), _maxUB1)
+	if len(payload) > math.MaxUint8 {
+		cause := fmt.Errorf("number payload length %d exceeds OSON UB1 length limit %d", len(payload), math.MaxUint8)
 		common.Odl.Debug("osonEncoder.writeUnsignedIntScalar: failed", "error", cause, "length", len(payload))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
@@ -633,8 +629,8 @@ func (enc *osonEncoder) writeStringNumberScalar(tree *osonWriteBuffer, value str
 	}
 
 	raw := []byte(value)
-	if len(raw) > _maxUB1 {
-		cause := fmt.Errorf("string number length %d exceeds OSON UB1 length limit %d", len(raw), _maxUB1)
+	if len(raw) > math.MaxUint8 {
+		cause := fmt.Errorf("string number length %d exceeds OSON UB1 length limit %d", len(raw), math.MaxUint8)
 		common.Odl.Debug("osonEncoder.writeStringNumberScalar: failed", "error", cause, "length", len(raw))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
@@ -698,13 +694,13 @@ func (enc *osonEncoder) writeBinaryDoubleScalar(tree *osonWriteBuffer, value flo
 
 // writeBinaryScalar writes a variable-length binary scalar.
 func (enc *osonEncoder) writeBinaryScalar(tree *osonWriteBuffer, value drvCommon.B1Array) error {
-	if len(value) > _maxUB4 {
-		cause := fmt.Errorf("binary scalar length %d exceeds OSON UB4 length limit %d", len(value), _maxUB4)
+	if len(value) > math.MaxUint32 {
+		cause := fmt.Errorf("binary scalar length %d exceeds OSON UB4 length limit %d", len(value), math.MaxUint32)
 		common.Odl.Debug("osonEncoder.writeBinaryScalar: failed", "error", cause, "length", len(value))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
-	if len(value) <= _maxUB2 {
+	if len(value) <= math.MaxUint16 {
 		tree.writeUB1(osonOpBinaryUB2)
 		tree.writeUB2(drvCommon.UB2(len(value)))
 	} else {
@@ -743,9 +739,9 @@ func containerOpcode(base drvCommon.UB1, count, childOffsetSize int) drvCommon.U
 		opcode |= osonOpChildOffsetUB4Bit
 	}
 	switch {
-	case count > _maxUB2:
+	case count > math.MaxUint16:
 		opcode |= osonOpChildCountUB4
-	case count > _maxUB1:
+	case count > math.MaxUint8:
 		opcode |= osonOpChildCountUB2
 	default:
 		opcode |= osonOpChildCountUB1
@@ -756,7 +752,7 @@ func containerOpcode(base drvCommon.UB1, count, childOffsetSize int) drvCommon.U
 // writePrimaryDictionaryHeader writes the primary dictionary count and heap size.
 func (enc *osonEncoder) writePrimaryDictionaryHeader(out *osonWriteBuffer, heapSize int) {
 	enc.writeUint(out, enc.dict.fieldIDWidth, len(enc.dict.primary))
-	if heapSize > _maxUB2 {
+	if heapSize > math.MaxUint16 {
 		out.writeUB4(drvCommon.UB4(heapSize))
 	} else {
 		out.writeUB2(drvCommon.UB2(heapSize))
@@ -766,7 +762,7 @@ func (enc *osonEncoder) writePrimaryDictionaryHeader(out *osonWriteBuffer, heapS
 // writeSecondaryDictionaryHeader writes the secondary dictionary header for long field names.
 func (enc *osonEncoder) writeSecondaryDictionaryHeader(out *osonWriteBuffer, heapSize int) {
 	var secondaryFlags drvCommon.UB2
-	if heapSize <= _maxUB2 {
+	if heapSize <= math.MaxUint16 {
 		secondaryFlags |= osonFlagSecondaryFieldOffsetsUB2Mask
 	}
 
@@ -791,7 +787,7 @@ func (enc *osonEncoder) writeDictionary(out *osonWriteBuffer, fields []*fieldNam
 		enc.writeUint(out, lengthSize, int(field.hash))
 	}
 	offsetSize := osonUB2Size
-	if enc.dictionaryHeapSize(fields, lengthSize) > _maxUB2 {
+	if enc.dictionaryHeapSize(fields, lengthSize) > math.MaxUint16 {
 		offsetSize = osonUB4Size
 	}
 	for _, field := range fields {
@@ -874,9 +870,9 @@ func (b *osonWriteBuffer) reserve(length int) int {
 // writeContainerCount appends a container child/member count.
 func (b *osonWriteBuffer) writeContainerCount(count int) {
 	switch {
-	case count > _maxUB2:
+	case count > math.MaxUint16:
 		b.writeUB4(drvCommon.UB4(count))
-	case count > _maxUB1:
+	case count > math.MaxUint8:
 		b.writeUB2(drvCommon.UB2(count))
 	default:
 		b.writeUB1(drvCommon.UB1(count))
@@ -894,11 +890,11 @@ func (b *osonWriteBuffer) patchUint(offset, width, value int) error {
 	var maxValue uint64
 	switch width {
 	case osonUB1Size:
-		maxValue = _maxUB1
+		maxValue = math.MaxUint8
 	case osonUB2Size:
-		maxValue = _maxUB2
+		maxValue = math.MaxUint16
 	case osonUB4Size:
-		maxValue = _maxUB4
+		maxValue = math.MaxUint32
 	default:
 		return fmt.Errorf("unsupported patch width %d", width)
 	}

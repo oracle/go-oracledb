@@ -81,13 +81,13 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 		},
 		{
 			name:       "max uint8 length string",
-			value:      strings.Repeat("c", _maxUB1),
+			value:      strings.Repeat("c", math.MaxUint8),
 			wantOpcode: osonOpStringUB1,
 			wantHeader: osonScalarHeaderSizeUB1,
 		},
 		{
 			name:       "uint16 boundary string",
-			value:      strings.Repeat("c", _maxUB1+1),
+			value:      strings.Repeat("c", math.MaxUint8+1),
 			wantOpcode: osonOpStringUB2,
 			wantHeader: osonScalarHeaderSizeUB2,
 		},
@@ -99,13 +99,13 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 		},
 		{
 			name:       "max uint16 length string",
-			value:      strings.Repeat("e", _maxUB2),
+			value:      strings.Repeat("e", math.MaxUint16),
 			wantOpcode: osonOpStringUB2,
 			wantHeader: osonScalarHeaderSizeUB2,
 		},
 		{
 			name:       "uint32 boundary string",
-			value:      strings.Repeat("f", _maxUB2+1),
+			value:      strings.Repeat("f", math.MaxUint16+1),
 			wantOpcode: osonOpStringUB4,
 			wantHeader: osonScalarHeaderSizeUB4,
 		},
@@ -147,7 +147,7 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 				t.Fatalf("treeSegmentSize = %d, want %d", got, wantTreeSize)
 			}
 			treeSizeWidth := osonUB2Size
-			if wantTreeSize > _maxUB2 {
+			if wantTreeSize > math.MaxUint16 {
 				treeSizeWidth = osonUB4Size
 			}
 			if got, want := header.treeSegmentOffset(), osonHeaderMinSize+treeSizeWidth; got != want {
@@ -173,7 +173,7 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 // TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2 verifies that
 // large scalar documents switch the tree-size header field from UB2 to UB4.
 func TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2(t *testing.T) {
-	value := strings.Repeat("x", _maxUB2+1)
+	value := strings.Repeat("x", math.MaxUint16+1)
 	doc, err := Encode(value)
 	if err != nil {
 		t.Fatalf("Encode returned error: %v", err)
@@ -429,15 +429,15 @@ func TestEncodeUnsignedInteger_UsesExplicitOracleNumber(t *testing.T) {
 // TestEncodeStringNumber_RejectsUB1LengthOverflow verifies valid JSON number
 // text still respects the OSON string-number payload limit.
 func TestEncodeStringNumber_RejectsUB1LengthOverflow(t *testing.T) {
-	value := drvCommon.JSONNumber(strings.Repeat("9", _maxUB1+1))
+	value := drvCommon.JSONNumber(strings.Repeat("9", math.MaxUint8+1))
 	assertEncodeOsonError(t, value)
 }
 
 // TestEncodeContainers_UsesUB2FieldIDs verifies the primary dictionary moves
 // to UB2 counts and field IDs when a document has more than 255 unique keys.
 func TestEncodeContainers_UsesUB2FieldIDs(t *testing.T) {
-	value := make(map[string]any, _maxUB1+1)
-	for i := 0; i <= _maxUB1; i++ {
+	value := make(map[string]any, math.MaxUint8+1)
+	for i := 0; i <= math.MaxUint8; i++ {
 		value["field"+strconv.Itoa(i)] = "value" + strconv.Itoa(i)
 	}
 
@@ -455,7 +455,7 @@ func TestEncodeContainers_UsesUB2FieldIDs(t *testing.T) {
 	if got, want := header.numFieldIDBytes(), osonUB2Size; got != want {
 		t.Fatalf("numFieldIDBytes() = %d, want %d", got, want)
 	}
-	if got, want := header.primaryFieldsCount, _maxUB1+1; got != want {
+	if got, want := header.primaryFieldsCount, math.MaxUint8+1; got != want {
 		t.Fatalf("primaryFieldsCount = %d, want %d", got, want)
 	}
 	assertEncodedValueDecodesTo(t, doc, value)
@@ -524,9 +524,9 @@ func TestEncodeContainers_UsesAllContainerCountWidths(t *testing.T) {
 		count     int
 		countBits drvCommon.UB1
 	}{
-		{name: "ub1", count: _maxUB1, countBits: osonOpChildCountUB1},
-		{name: "ub2", count: _maxUB1 + 1, countBits: osonOpChildCountUB2},
-		{name: "ub4", count: _maxUB2 + 1, countBits: osonOpChildCountUB4},
+		{name: "ub1", count: math.MaxUint8, countBits: osonOpChildCountUB1},
+		{name: "ub2", count: math.MaxUint8 + 1, countBits: osonOpChildCountUB2},
+		{name: "ub4", count: math.MaxUint16 + 1, countBits: osonOpChildCountUB4},
 	}
 
 	for _, tt := range tests {
@@ -680,8 +680,8 @@ func TestEncodeBinaryScalars_CoverLengthBoundaries(t *testing.T) {
 	}{
 		{name: "empty binary", value: []byte{}, want: []byte(nil), wantOp: osonOpBinaryUB2},
 		{name: "small binary", value: []byte{0x01, 0x02}, want: []byte{0x01, 0x02}, wantOp: osonOpBinaryUB2},
-		{name: "max binary ub2", value: bytesForTest(_maxUB2), want: bytesForTest(_maxUB2), wantOp: osonOpBinaryUB2},
-		{name: "binary ub4 boundary", value: bytesForTest(_maxUB2 + 1), want: bytesForTest(_maxUB2 + 1), wantOp: osonOpBinaryUB4},
+		{name: "max binary ub2", value: bytesForTest(math.MaxUint16), want: bytesForTest(math.MaxUint16), wantOp: osonOpBinaryUB2},
+		{name: "binary ub4 boundary", value: bytesForTest(math.MaxUint16 + 1), want: bytesForTest(math.MaxUint16 + 1), wantOp: osonOpBinaryUB4},
 	}
 
 	for _, tt := range tests {
@@ -731,7 +731,7 @@ func TestEncodeInvalidValues_ReturnOsonEncodingError(t *testing.T) {
 // TestEncodeContainers_UsesUB4OffsetsWhenTreeExceedsUB2 verifies large
 // container trees are re-emitted with UB4 child offsets.
 func TestEncodeContainers_UsesUB4OffsetsWhenTreeExceedsUB2(t *testing.T) {
-	value := []any{strings.Repeat("x", _maxUB2)}
+	value := []any{strings.Repeat("x", math.MaxUint16)}
 
 	doc, err := Encode(value)
 	if err != nil {
@@ -832,8 +832,8 @@ func TestOsonWriteBufferPatchUint_RejectsInvalidPatch(t *testing.T) {
 		{name: "negative offset", offset: -1, width: osonUB1Size, value: 1, wantError: "negative"},
 		{name: "negative value", offset: 0, width: osonUB1Size, value: -1, wantError: "negative"},
 		{name: "invalid width", offset: 0, width: 3, value: 1, wantError: "unsupported patch width"},
-		{name: "ub1 overflow", offset: 0, width: osonUB1Size, value: _maxUB1 + 1, wantError: "overflows UB1"},
-		{name: "ub2 overflow", offset: 0, width: osonUB2Size, value: _maxUB2 + 1, wantError: "overflows UB2"},
+		{name: "ub1 overflow", offset: 0, width: osonUB1Size, value: math.MaxUint8 + 1, wantError: "overflows UB1"},
+		{name: "ub2 overflow", offset: 0, width: osonUB2Size, value: math.MaxUint16 + 1, wantError: "overflows UB2"},
 		{name: "out of bounds", offset: 3, width: osonUB4Size, value: 1, wantError: "exceeds buffer length"},
 	}
 

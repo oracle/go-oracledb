@@ -613,7 +613,7 @@ func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
 // TestScalarNode_IDReadsFullUB1Length verifies the ID payload reader accepts
 // the largest length representable by the UB1 wire field.
 func TestScalarNode_IDReadsFullUB1Length(t *testing.T) {
-	const payloadLength = _maxUB1
+	const payloadLength = math.MaxUint8
 	payload := append(drvCommon.B1Array{osonOpID, byte(payloadLength)}, make([]byte, payloadLength)...)
 
 	node, err := newScalarNodeAt(newOsonBuffer(payload), &osonHeader{}, 0)
