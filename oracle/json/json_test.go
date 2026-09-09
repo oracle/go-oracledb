@@ -95,8 +95,8 @@ func TestJSONErrorsIncludeCause(t *testing.T) {
 	if err := arrayValue.Scan(driverValue); err != nil {
 		t.Fatalf("JSON.Scan() failed: %v", err)
 	}
-	_, kindMismatchErr := arrayValue.GetJSONObject(JSONOptDefault)
-	array, err := arrayValue.GetJSONArray(JSONOptDefault)
+	_, kindMismatchErr := arrayValue.GetJSONObject()
+	array, err := arrayValue.GetJSONArray()
 	if err != nil {
 		t.Fatalf("GetJSONArray() failed: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestJSONScanCopiesSourceBytes(t *testing.T) {
 	}
 	copy(src[at:at+len("pwned")], []byte("pwned"))
 
-	obj, err := got.GetJSONObject(JSONOptNumberAsString)
+	obj, err := got.GetJSONObject()
 	if err != nil {
 		t.Fatalf("GetJSONObject() failed: %v", err)
 	}
@@ -180,12 +180,12 @@ func TestJSONScanCopiesSourceBytes(t *testing.T) {
 		t.Fatal(`field "name" missing`)
 	}
 
-	nameScalar, err := nameJSON.GetJSONScalar(JSONOptNumberAsString)
+	nameScalar, err := nameJSON.GetJSONScalar()
 	if err != nil {
 		t.Fatalf("GetJSONScalar() failed: %v", err)
 	}
 
-	nameValue, err := nameScalar.GetValue()
+	nameValue, err := nameScalar.GetValue(JSONOptNumberAsString)
 	if err != nil {
 		t.Fatalf("GetValue() failed: %v", err)
 	}

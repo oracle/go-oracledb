@@ -123,10 +123,10 @@
 // large document is needed. The wrappers navigate the encoded document lazily,
 // meaning that they read only the metadata and offsets needed to locate a
 // value; child values remain encoded until they are requested. GetValue then
-// materializes the selected subtree, while String renders it as JSON text. A
-// materialization option passed to GetJSONObject, GetJSONArray, or
-// GetJSONScalar belongs to that wrapper. When navigating to a child JSON value,
-// pass the desired option again when obtaining the child's wrapper.
+// materializes the selected subtree, while String renders it as JSON text.
+// Materialization options are supplied to GetValue. When navigating to a child
+// JSON value, obtain its wrapper first and supply the desired option when
+// materializing that child.
 package json
 
 import (
@@ -301,10 +301,9 @@ func (jz JSON) Kind() (JSONKind, error) {
 	return jz.node.Kind(), nil
 }
 
-// GetJSONObject returns a lazy object view of a fetched JSON value. opts controls
-// number materialization when [JSONObject.GetValue] is called. It returns an
-// error if jz is uninitialized or its root is not an object.
-func (jz JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
+// GetJSONObject returns a lazy object view of a fetched JSON value. It returns
+// an error if jz is uninitialized or its root is not an object.
+func (jz JSON) GetJSONObject() (JSONObject, error) {
 	kind, err := jz.Kind()
 	if err != nil {
 		return JSONObject{}, err
@@ -315,16 +314,15 @@ func (jz JSON) GetJSONObject(opts JSONOption) (JSONObject, error) {
 	}
 
 	if obj, ok := jz.node.(drvCommon.JSONObjectNode); ok {
-		return JSONObject{node: obj, opts: opts}, nil
+		return JSONObject{node: obj}, nil
 	}
 	cause := fmt.Errorf("JSON node of type %T reports object kind but does not implement JSONObjectNode", jz.node)
 	return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "object")
 }
 
-// GetJSONArray returns a lazy array view of a fetched JSON value. opts controls
-// number materialization when [JSONArray.GetValue] is called. It returns an
+// GetJSONArray returns a lazy array view of a fetched JSON value. It returns an
 // error if jz is uninitialized or its root is not an array.
-func (jz JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
+func (jz JSON) GetJSONArray() (JSONArray, error) {
 	kind, err := jz.Kind()
 	if err != nil {
 		return JSONArray{}, err
@@ -335,17 +333,16 @@ func (jz JSON) GetJSONArray(opts JSONOption) (JSONArray, error) {
 	}
 
 	if arr, ok := jz.node.(drvCommon.JSONArrayNode); ok {
-		return JSONArray{node: arr, opts: opts}, nil
+		return JSONArray{node: arr}, nil
 	}
 	cause := fmt.Errorf("JSON node of type %T reports array kind but does not implement JSONArrayNode", jz.node)
 	return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "array")
 }
 
-// GetJSONScalar returns a lazy scalar view of a fetched JSON value. opts controls
-// number materialization when [JSONScalar.GetValue] is called. Objects and
+// GetJSONScalar returns a lazy scalar view of a fetched JSON value. Objects and
 // arrays are not scalars; JSON null is. The method returns an error if jz is
 // uninitialized or its root is not a scalar.
-func (jz JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
+func (jz JSON) GetJSONScalar() (JSONScalar, error) {
 	kind, err := jz.Kind()
 	if err != nil {
 		return JSONScalar{}, err
@@ -355,7 +352,7 @@ func (jz JSON) GetJSONScalar(opts JSONOption) (JSONScalar, error) {
 		return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "scalar")
 	}
 	if scalar, ok := jz.node.(drvCommon.JSONScalarNode); ok {
-		return JSONScalar{node: scalar, opts: opts}, nil
+		return JSONScalar{node: scalar}, nil
 	}
 	cause := fmt.Errorf("JSON node of type %T reports scalar kind but does not implement JSONScalarNode", jz.node)
 	return JSONScalar{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "scalar")
@@ -396,13 +393,11 @@ func (jz JSON) String() (string, error) {
 }
 
 // JSONObject is a lazy view of an object in a fetched OSON document. Obtain one
-// with [JSON.GetJSONObject]. Its materialization option applies when GetValue is
-// called; String is independent of that option.
+// with [JSON.GetJSONObject]. Supply the materialization option to GetValue;
+// String is independent of that option.
 type JSONObject struct {
 	// node provides access to the underlying JSON object representation.
 	node drvCommon.JSONObjectNode
-	// opts controls how values returned from this object are materialized.
-	opts JSONOption
 }
 
 // Len returns the number of members in the JSON object, or -1 if obj is the zero
@@ -414,14 +409,14 @@ func (obj JSONObject) Len() int {
 	return obj.node.Len()
 }
 
-// GetValue materializes the complete object subtree as map[string]any. It
-// recursively uses the JSONOption supplied to [JSON.GetJSONObject].
-func (obj JSONObject) GetValue() (map[string]any, error) {
+// GetValue materializes the complete object subtree as map[string]any using
+// opts recursively.
+func (obj JSONObject) GetValue(opts JSONOption) (map[string]any, error) {
 	if obj.node == nil {
 		cause := fmt.Errorf("JSONObject has no underlying object node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return obj.node.Value(obj.opts)
+	return obj.node.Value(opts)
 }
 
 // Keys returns the names of the object's members. Their order is unspecified.
@@ -447,9 +442,7 @@ func (obj JSONObject) Has(key string) bool {
 // Get returns a lazy child JSON value and true when key exists. It returns a
 // zero JSON and false when the key is absent or obj is uninitialized.
 //
-// The JSONOption of obj is not carried by the returned JSON. Supply the desired
-// option again when calling the child's GetJSONObject, GetJSONArray, or
-// GetJSONScalar method.
+// Supply the desired option when materializing the returned JSON.
 func (obj JSONObject) Get(key string) (JSON, bool) {
 	if obj.node != nil {
 		node, ok := obj.node.Get(key)
@@ -472,13 +465,11 @@ func (obj JSONObject) String() (string, error) {
 }
 
 // JSONArray is a lazy view of an array in a fetched OSON document. Obtain one
-// with [JSON.GetJSONArray]. Its materialization option applies when GetValue is
-// called; String is independent of that option.
+// with [JSON.GetJSONArray]. Supply the materialization option to GetValue;
+// String is independent of that option.
 type JSONArray struct {
 	// node provides access to the underlying JSON array representation.
 	node drvCommon.JSONArrayNode
-	// opts controls how values returned from this array are materialized.
-	opts JSONOption
 }
 
 // Len returns the number of elements in the JSON array, or -1 if arr is the zero
@@ -491,21 +482,19 @@ func (arr JSONArray) Len() int {
 }
 
 // GetValue materializes the complete array subtree as []any, preserving element
-// order. It recursively uses the JSONOption supplied to [JSON.GetJSONArray].
-func (arr JSONArray) GetValue() ([]any, error) {
+// order, using opts recursively.
+func (arr JSONArray) GetValue(opts JSONOption) ([]any, error) {
 	if arr.node == nil {
 		cause := fmt.Errorf("JSONArray has no underlying array node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return arr.node.Value(arr.opts)
+	return arr.node.Value(opts)
 }
 
 // Get returns the lazy child JSON value at zero-based index i. It returns an
 // error when arr is uninitialized or i is outside [0, Len()).
 //
-// The JSONOption of arr is not carried by the returned JSON. Supply the desired
-// option again when calling the child's GetJSONObject, GetJSONArray, or
-// GetJSONScalar method.
+// Supply the desired option when materializing the returned JSON.
 func (arr JSONArray) Get(i int) (JSON, error) {
 	if arr.node == nil {
 		cause := fmt.Errorf("JSONArray has no underlying array node to index")
@@ -536,18 +525,16 @@ func (arr JSONArray) String() (string, error) {
 type JSONScalar struct {
 	// node provides access to the underlying JSON scalar representation.
 	node drvCommon.JSONScalarNode
-	// opts controls how this scalar is materialized.
-	opts JSONOption
 }
 
-// GetValue materializes the scalar as its corresponding Go value, using the
-// JSONOption supplied to [JSON.GetJSONScalar] for a number.
-func (scalar JSONScalar) GetValue() (any, error) {
+// GetValue materializes the scalar as its corresponding Go value, using opts
+// for a number.
+func (scalar JSONScalar) GetValue(opts JSONOption) (any, error) {
 	if scalar.node == nil {
 		cause := fmt.Errorf("JSONScalar has no underlying scalar node to materialize")
 		return nil, common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "GetValue")
 	}
-	return scalar.node.Value(scalar.opts)
+	return scalar.node.Value(opts)
 }
 
 // String returns the scalar as JSON text. It returns an error for the zero
