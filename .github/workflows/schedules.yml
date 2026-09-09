@@ -100,9 +100,9 @@ jobs:
           go test ${{ steps.go-packages.outputs.packages }} -coverpkg=./... -cover -run TestCategoryExecutor -test.gocoverdir=${{ github.workspace }}/coverage/coverage/no_resources -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="unitary"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-                 - name: coverage-no-resources
-                 - path: ${{ github.workspace }}/coverage/no_resources
-                 - if-no-files-found: error
+            - name: coverage-no-resources
+            - path: ${{ github.workspace }}/coverage/no_resources
+            - if-no-files-found: error
 
 
     coverage:
@@ -110,15 +110,15 @@ jobs:
         - functional_validate_driver
         - no_resource_validate_driver
       runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-go-env
+      steps:
+        - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        - uses: ./.github/actions/setup-go-env
         - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
+          with:
             name: coverage-no-resources
             path: ${{ github.workspace }}/coverage/no_resources
         - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
+          with:
             name: coverage-full-func
             path: ${{ github.workspace }}/coverage/full_func
         - run: |
