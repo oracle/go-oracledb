@@ -12,11 +12,4 @@ runs:
     - id: list
       shell: bash
       run: |
-        {
-          echo 'packages<<EOF'
-          go list "${{ github.workspace }}/..." \
-            | grep -v /vendor/ \
-            | grep -v /examples/ \
-            | grep -v /internal/tests
-          echo EOF
-        } >> "$GITHUB_OUTPUT"
+        go list "${{ github.workspace }}/..." |  grep -v /examples/ | grep -v /internal/tests >> $GITHUB_OUTPUT
