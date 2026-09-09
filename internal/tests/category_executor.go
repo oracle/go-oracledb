@@ -49,23 +49,40 @@ type CategorizedTestCase struct {
 	Fn         func(t *testing.T)
 }
 
-func RunCategoryExecutor(t *testing.T, category string, cases []CategorizedTestCase) {
+// isTestCategoryEnabled checks that the comma separated list of categories in testCategories
+// matches what's enabled in categories.
+func isTestCategoryEnabled(testCategories string, categories TestCategoryList) bool {
+	stc := strings.Split(testCategories, ",")
+	for _, ec := range stc {
+		for _, c := range categories {
+			if strings.EqualFold(
+				strings.TrimSpace(ec),
+				strings.TrimSpace(c),
+			) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+
+func RunCategoryExecutor(t *testing.T, categories TestCategoryList, cases []CategorizedTestCase) {
 	var regularCases []CategorizedTestCase
 	var exclusiveCases []CategorizedTestCase
 
 	for _, c := range cases {
-		cats := strings.Split(c.Categories, ",")
-		for _, p := range cats {
-			if strings.TrimSpace(p) == category {
+		if isTestCategoryEnabled(c.Categories, categories)  {
 				if c.Exclusive {
 					exclusiveCases = append(exclusiveCases, c)
 				} else {
 					regularCases = append(regularCases, c)
 				}
-				break
+		} else {
+			t.Logf("No enabled category for test case %s", c.Name)
 			}
 		}
-	}
+
 
 	if len(regularCases) > 0 {
 		t.Run("parallel", func(t *testing.T) {
@@ -79,4 +96,5 @@ func RunCategoryExecutor(t *testing.T, category string, cases []CategorizedTestC
 	for _, c := range exclusiveCases {
 		t.Run(c.Name, c.Fn)
 	}
+
 }
