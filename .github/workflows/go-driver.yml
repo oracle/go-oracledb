@@ -13,7 +13,7 @@ on:
         description: The test category to run
         required: false
         type: string
-        default: functional
+        default: sanity
 env:
   VALIDATION_USER_NAME: ogd_test_user
   ORACLE_DRIVER_MODULE: "github.com/oracle/go-oracledb/v26/oracle"
@@ -111,7 +111,7 @@ jobs:
           database-password: ${{ steps.create_database.outputs.database_password }}
       - run: |
           mkdir -p ${{ github.workspace }}/coverage/sanity
-          go test -parallel=10  -shuffle=on -v ${{ steps.go-packages.outputs.packages }} -coverpkg=./... -cover -run TestCategoryExecutor  -args -test.gocoverdir=${{ github.workspace }}/coverage/sanity -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
+          go test -parallel=10  -shuffle=on -v ${{ steps.go-packages.outputs.packages }} -coverpkg=./... -cover -run TestCategoryExecutor  -args -test.gocoverdir=${{ github.workspace }}/coverage/sanity -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="${{ github.event.inputs.test_category }}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-sanity
