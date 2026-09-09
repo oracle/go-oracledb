@@ -12,4 +12,4 @@ runs:
     - id: list
       shell: bash
       run: |
-        go list "${{ github.workspace }}/..." |  grep -v /examples/ | grep -v /internal/tests >> $GITHUB_OUTPUT
+        echo "packages=$(go list "${{ github.workspace }}/..." |  grep -v /examples/ | grep -v /internal/tests)" >> $GITHUB_OUTPUT
