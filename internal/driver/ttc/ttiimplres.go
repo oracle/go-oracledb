@@ -112,7 +112,7 @@ func (p *tTIimplres) setRefCursorRowsFactory(newRows func([]columnContext, drive
 // first-round-trip prefetched rows.
 func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	if p.newDCB == nil || p.newRows == nil {
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "implicit result factories are not configured")
+		return common.NewOracleError(oracleErrors.ImplicitResultFactoriesNotConfigured, nil)
 	}
 
 	resultSetCount, err := mar.UnmarshalUB4(ctx)
@@ -212,7 +212,7 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			return nil
 		default:
 			common.Odl.Debug("Unexpected implicit result prefetch message", "cursorID", rows.cursorID, "messageType", code, "rows", state.rowCount)
-			return common.NewOracleError(oracleErrors.ProtocolViolation, nil, "unexpected implicit result prefetch message", code)
+			return common.NewOracleError(oracleErrors.UnexpectedImplicitResultPrefetchMessage, nil, code)
 		}
 	}
 }

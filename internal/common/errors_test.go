@@ -180,6 +180,28 @@ func TestError3113InvalidLanguage(t *testing.T) {
 	}
 }
 
+func TestRefCursorErrorsAreLocalized(t *testing.T) {
+	t.Parallel()
+	ms := NewLocalizationService(language.English)
+	tests := []struct {
+		code oracleErrors.ErrorCode
+		args []interface{}
+		want string
+	}{
+		{oracleErrors.ImplicitResultFactoriesNotConfigured, nil, "implicit result factories are not configured"},
+		{oracleErrors.UnexpectedImplicitResultPrefetchMessage, []interface{}{27}, "unexpected implicit result prefetch message: 27"},
+		{oracleErrors.RefCursorFactoriesNotConfigured, nil, "REF CURSOR factories are not configured"},
+		{oracleErrors.ImplicitResultMessageCreationFailed, nil, "failed to create implicit result message"},
+	}
+	for _, test := range tests {
+		err := ms.LocalizeError(NewOracleError(test.code, nil, test.args...)).(oracleErrors.SQLError)
+		want := fmt.Sprintf("%s - %s", test.code, test.want)
+		if err.Error() != want {
+			t.Errorf("%s message = %q, want %q", test.code, err.Error(), want)
+		}
+	}
+}
+
 // TestNewOERMessageError tests that errors created using NewOERMessageError
 // implement the oracleErrors.SQLError interface and return then correct values for each
 // function in the interface

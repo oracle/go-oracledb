@@ -400,7 +400,7 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 // storing a child row implementation aligned with the current RXD column.
 func (rxd *tTIrxd) _unmarshalRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
 	if rxd.refCursorDCB == nil || rxd.newRefCursorRows == nil {
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "REF CURSOR factories are not configured")
+		return common.NewOracleError(oracleErrors.RefCursorFactoriesNotConfigured, nil)
 	}
 	if err := rxd.refCursorDCB.unmarshalFromRefCursor(ctx, mar); err != nil {
 		return err

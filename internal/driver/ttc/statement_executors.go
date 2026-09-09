@@ -1060,7 +1060,7 @@ func (e *statementExecutorPlSql) registerPlSqlCallbacks(ctx context.Context) {
 func (e *statementExecutorPlSql) createImplRes(*messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
 	msg, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIIMPLRES)
 	if err != nil {
-		return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "createIMPLRES failed")
+		return nil, common.NewOracleError(oracleErrors.ImplicitResultMessageCreationFailed, err)
 	}
 	implres := msg.(*tTIimplres)
 	prefetch := false
