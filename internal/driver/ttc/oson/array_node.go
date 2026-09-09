@@ -83,20 +83,20 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int) (*
 		return nil, err
 	}
 	if !isArrayOpcode(opcode) {
-		cause := fmt.Errorf("opcode 0x%02x is not an array", opcode)
-		common.Odl.Debug("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("failed to identify array from opcode 0x%02x", opcode)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", details, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 	objectOnlyFlags := opcode & (osonOpChildNoSortBit | osonOpObjectSharedFieldIDsBit | osonOpObjectUpdateOverflowBit)
 	if objectOnlyFlags != 0 {
-		cause := fmt.Errorf("array opcode 0x%02x sets object-only flags 0x%02x", opcode, objectOnlyFlags)
-		common.Odl.Debug("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("array opcode 0x%02x has invalid flags", opcode)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", details, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 	if opcode&osonOpChildSizeBits == osonOpChildDelegateForm {
-		cause := fmt.Errorf("array opcode 0x%02x uses the delegate child-header form", opcode)
-		common.Odl.Debug("newArrayNodeAt: failed", "error", cause, "offset", arrayNodeOffset, "opcode", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("array opcode 0x%02x uses delegate form", opcode)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", details, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 
 	elementCount, childOffsetArrayStart, err := readContainerCountAt(buf, arrayNodeOffset+1, opcode)

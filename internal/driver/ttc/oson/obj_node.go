@@ -86,9 +86,9 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*objectNo
 		return nil, err
 	}
 	if !isObjectOpcode(opcode) {
-		cause := fmt.Errorf("opcode 0x%02x is not an object", opcode)
-		common.Odl.Debug("newObjectNodeAt: failed", "error", cause, "offset", offset, "opcode", opcode)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("failed to identify object from opcode 0x%02x", opcode)
+		common.Odl.Debug("newObjectNodeAt: failed", "error", details, "offset", offset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 
 	memberCount, fieldIDArrayStart, childOffsetArrayStart, err := readObjectLayout(buf, header, offset, opcode)
@@ -113,14 +113,14 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int) (*objectNo
 		// Field ids are 1-based on the wire and the merged dictionary is zero-based.
 		fieldName, ok := header.fieldName(fieldIDValues[i] - 1)
 		if !ok {
-			cause := fmt.Errorf("field id %d not found in dictionary", fieldIDValues[i])
-			common.Odl.Debug("newObjectNodeAt: failed", "error", cause, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+			details := fmt.Sprintf("field ID %d not found", fieldIDValues[i])
+			common.Odl.Debug("newObjectNodeAt: failed", "error", details, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 		}
 		if _, exists := members[fieldName]; exists {
-			cause := fmt.Errorf("duplicate field id %d", fieldIDValues[i])
-			common.Odl.Debug("newObjectNodeAt: failed", "error", cause, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+			details := fmt.Sprintf("duplicate field ID %d", fieldIDValues[i])
+			common.Odl.Debug("newObjectNodeAt: failed", "error", details, "offset", offset, "index", i, "fieldID", fieldIDValues[i])
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 		}
 		members[fieldName] = memberOffsets[i]
 	}
@@ -185,9 +185,9 @@ func readFieldIDEntriesAt(buf *osonBuffer, header *osonHeader, start, count int)
 			}
 			entries[i] = int(val)
 		default:
-			cause := fmt.Errorf("unsupported field id width %d", size)
-			common.Odl.Debug("readFieldIDEntriesAt: failed", "error", cause, "width", size)
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+			details := fmt.Sprintf("invalid field ID width %d", size)
+			common.Odl.Debug("readFieldIDEntriesAt: failed", "error", details, "width", size)
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 		}
 	}
 	return entries, nil
@@ -293,9 +293,9 @@ func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode dr
 			return 0, 0, 0, readErr
 		}
 		if !isObjectOpcode(delegateOpcode) || delegateOpcode&osonOpChildSizeBits == osonOpChildDelegateForm {
-			cause := fmt.Errorf("delegate object at %d does not carry a direct field-id array", delegateOffset)
-			common.Odl.Debug("readObjectLayout: failed", "error", cause, "offset", offset, "delegateOffset", delegateOffset, "delegateOpcode", delegateOpcode)
-			return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+			details := fmt.Sprintf("delegate object %d has no field IDs", delegateOffset)
+			common.Odl.Debug("readObjectLayout: failed", "error", details, "offset", offset, "delegateOffset", delegateOffset, "delegateOpcode", delegateOpcode)
+			return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 		}
 
 		count, nextOffset, readErr := readContainerCountAt(buf, delegateOffset+osonUB1Size, delegateOpcode)
@@ -308,9 +308,9 @@ func readObjectLayout(buf *osonBuffer, header *osonHeader, offset int, opcode dr
 		childArrayStart = offset + osonUB1Size + delegateWidth
 		return count, fidArrayStart, childArrayStart, nil
 	default:
-		cause := fmt.Errorf("unsupported object count encoding 0x%02x", opcode&osonOpChildSizeBits)
-		common.Odl.Debug("readObjectLayout: failed", "error", cause, "offset", offset, "opcode", opcode)
-		return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("invalid object count encoding 0x%02x", opcode&osonOpChildSizeBits)
+		common.Odl.Debug("readObjectLayout: failed", "error", details, "offset", offset, "opcode", opcode)
+		return 0, 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 }
 

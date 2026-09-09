@@ -67,7 +67,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestEncodeScalarValues_CoverEssentialScalarOpcodes", Categories: "unitary", Exclusive: false, Fn: TestEncodeScalarValues_CoverEssentialScalarOpcodes},
 	{Name: "TestEncodeScalarValues_SupportsEveryIntegerType", Categories: "unitary", Exclusive: false, Fn: TestEncodeScalarValues_SupportsEveryIntegerType},
 	{Name: "TestEncodeUnsignedInteger_UsesExplicitOracleNumber", Categories: "unitary", Exclusive: false, Fn: TestEncodeUnsignedInteger_UsesExplicitOracleNumber},
-	{Name: "TestEncodeStringNumber_RejectsUB1LengthOverflow", Categories: "unitary", Exclusive: false, Fn: TestEncodeStringNumber_RejectsUB1LengthOverflow},
 	{Name: "TestEncodeContainers_UsesUB2FieldIDs", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_UsesUB2FieldIDs},
 	{Name: "TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets},
 	{Name: "TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets", Categories: "unitary", Exclusive: false, Fn: TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets},

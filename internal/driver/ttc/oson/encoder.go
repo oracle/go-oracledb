@@ -44,7 +44,6 @@ import (
 	"io"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -555,50 +554,47 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 		}
 		return nil
 	case string:
-		return enc.writeStringScalar(tree, v)
+		return enc.writeString(tree, v)
 	case int:
-		if strconv.IntSize <= 32 {
-			return enc.writeSignedIntScalar(tree, int64(v), osonOpCompactSigned32Prefix, int32Size)
-		}
-		return enc.writeSignedIntScalar(tree, int64(v), osonOpCompactSigned64Prefix, int64Size)
+		return enc.writeInt(tree, int64(v))
 	case int8:
-		return enc.writeSignedIntScalar(tree, int64(v), osonOpCompactSigned32Prefix, int32Size)
+		return enc.writeInt(tree, int64(v))
 	case int16:
-		return enc.writeSignedIntScalar(tree, int64(v), osonOpCompactSigned32Prefix, int32Size)
+		return enc.writeInt(tree, int64(v))
 	case int32:
-		return enc.writeSignedIntScalar(tree, int64(v), osonOpCompactSigned32Prefix, int32Size)
+		return enc.writeInt(tree, int64(v))
 	case int64:
-		return enc.writeSignedIntScalar(tree, v, osonOpCompactSigned64Prefix, int64Size)
+		return enc.writeInt(tree, v)
 	case uint:
-		return enc.writeUnsignedIntScalar(tree, uint64(v))
+		return enc.writeUInt(tree, uint64(v))
 	case uint8:
-		return enc.writeUnsignedIntScalar(tree, uint64(v))
+		return enc.writeUInt(tree, uint64(v))
 	case uint16:
-		return enc.writeUnsignedIntScalar(tree, uint64(v))
+		return enc.writeUInt(tree, uint64(v))
 	case uint32:
-		return enc.writeUnsignedIntScalar(tree, uint64(v))
+		return enc.writeUInt(tree, uint64(v))
 	case uint64:
-		return enc.writeUnsignedIntScalar(tree, v)
+		return enc.writeUInt(tree, v)
 	case float32:
-		return enc.writeBinaryFloatScalar(tree, v)
+		return enc.writeBinaryFloat(tree, v)
 	case float64:
-		return enc.writeBinaryDoubleScalar(tree, v)
+		return enc.writeBinaryDouble(tree, v)
 	case []byte:
-		return enc.writeBinaryScalar(tree, drvCommon.B1Array(v))
+		return enc.writeBinary(tree, drvCommon.B1Array(v))
 	case time.Time:
-		return enc.writeTimestampScalar(tree, v)
+		return enc.writeTimestamp(tree, v)
 	case drvCommon.JSONNumber:
-		return enc.writeStringNumberScalar(tree, string(v))
+		return enc.writeStringNumber(tree, string(v))
 	case stdjson.Number:
-		return enc.writeStringNumberScalar(tree, v.String())
+		return enc.writeStringNumber(tree, v.String())
 	default:
-		cause := fmt.Errorf("unsupported OSON scalar value type %T", value)
+		cause := fmt.Errorf("invalid OSON scalar value type %T", value)
 		common.Odl.Debug("osonEncoder.writeScalarNode: failed", "error", cause)
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 }
 
-// writeStringScalar writes one UTF-8 string scalar node.
+// writeString writes one UTF-8 string scalar node.
 //
 // The opcode family is selected from the encoded byte length:
 //
@@ -606,12 +602,12 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 //	32..255     => [0x33][UB1 length][bytes]
 //	256..65535  => [0x37][UB2 length][bytes]
 //	65536..UB4  => [0x38][UB4 length][bytes]
-func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) error {
+func (enc *osonEncoder) writeString(tree *osonWriteBuffer, value string) error {
 	nodeOffset := tree.position()
 	raw := []byte(value)
 	if len(raw) > math.MaxUint32 {
 		cause := fmt.Errorf("string scalar length %d exceeds OSON UB4 length limit %d", len(raw), math.MaxUint32)
-		common.Odl.Debug("osonEncoder.writeStringScalar: failed", "error", cause, "length", len(raw))
+		common.Odl.Debug("osonEncoder.writeString: failed", "error", cause, "length", len(raw))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
@@ -629,79 +625,87 @@ func (enc *osonEncoder) writeStringScalar(tree *osonWriteBuffer, value string) e
 		tree.writeUB4(drvCommon.UB4(len(raw)))
 	}
 	tree.writeBytes(drvCommon.B1Array(raw))
-	common.Odl.Debug("osonEncoder.writeStringScalar: completed",
+	common.Odl.Debug("osonEncoder.writeString: completed",
 		"opcode", tree.data[nodeOffset],
 		"payloadLength", len(raw))
 	return nil
 }
 
-// writeSignedIntScalar writes a signed integer scalar.
-func (enc *osonEncoder) writeSignedIntScalar(tree *osonWriteBuffer, value int64, opcodeMask drvCommon.UB1, platformSize drvCommon.UB1) error {
+// writeInt encodes a signed integer and selects the smallest compatible OSON
+// Oracle NUMBER opcode from the encoded payload length.
+func (enc *osonEncoder) writeInt(tree *osonWriteBuffer, value int64) error {
 	payload, err := converters.EncodeInt(value)
 	if err != nil {
-		return _wrapScalarEncodingError("writeSignedIntScalar", err)
+		return _wrapScalarEncodingError("writeInt", err)
 	}
 	if len(payload) == 0 {
 		cause := fmt.Errorf("encoding signed integer %d produced an empty Oracle NUMBER payload", value)
-		common.Odl.Debug("osonEncoder.writeSignedIntScalar: failed", "error", cause, "opcodeMask", opcodeMask)
+		common.Odl.Debug("osonEncoder.writeInt: failed", "error", cause)
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
-	if len(payload) > int(platformSize) {
-		cause := fmt.Errorf("compact signed integer payload length %d exceeds OSON opcode capacity %d", len(payload), platformSize)
-		common.Odl.Debug("osonEncoder.writeSignedIntScalar: failed", "error", cause, "payloadLength", len(payload), "lengthMask", platformSize)
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
+	if len(payload) <= _compactSigned32LengthMask {
+		opcode := osonOpCompactSigned32Prefix | drvCommon.UB1(len(payload))
+		common.Odl.Debug("osonEncoder.writeInt: compact SB4", "opcode", opcode, "payloadLength", len(payload))
+		tree.writeUB1(opcode)
+		tree.writeBytes(payload)
+		return nil
 	}
-	opcode := opcodeMask | drvCommon.UB1(len(payload))
-	common.Odl.Debug("osonEncoder.writeSignedIntScalar: compact signed number", "opcode", opcode, "payloadLength", len(payload))
+	if len(payload) > _compactSigned64LengthMask {
+		return writeOracleNumberPayload(tree, payload, value)
+	}
+	opcode := osonOpCompactSigned64Prefix | drvCommon.UB1(len(payload))
+	common.Odl.Debug("osonEncoder.writeInt: compact SB8", "opcode", opcode, "payloadLength", len(payload))
 	tree.writeUB1(opcode)
 	tree.writeBytes(payload)
 	return nil
 }
 
-// writeUnsignedIntScalar writes an unsigned integer as an Oracle NUMBER scalar.
-func (enc *osonEncoder) writeUnsignedIntScalar(tree *osonWriteBuffer, value uint64) error {
+// writeUInt writes an unsigned integer as a generic Oracle NUMBER.
+func (enc *osonEncoder) writeUInt(tree *osonWriteBuffer, value uint64) error {
 	payload, err := converters.EncodeUInt(value)
 	if err != nil {
-		return _wrapScalarEncodingError("writeUnsignedIntScalar", err)
+		return _wrapScalarEncodingError("writeUInt", err)
 	}
+	return writeOracleNumberPayload(tree, payload, value)
+}
+
+// writeOracleNumberPayload selects the generic Oracle NUMBER opcode after the
+// payload has been encoded. Compact NUMBER stores payload length minus one in
+// the opcode; larger payloads use an explicit UB1 length.
+func writeOracleNumberPayload(tree *osonWriteBuffer, payload drvCommon.B1Array, value any) error {
 
 	if len(payload) == 0 {
-		cause := fmt.Errorf("encoding unsigned integer %d produced an empty Oracle NUMBER payload", value)
-		common.Odl.Debug("osonEncoder.writeUnsignedIntScalar: failed", "error", cause)
+		cause := fmt.Errorf("encoding integer %v produced an empty Oracle NUMBER payload", value)
+		common.Odl.Debug("writeOracleNumberPayload: failed", "error", cause)
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 	if len(payload) <= _compactOracleNumberMaxPayloadLen {
 		opcode := osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(payload)-1)
-		common.Odl.Debug("osonEncoder.writeUnsignedIntScalar: compact oracle number", "opcode", opcode, "payloadLength", len(payload))
+		common.Odl.Debug("writeOracleNumberPayload: compact oracle number", "opcode", opcode, "payloadLength", len(payload))
 		tree.writeUB1(opcode)
 		tree.writeBytes(payload)
 		return nil
 	}
 
-	if len(payload) > math.MaxUint8 {
-		cause := fmt.Errorf("number payload length %d exceeds OSON UB1 length limit %d", len(payload), math.MaxUint8)
-		common.Odl.Debug("osonEncoder.writeUnsignedIntScalar: failed", "error", cause, "length", len(payload))
-		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
-	}
-	common.Odl.Debug("osonEncoder.writeUnsignedIntScalar: explicit oracle number", "opcode", osonOpOracleNumber, "payloadLength", len(payload))
+	common.Odl.Debug("writeOracleNumberPayload: explicit oracle number", "opcode", osonOpOracleNumber, "payloadLength", len(payload))
 	tree.writeUB1(osonOpOracleNumber)
 	tree.writeUB1(drvCommon.UB1(len(payload)))
 	tree.writeBytes(payload)
 	return nil
 }
 
-// writeStringNumberScalar writes a JSON number as string.
-func (enc *osonEncoder) writeStringNumberScalar(tree *osonWriteBuffer, value string) error {
+// writeStringNumber writes a JSON number as string.
+func (enc *osonEncoder) writeStringNumber(tree *osonWriteBuffer, value string) error {
 	if !isJSONNumber(value) {
 		cause := fmt.Errorf("value %q is not valid JSON number text", value)
-		common.Odl.Debug("osonEncoder.writeStringNumberScalar: failed", "error", cause, "length", len(value))
+		common.Odl.Debug("osonEncoder.writeStringNumber: failed", "error", cause, "length", len(value))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
 	raw := []byte(value)
 	if len(raw) > math.MaxUint8 {
 		cause := fmt.Errorf("string number length %d exceeds OSON UB1 length limit %d", len(raw), math.MaxUint8)
-		common.Odl.Debug("osonEncoder.writeStringNumberScalar: failed", "error", cause, "length", len(raw))
+		common.Odl.Debug("osonEncoder.writeStringNumber: failed", "error", cause, "length", len(raw))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
@@ -709,7 +713,7 @@ func (enc *osonEncoder) writeStringNumberScalar(tree *osonWriteBuffer, value str
 	tree.writeUB1(drvCommon.UB1(len(raw)))
 	tree.writeBytes(raw)
 
-	common.Odl.Debug("osonEncoder.writeStringNumberScalar: string number", "payloadLength", len(raw))
+	common.Odl.Debug("osonEncoder.writeStringNumber: string number", "payloadLength", len(raw))
 	return nil
 }
 
@@ -734,40 +738,40 @@ func isJSONNumber(value string) bool {
 	return decoder.Decode(&trailing) == io.EOF
 }
 
-// writeBinaryFloatScalar writes a fixed-width binary float scalar.
-func (enc *osonEncoder) writeBinaryFloatScalar(tree *osonWriteBuffer, value float32) error {
+// writeBinaryFloat writes a fixed-width binary float scalar.
+func (enc *osonEncoder) writeBinaryFloat(tree *osonWriteBuffer, value float32) error {
 	payload, err := converters.EncodeBinaryFloat(value)
 	if err != nil {
-		return _wrapScalarEncodingError("writeBinaryFloatScalar", err)
+		return _wrapScalarEncodingError("writeBinaryFloat", err)
 	}
 
 	tree.writeUB1(osonOpBinaryFloat)
 	tree.writeBytes(payload)
 
-	common.Odl.Debug("osonEncoder.writeBinaryFloatScalar: binary float", "opcode", osonOpBinaryFloat, "payloadLength", len(payload))
+	common.Odl.Debug("osonEncoder.writeBinaryFloat: binary float", "opcode", osonOpBinaryFloat, "payloadLength", len(payload))
 	return nil
 }
 
-// writeBinaryDoubleScalar writes a fixed-width binary double scalar.
-func (enc *osonEncoder) writeBinaryDoubleScalar(tree *osonWriteBuffer, value float64) error {
+// writeBinaryDouble writes a fixed-width binary double scalar.
+func (enc *osonEncoder) writeBinaryDouble(tree *osonWriteBuffer, value float64) error {
 	payload, err := converters.EncodeBinaryDouble(value)
 	if err != nil {
-		return _wrapScalarEncodingError("writeBinaryDoubleScalar", err)
+		return _wrapScalarEncodingError("writeBinaryDouble", err)
 	}
 
 	tree.writeUB1(osonOpBinaryDouble)
 	tree.writeBytes(payload)
 
-	common.Odl.Debug("osonEncoder.writeBinaryDoubleScalar: binary double", "opcode", osonOpBinaryDouble, "payloadLength", len(payload))
+	common.Odl.Debug("osonEncoder.writeBinaryDouble: binary double", "opcode", osonOpBinaryDouble, "payloadLength", len(payload))
 	return nil
 }
 
-// writeBinaryScalar writes a variable-length binary scalar.
-func (enc *osonEncoder) writeBinaryScalar(tree *osonWriteBuffer, value drvCommon.B1Array) error {
+// writeBinary writes a variable-length binary scalar.
+func (enc *osonEncoder) writeBinary(tree *osonWriteBuffer, value drvCommon.B1Array) error {
 	nodeOffset := tree.position()
 	if len(value) > math.MaxUint32 {
 		cause := fmt.Errorf("binary scalar length %d exceeds OSON UB4 length limit %d", len(value), math.MaxUint32)
-		common.Odl.Debug("osonEncoder.writeBinaryScalar: failed", "error", cause, "length", len(value))
+		common.Odl.Debug("osonEncoder.writeBinary: failed", "error", cause, "length", len(value))
 		return common.NewOracleError(oracleErrors.OsonEncodingError, cause)
 	}
 
@@ -780,23 +784,23 @@ func (enc *osonEncoder) writeBinaryScalar(tree *osonWriteBuffer, value drvCommon
 	}
 
 	tree.writeBytes(value)
-	common.Odl.Debug("osonEncoder.writeBinaryScalar: completed",
+	common.Odl.Debug("osonEncoder.writeBinary: completed",
 		"opcode", tree.data[nodeOffset],
 		"payloadLength", len(value))
 	return nil
 }
 
-// writeTimestampScalar writes an Oracle TIMESTAMP scalar.
-func (enc *osonEncoder) writeTimestampScalar(tree *osonWriteBuffer, value time.Time) error {
+// writeTimestamp writes an Oracle TIMESTAMP scalar.
+func (enc *osonEncoder) writeTimestamp(tree *osonWriteBuffer, value time.Time) error {
 	payload, err := converters.EncodeTimestamp(value)
 	if err != nil {
-		return _wrapScalarEncodingError("writeTimestampScalar", err)
+		return _wrapScalarEncodingError("writeTimestamp", err)
 	}
 
 	tree.writeUB1(osonOpTimestamp)
 	tree.writeBytes(payload)
 
-	common.Odl.Debug("osonEncoder.writeTimestampScalar: completed",
+	common.Odl.Debug("osonEncoder.writeTimestamp: completed",
 		"opcode", osonOpTimestamp,
 		"payloadLength", len(payload))
 	return nil

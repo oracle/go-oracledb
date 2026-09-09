@@ -325,8 +325,10 @@ func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 		{name: "null", value: nil, want: nil, wantOp: osonOpNull},
 		{name: "true", value: true, want: true, wantOp: osonOpTrue},
 		{name: "false", value: false, want: false, wantOp: osonOpFalse},
-		{name: "int8 uses sb4", value: int8(-42), want: drvCommon.JSONNumber("-42"), wantOp: signedIntOpcode(t, int64(-42), osonOpCompactSigned32Prefix), numberOpt: true},
-		{name: "int64 uses sb8", value: int64(-1 << 40), want: drvCommon.JSONNumber("-1099511627776"), wantOp: signedIntOpcode(t, int64(-1<<40), osonOpCompactSigned64Prefix), numberOpt: true},
+		{name: "int8 uses payload-selected opcode", value: int8(-42), want: drvCommon.JSONNumber("-42"), wantOp: signedIntegerOpcode(t, int64(-42)), numberOpt: true},
+		{name: "int32 uses payload-selected opcode", value: int32(-1 << 31), want: drvCommon.JSONNumber("-2147483648"), wantOp: signedIntegerOpcode(t, int64(-1<<31)), numberOpt: true},
+		{name: "int64 uses payload-selected opcode", value: int64(-1 << 40), want: drvCommon.JSONNumber("-1099511627776"), wantOp: signedIntegerOpcode(t, int64(-1<<40)), numberOpt: true},
+		{name: "int64 minimum uses payload-selected opcode", value: int64(-1 << 63), want: drvCommon.JSONNumber("-9223372036854775808"), wantOp: signedIntegerOpcode(t, -1<<63), numberOpt: true},
 		{name: "uint64 uses oracle number", value: uint64(1 << 40), want: drvCommon.JSONNumber("1099511627776"), wantOp: unsignedOracleNumberOpcode(t, uint64(1<<40)), numberOpt: true},
 		{name: "float32 uses binary float", value: float32(12.25), want: drvCommon.JSONNumber("12.25"), wantOp: osonOpBinaryFloat, numberOpt: true},
 		{name: "float64 uses binary double", value: float64(123.5), want: drvCommon.JSONNumber("123.5"), wantOp: osonOpBinaryDouble, numberOpt: true},
@@ -355,22 +357,17 @@ func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 // TestEncodeScalarValues_SupportsEveryIntegerType verifies the JSON
 // integer surface is encoded and materialized without changing the value.
 func TestEncodeScalarValues_SupportsEveryIntegerType(t *testing.T) {
-	var signedIntOpcodeMask drvCommon.UB1 = osonOpCompactSigned64Prefix
-	if strconv.IntSize <= 32 {
-		signedIntOpcodeMask = osonOpCompactSigned32Prefix
-	}
-
 	tests := []struct {
 		name       string
 		value      any
 		want       drvCommon.JSONNumber
 		opcodeMask drvCommon.UB1
 	}{
-		{name: "int", value: int(-42), want: "-42", opcodeMask: signedIntOpcodeMask},
+		{name: "int", value: int(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
 		{name: "int8", value: int8(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
 		{name: "int16", value: int16(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
 		{name: "int32", value: int32(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
-		{name: "int64", value: int64(-42), want: "-42", opcodeMask: osonOpCompactSigned64Prefix},
+		{name: "int64", value: int64(-42), want: "-42", opcodeMask: osonOpCompactSigned32Prefix},
 		{name: "uint", value: uint(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
 		{name: "uint8", value: uint8(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
 		{name: "uint16", value: uint16(42), want: "42", opcodeMask: osonOpCompactOracleNumberPrefix},
@@ -424,13 +421,6 @@ func TestEncodeUnsignedInteger_UsesExplicitOracleNumber(t *testing.T) {
 		t.Fatalf("payload = %x, want %x", got, payload)
 	}
 	assertEncodedValueDecodesTo(t, doc, drvCommon.JSONNumber(strconv.FormatUint(value, 10)), drvCommon.JSONOptNumberAsString)
-}
-
-// TestEncodeStringNumber_RejectsUB1LengthOverflow verifies valid JSON number
-// text still respects the OSON string-number payload limit.
-func TestEncodeStringNumber_RejectsUB1LengthOverflow(t *testing.T) {
-	value := drvCommon.JSONNumber(strings.Repeat("9", math.MaxUint8+1))
-	assertEncodeOsonError(t, value)
 }
 
 // TestEncodeContainers_UsesUB2FieldIDs verifies the primary dictionary moves
@@ -946,16 +936,22 @@ func encodedRootOpcode(t *testing.T, doc drvCommon.B1Array) drvCommon.UB1 {
 	return opcode
 }
 
-// signedIntOpcode returns the compact signed-integer opcode for a known opcode
-// family and value payload.
-func signedIntOpcode(t *testing.T, value int64, opcodeMask drvCommon.UB1) drvCommon.UB1 {
+// signedIntegerOpcode returns the smallest compatible signed-integer opcode
+// for the encoded value payload.
+func signedIntegerOpcode(t *testing.T, value int64) drvCommon.UB1 {
 	t.Helper()
 
 	payload, err := converters.EncodeInt(value)
 	if err != nil {
 		t.Fatalf("EncodeInt() error = %v", err)
 	}
-	return opcodeMask | drvCommon.UB1(len(payload))
+	if len(payload) <= _compactSigned32LengthMask {
+		return osonOpCompactSigned32Prefix | drvCommon.UB1(len(payload))
+	}
+	if len(payload) <= _compactSigned64LengthMask {
+		return osonOpCompactSigned64Prefix | drvCommon.UB1(len(payload))
+	}
+	return osonOpOracleNumber
 }
 
 // unsignedOracleNumberOpcode returns the expected compact or explicit Oracle

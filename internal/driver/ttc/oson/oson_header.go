@@ -997,9 +997,9 @@ func (h *osonHeader) containsNodeOffset(absoluteOffset int) bool {
 //   - Returns common.OsonParsingError when the document has no extended tree segment.
 func (h *osonHeader) resolveForwardedOffset(relativeOffset int) (int, error) {
 	if h.extendedTreeSegmentStartOffset == 0 || relativeOffset < 0 || relativeOffset >= int(h.extendedTreeSegmentByteLength) {
-		cause := fmt.Errorf("forwarded node offset %d is outside extended tree range [0,%d)", relativeOffset, h.extendedTreeSegmentByteLength)
-		common.Odl.Debug("osonHeader.resolveForwardedOffset: failed", "error", cause, "relativeOffset", relativeOffset)
-		return 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("forwarded offset %d outside tree", relativeOffset)
+		common.Odl.Debug("osonHeader.resolveForwardedOffset: failed", "error", details, "relativeOffset", relativeOffset)
+		return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 	return h.extendedTreeSegmentStartOffset + relativeOffset, nil
 }
@@ -1018,18 +1018,18 @@ func (h *osonHeader) resolveForwardedOffset(relativeOffset int) (int, error) {
 //     no extended tree segment.
 func (h *osonHeader) resolveOverflowOffset(absoluteOffset int) (int, error) {
 	if h.forwardingAddresses == nil {
-		cause := fmt.Errorf("overflow node at absolute offset %d requires an overflow-address mapping segment", absoluteOffset)
-		common.Odl.Debug("osonHeader.resolveOverflowOffset: failed", "error", cause, "absoluteOffset", absoluteOffset)
-		return 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("overflow offset %d has no mapping", absoluteOffset)
+		common.Odl.Debug("osonHeader.resolveOverflowOffset: failed", "error", details, "absoluteOffset", absoluteOffset)
+		return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 	// Overflow mappings are keyed by the original node's tree-relative position in
 	// the primary tree segment, not by absolute document offset.
 	relativeOffset := absoluteOffset - h.treeSegmentStartOffset
 	forwarded, ok := h.forwardingAddresses[relativeOffset]
 	if !ok {
-		cause := fmt.Errorf("overflow mapping missing for tree-relative offset %d", relativeOffset)
-		common.Odl.Debug("osonHeader.resolveOverflowOffset: failed", "error", cause, "absoluteOffset", absoluteOffset, "relativeOffset", relativeOffset)
-		return 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("no overflow mapping for offset %d", relativeOffset)
+		common.Odl.Debug("osonHeader.resolveOverflowOffset: failed", "error", details, "absoluteOffset", absoluteOffset, "relativeOffset", relativeOffset)
+		return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 	return h.resolveForwardedOffset(forwarded)
 }

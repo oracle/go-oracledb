@@ -640,9 +640,7 @@ func assertOracleErrorCode(t *testing.T, err error, want oracleErrors.ErrorCode)
 		t.Fatalf("error code = %v, want %v", got, want)
 	}
 	switch want {
-	case oracleErrors.OsonBufferError,
-		oracleErrors.OsonHeaderError,
-		oracleErrors.OsonParsingError,
+	case oracleErrors.OsonHeaderError,
 		oracleErrors.OsonEncodingError,
 		oracleErrors.OsonUnsupportedScalarError,
 		oracleErrors.JSONRenderingError:

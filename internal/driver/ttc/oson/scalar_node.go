@@ -524,7 +524,8 @@ func decodeOracleNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONOptio
 	}
 	value, err := strconv.ParseFloat(text, _jsonFloatBitSize)
 	if err != nil {
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, fmt.Errorf("invalid oracle-number payload %q: %w", text, err))
+		details := fmt.Sprintf("invalid Oracle NUMBER %q", text)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 	return value, nil
 }
@@ -537,7 +538,8 @@ func decodeStringNumberValue(payload drvCommon.B1Array, opts drvCommon.JSONOptio
 	}
 	value, err := strconv.ParseFloat(text, _jsonFloatBitSize)
 	if err != nil {
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, fmt.Errorf("invalid string-number payload %q: %w", text, err))
+		details := fmt.Sprintf("invalid string NUMBER %q", text)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 	return value, nil
 }

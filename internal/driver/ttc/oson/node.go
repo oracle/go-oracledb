@@ -199,9 +199,9 @@ func jsonCompatibleValue(value any) any {
 //   - malformed redirect or unsupported node layout.
 func newNodeAt(buf *osonBuffer, header *osonHeader, offset int) (drvCommon.JSONNode, error) {
 	if buf == nil || header == nil {
-		cause := fmt.Errorf("node construction requires both buffer and header")
-		common.Odl.Debug("newNodeAt: failed", "error", cause, "offset", offset)
-		return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := "missing OSON buffer or header"
+		common.Odl.Debug("newNodeAt: failed", "error", details, "offset", offset)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 
 	resolvedOffset := offset
@@ -211,14 +211,14 @@ func newNodeAt(buf *osonBuffer, header *osonHeader, offset int) (drvCommon.JSONN
 		// Update records can forward through more than one tree entry. Resolve
 		// the chain here so each node constructor sees the final node opcode.
 		if !header.containsNodeOffset(resolvedOffset) {
-			cause := fmt.Errorf("node offset %d is outside the tree segments", resolvedOffset)
-			common.Odl.Debug("newNodeAt: failed", "error", cause, "offset", resolvedOffset)
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+			details := fmt.Sprintf("node offset %d outside tree", resolvedOffset)
+			common.Odl.Debug("newNodeAt: failed", "error", details, "offset", resolvedOffset)
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 		}
 		if _, exists := seen[resolvedOffset]; exists {
-			cause := fmt.Errorf("cyclic OSON forwarding at node offset %d", resolvedOffset)
-			common.Odl.Debug("newNodeAt: failed", "error", cause, "offset", resolvedOffset)
-			return nil, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+			details := fmt.Sprintf("forwarding cycle at offset %d", resolvedOffset)
+			common.Odl.Debug("newNodeAt: failed", "error", details, "offset", resolvedOffset)
+			return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 		}
 		seen[resolvedOffset] = struct{}{}
 
@@ -284,9 +284,9 @@ func redirectedNodeOffset(buf *osonBuffer, header *osonHeader, offset int, opcod
 		nextOffset, err := header.resolveForwardedOffset(int(relativeOffset))
 		return nextOffset, true, err
 	case opcode == osonOpUpdateOversizeReserved:
-		cause := fmt.Errorf("reserved update opcode 0x%02x is not supported", opcode)
-		common.Odl.Debug("redirectedNodeOffset: failed", "error", cause, "offset", offset, "opcode", opcode)
-		return 0, false, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("reserved update opcode 0x%02x", opcode)
+		common.Odl.Debug("redirectedNodeOffset: failed", "error", details, "offset", offset, "opcode", opcode)
+		return 0, false, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	default:
 		return 0, false, nil
 	}
@@ -337,9 +337,9 @@ func readContainerCountAt(buf *osonBuffer, offset int, opcode drvCommon.UB1) (co
 
 		return int(val), offset + osonUB4Size, nil
 	default:
-		cause := fmt.Errorf("opcode 0x%02x does not encode a direct child count", opcode)
-		common.Odl.Debug("readContainerCountAt: failed", "error", cause, "offset", offset-1, "opcode", opcode)
-		return 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("opcode 0x%02x has no child count", opcode)
+		common.Odl.Debug("readContainerCountAt: failed", "error", details, "offset", offset-1, "opcode", opcode)
+		return 0, 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 }
 
@@ -382,9 +382,9 @@ func ensureNodeTableRange(buf *osonBuffer, start, count, width int, stage string
 		if buf != nil {
 			documentSize = buf.size()
 		}
-		cause := fmt.Errorf("node table start %d count %d width %d exceeds document size %d", start, count, width, documentSize)
-		common.Odl.Debug(stage+": failed", "error", cause, "start", start, "count", count, "width", width)
-		return common.NewOracleError(oracleErrors.OsonBufferError, cause)
+		details := "node table outside document"
+		common.Odl.Debug(stage+": failed", "error", details, "start", start, "count", count, "width", width, "documentSize", documentSize)
+		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 	return nil
 }
@@ -436,9 +436,9 @@ func readChildOffsetAt(buf *osonBuffer, header *osonHeader, containerOffset, ent
 		return header.treeSegmentOffset() + int(val), nil
 	}
 
-	cause := fmt.Errorf("unsupported child offset width %d", width)
-	common.Odl.Debug("readChildOffsetAt: failed", "error", cause, "width", width, "entryOffset", entryOffset)
-	return 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+	details := fmt.Sprintf("invalid child offset width %d", width)
+	common.Odl.Debug("readChildOffsetAt: failed", "error", details, "width", width, "entryOffset", entryOffset)
+	return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 }
 
 // readRelativeChildOffset decodes one signed child-offset delta from a relative table.
@@ -469,8 +469,8 @@ func readRelativeChildOffset(buf *osonBuffer, entryOffset, width int) (int, erro
 		}
 		return int(val), nil
 	default:
-		cause := fmt.Errorf("unsupported child offset width %d", width)
-		common.Odl.Debug("readRelativeChildOffset: failed", "error", cause, "width", width, "entryOffset", entryOffset)
-		return 0, common.NewOracleError(oracleErrors.OsonParsingError, cause)
+		details := fmt.Sprintf("invalid child offset width %d", width)
+		common.Odl.Debug("readRelativeChildOffset: failed", "error", details, "width", width, "entryOffset", entryOffset)
+		return 0, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
 	}
 }

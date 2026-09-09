@@ -517,14 +517,14 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.OsonHeaderError), "invalid or unsupported OSON document header")
 	// Document: No
 	// Cause:    The decoder attempted to read outside the OSON byte buffer or used an invalid buffer range.
-	// Action:   Inspect the wrapped cause for the requested offset, length, and buffer size.
+	// Action:   Verify that the payload is complete and enable debug logging for offset and length details.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.OsonBufferError), "invalid OSON buffer access")
 	// Document: No
 	// Cause:    The OSON value tree contains an invalid or unsupported opcode, container layout, child offset, or forwarding record.
-	// Action:   Verify that the payload is a complete OSON document. Inspect the wrapped cause and check database and driver version compatibility.
-	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.OsonParsingError), "invalid or unsupported OSON document structure")
+	// Action:   Verify that the payload is a complete OSON document and inspect the parsing detail and enable debug logging.
+	// Comment:  Arg[0]: parsing detail.
+	message.SetString(language.English, string(oracleErrors.OsonParsingError), "invalid or unsupported OSON document structure: %s")
 	// Document: No
 	// Cause:    A public oracle/json method was called on a nil receiver.
 	// Action:   Initialize the receiver before calling the method.

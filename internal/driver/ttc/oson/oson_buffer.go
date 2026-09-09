@@ -69,9 +69,9 @@ func (b *osonBuffer) position() int {
 // setPosition moves the cursor to an absolute offset, including the end of data.
 func (b *osonBuffer) setPosition(pos int) error {
 	if pos < 0 || pos > len(b.data) {
-		cause := fmt.Errorf("position %d out of bounds [0,%d]", pos, len(b.data))
-		common.Odl.Debug("osonBuffer.setPosition: failed", "error", cause, "position", pos, "limit", len(b.data))
-		return common.NewOracleError(oracleErrors.OsonBufferError, cause)
+		details := fmt.Sprintf("position %d out of bounds", pos)
+		common.Odl.Debug("osonBuffer.setPosition: failed", "error", details, "position", pos, "limit", len(b.data))
+		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 	b.pos = pos
 	return nil
@@ -169,20 +169,20 @@ func (b *osonBuffer) readSB4At(offset int) (drvCommon.SB4, error) {
 // ensureAvailable validates a cursor-based read before it changes pos.
 func (b *osonBuffer) ensureAvailable(length int) error {
 	if length < 0 {
-		cause := fmt.Errorf("negative length %d requested", length)
-		common.Odl.Debug("osonBuffer.ensureAvailable: failed", "error", cause, "length", length, "remaining", b.remaining())
-		return common.NewOracleError(oracleErrors.OsonBufferError, cause)
+		details := fmt.Sprintf("negative length %d", length)
+		common.Odl.Debug("osonBuffer.ensureAvailable: failed", "error", details, "length", length, "remaining", b.remaining())
+		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 	if b.pos < 0 || b.pos > len(b.data) {
-		cause := fmt.Errorf("cursor position %d out of bounds [0,%d]", b.pos, len(b.data))
-		common.Odl.Debug("osonBuffer.ensureAvailable: failed", "error", cause, "position", b.pos, "limit", len(b.data))
-		return common.NewOracleError(oracleErrors.OsonBufferError, cause)
+		details := fmt.Sprintf("cursor position %d out of bounds", b.pos)
+		common.Odl.Debug("osonBuffer.ensureAvailable: failed", "error", details, "position", b.pos, "limit", len(b.data))
+		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 	remaining := b.remaining()
 	if remaining < length {
-		cause := fmt.Errorf("buffer underflow, need %d bytes, available %d", length, remaining)
-		common.Odl.Debug("osonBuffer.ensureAvailable: failed", "error", cause, "required", length, "remaining", remaining)
-		return common.NewOracleError(oracleErrors.OsonBufferError, cause)
+		details := "buffer underflow"
+		common.Odl.Debug("osonBuffer.ensureAvailable: failed", "error", details, "required", length, "remaining", remaining)
+		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 	return nil
 }
@@ -190,22 +190,22 @@ func (b *osonBuffer) ensureAvailable(length int) error {
 // ensureRange validates an absolute range before direct indexing.
 func (b *osonBuffer) ensureRange(offset, length int, stage string) error {
 	if offset < 0 {
-		cause := fmt.Errorf("negative offset %d requested", offset)
-		common.Odl.Debug(stage+": failed", "error", cause, "offset", offset, "length", length, "limit", len(b.data))
-		return common.NewOracleError(oracleErrors.OsonBufferError, cause)
+		details := fmt.Sprintf("negative offset %d", offset)
+		common.Odl.Debug(stage+": failed", "error", details, "offset", offset, "length", length, "limit", len(b.data))
+		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 
 	if length < 0 {
-		cause := fmt.Errorf("negative length %d requested", length)
-		common.Odl.Debug(stage+": failed", "error", cause, "offset", offset, "length", length, "limit", len(b.data))
-		return common.NewOracleError(oracleErrors.OsonBufferError, cause)
+		details := fmt.Sprintf("negative length %d", length)
+		common.Odl.Debug(stage+": failed", "error", details, "offset", offset, "length", length, "limit", len(b.data))
+		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 
 	// `length > len(data)-offset` keeps the bounds check overflow-safe for large offsets.
 	if offset > len(b.data) || length > len(b.data)-offset {
-		cause := fmt.Errorf("buffer range [%d,%d) out of bounds [0,%d)", offset, offset+length, len(b.data))
-		common.Odl.Debug(stage+": failed", "error", cause, "offset", offset, "length", length, "limit", len(b.data))
-		return common.NewOracleError(oracleErrors.OsonBufferError, cause)
+		details := "buffer range out of bounds"
+		common.Odl.Debug(stage+": failed", "error", details, "offset", offset, "length", length, "limit", len(b.data))
+		return common.NewOracleError(oracleErrors.OsonBufferError, nil)
 	}
 	return nil
 }
