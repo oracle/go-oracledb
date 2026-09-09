@@ -66,23 +66,21 @@ func isTestCategoryEnabled(testCategories string, categories TestCategoryList) b
 	return false
 }
 
-
 func RunCategoryExecutor(t *testing.T, categories TestCategoryList, cases []CategorizedTestCase) {
 	var regularCases []CategorizedTestCase
 	var exclusiveCases []CategorizedTestCase
 
 	for _, c := range cases {
-		if isTestCategoryEnabled(c.Categories, categories)  {
-				if c.Exclusive {
-					exclusiveCases = append(exclusiveCases, c)
-				} else {
-					regularCases = append(regularCases, c)
-				}
+		if isTestCategoryEnabled(c.Categories, categories) {
+			if c.Exclusive {
+				exclusiveCases = append(exclusiveCases, c)
+			} else {
+				regularCases = append(regularCases, c)
+			}
 		} else {
 			t.Logf("No enabled category for test case %s", c.Name)
-			}
 		}
-
+	}
 
 	if len(regularCases) > 0 {
 		t.Run("parallel", func(t *testing.T) {

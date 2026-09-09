@@ -52,8 +52,6 @@ var ConfigFileName string
 // configuration to use.
 var ConfigName string
 
-
-
 type TestCategoryList []string
 
 func (s *TestCategoryList) String() string {
@@ -68,14 +66,12 @@ func (s *TestCategoryList) Set(value string) error {
 // TestCategories category of tests to be un
 var TestCategories TestCategoryList
 
-
 func init() {
 
 	flag.StringVar(&ConfigFileName, "driver.config.filename", "", "tests config name")
 	flag.StringVar(&ConfigName, "driver.config.name", "", "tests config name")
 	flag.Var(&TestCategories, "test.category", "tests category to be enabled, can be unitary,functional,robustness,... May be specified multiple times")
 }
-
 
 // InitConfig init the environment configuration
 // Main task is to parse dirver config flags and populate the
