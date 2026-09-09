@@ -54,7 +54,7 @@ jobs:
           action: delete
           user: ${{ env.VALIDATION_USER_NAME }}
 
-    heavy_driver:
+  heavy_driver:
       runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
       strategy:
         matrix:

@@ -77,9 +77,9 @@ jobs:
           user: ${{ env.VALIDATION_USER_NAME }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-                - name: coverage-full-func
-                - path: ${{ github.workspace }}/coverage/full_func
-                - if-no-files-found: error
+          - name: coverage-full-func
+          - path: ${{ github.workspace }}/coverage/full_func
+          - if-no-files-found: error
 
   no_resource_validate_driver:
     runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
@@ -100,12 +100,12 @@ jobs:
           go test ${{ steps.go-packages.outputs.packages }} -coverpkg=./... -cover -run TestCategoryExecutor -test.gocoverdir=${{ github.workspace }}/coverage/coverage/no_resources -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="unitary"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-            - name: coverage-no-resources
-            - path: ${{ github.workspace }}/coverage/no_resources
-            - if-no-files-found: error
+          - name: coverage-no-resources
+          - path: ${{ github.workspace }}/coverage/no_resources
+          - if-no-files-found: error
 
 
-    coverage:
+  coverage:
       needs:
         - functional_validate_driver
         - no_resource_validate_driver
