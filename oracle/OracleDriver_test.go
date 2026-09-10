@@ -97,6 +97,55 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 	}
 }
 
+// TestDriver_Functional_NetworkCompression verifies Oracle Net compression
+// through the public OracleDriverConfig.ConnectionProperties API.
+//
+// The test enables Compression, creates a connector from that configuration,
+// and queries a highly compressible 4,000-byte value that exceeds the default
+// 1,024-byte compression threshold. It verifies end-to-end interoperability
+// for the public configuration path, but query success alone does not prove
+// that the server negotiated compression.
+//
+// The database server must enable a compatible compression level in sqlnet.ora:
+//
+//	SQLNET.COMPRESSION=on
+//	SQLNET.COMPRESSION_LEVELS=(high)
+//
+// Packet construction, negotiation flags, compression, decompression, server
+// refusal, and unsupported server compression schemes are covered separately
+// by unit tests in internal/driver/network/session.
+func TestDriver_Functional_NetworkCompression(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	config := NewOracleDriverConfig()
+	config.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
+	config.Credentials.User = TestingConfig.Credentials.Username
+	config.Credentials.Password = TestingConfig.Credentials.Password
+	config.ConnectDescriptor = TestingConfig.GetConnectionDSN()
+	config.ConnectionProperties.Compression = true
+	connector, err := NewOracleConnector(config)
+	if err != nil {
+		t.Fatalf("create compressed connection connector: %v", err)
+	}
+	db := sql.OpenDB(connector)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close compressed connection: %v", err)
+		}
+	}()
+
+	var value string
+	if err := db.QueryRowContext(context.Background(), "SELECT RPAD('x', 4000, 'x') FROM DUAL").Scan(&value); err != nil {
+		t.Fatalf("query over compressed connection: %v", err)
+	}
+	if len(value) != 4000 {
+		t.Fatalf("result length: got %d, want 4000", len(value))
+	}
+}
+
 // TestDriver_Table_Create_Multiple_Connections
 // Opens two independent connections from a shared sql.DB pool and pings each to
 // validate basic multi-connection handling via database/sql.
