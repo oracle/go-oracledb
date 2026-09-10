@@ -84,7 +84,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{byte(osonOpCompactSigned32Prefix | drvCommon.UB1(len(integerNumberPayload)))}, integerNumberPayload...),
 			assert: func(t *testing.T, got any) {
 				if got != float64(42) {
-					t.Fatalf("got %#v, want 42", got)
+					t.Fatalf("expected Value() to return float64(42), got %#v", got)
 				}
 			},
 		},
@@ -93,7 +93,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{byte(osonOpCompactSigned64Prefix | drvCommon.UB1(len(integerNumberPayload)))}, integerNumberPayload...),
 			assert: func(t *testing.T, got any) {
 				if got != float64(42) {
-					t.Fatalf("got %#v, want 42", got)
+					t.Fatalf("expected Value() to return float64(42), got %#v", got)
 				}
 			},
 		},
@@ -102,7 +102,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{byte(osonOpCompactOracleNumberPrefix | drvCommon.UB1(len(decimalNumberPayload)-_compactNumberLengthBias))}, decimalNumberPayload...),
 			assert: func(t *testing.T, got any) {
 				if got != float64(12.75) {
-					t.Fatalf("got %#v, want 12.75", got)
+					t.Fatalf("expected Value() to return float64(12.75), got %#v", got)
 				}
 			},
 		},
@@ -111,7 +111,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{byte(osonOpCompactDecimalPrefix | drvCommon.UB1(len(decimalNumberPayload)-_compactNumberLengthBias))}, decimalNumberPayload...),
 			assert: func(t *testing.T, got any) {
 				if got != float64(12.75) {
-					t.Fatalf("got %#v, want 12.75", got)
+					t.Fatalf("expected Value() to return float64(12.75), got %#v", got)
 				}
 			},
 		},
@@ -120,7 +120,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpOracleNumber, byte(drvCommon.UB1(len(largeNumberPayload)))}, largeNumberPayload...),
 			assert: func(t *testing.T, got any) {
 				if got != float64(1234567890123456) {
-					t.Fatalf("got %#v, want 1234567890123456", got)
+					t.Fatalf("expected Value() to return float64(1234567890123456), got %#v", got)
 				}
 			},
 		},
@@ -129,7 +129,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpOracleDecimal, byte(drvCommon.UB1(len(decimalNumberPayload)))}, decimalNumberPayload...),
 			assert: func(t *testing.T, got any) {
 				if got != float64(12.75) {
-					t.Fatalf("got %#v, want 12.75", got)
+					t.Fatalf("expected Value() to return float64(12.75), got %#v", got)
 				}
 			},
 		},
@@ -138,7 +138,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpStringNumber, byte(drvCommon.UB1(len(stringNumberText)))}, drvCommon.B1Array(stringNumberText)...),
 			assert: func(t *testing.T, got any) {
 				if got != float64(12.75) {
-					t.Fatalf("got %#v, want 12.75", got)
+					t.Fatalf("expected Value() to return float64(12.75), got %#v", got)
 				}
 			},
 		},
@@ -147,7 +147,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{byte(drvCommon.UB1(len(shortStringText)))}, drvCommon.B1Array(shortStringText)...),
 			assert: func(t *testing.T, got any) {
 				if got != "ok" {
-					t.Fatalf("got %#v, want ok", got)
+					t.Fatalf("expected Value() to return %q, got %#v", "ok", got)
 				}
 			},
 		},
@@ -156,7 +156,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpStringUB1, byte(drvCommon.UB1(len(helloText)))}, drvCommon.B1Array(helloText)...),
 			assert: func(t *testing.T, got any) {
 				if got != "hello" {
-					t.Fatalf("got %#v, want hello", got)
+					t.Fatalf("expected Value() to return %q, got %#v", "hello", got)
 				}
 			},
 		},
@@ -165,7 +165,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpStringUB2, 0x00, byte(drvCommon.UB1(len(helloText)))}, drvCommon.B1Array(helloText)...),
 			assert: func(t *testing.T, got any) {
 				if got != "hello" {
-					t.Fatalf("got %#v, want hello", got)
+					t.Fatalf("expected Value() to return %q, got %#v", "hello", got)
 				}
 			},
 		},
@@ -174,7 +174,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpStringUB4, 0x00, 0x00, 0x00, byte(drvCommon.UB1(len(worldText)))}, drvCommon.B1Array(worldText)...),
 			assert: func(t *testing.T, got any) {
 				if got != "world" {
-					t.Fatalf("got %#v, want world", got)
+					t.Fatalf("expected Value() to return %q, got %#v", "world", got)
 				}
 			},
 		},
@@ -183,7 +183,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: drvCommon.B1Array{osonOpNull},
 			assert: func(t *testing.T, got any) {
 				if got != nil {
-					t.Fatalf("got %#v, want nil", got)
+					t.Fatalf("expected Value() to return nil, got %#v", got)
 				}
 			},
 		},
@@ -192,7 +192,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: drvCommon.B1Array{osonOpTrue},
 			assert: func(t *testing.T, got any) {
 				if got != true {
-					t.Fatalf("got %#v, want true", got)
+					t.Fatalf("expected Value() to return true, got %#v", got)
 				}
 			},
 		},
@@ -201,7 +201,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: drvCommon.B1Array{osonOpFalse},
 			assert: func(t *testing.T, got any) {
 				if got != false {
-					t.Fatalf("got %#v, want false", got)
+					t.Fatalf("expected Value() to return false, got %#v", got)
 				}
 			},
 		},
@@ -210,7 +210,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpBinaryFloat}, binaryFloatPayload...),
 			assert: func(t *testing.T, got any) {
 				if got != float64(12.5) {
-					t.Fatalf("got %#v, want 12.5", got)
+					t.Fatalf("expected Value() to return float64(12.5), got %#v", got)
 				}
 			},
 		},
@@ -219,7 +219,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpBinaryDouble}, binaryDoublePayload...),
 			assert: func(t *testing.T, got any) {
 				if got != float64(42.25) {
-					t.Fatalf("got %#v, want 42.25", got)
+					t.Fatalf("expected Value() to return float64(42.25), got %#v", got)
 				}
 			},
 		},
@@ -229,10 +229,10 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			assert: func(t *testing.T, got any) {
 				tm, ok := got.(time.Time)
 				if !ok {
-					t.Fatalf("got %T, want time.Time", got)
+					t.Fatalf("expected Value() to return time.Time, got %T", got)
 				}
 				if tm.Year() != 2024 || tm.Month() != time.January || tm.Day() != 2 {
-					t.Fatalf("got %v, want 2024-01-02", tm)
+					t.Fatalf("expected the decoded date to be 2024-01-02, got %v", tm)
 				}
 			},
 		},
@@ -242,10 +242,10 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			assert: func(t *testing.T, got any) {
 				tm, ok := got.(time.Time)
 				if !ok {
-					t.Fatalf("got %T, want time.Time", got)
+					t.Fatalf("expected Value() to return time.Time, got %T", got)
 				}
 				if tm.Nanosecond() != 123000000 {
-					t.Fatalf("got %v, want nanoseconds 123000000", tm)
+					t.Fatalf("expected the decoded timestamp to contain 123000000 nanoseconds, got %v", tm)
 				}
 			},
 		},
@@ -255,10 +255,10 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			assert: func(t *testing.T, got any) {
 				tm, ok := got.(time.Time)
 				if !ok {
-					t.Fatalf("got %T, want time.Time", got)
+					t.Fatalf("expected Value() to return time.Time, got %T", got)
 				}
 				if tm.Nanosecond() != 0 {
-					t.Fatalf("got %v, want zero fractional seconds", tm)
+					t.Fatalf("expected the seven-byte timestamp to have zero fractional seconds, got %v", tm)
 				}
 			},
 		},
@@ -268,11 +268,11 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			assert: func(t *testing.T, got any) {
 				tm, ok := got.(time.Time)
 				if !ok {
-					t.Fatalf("got %T, want time.Time", got)
+					t.Fatalf("expected Value() to return time.Time, got %T", got)
 				}
 				_, off := tm.Zone()
 				if off != 2*3600 {
-					t.Fatalf("got offset %d, want 7200", off)
+					t.Fatalf("expected the decoded timezone offset to be 7200 seconds, got %d", off)
 				}
 			},
 		},
@@ -281,7 +281,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpIntervalYM}, intervalYMPayload...),
 			assert: func(t *testing.T, got any) {
 				if got != "02-03" {
-					t.Fatalf("got %#v, want 02-03", got)
+					t.Fatalf("expected Value() to return the interval %q, got %#v", "02-03", got)
 				}
 			},
 		},
@@ -290,7 +290,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: append(drvCommon.B1Array{osonOpIntervalDS}, intervalDSPayload...),
 			assert: func(t *testing.T, got any) {
 				if got != "10 05:30:02.123" {
-					t.Fatalf("got %#v, want 10 05:30:02.123", got)
+					t.Fatalf("expected Value() to return the interval %q, got %#v", "10 05:30:02.123", got)
 				}
 			},
 		},
@@ -299,7 +299,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: drvCommon.B1Array{osonOpBinaryUB2, 0x00, 0x03, 0xaa, 0xbb, 0xcc},
 			assert: func(t *testing.T, got any) {
 				if !reflect.DeepEqual(got, []byte{0xaa, 0xbb, 0xcc}) {
-					t.Fatalf("got %#v, want raw bytes", got)
+					t.Fatalf("expected Value() to return []byte{0xaa, 0xbb, 0xcc}, got %#v", got)
 				}
 			},
 		},
@@ -308,7 +308,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: drvCommon.B1Array{osonOpBinaryUB4, 0x00, 0x00, 0x00, 0x03, 0xde, 0xad, 0xbe},
 			assert: func(t *testing.T, got any) {
 				if !reflect.DeepEqual(got, []byte{0xde, 0xad, 0xbe}) {
-					t.Fatalf("got %#v, want raw bytes", got)
+					t.Fatalf("expected Value() to return []byte{0xde, 0xad, 0xbe}, got %#v", got)
 				}
 			},
 		},
@@ -317,7 +317,7 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 			payload: drvCommon.B1Array{osonOpID, 0x03, 0x01, 0x02, 0x03},
 			assert: func(t *testing.T, got any) {
 				if !reflect.DeepEqual(got, []byte{0x01, 0x02, 0x03}) {
-					t.Fatalf("got %#v, want id bytes", got)
+					t.Fatalf("expected Value() to return ID bytes []byte{0x01, 0x02, 0x03}, got %#v", got)
 				}
 			},
 		},
@@ -327,11 +327,11 @@ func TestScalarNode_ValueCoversSupportedDecodeUseCases(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			node, err := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0)
 			if err != nil {
-				t.Fatalf("newScalarNodeAt() error = %v", err)
+				t.Fatalf("failed to construct a scalar node from the valid test payload: %v", err)
 			}
 			got, err := node.Value(drvCommon.JSONOptDefault)
 			if err != nil {
-				t.Fatalf("Value() error = %v", err)
+				t.Fatalf("failed to decode the valid scalar payload: %v", err)
 			}
 			tc.assert(t, got)
 		})
@@ -401,14 +401,14 @@ func TestScalarNode_NumberAsStringOption(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			node, err := newScalarNodeAt(newOsonBuffer(tc.payload), &osonHeader{}, 0)
 			if err != nil {
-				t.Fatalf("newScalarNodeAt() error = %v", err)
+				t.Fatalf("failed to construct a scalar node from the valid numeric payload: %v", err)
 			}
 			got, err := node.Value(drvCommon.JSONOptNumberAsString)
 			if err != nil {
-				t.Fatalf("Value() error = %v", err)
+				t.Fatalf("failed to decode the numeric payload with JSONOptNumberAsString: %v", err)
 			}
 			if got != tc.want {
-				t.Fatalf("got %#v, want %#v", got, tc.want)
+				t.Fatalf("expected Value(JSONOptNumberAsString) to return %#v, got %#v", tc.want, got)
 			}
 		})
 	}
@@ -458,24 +458,33 @@ func TestScalarNode_DefaultOracleNumberAllowsLargePrecisionFloat(t *testing.T) {
 	}
 }
 
-// TestScalarNode_KindAndString verifies scalar kind classification
-// and JSON string rendering for a decoded scalar value.
-func TestScalarNode_KindAndString(t *testing.T) {
+// TestScalarNode_KindReportsScalar expects a decoded short-string node to
+// identify itself as a scalar independently of its payload value.
+func TestScalarNode_KindReportsScalar(t *testing.T) {
 	node, err := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{0x02, 'o', 'k'}), &osonHeader{}, 0)
 	if err != nil {
-		t.Fatalf("newScalarNodeAt() error = %v", err)
+		t.Fatalf("failed to construct a scalar node from a valid short-string payload: %v", err)
 	}
 
 	if got, want := node.Kind(), drvCommon.KindScalar; got != want {
-		t.Fatalf("Kind() = %v, want %v", got, want)
+		t.Fatalf("expected the short-string node to report kind %v, got %v", want, got)
+	}
+}
+
+// TestScalarNode_StringQuotesStringValue expects a decoded OSON string scalar
+// to render as a quoted JSON string.
+func TestScalarNode_StringQuotesStringValue(t *testing.T) {
+	node, err := newScalarNodeAt(newOsonBuffer(drvCommon.B1Array{0x02, 'o', 'k'}), &osonHeader{}, 0)
+	if err != nil {
+		t.Fatalf("failed to construct a scalar node from a valid short-string payload: %v", err)
 	}
 
 	text, err := node.String()
 	if err != nil {
-		t.Fatalf("String() error = %v", err)
+		t.Fatalf("failed to render the valid short-string scalar as JSON: %v", err)
 	}
 	if text != `"ok"` {
-		t.Fatalf("String() = %q, want %q", text, `"ok"`)
+		t.Fatalf("expected String() to return %q, got %q", `"ok"`, text)
 	}
 }
 
@@ -610,8 +619,8 @@ func TestScalarNode_MalformedScalarPayloads(t *testing.T) {
 	}
 }
 
-// TestScalarNode_IDReadsFullUB1Length verifies the ID payload reader accepts
-// the largest length representable by the UB1 wire field.
+// TestScalarNode_IDReadsFullUB1Length expects the ID reader to accept a payload at the
+// maximum length supported by its length field.
 func TestScalarNode_IDReadsFullUB1Length(t *testing.T) {
 	const payloadLength = math.MaxUint8
 	payload := append(drvCommon.B1Array{osonOpID, byte(payloadLength)}, make([]byte, payloadLength)...)
@@ -668,7 +677,7 @@ func TestScalarNode_BinaryFloatSpecialValue(t *testing.T) {
 		t.Fatalf("Value() error = %v", err)
 	}
 	if !math.IsInf(got.(float64), 1) {
-		t.Fatalf("got %#v, want +Inf", got)
+		t.Fatalf("expected Value() to preserve positive infinity, got %#v", got)
 	}
 }
 
@@ -684,8 +693,8 @@ func TestScalarNode_RejectsUnsupportedOpcode(t *testing.T) {
 	}
 }
 
-// TestScalarNode_RejectsTruncatedPayloads exercises the payload bounds check
-// for each variable and fixed-width scalar family.
+// TestScalarNode_RejectsTruncatedPayloads expects scalar decoding to reject incomplete
+// payloads and length prefixes, missing opcodes, and invalid numeric text.
 func TestScalarNode_RejectsTruncatedPayloads(t *testing.T) {
 	t.Parallel()
 

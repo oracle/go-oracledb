@@ -57,9 +57,9 @@ func TestObjectNode_KindReportsObject(t *testing.T) {
 	}
 }
 
-// TestObjectNode_ReadersRejectTruncatedLayouts exercises object
-// metadata readers directly for each supported field-id width and delegate
-// reference width.
+// TestObjectNode_ReadersRejectTruncatedLayouts expects object readers to return errors for
+// truncated field IDs, child counts, delegate references, missing opcodes, and unsupported
+// count encodings.
 func TestObjectNode_ReadersRejectTruncatedLayouts(t *testing.T) {
 	t.Parallel()
 
@@ -105,7 +105,8 @@ func TestObjectNode_ReadersRejectTruncatedLayouts(t *testing.T) {
 	}
 }
 
-// TestObjectNode_SimpleObjectTraversal verifies key lookup, full materialization, and JSON rendering for the basic object fixture.
+// TestObjectNode_SimpleObjectTraversal expects key enumeration and lookup to expose the
+// stored fields, and materialization and JSON rendering to preserve their values.
 func TestObjectNode_SimpleObjectTraversal(t *testing.T) {
 	t.Parallel()
 
@@ -131,33 +132,33 @@ func TestObjectNode_SimpleObjectTraversal(t *testing.T) {
 	slices.Sort(want)
 
 	if !slices.Equal(got, want) {
-		t.Fatalf("Keys() = %v, want %v", got, want)
+		t.Fatalf("expected Keys() to return %v, got %v", want, got)
 	}
 
 	nameNode, found := obj.Get("name")
 	if !found || nameNode == nil {
-		t.Fatalf("Get(name) = (%v, %v), want child", nameNode, found)
+		t.Fatalf("expected Get(%q) to return a child node, got node %v with found=%t", "name", nameNode, found)
 	}
 	name, err := nameNode.GetValue(drvCommon.JSONOptDefault)
 	if err != nil {
-		t.Fatalf("Get(name).GetValue() error = %v", err)
+		t.Fatalf("failed to materialize the child returned by Get(%q): %v", "name", err)
 	}
 	if name != "Alice" {
-		t.Fatalf("Get(name).GetValue() = %v, want Alice", name)
+		t.Fatalf("expected Get(%q) to resolve to %q, got %#v", "name", "Alice", name)
 	}
 
 	gotValue, err := obj.Value(drvCommon.JSONOptDefault)
 	if err != nil {
-		t.Fatalf("Value() error = %v", err)
+		t.Fatalf("failed to materialize the valid simple-object fixture: %v", err)
 	}
 	wantValue := map[string]any{"name": "Alice", "role": "Developer", "active": true}
 	if !reflect.DeepEqual(gotValue, wantValue) {
-		t.Fatalf("Value() = %#v, want %#v", gotValue, wantValue)
+		t.Fatalf("expected Value() to return %#v, got %#v", wantValue, gotValue)
 	}
 
 	text, err := obj.String()
 	if err != nil {
-		t.Fatalf("String() error = %v", err)
+		t.Fatalf("failed to render the valid simple-object fixture as JSON: %v", err)
 	}
 	var decoded map[string]any
 	if err := json.Unmarshal([]byte(text), &decoded); err != nil {
@@ -238,8 +239,9 @@ func TestObjectNode_SecondaryDictionaryTraversal(t *testing.T) {
 	}
 }
 
-// TestObjectNode_RejectsMalformedLayouts groups object-layout failures while
-// keeping each malformed wire case visible as a named subtest.
+// TestObjectNode_RejectsMalformedLayouts expects duplicate or invalid field IDs, invalid
+// child offsets, unsupported opcodes, and truncated or impossible field-ID tables to
+// return errors.
 func TestObjectNode_RejectsMalformedLayouts(t *testing.T) {
 	t.Parallel()
 	t.Run("duplicate field IDs", testObjectNodeRejectsDuplicateFieldIDs)
@@ -255,7 +257,7 @@ func testObjectNodeRejectsDuplicateFieldIDs(t *testing.T) {
 	buf := newOsonBuffer(doc)
 	header, err := newOsonHeader(buf)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to parse the valid simple-object fixture header: %v", err)
 	}
 	// The simple object has a UB1 FID array directly after [opcode][count].
 	fidStart := header.treeSegmentOffset() + 2
@@ -342,7 +344,7 @@ func testObjectNodeRejectsImpossibleFieldIDTables(t *testing.T) {
 			doc := sampleSimpleObject.cloneOSON()
 			header, err := newOsonHeader(newOsonBuffer(doc))
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("failed to parse the valid simple-object fixture header: %v", err)
 			}
 			test.mutate(doc, header.treeSegmentOffset())
 			if _, err := Parse(doc); err == nil {
@@ -361,7 +363,7 @@ func TestObjectNode_SharedOverflowUsesPrimaryTreeOffsets(t *testing.T) {
 	buf := newOsonBuffer(candidate)
 	header, err := newOsonHeader(buf)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to parse the valid shared-object fixture header: %v", err)
 	}
 	candidate[3] = 0x02
 	candidate[header.treeSegmentStartOffset+0x56] = 0x87
@@ -375,11 +377,11 @@ func TestObjectNode_SharedOverflowUsesPrimaryTreeOffsets(t *testing.T) {
 	)
 	root, err := Parse(candidate)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to parse the constructed shared-object overflow document: %v", err)
 	}
 	value, err := root.GetValue(drvCommon.JSONOptNumberAsString)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to materialize the constructed shared-object overflow document: %v", err)
 	}
 	records := value.(map[string]any)["identical_records"].([]any)
 	if len(records) != 32 {
@@ -430,7 +432,7 @@ func TestObjectNode_RejectsInvalidDelegateReferences(t *testing.T) {
 			doc := sampleSharedObjects.cloneOSON()
 			header, err := newOsonHeader(newOsonBuffer(doc))
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("failed to parse the valid shared-object fixture header: %v", err)
 			}
 			delegateOffset := -1
 			for offset := header.treeSegmentOffset(); offset < len(doc); offset++ {
@@ -460,6 +462,8 @@ func TestObjectNode_RejectsInvalidDelegateReferences(t *testing.T) {
 	}
 }
 
+// TestReadFieldIDEntriesAt_ReadsAllSupportedWidths expects field IDs to decode to their
+// original values across all supported encoding widths.
 func TestReadFieldIDEntriesAt_ReadsAllSupportedWidths(t *testing.T) {
 	tests := []struct {
 		name   string

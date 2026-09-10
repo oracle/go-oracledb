@@ -109,8 +109,8 @@ func TestNewNodeAt_ResolvesRedirectChainsAndRejectsCycles(t *testing.T) {
 	})
 }
 
-// TestNewNodeAt_RejectsUpdateHeaderOffset verifies a node offset cannot point
-// into the V2 update header rather than either tree segment.
+// TestNewNodeAt_RejectsUpdateHeaderOffset expects node construction to reject offsets
+// into update metadata instead of tree data.
 func TestNewNodeAt_RejectsUpdateHeaderOffset(t *testing.T) {
 	buffer := newOsonBuffer(sampleUpdatedTinyScalar.oson)
 	header, err := newOsonHeader(buffer)
@@ -167,7 +167,7 @@ func TestParse_RejectsOutOfRangeRelativeChildOffset(t *testing.T) {
 	doc := sampleRelativeOffsets.cloneOSON()
 	header, err := newOsonHeader(newOsonBuffer(doc))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to parse the valid relative-offset fixture header: %v", err)
 	}
 	rootOffset := header.treeSegmentOffset()
 	// The root object stores [opcode][count][three UB1 FIDs][UB2 offsets...].
@@ -244,7 +244,7 @@ func TestParse_RejectsInvalidUpdateTargets(t *testing.T) {
 			doc := test.sample.cloneOSON()
 			header, err := newOsonHeader(newOsonBuffer(doc))
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("failed to parse the valid update fixture header: %v", err)
 			}
 			test.mutate(doc, header)
 			root, err := Parse(doc)
@@ -266,7 +266,7 @@ func TestParse_RejectsForwardingCycle(t *testing.T) {
 	doc := sampleUpdatedForwardUB2.cloneOSON()
 	header, err := newOsonHeader(newOsonBuffer(doc))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to parse the valid forwarding fixture header: %v", err)
 	}
 	forwardOffset := -1
 	for offset := header.treeSegmentOffset(); offset < header.treeSegmentOffset()+int(header.treeSegmentByteLength); offset++ {
@@ -292,8 +292,8 @@ func TestParse_RejectsForwardingCycle(t *testing.T) {
 	assertOracleErrorCode(t, err, oracleErrors.OsonParsingError)
 }
 
-// TestNode_ReadHelpersRejectMalformedInput covers error exits that
-// are difficult to reach through a complete document.
+// TestNode_ReadHelpersRejectMalformedInput expects container-count and child-offset
+// readers to return errors for truncated input and unsupported encodings or widths.
 func TestNode_ReadHelpersRejectMalformedInput(t *testing.T) {
 	t.Parallel()
 
@@ -325,8 +325,8 @@ func TestNode_ReadHelpersRejectMalformedInput(t *testing.T) {
 	}
 }
 
-// TestNode_RedirectReadsRejectTruncatedPayloads covers both inline
-// forwarding address widths when their payload is incomplete.
+// TestNode_RedirectReadsRejectTruncatedPayloads expects inline redirects to return
+// errors for incomplete forwarding addresses across all supported address widths.
 func TestNode_RedirectReadsRejectTruncatedPayloads(t *testing.T) {
 	t.Parallel()
 	header := &osonHeader{}

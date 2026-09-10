@@ -46,58 +46,60 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestArrayNode_NestedObjectArrayTraversal verifies indexed traversal and JSON materialization of a nested OSON array.
+// TestArrayNode_NestedObjectArrayTraversal expects indexed lookup to return the nested
+// array children, reject out-of-range indexes, and materialize the nested values with
+// numbers preserved as strings.
 func TestArrayNode_NestedObjectArrayTraversal(t *testing.T) {
 	t.Parallel()
 
 	root, err := Parse(sampleNestedObjectArray.oson)
 	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
+		t.Fatalf("failed to parse the valid nested object-array fixture: %v", err)
 	}
 	rootObject, ok := root.(drvCommon.JSONObjectNode)
 	if !ok {
-		t.Fatalf("root type = %T, want object", root)
+		t.Fatalf("expected the nested object-array fixture root to be an object node, got %T", root)
 	}
 	if got, want := rootObject.Len(), 3; got != want {
-		t.Fatalf("Len() = %d, want %d", got, want)
+		t.Fatalf("expected the fixture root object to contain %d fields, got %d", want, got)
 	}
 
 	itemsNode, found := rootObject.Get("items")
 	if !found {
-		t.Fatal("Get(items) found = false, want true")
+		t.Fatal("expected the fixture root object to contain the items field, but Get returned found=false")
 	}
 	items, ok := itemsNode.(drvCommon.JSONArrayNode)
 	if !ok {
-		t.Fatalf("items type = %T, want array", itemsNode)
+		t.Fatalf("expected the items field to contain an array node, got %T", itemsNode)
 	}
 	if got, want := items.Kind(), drvCommon.KindArray; got != want {
-		t.Fatalf("items.Kind() = %v, want %v", got, want)
+		t.Fatalf("expected the items node to report kind %v, got %v", want, got)
 	}
 	if got, want := items.Len(), 4; got != want {
-		t.Fatalf("items.Len() = %d, want %d", got, want)
+		t.Fatalf("expected the items array to contain %d children, got %d", want, got)
 	}
 	if _, found := items.Get(-1); found {
-		t.Fatal("items.Get(-1) found = true, want false")
+		t.Fatal("expected the items array to reject the negative index -1")
 	}
 	if _, found := items.Get(items.Len()); found {
-		t.Fatal("items.Get(len) found = true, want false")
+		t.Fatal("expected the items array to reject an index equal to its length")
 	}
 
 	firstItemNode, found := items.Get(0)
 	if !found {
-		t.Fatal("items.Get(0) found = false, want true")
+		t.Fatal("expected index 0 to resolve to the first items-array child")
 	}
 	firstItemValue, err := firstItemNode.GetValue(drvCommon.JSONOptNumberAsString)
 	if err != nil {
-		t.Fatalf("items[0].GetValue(NumberAsString) error = %v", err)
+		t.Fatalf("failed to materialize items[0] with numbers preserved as strings: %v", err)
 	}
 	if firstItemValue != drvCommon.JSONNumber("1") {
-		t.Fatalf("items[0] = %#v, want JSONNumber(\"1\")", firstItemValue)
+		t.Fatalf("expected items[0] to materialize as JSONNumber(%q), got %#v", "1", firstItemValue)
 	}
 
 	itemsSlice, err := itemsNode.GetValue(drvCommon.JSONOptNumberAsString)
 	if err != nil {
-		t.Fatalf("Value(NumberAsString) error = %v", err)
+		t.Fatalf("failed to materialize the items array with numbers preserved as strings: %v", err)
 	}
 	want := []any{
 		drvCommon.JSONNumber("1"),
@@ -107,12 +109,13 @@ func TestArrayNode_NestedObjectArrayTraversal(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(itemsSlice, want) {
-		t.Fatalf("Value(NumberAsString) = %#v, want %#v", itemsSlice, want)
+		t.Fatalf("expected the items array to materialize as %#v, got %#v", want, itemsSlice)
 	}
 }
 
-// TestArrayNode_RejectsMalformedLayouts verifies malformed array layouts and
-// invalid array-only opcode combinations.
+// TestArrayNode_RejectsMalformedLayouts expects malformed array headers and child tables
+// to return errors; an invalid child offset must make Get return false and Value return an
+// error.
 func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 	t.Parallel()
 
@@ -153,7 +156,7 @@ func TestArrayNode_RejectsMalformedLayouts(t *testing.T) {
 		doc := sampleNestedArray.cloneOSON()
 		header, err := newOsonHeader(newOsonBuffer(doc))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("failed to parse the valid nested-array fixture header: %v", err)
 		}
 		doc[header.treeSegmentOffset()+1] = 0xff
 		if _, err := Parse(doc); err == nil {

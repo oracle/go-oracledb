@@ -170,8 +170,9 @@ func TestEncodeStringScalar_UsesExpectedStringOpcodes(t *testing.T) {
 	}
 }
 
-// TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2 verifies that
-// large scalar documents switch the tree-size header field from UB2 to UB4.
+// TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2 expects scalar
+// encoding to widen the tree-size field when the document outgrows the compact
+// representation.
 func TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2(t *testing.T) {
 	value := strings.Repeat("x", math.MaxUint16+1)
 	doc, err := Encode(value)
@@ -202,7 +203,8 @@ func TestEncodeStringScalar_UsesUB4TreeSegmentSizeWhenTreeExceedsUB2(t *testing.
 	assertEncodedValueDecodesTo(t, doc, value)
 }
 
-// TestEncodeContainers_EncodesNestedObjectAndArray verifies dictionary creation, object field IDs, and child offsets for a mixed nested document.
+// TestEncodeContainers_EncodesNestedObjectAndArray expects encoding to preserve nested
+// objects, arrays, and their values when the document is decoded.
 func TestEncodeContainers_EncodesNestedObjectAndArray(t *testing.T) {
 	value := map[string]any{
 		"name": "Ada",
@@ -312,8 +314,9 @@ func TestFieldNameSortingOrder(t *testing.T) {
 	}
 }
 
-// TestEncodeScalarValues_CoverEssentialScalarOpcodes verifies the scalar
-// families used by the encoder, including compact integers and Oracle NUMBER.
+// TestEncodeScalarValues_CoverEssentialScalarOpcodes expects each scalar value to use its
+// designated opcode and decode to the expected Go value, preserving numeric text when
+// requested.
 func TestEncodeScalarValues_CoverEssentialScalarOpcodes(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -423,8 +426,8 @@ func TestEncodeUnsignedInteger_UsesExplicitOracleNumber(t *testing.T) {
 	assertEncodedValueDecodesTo(t, doc, drvCommon.JSONNumber(strconv.FormatUint(value, 10)), drvCommon.JSONOptNumberAsString)
 }
 
-// TestEncodeContainers_UsesUB2FieldIDs verifies the primary dictionary moves
-// to UB2 counts and field IDs when a document has more than 255 unique keys.
+// TestEncodeContainers_UsesUB2FieldIDs expects encoding to widen dictionary counts and
+// field IDs when the number of unique keys outgrows the compact representation.
 func TestEncodeContainers_UsesUB2FieldIDs(t *testing.T) {
 	value := make(map[string]any, math.MaxUint8+1)
 	for i := 0; i <= math.MaxUint8; i++ {
@@ -451,8 +454,9 @@ func TestEncodeContainers_UsesUB2FieldIDs(t *testing.T) {
 	assertEncodedValueDecodesTo(t, doc, value)
 }
 
-// TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets verifies a large
-// primary field-name heap uses UB4 heap offsets without requiring v3 keys.
+// TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets expects encoding to widen
+// dictionary offsets when the primary field-name heap outgrows the compact
+// representation, while retaining the short-key document format.
 func TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets(t *testing.T) {
 	value := make(map[string]any, 300)
 	keyPrefix := strings.Repeat("k", 246)
@@ -477,8 +481,9 @@ func TestEncodeContainers_UsesUB4PrimaryDictionaryOffsets(t *testing.T) {
 	assertEncodedValueDecodesTo(t, doc, value)
 }
 
-// TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets verifies a large
-// long-key dictionary uses UB4 offsets and the v3 dictionary extension.
+// TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets expects encoding to widen
+// dictionary offsets when the long-key heap outgrows the compact representation and
+// retain the long-key dictionary extension.
 func TestEncodeContainers_UsesUB4SecondaryDictionaryOffsets(t *testing.T) {
 	value := make(map[string]any, 300)
 	keyPrefix := strings.Repeat("k", 253)
@@ -718,8 +723,8 @@ func TestEncodeInvalidValues_ReturnOsonEncodingError(t *testing.T) {
 	}
 }
 
-// TestEncodeContainers_UsesUB4OffsetsWhenTreeExceedsUB2 verifies large
-// container trees are re-emitted with UB4 child offsets.
+// TestEncodeContainers_UsesUB4OffsetsWhenTreeExceedsUB2 expects encoding to widen child
+// offsets when a container tree outgrows the compact representation.
 func TestEncodeContainers_UsesUB4OffsetsWhenTreeExceedsUB2(t *testing.T) {
 	value := []any{strings.Repeat("x", math.MaxUint16)}
 
@@ -782,8 +787,8 @@ func TestEncodeContainers_SupportsLongFieldNames(t *testing.T) {
 	assertEncodedValueDecodesTo(t, doc, value)
 }
 
-// TestOsonWriteBufferPatchUint_WritesExpectedWidths verifies reserved table
-// slots are patched using the requested UB1, UB2, or UB4 width.
+// TestOsonWriteBufferPatchUint_WritesExpectedWidths expects patching to write integer
+// values into reserved slots using the requested encoding width.
 func TestOsonWriteBufferPatchUint_WritesExpectedWidths(t *testing.T) {
 	tests := []struct {
 		name  string

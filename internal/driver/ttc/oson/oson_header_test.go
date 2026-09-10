@@ -48,7 +48,8 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestOsonHeader_SampleOson verifies parsing metadata and primary dictionary entries from the basic object fixture.
+// TestOsonHeader_SampleOson expects header parsing to identify an object document,
+// preserve its field dictionary, and locate its tree data.
 func TestOsonHeader_SampleOson(t *testing.T) {
 	// Basic v1 object with a primary dictionary.
 	buf := newOsonBuffer(sampleSimpleObject.oson)
@@ -124,8 +125,9 @@ func TestOsonHeader_ScalarDocumentUsesPostHeaderTreeOffset(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_UpdatedTinyScalarFixture verifies the V2 update metadata of
-// the database-produced tiny scalar replacement fixture.
+// TestOsonHeader_UpdatedTinyScalarFixture expects header parsing to recognize a scalar
+// replacement update and locate its overflow data without requiring forwarding
+// mappings.
 func TestOsonHeader_UpdatedTinyScalarFixture(t *testing.T) {
 	buffer := newOsonBuffer(sampleUpdatedTinyScalar.oson)
 	header, err := newOsonHeader(buffer)
@@ -146,8 +148,8 @@ func TestOsonHeader_UpdatedTinyScalarFixture(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_RejectsMalformedUpdateMetadata verifies update-header
-// reserved fields and segment boundaries are validated.
+// TestOsonHeader_RejectsMalformedUpdateMetadata expects invalid update-header reserved
+// fields and segment boundaries to return errors.
 func TestOsonHeader_RejectsMalformedUpdateMetadata(t *testing.T) {
 	validHeader, err := newOsonHeader(newOsonBuffer(sampleUpdatedTinyScalar.oson))
 	if err != nil {
@@ -203,8 +205,8 @@ func TestOsonHeader_RejectsMalformedUpdateMetadata(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_RejectsV1UpdateMetadata verifies partial-update segments are
-// accepted only in their V2/V4 document forms.
+// TestOsonHeader_RejectsV1UpdateMetadata expects update metadata to be rejected when
+// the document format does not support partial updates.
 func TestOsonHeader_RejectsV1UpdateMetadata(t *testing.T) {
 	doc := append(sampleSimpleObject.cloneOSON(), make(drvCommon.B1Array, 16)...)
 	_, err := newOsonHeader(newOsonBuffer(doc))
@@ -214,8 +216,8 @@ func TestOsonHeader_RejectsV1UpdateMetadata(t *testing.T) {
 	assertOracleErrorCode(t, err, oracleErrors.OsonHeaderError)
 }
 
-// TestOsonHeader_RejectsOutOfRangeUpdateMappings verifies update-map entries
-// are validated even when no decoded node has reached the mapping yet.
+// TestOsonHeader_RejectsOutOfRangeUpdateMappings expects out-of-range update-map entries
+// to be rejected during header parsing, before any node follows a mapping.
 func TestOsonHeader_RejectsOutOfRangeUpdateMappings(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -257,7 +259,7 @@ func TestOsonHeader_RejectsOutOfRangeUpdateMappings(t *testing.T) {
 			doc := test.sample.cloneOSON()
 			header, err := newOsonHeader(newOsonBuffer(doc))
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("failed to parse the valid update fixture header: %v", err)
 			}
 			mapOffset := header.treeSegmentOffset() + int(header.treeSegmentByteLength) + 16
 			test.mutate(doc, mapOffset)
@@ -270,7 +272,9 @@ func TestOsonHeader_RejectsOutOfRangeUpdateMappings(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_NestedObjectArrayFixture verifies metadata, dictionary ordering, and buffer positioning for a nested fixture.
+// TestOsonHeader_NestedObjectArrayFixture expects header parsing to preserve the nested
+// document dictionary and tree metadata, leaving the buffer ready to read the root
+// node.
 func TestOsonHeader_NestedObjectArrayFixture(t *testing.T) {
 	// Larger primary dictionary with tiny-node stats.
 	buf := newOsonBuffer(sampleNestedObjectArray.oson)
@@ -313,7 +317,9 @@ func TestOsonHeader_NestedObjectArrayFixture(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_SecondaryDictionaryFixture verifies parsing and lookup across primary and secondary dictionaries.
+// TestOsonHeader_SecondaryDictionaryFixture expects header parsing to combine short and
+// long field names into a lookup dictionary and position the buffer at the document
+// tree.
 func TestOsonHeader_SecondaryDictionaryFixture(t *testing.T) {
 	// v3 split dictionary with one short and one long key.
 	buf := newOsonBuffer(sampleSecondaryDictionary.oson)
@@ -495,7 +501,8 @@ func TestOsonHeader_RejectsReservedFlags(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_ScalarTreeSizeUB4 verifies scalar documents honor a UB4-encoded tree segment size.
+// TestOsonHeader_ScalarTreeSizeUB4 expects header parsing to honor the wider tree-size
+// encoding for scalar documents.
 func TestOsonHeader_ScalarTreeSizeUB4(t *testing.T) {
 	doc := buildScalarOsonForTest(drvCommon.B1Array{osonOpFalse}, osonFlagTreeSegmentSizeUB4Mask, nil)
 	header, err := newOsonHeader(newOsonBuffer(doc))
@@ -510,7 +517,8 @@ func TestOsonHeader_ScalarTreeSizeUB4(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_ReadHeaderWidthVariants verifies flag-controlled header field widths for v1 and v3 documents.
+// TestOsonHeader_ReadHeaderWidthVariants expects header counts and sizes to decode
+// using the widths selected by the document flags.
 func TestOsonHeader_ReadHeaderWidthVariants(t *testing.T) {
 	v3Flags := drvCommon.UB2(osonFlagInlineLeafMask | osonFlagDistinctFieldCountUB2Mask | osonFlagFieldHeapSizeUB4Mask | osonFlagTreeSegmentSizeUB4Mask)
 	v3Doc := drvCommon.B1Array{
@@ -561,7 +569,9 @@ func TestOsonHeader_ReadHeaderWidthVariants(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_MetadataHelpersReflectFlagsAndBounds verifies helper behavior for flags, segment selection, and invalid field indexes.
+// TestOsonHeader_MetadataHelpersReflectFlagsAndBounds expects helpers to honor layout
+// flags, select the extended-tree origin, reject negative field indexes, and retain the
+// hash bits appropriate to each width.
 func TestOsonHeader_MetadataHelpersReflectFlagsAndBounds(t *testing.T) {
 	header := &osonHeader{
 		flags: osonFlagInlineLeafMask |
@@ -598,8 +608,10 @@ func TestOsonHeader_MetadataHelpersReflectFlagsAndBounds(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_ForwardingHelpers verifies extended-tree offset resolution
-// without constructing an OSON update document.
+// TestOsonHeader_ForwardingHelpers expects valid forwarding and overflow offsets to
+// resolve into the extended tree and invalid or missing mappings to return errors.
+// Truncated update fixtures must not panic; secondary dictionaries must obey version and
+// heap requirements.
 func TestOsonHeader_ForwardingHelpers(t *testing.T) {
 	header := &osonHeader{
 		treeSegmentStartOffset:         20,
@@ -765,8 +777,8 @@ func TestOsonHeader_RejectsCorruptDictionaryHeaps(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_DictionaryReadersHandleBothOffsetWidths verifies the compact
-// and wide offset encodings used by the dictionary parser components.
+// TestOsonHeader_DictionaryReadersHandleBothOffsetWidths expects dictionary readers to
+// preserve offset values across all supported offset widths.
 func TestOsonHeader_DictionaryReadersHandleBothOffsetWidths(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -895,8 +907,8 @@ func buildScalarOsonForTest(tree drvCommon.B1Array, extraFlags drvCommon.UB2, ta
 	return doc
 }
 
-// TestOsonHeader_RejectsTruncatedInput exercises each length-sensitive header
-// reader with a progressively truncated document.
+// TestOsonHeader_RejectsTruncatedInput expects header parsing to complete without
+// panicking at each tested document length. Returned errors are not asserted by this test.
 func TestOsonHeader_RejectsTruncatedInput(t *testing.T) {
 	t.Parallel()
 
@@ -920,8 +932,9 @@ func TestOsonHeader_RejectsTruncatedInput(t *testing.T) {
 	}
 }
 
-// TestOsonHeader_RejectsInvalidSecondaryDictionary covers the independent
-// validation stages of a long-key dictionary entry.
+// TestOsonHeader_RejectsInvalidSecondaryDictionary expects secondary dictionary parsing to
+// reject truncated tables and heaps, invalid entry lengths or offsets, and invalid UTF-8
+// field names.
 func TestOsonHeader_RejectsInvalidSecondaryDictionary(t *testing.T) {
 	t.Parallel()
 
