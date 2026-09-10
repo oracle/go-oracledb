@@ -152,9 +152,11 @@ func NewAddressList() *AddressList {
 
 // Address represents a single protocol endpoint
 type Address struct {
-	Protocol driverCommon.Protocol
-	Host     string
-	Port     uint16
+	Protocol       driverCommon.Protocol
+	Host           string
+	Port           uint16
+	HTTPSProxy     string
+	HTTPSProxyPort int
 	// OriginHost preserves the original hostname in redirection scenarios,
 	// used as a fallback for SSL/TLS certificate hostname verification.
 	OriginHost string
@@ -475,6 +477,12 @@ func extractAddress(node *Node) (Address, error) {
 				return Address{}, p
 			}
 			addr.Port = uint16(_uint)
+		case "HTTPS_PROXY":
+			addr.HTTPSProxy = child.Value
+		case "HTTPS_PROXY_PORT":
+			if addr.HTTPSProxyPort, parsingError = strconv.Atoi(child.Value); parsingError != nil || addr.HTTPSProxyPort < 0 {
+				return Address{}, common.NewOracleError(oracleErrors.NamingContextError, parsingError, child.Value, child.Name)
+			}
 		default:
 			return Address{}, common.NewOracleError(oracleErrors.NamingContextError, nil, child.Name, "ADDRESS")
 		}

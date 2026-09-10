@@ -131,6 +131,10 @@ const (
 	InvalidSqlOutParameter ErrorCode = "OGD-00065"
 	// InvalidFileConfig Can't load configuration from file.
 	InvalidFileConfig ErrorCode = "OGD-00066"
+	// HTTPSProxyRequiresTCPS indicates that proxy tunneling was requested for a non-TLS connection.
+	HTTPSProxyRequiresTCPS ErrorCode = "OGD-00068"
+	// HTTPSProxyConnectFailed indicates that the proxy rejected or could not establish a CONNECT tunnel.
+	HTTPSProxyConnectFailed ErrorCode = "OGD-00069"
 
 	// TRANSACTION PROCESSING
 

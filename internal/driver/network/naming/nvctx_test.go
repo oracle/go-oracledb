@@ -365,12 +365,12 @@ func TestExtractDescriptionList_FullEmptyAndErrors(t *testing.T) {
 func TestExtractAddress_SuccessAndError(t *testing.T) {
 	t.Parallel()
 	t.Run("success", func(t *testing.T) {
-		root := mustParse(t, "(ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))")
+		root := mustParse(t, "(ADDRESS=(PROTOCOL=TCPS)(HOST=localhost)(PORT=1521)(HTTPS_PROXY=proxy.example)(HTTPS_PROXY_PORT=8080))")
 		addr, err := extractAddress(root)
 		if err != nil {
 			t.Fatalf("extractAddress failed: %v", err)
 		}
-		if addr.Protocol != common.ProtocolTCP || addr.Host != "localhost" || addr.Port != 1521 {
+		if addr.Protocol != common.ProtocolTCPS || addr.Host != "localhost" || addr.Port != 1521 || addr.HTTPSProxy != "proxy.example" || addr.HTTPSProxyPort != 8080 {
 			t.Errorf("unexpected address: %+v", addr)
 		}
 	})
@@ -378,6 +378,12 @@ func TestExtractAddress_SuccessAndError(t *testing.T) {
 		node := &Node{Name: "ADDRESS", Children: []Node{{Name: "INVALID", Value: "bad"}}}
 		if _, err := extractAddress(node); err == nil {
 			t.Error("expected error for unknown param in ADDRESS")
+		}
+	})
+	t.Run("negative proxy port", func(t *testing.T) {
+		root := mustParse(t, "(ADDRESS=(PROTOCOL=TCPS)(HOST=localhost)(PORT=1521)(HTTPS_PROXY_PORT=-1))")
+		if _, err := extractAddress(root); err == nil {
+			t.Error("expected error for negative HTTPS_PROXY_PORT")
 		}
 	})
 }

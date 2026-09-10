@@ -81,6 +81,7 @@ func openTestDBWithConfig(cfg *TestConfig) (*sql.DB, error) {
 	if cfg == nil {
 		return nil, sql.ErrConnDone
 	}
+	fmt.Println("Test configuration HTTPS proxy:", cfg.Database.HTTPSProxy, cfg.Database.HTTPSProxyPort)
 	dsn := cfg.GetConnectionString()
 	if v := strings.TrimSpace(cfg.ConnectionProperties.StrictNullValueHandling); v != "" {
 		separator := "?"

@@ -52,6 +52,7 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 type mockNTAdapter struct {
@@ -222,8 +223,12 @@ func TestTransportConnect(t *testing.T) {
 		HTTPSProxy: "proxy",
 	}
 	err := ns.transportConnect(context.Background(), address)
-	if err == nil || !strings.Contains(err.Error(), "https proxy requires protocol as tcps") {
-		t.Errorf("Expected HTTPS proxy error, got %v", err)
+	sqlErr, ok := err.(oracleErrors.SQLError)
+	if !ok {
+		t.Fatalf("Expected Oracle error, got %T (%v)", err, err)
+	}
+	if sqlErr.ErrorCode() != string(oracleErrors.HTTPSProxyRequiresTCPS) {
+		t.Errorf("Expected error code %s, got %s", oracleErrors.HTTPSProxyRequiresTCPS, sqlErr.ErrorCode())
 	}
 
 	// Test TCP connection attempt (will fail without real server)

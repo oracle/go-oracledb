@@ -405,6 +405,8 @@ func initMessagesEn() {
 	// Action:   Avoid using the unsupported feature or upgrade to a version that supports it.
 	// Comment:  Arg[0]: feature name
 	message.SetString(language.English, string(oracleErrors.UnsupportedFeature), "%s feature is not supported")
+	message.SetString(language.English, string(oracleErrors.HTTPSProxyRequiresTCPS), "HTTPS proxy requires a TCPS connection")
+	message.SetString(language.English, string(oracleErrors.HTTPSProxyConnectFailed), "HTTPS proxy CONNECT failed for %s")
 
 	// Document: No
 	// Cause:    The destination provided in sql.Out is invalid (nil, non-pointer,

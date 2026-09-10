@@ -520,6 +520,12 @@ func (ci *ConnectionIterator) buildConnectString(addr *Address, connectDataNode 
 			{Name: "PORT", Value: strconv.Itoa(int(addr.Port))},
 		},
 	}
+	if addr.HTTPSProxy != "" {
+		addrNode.Children = append(addrNode.Children, Node{Name: "HTTPS_PROXY", Value: addr.HTTPSProxy})
+		if addr.HTTPSProxyPort != 0 {
+			addrNode.Children = append(addrNode.Children, Node{Name: "HTTPS_PROXY_PORT", Value: strconv.Itoa(addr.HTTPSProxyPort)})
+		}
+	}
 
 	descNode := Node{
 		Name:     "DESCRIPTION",
@@ -545,6 +551,12 @@ func (ci *ConnectionIterator) buildDescriptionWithAddress(addr *Address) string 
 			{Name: "HOST", Value: host}, // Use resolved IP here
 			{Name: "PORT", Value: strconv.Itoa(int(addr.Port))},
 		},
+	}
+	if addr.HTTPSProxy != "" {
+		addrNode.Children = append(addrNode.Children, Node{Name: "HTTPS_PROXY", Value: addr.HTTPSProxy})
+		if addr.HTTPSProxyPort != 0 {
+			addrNode.Children = append(addrNode.Children, Node{Name: "HTTPS_PROXY_PORT", Value: strconv.Itoa(addr.HTTPSProxyPort)})
+		}
 	}
 
 	descNode := Node{

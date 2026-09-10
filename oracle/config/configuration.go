@@ -108,7 +108,7 @@ type OracleConnectionProperties struct {
 
 	// HttpsProxyPort sets the HTTP proxy port used to tunnel TLS client
 	// connections.
-	HttpsProxyPort int `ns_name:"https_proxy_port" default:"8080" help:"sets an HTTP proxy host port for tunneling TLS client connections"`
+	HttpsProxyPort int `ns_name:"https_proxy_port" default:"80" help:"sets an HTTP proxy host port for tunneling TLS client connections"`
 
 	// ConnectTimeout sets the timeout, in seconds, for establishing an Oracle
 	// Net connection.

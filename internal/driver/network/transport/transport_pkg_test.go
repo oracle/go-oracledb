@@ -87,6 +87,7 @@ var testCases = []struct {
 	{"TestVerifyDNAllowsRepeatedAttributeAcrossRDNs", "unitary", false, TestVerifyDNAllowsRepeatedAttributeAcrossRDNs},
 	{"TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse", "unitary", false, TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse},
 	{"TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse", "unitary", false, TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse},
+	{"TestNTTCPConnectThroughHTTPSProxy", "unitary", false, TestNTTCPConnectThroughHTTPSProxy},
 	{"TestDecrypt_UnsupportedOID", "unitary", false, TestDecrypt_UnsupportedOID},
 	{"TestNTTCPSProcessWalletRejectsWalletWithoutCertificatesEvenWithSystemTrust", "unitary", false, TestNTTCPSProcessWalletRejectsWalletWithoutCertificatesEvenWithSystemTrust},
 	{"TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength", "unitary", false, TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength},

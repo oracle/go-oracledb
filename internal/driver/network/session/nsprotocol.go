@@ -143,8 +143,8 @@ func remoteTCPAddrFromConn(remoteAddr net.Addr) *net.TCPAddr {
 
 // transportConnect establishes the transport-level connection
 func (ns *networkSession) transportConnect(ctx context.Context, address transport.Address) error {
-	if address.Protocol == driverCommon.ProtocolTCP && address.HTTPSProxy != "" {
-		return fmt.Errorf("https proxy requires protocol as tcps")
+	if address.Protocol == driverCommon.ProtocolTCP && (address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != "") {
+		return common.NewOracleError(oracleErrors.HTTPSProxyRequiresTCPS, nil)
 	}
 	if ns.ntAdapter == nil {
 		if address.Protocol == driverCommon.ProtocolTCP {
@@ -462,6 +462,7 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 	ns := newNetworkSession()
 	addressOption := option.Address
 	description := option.Description
+	fmt.Println("Connection option HTTPS proxy:", addressOption.HTTPSProxy, addressOption.HTTPSProxyPort)
 
 	portToBeUsed := addressOption.Port
 	if addressOption.Port == 0 {
@@ -498,12 +499,16 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 	}
 	address := transport.Address{
 		Address: naming.Address{
-			Host:       hostToBeUsed,
-			Port:       portToBeUsed,
-			Protocol:   addressOption.Protocol,
-			ResolvedIP: addressOption.ResolvedIP,
+			Host:           hostToBeUsed,
+			Port:           portToBeUsed,
+			Protocol:       addressOption.Protocol,
+			ResolvedIP:     addressOption.ResolvedIP,
+			HTTPSProxy:     addressOption.HTTPSProxy,
+			HTTPSProxyPort: addressOption.HTTPSProxyPort,
 		},
-		Hostname: addressOption.Host,
+		Hostname:       addressOption.Host,
+		HTTPSProxy:     addressOption.HTTPSProxy,
+		HTTPSProxyPort: addressOption.HTTPSProxyPort,
 	}
 
 	err = ns.connect(ctx, address)

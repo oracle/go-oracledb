@@ -353,13 +353,15 @@ type TestConfig struct {
 	}
 
 	Database struct {
-		ServiceName  string
-		SIDName      string `json:",omitempty"`
-		InstanceName string `json:",omitempty"`
-		Port         int16
-		Host         string
-		Protocol     string
-		ServerType   string `json:",omitempty"` // dedicated/shared
+		ServiceName    string
+		SIDName        string `json:",omitempty"`
+		InstanceName   string `json:",omitempty"`
+		Port           int16
+		Host           string
+		Protocol       string
+		HTTPSProxy     string `json:",omitempty"`
+		HTTPSProxyPort int    `json:",omitempty"`
+		ServerType     string `json:",omitempty"` // dedicated/shared
 	}
 
 	Credentials struct {
@@ -404,6 +406,8 @@ func (t *TestConfig) Clone() *TestConfig {
 	newOne.Database.Host = t.Database.Host
 	newOne.Database.Port = t.Database.Port
 	newOne.Database.Protocol = t.Database.Protocol
+	newOne.Database.HTTPSProxy = t.Database.HTTPSProxy
+	newOne.Database.HTTPSProxyPort = t.Database.HTTPSProxyPort
 	newOne.Database.ServerType = t.Database.ServerType
 
 	newOne.Credentials.Username = t.Credentials.Username
@@ -460,13 +464,19 @@ func (t *TestConfig) GetConnectionStringWithProperties(properties map[string]str
 			b.WriteString(fmt.Sprintf("(%s=%s)", k, v))
 		}
 	}
-	var res = fmt.Sprintf("%s/%s@(description=%s(address=(protocol=%s)(host=%s)(port=%d))(connect_data=",
+	var proxyAddress string
+	if t.Database.HTTPSProxy != "" {
+		proxyAddress = fmt.Sprintf("(https_proxy=%s)(https_proxy_port=%d)",
+			t.Database.HTTPSProxy, t.Database.HTTPSProxyPort)
+	}
+	var res = fmt.Sprintf("%s/%s@(description=%s(address=(protocol=%s)(host=%s)(port=%d)%s)(connect_data=",
 		t.Credentials.Username,
 		t.Credentials.Password,
 		b.String(),
 		t.Database.Protocol,
 		t.Database.Host,
-		t.Database.Port)
+		t.Database.Port,
+		proxyAddress)
 
 	var resC strings.Builder
 	resC.WriteString(res)
