@@ -638,6 +638,9 @@ func (ns *networkSession) processPacket(buf []byte, hdr *header) (any, error) {
 		packet = ns.controlPkt
 	// NSPTDA is an Oracle Net DATA packet; its payload begins at NSPDADAT.
 	case NSPTDA:
+		if int(hdr.packetLength) < NSPDADAT {
+			return nil, common.NewOracleError(oracleErrors.InvalidNetworkContextExpectedLength, nil, "packet", "NSPTDA", hdr.packetLength, NSPDADAT)
+		}
 		flags := binary.BigEndian.Uint16(buf[NSPDAFLG:])
 		if ns.sAtts.networkCompressionEnabled && flags&NSPDAFCMP != 0 {
 			// NSPDAFCMP applies only to the payload; keep the wire header intact.

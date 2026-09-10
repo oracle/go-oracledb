@@ -1415,6 +1415,13 @@ func TestProcessPacketCompressedError(t *testing.T) {
 	}
 }
 
+func TestProcessPacketTruncatedDataHeader(t *testing.T) {
+	ns := newNetworkSession()
+	buf := make([]byte, NSPDADAT-1)
+	_, err := ns.processPacket(buf, &header{typ: NSPTDA, packetLength: NSPDADAT - 1})
+	expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkContextExpectedLength)
+}
+
 func TestProcessPacketCompressedTruncated(t *testing.T) {
 	payload := bytes.Repeat([]byte("truncated compressed packet "), 20)
 	var compressed bytes.Buffer
