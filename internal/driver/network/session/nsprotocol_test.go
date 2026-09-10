@@ -1322,7 +1322,7 @@ func TestProcessPacket(t *testing.T) {
 
 // TestProcessPacketCompressedTCP verifies both compression formats used by TCP
 // data packets: zlib framing for the first packet and raw DEFLATE thereafter.
-func TestProcessPacketCompressedTCP(t *testing.T) {
+func TestProcessPacketCompressed(t *testing.T) {
 	// Repeated text gives a payload that compresses reliably while remaining easy to compare.
 	original := bytes.Repeat([]byte("compressed TCP payload "), 100)
 	tests := []struct {
@@ -1338,7 +1338,6 @@ func TestProcessPacketCompressedTCP(t *testing.T) {
 				if _, err := w.Write(original); err != nil {
 					return err
 				}
-				// Flush emits this packet's bytes without ending the compression stream.
 				return w.Flush()
 			},
 		},
@@ -1353,7 +1352,6 @@ func TestProcessPacketCompressedTCP(t *testing.T) {
 				if _, err := w.Write(original); err != nil {
 					return err
 				}
-				// Flush emits this packet's bytes without ending the compression stream.
 				return w.Flush()
 			},
 		},
@@ -1399,7 +1397,7 @@ func TestProcessPacketCompressedTCP(t *testing.T) {
 	}
 }
 
-func TestProcessPacketCompressedTCPError(t *testing.T) {
+func TestProcessPacketCompressedError(t *testing.T) {
 	buf := make([]byte, NSPDADAT+1)
 	binary.BigEndian.PutUint16(buf, uint16(len(buf)))
 	buf[NSPHDTYP] = NSPTDA
@@ -1417,9 +1415,38 @@ func TestProcessPacketCompressedTCPError(t *testing.T) {
 	}
 }
 
-// TestSendPacketCompressedTCP verifies first-packet zlib compression and its
+func TestProcessPacketCompressedTruncated(t *testing.T) {
+	payload := bytes.Repeat([]byte("truncated compressed packet "), 20)
+	var compressed bytes.Buffer
+	w := zlib.NewWriter(&compressed)
+	if _, err := w.Write(payload); err != nil {
+		t.Fatalf("compress payload: %v", err)
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatalf("flush compressor: %v", err)
+	}
+
+	compressedBytes := compressed.Bytes()
+	buf := make([]byte, NSPDADAT+len(compressedBytes)-1)
+	binary.BigEndian.PutUint16(buf, uint16(len(buf)))
+	buf[NSPHDTYP] = NSPTDA
+	binary.BigEndian.PutUint16(buf[NSPDAFLG:], NSPDAFCMP)
+	copy(buf[NSPDADAT:], compressedBytes[:len(compressedBytes)-1])
+
+	ns := newNetworkSession()
+	ns.sAtts = &sessionAtts{networkCompressionEnabled: true, firstRecvCompressedPacket: true}
+	_, err := ns.processPacket(buf, &header{typ: NSPTDA, packetLength: uint32(len(buf))})
+	if err == nil {
+		t.Fatal("expected decompression error for truncated payload")
+	}
+	if got := err.(oracleErrors.SQLError).ErrorCode(); got != string(oracleErrors.NetworkDecompressionFailed) {
+		t.Fatalf("error code: got %s, want %s", got, oracleErrors.NetworkDecompressionFailed)
+	}
+}
+
+// TestSendPacketCompressed verifies first-packet zlib compression and its
 // NSPDAFCMP marker on an outgoing TCP data packet.
-func TestSendPacketCompressedTCP(t *testing.T) {
+func TestSendPacketCompressed(t *testing.T) {
 	payload := bytes.Repeat([]byte("outgoing compressed TCP payload "), 100)
 	buf := make([]byte, NSPDADAT+len(payload))
 	binary.BigEndian.PutUint16(buf, uint16(len(buf)))

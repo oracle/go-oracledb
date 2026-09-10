@@ -636,9 +636,10 @@ func (ns *networkSession) processPacket(buf []byte, hdr *header) (any, error) {
 		packet = &markerPacket{}
 	case NSPTCNL:
 		packet = ns.controlPkt
+	// NSPTDA is an Oracle Net DATA packet; its payload begins at NSPDADAT.
 	case NSPTDA:
 		flags := binary.BigEndian.Uint16(buf[NSPDAFLG:])
-		if ns.sAtts != nil && ns.sAtts.networkCompressionEnabled && flags&NSPDAFCMP != 0 {
+		if ns.sAtts.networkCompressionEnabled && flags&NSPDAFCMP != 0 {
 			// NSPDAFCMP applies only to the payload; keep the wire header intact.
 			header := append([]byte(nil), buf[:NSPDADAT]...)
 			payload := buf[NSPDADAT:]
@@ -646,23 +647,31 @@ func (ns *networkSession) processPacket(buf []byte, hdr *header) (any, error) {
 			var err error
 			PrintPacket(payload, 0, len(payload))
 			if ns.sAtts.firstRecvCompressedPacket {
-				// The first compressed payload has zlib framing; later payloads are raw DEFLATE.
-				// The reader decompresses payload bytes as they are read.
+				// Oracle Net uses zlib Z_SYNC_FLUSH framing: the first packet has a
+				// zlib wrapper and later packets use raw DEFLATE.
 				r, err = zlib.NewReader(bytes.NewReader(payload))
 				ns.sAtts.firstRecvCompressedPacket = false
 			} else {
 				r = flate.NewReader(bytes.NewReader(payload))
 			}
 			if err != nil {
+				common.Odl.Error("failed to initialize network decompression", "algorithm", "zlib", "error", err, "payload-length", len(payload))
 				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, err, "zlib")
 			}
 			decompressed, err := io.ReadAll(r)
-			if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-				r.Close()
+			closeErr := r.Close()
+			syncFlush := bytes.HasSuffix(payload, []byte{0, 0, 0xff, 0xff})
+			// Oracle Net packets end a continuing zlib/DEFLATE stream with a
+			// SYNC_FLUSH marker, not a final stream marker. Go reports
+			// io.ErrUnexpectedEOF for that valid packet boundary. Any other
+			// unexpected EOF is a truncated packet.
+			if err != nil && (!errors.Is(err, io.ErrUnexpectedEOF) || !syncFlush) {
+				common.Odl.Error("failed to decompress network packet", "algorithm", "zlib", "error", err, "payload-length", len(payload), "sync-flush", syncFlush)
 				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, err, "zlib")
 			}
-			if closeErr := r.Close(); closeErr != nil && err == nil {
-				err = closeErr
+			if closeErr != nil && (!errors.Is(closeErr, io.ErrUnexpectedEOF) || !syncFlush) {
+				common.Odl.Error("failed to close network decompressor", "algorithm", "zlib", "error", closeErr, "payload-length", len(payload), "sync-flush", syncFlush)
+				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, closeErr, "zlib")
 			}
 			buf = append(header, decompressed...)
 			// The payload size changed, so update the packet length and remove its compression flag
@@ -717,6 +726,7 @@ func (ns *networkSession) SendPacket(ctx context.Context, buf []byte) error {
 			// Start the stream with zlib framing; later packets use raw DEFLATE.
 			zw, zErr := zlib.NewWriterLevel(&compressed, zlib.DefaultCompression)
 			if zErr != nil {
+				common.Odl.Error("failed to initialize network compression", "algorithm", "zlib", "error", zErr, "payload-length", len(payload))
 				return zErr
 			}
 			if _, err = zw.Write(payload); err == nil {
@@ -725,6 +735,7 @@ func (ns *networkSession) SendPacket(ctx context.Context, buf []byte) error {
 		} else {
 			fw, fErr := flate.NewWriter(&compressed, flate.DefaultCompression)
 			if fErr != nil {
+				common.Odl.Error("failed to initialize network compression", "algorithm", "deflate", "error", fErr, "payload-length", len(payload))
 				return fErr
 			}
 			if _, err = fw.Write(payload); err == nil {
@@ -733,6 +744,7 @@ func (ns *networkSession) SendPacket(ctx context.Context, buf []byte) error {
 		}
 
 		if err != nil {
+			common.Odl.Error("failed to compress network packet", "algorithm", "zlib", "error", err, "payload-length", len(payload))
 			return common.NewOracleError(oracleErrors.NetworkCompressionFailed, err, "zlib")
 		}
 		compressedBytes := compressed.Bytes()

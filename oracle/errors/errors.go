@@ -130,9 +130,9 @@ const (
 	NamingTokensMissing                  ErrorCode = "OGD-00127"
 	NamingUnexpectedClosingParenthesis   ErrorCode = "OGD-00128"
 	// NetworkCompressionFailed indicates that a network packet could not be compressed.
-	NetworkCompressionFailed ErrorCode = "OGD-00016"
+	NetworkCompressionFailed ErrorCode = "OGD-00068"
 	// NetworkDecompressionFailed indicates that a compressed network packet could not be decompressed.
-	NetworkDecompressionFailed ErrorCode = "OGD-00017"
+	NetworkDecompressionFailed ErrorCode = "OGD-00069"
 
 	// Converter Errors
 	// Empty input Error
