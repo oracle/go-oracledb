@@ -289,7 +289,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIoac_UnMarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnMarshalFrom_Fail},
 	{Name: "TestTTIoac_MarshalTo_Success", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_MarshalTo_Success},
 	{Name: "TestTTIoac_MarshalTo_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_MarshalTo_Fail},
-	{Name: "TestTTIoac_SignedArrayElementCount",Categories: "unitary", Exclusive: false, Fn: TestTTIoac_SignedArrayElementCount},
+	{Name: "TestTTIoac_SignedArrayElementCount", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_SignedArrayElementCount},
 	{Name: "TestTTIoac_AddFlagsContinuation", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_AddFlagsContinuation},
 	{Name: "TestTTIoac_UnmarshalNormalizesNumberLength", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnmarshalNormalizesNumberLength},
 	{Name: "TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength},
