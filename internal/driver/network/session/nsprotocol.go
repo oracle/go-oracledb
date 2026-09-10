@@ -45,6 +45,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -77,6 +78,30 @@ type networkSession struct {
 	sndBuf              []byte
 	pendingPacket       []byte // to store pushed back packet from CheckinbandNotification
 	resetInProgress     bool
+}
+
+// cidSanitizer prevents OS-provided CID values from changing the naming structure.
+var cidSanitizer = strings.NewReplacer("(", "_", ")", "_", "=", "_")
+
+// sanitizeCIDValue returns a value that is safe to serialize in a naming node.
+func sanitizeCIDValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "unknown"
+	}
+	return cidSanitizer.Replace(v)
+}
+
+// buildCIDNode creates the Oracle Net client identifier nested under CONNECT_DATA.
+func buildCIDNode() naming.Node {
+	return naming.Node{
+		Name: "CID",
+		Children: []naming.Node{
+			{Name: "PROGRAM", Value: sanitizeCIDValue(common.ProgramName)},
+			{Name: "HOST", Value: sanitizeCIDValue(common.HostName)},
+			{Name: "USER", Value: sanitizeCIDValue(common.UserName)},
+		},
+	}
 }
 
 const (
@@ -489,9 +514,10 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 	}
 	connectData, err := root.GetNode("DESCRIPTION/CONNECT_DATA")
 	if err != nil {
-		connectData = &naming.Node{Name: "CONNECT_DATA"}
-		root.Children = append(root.Children, *connectData)
+		root.Children = append(root.Children, naming.Node{Name: "CONNECT_DATA"})
+		connectData = &root.Children[len(root.Children)-1]
 	}
+	connectData.Children = append(connectData.Children, buildCIDNode())
 	connIDNode := naming.Node{Name: "CONNECTION_ID", Value: ns.sAtts.nt.Connectionid}
 	connectData.Children = append(connectData.Children, connIDNode)
 	newConnectStr := root.ToString()
