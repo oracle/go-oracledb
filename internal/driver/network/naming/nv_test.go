@@ -139,20 +139,20 @@ func TestParseSimpleWithConnectionProperties(t *testing.T) {
 func TestParseEmpty(t *testing.T) {
 	t.Parallel()
 	_, err := Parse("")
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingInputMissing)
 }
 
 func TestParseWhitespaceOnly(t *testing.T) {
 	t.Parallel()
 	_, err := Parse(" \t\n\r ")
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingInputMissing)
 }
 
 func TestParseInvalid(t *testing.T) {
 	t.Parallel()
 	input := "(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=example"
 	_, err := Parse(input)
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingParseBounds)
 }
 
 func TestGetValue(t *testing.T) {
@@ -179,7 +179,7 @@ func TestGetValueNotFound(t *testing.T) {
 		t.Fatalf("Parse failed: %v", err)
 	}
 	_, err = root.GetValue("DESCRIPTION/NOT_FOUND")
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingParsePathSegment)
 }
 
 func TestGetNode(t *testing.T) {
@@ -274,7 +274,7 @@ func TestParseUnexpectedOpeningParenWithoutName(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for '(' without name")
 	}
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingParsePosition)
 }
 
 func TestParseUnexpectedClosingParen(t *testing.T) {
@@ -283,7 +283,7 @@ func TestParseUnexpectedClosingParen(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for unexpected ')'")
 	}
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingUnexpectedClosingParenthesis)
 }
 
 func TestParseUnexpectedToken(t *testing.T) {
@@ -292,7 +292,7 @@ func TestParseUnexpectedToken(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for unexpected token")
 	}
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingParseValue)
 }
 
 func TestGetValueNonLeafNode(t *testing.T) {
@@ -306,7 +306,7 @@ func TestGetValueNonLeafNode(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for non-leaf node")
 	}
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingParsePath)
 }
 
 func TestGetNodeEmptyPath(t *testing.T) {
@@ -320,7 +320,7 @@ func TestGetNodeEmptyPath(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for empty path")
 	}
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingInputMissing)
 }
 
 func TestGetNodeWrongRootName(t *testing.T) {
@@ -334,7 +334,7 @@ func TestGetNodeWrongRootName(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for wrong root name")
 	}
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingParseValues)
 }
 
 func TestGetNodeEmptySegment(t *testing.T) {
@@ -348,7 +348,7 @@ func TestGetNodeEmptySegment(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for empty path segment")
 	}
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingParsePathSegment)
 }
 
 func TestGetChildInvalidIndex(t *testing.T) {
@@ -362,12 +362,12 @@ func TestGetChildInvalidIndex(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for negative index")
 	}
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingParseBounds)
 	_, err = root.GetChild(100)
 	if err == nil {
 		t.Error("Expected error for out of bounds index")
 	}
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingParseBounds)
 }
 
 func TestGetNodeRootPath(t *testing.T) {
@@ -563,5 +563,5 @@ func TestParseDSNString_CommaBetweenNodes_FailsFast(t *testing.T) {
 func TestParseIterative_NoTokens(t *testing.T) {
 	t.Parallel()
 	_, err := parseIterative([]string{})
-	assertErrorCode(t, err, oracleErrors.NamingParseFailed)
+	assertErrorCode(t, err, oracleErrors.NamingTokensMissing)
 }

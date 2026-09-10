@@ -132,7 +132,7 @@ func (spf *ttiSPFOCSSync) UnMarshalFrom(ctx context.Context, engine driverCommon
 	_, err = engine.UnmarshalUB1(ctx)
 	if err != nil {
 		common.Odl.Warn("Error unmarshalling UB2 for Server-To-Client Piggyback additional flags", "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "session sync")
 	}
 
 	// Key/value list
