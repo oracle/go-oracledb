@@ -717,7 +717,10 @@ func (ns *networkSession) SendPacket(ctx context.Context, buf []byte) error {
 	if len(buf) < PACKET_HEADER_SIZE {
 		return common.NewOracleError(oracleErrors.InvalidNetworkExpectedLength, nil, "packet buffer", len(buf), PACKET_HEADER_SIZE)
 	}
-	if ns.sAtts != nil && ns.sAtts.networkCompressionEnabled && len(buf) > ns.sAtts.networkCompressionThreshold && buf[4] == NSPTDA {
+	if ns.sAtts.networkCompressionEnabled && len(buf) > ns.sAtts.networkCompressionThreshold && buf[4] == NSPTDA {
+		if len(buf) < NSPDADAT {
+			return common.NewOracleError(oracleErrors.InvalidNetworkContextExpectedLength, nil, "packet", "NSPTDA", len(buf), NSPDADAT)
+		}
 		// Only data-packet payloads above the negotiated threshold may be compressed.
 		header := append([]byte(nil), buf[:NSPDADAT]...)
 		payload := buf[NSPDADAT:]

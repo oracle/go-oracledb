@@ -1147,6 +1147,7 @@ func TestSendPacketError(t *testing.T) {
 
 	// Cover debug print
 	t.Setenv("ORACLE_GO_DRIVER_DEBUG_PACKETS", "true")
+	ns.sAtts = &sessionAtts{}
 	ns.ntAdapter = &mockNTAdapter{}
 	_ = ns.SendPacket(context.Background(), make([]byte, 8)) // ignore error, cover print
 }
@@ -1452,7 +1453,7 @@ func TestProcessPacketCompressedTruncated(t *testing.T) {
 }
 
 // TestSendPacketCompressed verifies first-packet zlib compression and its
-// NSPDAFCMP marker on an outgoing TCP data packet.
+// NSPDAFCMP marker on an outgoing data packet.
 func TestSendPacketCompressed(t *testing.T) {
 	payload := bytes.Repeat([]byte("outgoing compressed TCP payload "), 100)
 	buf := make([]byte, NSPDADAT+len(payload))

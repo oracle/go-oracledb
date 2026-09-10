@@ -101,9 +101,10 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 // through the public OracleDriverConfig.ConnectionProperties API.
 //
 // The test enables Compression, creates a connector from that configuration,
-// and queries a highly compressible 4,000-byte value. The value exceeds the
-// 1,024-byte compression threshold, exercising the negotiated server-to-client
-// compressed DATA-packet path against a real database.
+// and queries a highly compressible 4,000-byte value that exceeds the default
+// 1,024-byte compression threshold. It verifies end-to-end interoperability
+// for the public configuration path, but query success alone does not prove
+// that the server negotiated compression.
 //
 // The database server must enable a compatible compression level in sqlnet.ora:
 //
