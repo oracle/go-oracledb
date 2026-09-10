@@ -204,14 +204,8 @@ func (pa *passwordAuthenticator) _doOSESSKEY(ctx context.Context) error {
 		}
 	}
 
-	// no message should be left at this point
-	msgIn, _ := streamer.Drain(ctx, driverCommon.IN)
-	// no message should be left at this point
-	if msgIn != 0 {
-		// should drop connection.
-		common.Odl.Warn("messaging service not drained after RPA")
-		shelf.getEventService().post(streamerStaleEvent)
-		return shelf.LocalizeError(common.NewOracleError(oracleErrors.InternalError, nil))
+	if err := shelf.checkCurrentState(ctx); err != nil {
+		return err
 	}
 
 	if osesskeyrpa == nil {
@@ -308,73 +302,10 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 
 	common.Odl.Debug("_doOAuth oatuh message pushed and flushed to the streamer")
 
-	oauthRPACallBack := func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
-		common.Odl.Debug("Inside oauthRPACallBack hdr", "msg", t.GetType())
-		msg, err := shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIRPA, oauth)
-		if err != nil {
-			return nil, err
-		}
-		return msg, nil
+	oauthrpa, err := handleOAuthResponse(ctx, streamer, &shelf)
+	if err != nil {
+		return err
 	}
-	streamer.RegisterPreUnmarshallCallback(TTIRPA, oauthRPACallBack)
-	defer streamer.UnRegisterPreUnmarshallCallback(TTIRPA)
-
-	oerCallback := func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
-		common.Odl.Debug("Inside oerCallback hdr", "msg", t.GetType())
-		msg, err := shelf.GetMessageFactory().(Factory).GetMessage(TTIOER)
-		if err != nil {
-			return nil, err
-		}
-		return msg, nil
-	}
-	streamer.RegisterPreUnmarshallCallback(TTIOER, oerCallback)
-	defer streamer.UnRegisterPreUnmarshallCallback(TTIOER)
-
-	var oauthrpa *OAuthRPA = nil
-	goOn := true
-	for goOn == true {
-		msg, err := streamer.Pull(ctx, TTIRPA, TTIOER, TTIWRN)
-		if err != nil {
-			common.Odl.Debug("Authenticator failed to pull server messages", "error", err)
-			return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
-		}
-		switch msg.GetMsgCode() {
-		case TTIRPA:
-			oauthrpa = msg.(*OAuthRPA)
-			common.Odl.Debug("Authenticator:", "oAuth-RPA", oauthrpa)
-		case TTIOER:
-			ttioer := msg.(tTIOerIface)
-			err := ttioer.getError()
-			if err != nil {
-				return err
-			}
-			common.Odl.Debug("Authenticator: TTIOER message received", "ErrorMessage", ttioer)
-			goOn = false
-		case TTIWRN:
-			logAuthenticationWarning(msg.(*tTIwrn))
-		default:
-			common.Odl.Warn("Unexpected message type during oauthMsg", "message", msg)
-			return common.NewOracleError(oracleErrors.InternalError, err, nil)
-		}
-	}
-
-	msgIn, _ := streamer.Drain(ctx, driverCommon.IN)
-	// no message should be left at this point
-	if msgIn != 0 {
-		// should drop connection.
-		common.Odl.Warn("messaging service not drained after query")
-		shelf.getEventService().post(streamerStaleEvent)
-		return shelf.LocalizeError(common.NewOracleError(oracleErrors.InternalError, nil))
-	}
-
-	if oauthrpa == nil {
-		// we did not receive any RPA. defend ourselves against avoid malicious
-		// attack that would send us an OER but no RPA.
-		common.Odl.Warn("Did not received expected RPA yet")
-		return common.NewOracleError(oracleErrors.InternalError, nil, nil)
-	}
-
-	common.Odl.Debug("Authenticator: processing RPA")
 
 	pa._sessionContext.UpdateSessionProperties(oauthrpa.connectionValues)
 	serverResponse := driverCommon.B1ArrayToString(pa._sessionContext.GetSessionProperties().
@@ -386,6 +317,64 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 	}
 	common.Odl.Debug("Authenticator: oauthMsg ok")
 	return nil
+}
+
+// handleOAuthResponse shared function among authenticators that handles
+// sending the TTC OAUTH message and receiving the response.
+func handleOAuthResponse(ctx context.Context, streamer MessageStreamerInterface, shelf *ttiShelf[driverCommon.MessageType]) (*OAuthRPA, error) {
+	var oauthrpa *OAuthRPA = nil
+
+	oauthRPACallBack := func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
+		common.Odl.Debug("Inside oauthRPACallBack hdr", "msg", t.GetType())
+		msg, err := shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIRPA, oauth)
+		if err != nil {
+			return nil, err
+		}
+		return msg, nil
+	}
+	streamer.RegisterPreUnmarshallCallback(TTIRPA, oauthRPACallBack)
+	defer streamer.UnRegisterPreUnmarshallCallback(TTIRPA)
+
+	goOn := true
+	for goOn == true {
+		msg, err := streamer.Pull(ctx, TTIRPA, TTIOER, TTIWRN)
+		if err != nil {
+			common.Odl.Debug("Authenticator failed to pull server messages", "error", err)
+			return nil, common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
+		}
+		switch msg.GetMsgCode() {
+		case TTIRPA:
+			oauthrpa = msg.(*OAuthRPA)
+			common.Odl.Debug("Authenticator:", "oAuth-RPA", oauthrpa)
+		case TTIOER:
+			ttioer := msg.(tTIOerIface)
+			err := ttioer.getError()
+			if err != nil {
+				return nil, err
+			}
+			common.Odl.Debug("Authenticator: TTIOER message received", "ErrorMessage", ttioer)
+			goOn = false
+		case TTIWRN:
+			logAuthenticationWarning(msg.(*tTIwrn))
+		default:
+			common.Odl.Warn("Unexpected message type during oauthMsg", "message", msg)
+			return nil, common.NewOracleError(oracleErrors.InternalError, err, nil)
+		}
+	}
+
+	if err := shelf.checkCurrentState(ctx); err != nil {
+		return nil, err
+	}
+
+	if oauthrpa == nil {
+		// we did not receive any RPA. defend ourselves against avoid malicious
+		// attack that would send us an OER but no RPA.
+		common.Odl.Warn("Did not received expected RPA yet")
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil, nil)
+	}
+
+	common.Odl.Debug("Authenticator: processing RPA")
+	return oauthrpa, nil
 }
 
 func logAuthenticationWarning(warning *tTIwrn) {

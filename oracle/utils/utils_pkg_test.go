@@ -55,14 +55,14 @@ func TestMain(m *testing.M) {
 	TestEnvironement = oracleTest.TestEnvironement
 	TestingConfig = oracleTest.TestingConfig
 	DefaultTestConfig = oracleTest.DefaultTestConfig
-	TestCategory = oracleTest.TestCategory
+	TestCategories = oracleTest.TestCategories
 	os.Exit(m.Run())
 }
 
 var testCases = []oracleTest.CategorizedTestCase{}
 
 func TestCategoryExecutor(t *testing.T) {
-	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
 type Version = oracleTest.Version
@@ -72,4 +72,4 @@ type TestingEnvironment = oracleTest.TestingEnvironment
 var DefaultTestConfig *TestConfig
 var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
-var TestCategory string
+var TestCategories oracleTest.TestCategoryList

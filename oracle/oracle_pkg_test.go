@@ -68,7 +68,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConfiguration_AssignFromMapValidatedIntString", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapValidatedIntString},
 	{Name: "TestConfiguration_AssignFromEnv", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnv},
 	{Name: "TestConfiguration_AssignFromEnvValidatedIntString", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnvValidatedIntString},
-	{Name: "TestConfiguration_AssignFromEmptyFlags", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromEmptyFlags},
+	{Name: "TestConfiguration_AssignFromEmptyFlags", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEmptyFlags},
 	{Name: "TestConfiguration_Clone", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_Clone},
 	{Name: "TestConfiguration_DefaultClientLanguageIsLanguageTag", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_DefaultClientLanguageIsLanguageTag},
 	{Name: "TestConfiguration_AssignFromMapClientLanguageTag", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapClientLanguageTag},
@@ -82,7 +82,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_ConfigurationWithCredentialsWithDsnNegative", Categories: "unitary", Exclusive: false, Fn: TestDriver_ConfigurationWithCredentialsWithDsnNegative},
 	{Name: "TestDriver_ConfigurationLogging", Categories: "unitary", Exclusive: false, Fn: TestDriver_ConfigurationLogging},
 	{Name: "TestDriver_OpenConnectorUsesNSParamOverConfig", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorUsesNSParamOverConfig},
-	{Name: "TestDriver_Table_Create", Categories: "sanity", Exclusive: false, Fn: TestDriver_Table_Create},
+	{Name: "TestDriver_Table_Create", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_Table_Create},
 	{Name: "TestDriver_DropTable_DeniesAccess", Categories: "functional", Exclusive: false, Fn: TestDriver_DropTable_DeniesAccess},
 	{Name: "TestDriver_AlterSessionSetLanguage", Categories: "functional", Exclusive: false, Fn: TestDriver_AlterSessionSetLanguage},
 	{Name: "TestDriver_Table_Insert", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Insert},
@@ -147,6 +147,10 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_Exec_Query_cursor_leak", Categories: "robustness", Exclusive: false, Fn: TestDriver_Exec_Query_cursor_leak},
 	{Name: "TestDriver_Select_Query_cursor_leak", Categories: "robustness", Exclusive: false, Fn: TestDriver_Select_Query_cursor_leak},
 	{Name: "TestDriver_PreparedStatement_Query_cursor_leak", Categories: "robustness", Exclusive: false, Fn: TestDriver_PreparedStatement_Query_cursor_leak},
+	{Name: "TestDriver_Select_5000Rows_NumberColumn", Categories: "robustness", Exclusive: false, Fn: TestDriver_Select_5000Rows_NumberColumn},
+	{Name: "TestDriver_Insert_5000Rows_NumberColumn", Categories: "robustness", Exclusive: false, Fn: TestDriver_Insert_5000Rows_NumberColumn},
+	{Name: "TestDriver_Select_5000Rows_ComplexTypes", Categories: "robustness", Exclusive: false, Fn: TestDriver_Select_5000Rows_ComplexTypes},
+	{Name: "TestDriver_ConcurrentQueriesOnSharedDB", Categories: "robustness", Exclusive: false, Fn: TestDriver_ConcurrentQueriesOnSharedDB},
 	{Name: "TestQueryNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestQueryNonExistentTable_NegativeCase},
 	{Name: "TestPreparedStatementNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestPreparedStatementNonExistentTable_NegativeCase},
 	{Name: "TestSelectSpecificColumnsNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestSelectSpecificColumnsNonExistentTable_NegativeCase},
@@ -273,7 +277,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 }
 
 func TestCategoryExecutor(t *testing.T) {
-	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
 type Version = oracleTest.Version
