@@ -16,6 +16,13 @@ on:
         description: Branch name
         required: true
         type: string
+env:
+  VALIDATION_USER_NAME: ogd_test_user
+
+concurrency:
+  group: "${{ github.ref }}"
+  cancel-in-progress: true
+  
 jobs:
   bench_driver:
     runs-on: [ self-hosted, Linux, X64, OracleTestPilot ]
