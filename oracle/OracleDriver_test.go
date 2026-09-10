@@ -97,38 +97,48 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 	}
 }
 
-// TestDriver_Functional_NetworkCompressionTCP is temporary test coverage for a TCP
-// connection with high-level network compression requested in the connect descriptor.
-// The descriptor has the form:
-// (DESCRIPTION=(COMPRESSION=on)(COMPRESSION_LEVELS=(LEVEL=high))
-// (ADDRESS=(PROTOCOL=tcp)(HOST=...)(PORT=...))(CONNECT_DATA=(SERVICE_NAME=...)))
-// It will be removed once network compression testing is part of the standard suite.
-func TestDriver_Functional_NetworkCompressionTCP(t *testing.T) {
+// TestDriver_Functional_NetworkCompression verifies Oracle Net compression
+// through the public OracleDriverConfig.ConnectionProperties API.
+//
+// The test enables Compression, creates a connector from that configuration,
+// and queries a highly compressible 4,000-byte value. The value exceeds the
+// 1,024-byte compression threshold, exercising the negotiated server-to-client
+// compressed DATA-packet path against a real database.
+//
+// The database server must enable a compatible compression level in sqlnet.ora:
+//
+//	SQLNET.COMPRESSION=on
+//	SQLNET.COMPRESSION_LEVELS=(high)
+//
+// Packet construction, negotiation flags, compression, decompression, server
+// refusal, and unsupported server compression schemes are covered separately
+// by unit tests in internal/driver/network/session.
+func TestDriver_Functional_NetworkCompression(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if !strings.EqualFold(TestingConfig.Database.Protocol, "tcp") {
-		t.Skip("Network compression TCP test requires a TCP test configuration")
-	}
 
-	dsn := TestingConfig.GetConnectionStringWithProperties(map[string]string{
-		"COMPRESSION":        "on",
-		"COMPRESSION_LEVELS": "(LEVEL=high)",
-	})
-	db, err := sql.Open(TestingConfig.Driver.Name, dsn)
+	config := NewOracleDriverConfig()
+	config.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
+	config.Credentials.User = TestingConfig.Credentials.Username
+	config.Credentials.Password = TestingConfig.Credentials.Password
+	config.ConnectDescriptor = TestingConfig.GetConnectionDSN()
+	config.ConnectionProperties.Compression = true
+	connector, err := NewOracleConnector(config)
 	if err != nil {
-		t.Fatalf("open compressed TCP connection: %v", err)
+		t.Fatalf("create compressed connection connector: %v", err)
 	}
+	db := sql.OpenDB(connector)
 	defer func() {
 		if err := db.Close(); err != nil {
-			t.Errorf("close compressed TCP connection: %v", err)
+			t.Errorf("close compressed connection: %v", err)
 		}
 	}()
 
 	var value string
 	if err := db.QueryRowContext(context.Background(), "SELECT RPAD('x', 4000, 'x') FROM DUAL").Scan(&value); err != nil {
-		t.Fatalf("query over compressed TCP connection: %v", err)
+		t.Fatalf("query over compressed connection: %v", err)
 	}
 	if len(value) != 4000 {
 		t.Fatalf("result length: got %d, want 4000", len(value))

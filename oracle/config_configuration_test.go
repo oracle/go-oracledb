@@ -303,6 +303,7 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 	conf.ConnectionProperties.Failover = false
 	conf.ConnectionProperties.HttpsProxyPort = 9000
 	conf.ConnectionProperties.RetryDelay = 7
+	conf.ConnectionProperties.Compression = true
 
 	params := conf.ToNSConnectionParameters()
 	if len(params) == 0 {
@@ -320,6 +321,7 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 		"recv_buf_size=0":                false,
 		"send_buf_size=0":                false,
 		"sdu=0":                          false,
+		"compression=true":               false,
 		"source_route=false":             false,
 		"retry_count=0":                  false,
 		"retry_delay=7":                  false,
