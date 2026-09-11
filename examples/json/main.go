@@ -106,10 +106,7 @@ func main() {
 		if err := rows.Scan(&doc); err != nil {
 			log.Fatal(err)
 		}
-		text, err := doc.String()
-		if err != nil {
-			log.Fatal(err)
-		}
+		text := doc.String()
 		fmt.Printf("JSON text: %s\n", text)
 
 		// Decode JSON numbers as ojson.Number to preserve their precision.

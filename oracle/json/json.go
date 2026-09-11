@@ -124,6 +124,7 @@
 // meaning that they read only the metadata and offsets needed to locate a
 // value; child values remain encoded until they are requested. GetValue then
 // materializes the selected subtree, while String renders it as JSON text.
+// String provides display text with diagnostic markers on rendering failure.
 // Materialization options are supplied to GetValue. When navigating to a child
 // JSON value, obtain its wrapper first and supply the desired option when
 // materializing that child.
@@ -301,9 +302,9 @@ func (jz JSON) Kind() (JSONKind, error) {
 	return jz.node.Kind(), nil
 }
 
-// GetJSONObject returns a lazy object view of a fetched JSON value. It returns
+// AsJSONObject returns a lazy object view of a fetched JSON value. It returns
 // an error if jz is uninitialized or its root is not an object.
-func (jz JSON) GetJSONObject() (JSONObject, error) {
+func (jz JSON) AsJSONObject() (JSONObject, error) {
 	kind, err := jz.Kind()
 	if err != nil {
 		return JSONObject{}, err
@@ -320,9 +321,9 @@ func (jz JSON) GetJSONObject() (JSONObject, error) {
 	return JSONObject{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "object")
 }
 
-// GetJSONArray returns a lazy array view of a fetched JSON value. It returns an
+// AsJSONArray returns a lazy array view of a fetched JSON value. It returns an
 // error if jz is uninitialized or its root is not an array.
-func (jz JSON) GetJSONArray() (JSONArray, error) {
+func (jz JSON) AsJSONArray() (JSONArray, error) {
 	kind, err := jz.Kind()
 	if err != nil {
 		return JSONArray{}, err
@@ -339,10 +340,10 @@ func (jz JSON) GetJSONArray() (JSONArray, error) {
 	return JSONArray{}, common.NewOracleError(oracleErrors.JSONAccessError, cause, "array")
 }
 
-// GetJSONScalar returns a lazy scalar view of a fetched JSON value. Objects and
+// AsJSONScalar returns a lazy scalar view of a fetched JSON value. Objects and
 // arrays are not scalars; JSON null is. The method returns an error if jz is
 // uninitialized or its root is not a scalar.
-func (jz JSON) GetJSONScalar() (JSONScalar, error) {
+func (jz JSON) AsJSONScalar() (JSONScalar, error) {
 	kind, err := jz.Kind()
 	if err != nil {
 		return JSONScalar{}, err
@@ -370,7 +371,8 @@ func (jz JSON) GetValue(opts JSONOption) (any, error) {
 	return jz.node.GetValue(opts)
 }
 
-// String returns the complete JSON text representation of jz.
+// String implements fmt.Stringer, returning JSON text for display.
+// It returns "<JSON: rendering failed>" if rendering fails.
 //
 // For a fetched JSON, String renders the parsed OSON value and ignores Data. For
 // a caller-constructed JSON, it marshals Data with encoding/json. String is
@@ -380,33 +382,28 @@ func (jz JSON) GetValue(opts JSONOption) (any, error) {
 // support, or fail for an OSON value such as a non-finite float that Value does
 // support. Use a successful Value or database execution to validate bind input.
 // The zero JSON value renders as "null".
-func (jz JSON) String() (string, error) {
+func (jz JSON) String() string {
 	if jz.node != nil {
-		return jz.node.String()
+		text, err := jz.node.String()
+		if err != nil {
+			return "<JSON: rendering failed>"
+		}
+		return text
 	}
 
 	text, err := json.Marshal(jz.Data)
 	if err != nil {
-		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
+		return "<JSON: rendering failed>"
 	}
-	return string(text), nil
+	return string(text)
 }
 
 // JSONObject is a lazy view of an object in a fetched OSON document. Obtain one
-// with [JSON.GetJSONObject]. Supply the materialization option to GetValue;
+// with [JSON.AsJSONObject]. Supply the materialization option to GetValue;
 // String is independent of that option.
 type JSONObject struct {
 	// node provides access to the underlying JSON object representation.
 	node drvCommon.JSONObjectNode
-}
-
-// Len returns the number of members in the JSON object, or -1 if obj is the zero
-// uninitialized JSONObject.
-func (obj JSONObject) Len() int {
-	if obj.node == nil {
-		return -1
-	}
-	return obj.node.Len()
 }
 
 // GetValue materializes the complete object subtree as map[string]any using
@@ -428,9 +425,9 @@ func (obj JSONObject) Keys() []string {
 	return obj.node.Keys()
 }
 
-// Has reports whether key exists in the object. It returns false for an absent
-// key and for the zero uninitialized JSONObject.
-func (obj JSONObject) Has(key string) bool {
+// Contains reports whether key exists in the object. It returns false for an
+// absent key and for the zero uninitialized JSONObject.
+func (obj JSONObject) Contains(key string) bool {
 	if obj.node != nil {
 		_, ok := obj.node.Get(key)
 		return ok
@@ -454,18 +451,22 @@ func (obj JSONObject) Get(key string) (JSON, bool) {
 	return JSON{}, false
 }
 
-// String returns the complete object subtree as JSON text. It returns an error
-// for the zero uninitialized JSONObject.
-func (obj JSONObject) String() (string, error) {
+// String implements fmt.Stringer, returning JSON text for display.
+// It returns "<JSONObject: uninitialized>" for the zero value and
+// "<JSONObject: rendering failed>" if rendering fails.
+func (obj JSONObject) String() string {
 	if obj.node == nil {
-		cause := fmt.Errorf("JSONObject has no underlying object node to render")
-		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "String")
+		return "<JSONObject: uninitialized>"
 	}
-	return obj.node.String()
+	text, err := obj.node.String()
+	if err != nil {
+		return "<JSONObject: rendering failed>"
+	}
+	return text
 }
 
 // JSONArray is a lazy view of an array in a fetched OSON document. Obtain one
-// with [JSON.GetJSONArray]. Supply the materialization option to GetValue;
+// with [JSON.AsJSONArray]. Supply the materialization option to GetValue;
 // String is independent of that option.
 type JSONArray struct {
 	// node provides access to the underlying JSON array representation.
@@ -509,19 +510,23 @@ func (arr JSONArray) Get(i int) (JSON, error) {
 	return JSON{node: node}, nil
 }
 
-// String returns the complete array subtree as JSON text. It returns an error
-// for the zero uninitialized JSONArray.
-func (arr JSONArray) String() (string, error) {
+// String implements fmt.Stringer, returning JSON text for display.
+// It returns "<JSONArray: uninitialized>" for the zero value and
+// "<JSONArray: rendering failed>" if rendering fails.
+func (arr JSONArray) String() string {
 	if arr.node == nil {
-		cause := fmt.Errorf("JSONArray has no underlying array node to render")
-		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "String")
+		return "<JSONArray: uninitialized>"
 	}
-	return arr.node.String()
+	text, err := arr.node.String()
+	if err != nil {
+		return "<JSONArray: rendering failed>"
+	}
+	return text
 }
 
 // JSONScalar is a lazy view of a scalar in a fetched OSON document. Scalars
 // include JSON null, booleans, strings, numbers, and OSON-native date, timestamp,
-// interval, and binary values. Obtain one with [JSON.GetJSONScalar].
+// interval, and binary values. Obtain one with [JSON.AsJSONScalar].
 type JSONScalar struct {
 	// node provides access to the underlying JSON scalar representation.
 	node drvCommon.JSONScalarNode
@@ -537,13 +542,16 @@ func (scalar JSONScalar) GetValue(opts JSONOption) (any, error) {
 	return scalar.node.Value(opts)
 }
 
-// String returns the scalar as JSON text. It returns an error for the zero
-// uninitialized JSONScalar or when the OSON scalar cannot be represented as
-// JSON text.
-func (scalar JSONScalar) String() (string, error) {
+// String implements fmt.Stringer, returning JSON text for display.
+// It returns "<JSONScalar: uninitialized>" for the zero value and
+// "<JSONScalar: rendering failed>" if rendering fails.
+func (scalar JSONScalar) String() string {
 	if scalar.node == nil {
-		cause := fmt.Errorf("JSONScalar has no underlying scalar node to render")
-		return "", common.NewOracleError(oracleErrors.JSONNilReceiver, cause, "String")
+		return "<JSONScalar: uninitialized>"
 	}
-	return scalar.node.String()
+	text, err := scalar.node.String()
+	if err != nil {
+		return "<JSONScalar: rendering failed>"
+	}
+	return text
 }

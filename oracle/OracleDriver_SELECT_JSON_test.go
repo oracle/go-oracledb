@@ -350,10 +350,7 @@ func assertSameJSONDocument(t *testing.T, got ojson.JSON, wantText string) {
 
 	wantValue := decodeExpectedJSONValue(t, wantText)
 	if !reflect.DeepEqual(gotValue, wantValue) {
-		gotText, textErr := got.String()
-		if textErr != nil {
-			t.Fatalf("JSON mismatch and String failed: %v", textErr)
-		}
+		gotText := got.String()
 		t.Fatalf("JSON mismatch:\n got:  %s\nwant: %s", gotText, wantText)
 	}
 }

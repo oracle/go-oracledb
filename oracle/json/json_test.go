@@ -41,7 +41,6 @@ package json
 import (
 	"bytes"
 	"errors"
-	"math"
 	"testing"
 
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -60,24 +59,11 @@ func TestJSONStringRendersDataAndJSONNumbers(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			text, err := (JSON{Data: test.data}).String()
-			if err != nil {
-				t.Fatalf("JSON.String() failed: %v", err)
-			}
+			text := (JSON{Data: test.data}).String()
 			if text != test.want {
 				t.Fatalf("JSON.String() = %q, want %q", text, test.want)
 			}
 		})
-	}
-}
-
-func TestJSONStringRendersDataErrors(t *testing.T) {
-	_, err := (JSON{Data: math.Inf(1)}).String()
-	if err == nil {
-		t.Fatal("JSON.String() error = nil, want JSON rendering error")
-	}
-	if got := err.(oracleErrors.SQLError).ErrorCode(); got != string(oracleErrors.JSONRenderingError) {
-		t.Fatalf("JSON.String() error code = %s, want %s", got, oracleErrors.JSONRenderingError)
 	}
 }
 
@@ -95,10 +81,10 @@ func TestJSONErrorsIncludeCause(t *testing.T) {
 	if err := arrayValue.Scan(driverValue); err != nil {
 		t.Fatalf("JSON.Scan() failed: %v", err)
 	}
-	_, kindMismatchErr := arrayValue.GetJSONObject()
-	array, err := arrayValue.GetJSONArray()
+	_, kindMismatchErr := arrayValue.AsJSONObject()
+	array, err := arrayValue.AsJSONArray()
 	if err != nil {
-		t.Fatalf("GetJSONArray() failed: %v", err)
+		t.Fatalf("AsJSONArray() failed: %v", err)
 	}
 	_, indexErr := array.Get(1)
 
@@ -170,9 +156,9 @@ func TestJSONScanCopiesSourceBytes(t *testing.T) {
 	}
 	copy(src[at:at+len("pwned")], []byte("pwned"))
 
-	obj, err := got.GetJSONObject()
+	obj, err := got.AsJSONObject()
 	if err != nil {
-		t.Fatalf("GetJSONObject() failed: %v", err)
+		t.Fatalf("AsJSONObject() failed: %v", err)
 	}
 
 	nameJSON, ok := obj.Get("name")
@@ -180,9 +166,9 @@ func TestJSONScanCopiesSourceBytes(t *testing.T) {
 		t.Fatal(`field "name" missing`)
 	}
 
-	nameScalar, err := nameJSON.GetJSONScalar()
+	nameScalar, err := nameJSON.AsJSONScalar()
 	if err != nil {
-		t.Fatalf("GetJSONScalar() failed: %v", err)
+		t.Fatalf("AsJSONScalar() failed: %v", err)
 	}
 
 	nameValue, err := nameScalar.GetValue(JSONOptNumberAsString)
