@@ -64,6 +64,9 @@ type tTIrxd struct {
 	// prevLobColContext contains the LOB metadata aligned with prevRow for BVC
 	// column carry.
 	prevLobColContext []*lobColumnContext
+	// prevRefCursorRows aligns with prevRow and carries REF CURSOR values when
+	// BVC omits the corresponding column in the current row.
+	prevRefCursorRows []*ttcRowsRefCursor
 	// bvcColSent is a BitSet indicating which columns are present in this row (per BVC protocol column-carry rules).
 	bvcColSent *driverCommon.BitSet
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
@@ -73,18 +76,41 @@ type tTIrxd struct {
 	bindRow        []driverCommon.B1Array
 	columnContexts []columnContext
 	lobColContext  []*lobColumnContext
+	// refCursorRows aligns with row and holds decoded REF CURSOR child rows.
+	refCursorRows []*ttcRowsRefCursor
 
 	numberOfReturningPositions int
 	isDmlReturning             bool
 
-	// session character set
+	// shelf and sessCtx initialize decoded REF CURSOR child rows.
+	shelf   *ttiShelf[driverCommon.MessageType]
+	sessCtx *driverCommon.SessionContext
+	// sessCharSet and sessNCharSet decode character data in REF CURSOR metadata.
 	sessCharSet  driverCommon.UB2
 	sessNCharSet driverCommon.UB2
+	// refCursorDCB decodes REF CURSOR metadata using the negotiated TTC
+	// protocol version.
+	refCursorDCB *tTIdcb
 }
 
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
 func newTTIrxd() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIrxd{}
+	return &tTIrxd{refCursorDCB: newTTIdcb().(*tTIdcb)}
+}
+
+// newTTIrxd17 creates an RXD decoder for TTC versions 17-19.
+func newTTIrxd17() driverCommon.Message[driverCommon.MessageType] {
+	return &tTIrxd{refCursorDCB: newTTIdcb17().(*tTIdcb)}
+}
+
+// newTTIrxd20 creates an RXD decoder for TTC versions 20-23.
+func newTTIrxd20() driverCommon.Message[driverCommon.MessageType] {
+	return &tTIrxd{refCursorDCB: newTTIdcb20().(*tTIdcb)}
+}
+
+// newTTIrxd24 creates an RXD decoder for TTC version 24 and later.
+func newTTIrxd24() driverCommon.Message[driverCommon.MessageType] {
+	return &tTIrxd{refCursorDCB: newTTIdcb24().(*tTIdcb)}
 }
 
 // GetMsgCode implements Message.GetMsgCode, returning the TTC RXD message code.
@@ -111,6 +137,9 @@ func (rxd *tTIrxd) setNumberofReturningArgs(numberofArgs int) {
 func (rxd *tTIrxd) setPrevRow(row []driverCommon.B1Array) {
 	rxd.prevRow = row
 }
+
+// setPrevRefCursorRows retains REF CURSOR child rows for BVC column carry.
+func (rxd *tTIrxd) setPrevRefCursorRows(rows []*ttcRowsRefCursor) { rxd.prevRefCursorRows = rows }
 
 // setPrevLobColumnContext assigns the per-column LOB metadata for the previous
 // row. BVC decoding carries this metadata together with omitted column data.
@@ -140,6 +169,21 @@ func (rxd *tTIrxd) setSessionNCharacterSet(sessNCharSet driverCommon.UB2) {
 // SetSessionNCharacterSet sets session character set
 func (rxd *tTIrxd) setSessionCharacterSet(sessCharSet driverCommon.UB2) {
 	rxd.sessCharSet = sessCharSet
+}
+
+// SetShelf supplies the shared shelf used to initialize decoded REF CURSOR rows.
+func (rxd *tTIrxd) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
+	rxd.shelf = shelf
+}
+
+// SetSessionContext supplies the session context used by REF CURSOR metadata
+// and its child rows.
+func (rxd *tTIrxd) SetSessionContext(sessCtx *driverCommon.SessionContext) {
+	rxd.sessCtx = sessCtx
+	if sessCtx != nil {
+		rxd.setSessionCharacterSet(sessCtx.DriverCharacterSet())
+		rxd.setSessionNCharacterSet(sessCtx.SessionNCharCharacterSet())
+	}
 }
 
 func (rxd *tTIrxd) getLobColumnContext() []*lobColumnContext {
@@ -260,6 +304,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 			return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 		}
 		rxd.row = make([]driverCommon.B1Array, rxd.numberOfColumns)
+		rxd.refCursorRows = make([]*ttcRowsRefCursor, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
 			if rxd.bvcColSent != nil && rxd.bvcColSent.Get(col) {
 				err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
@@ -278,6 +323,9 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 					copy(tmp, rxd.prevRow[col])
 					rxd.row[col] = tmp
 				}
+				if rxd.prevRefCursorRows != nil {
+					rxd.refCursorRows[col] = rxd.prevRefCursorRows[col]
+				}
 				var lobContext *lobColumnContext
 				if rxd.prevLobColContext != nil {
 					lobContext = rxd.prevLobColContext[col]
@@ -288,6 +336,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	} else {
 		// Non-BVC: all columns present, unmarshal each as fresh.
 		rxd.row = make([]driverCommon.B1Array, rxd.numberOfColumns)
+		rxd.refCursorRows = make([]*ttcRowsRefCursor, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
 			err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
 			if err != nil {
@@ -339,6 +388,10 @@ Errors:
 */
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
 	switch dtyType {
+	case DtyCur:
+		if err := rxd._unmarshalRefCursorColumn(ctx, mar, col); err != nil {
+			return err
+		}
 	case DtyClob:
 		if err := rxd._unmarshalClobColumn(ctx, mar, col); err != nil {
 			return err
@@ -355,6 +408,58 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 	}
 	return nil
 }
+
+/*
+_unmarshalRefCursorColumn decodes a REF CURSOR descriptor and cursor ID,
+storing initialized child rows aligned with the current RXD column.
+
+Description:
+
+  - Uses the version-specific DCB decoder to read the child cursor metadata.
+  - Reads the server cursor ID and initializes its rows directly with the RXD
+    shelf and session context.
+  - Stores nil for a NULL cursor while preserving per-column alignment for row,
+    LOB, and RefCursor data.
+
+Parameters:
+
+  - ctx: context governing protocol unmarshalling.
+  - mar: TTC marshaller positioned at the REF CURSOR descriptor.
+  - col: index of the REF CURSOR column in the current RXD row.
+
+Returns:
+
+  - error: a descriptor or cursor-ID decoding error; nil after the column is
+    aligned with the current row.
+*/
+func (rxd *tTIrxd) _unmarshalRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
+	if rxd.refCursorDCB == nil {
+		return common.NewOracleError(oracleErrors.RefCursorFactoriesNotConfigured, nil)
+	}
+	if err := rxd.refCursorDCB.unmarshalFromRefCursor(ctx, mar); err != nil {
+		return err
+	}
+	columns, err := rxd.refCursorDCB.getColumnContexts()
+	if err != nil {
+		return err
+	}
+	cursorID, err := mar.UnmarshalUB4(ctx)
+	if err != nil {
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	if cursorID != 0 {
+		common.Odl.Debug("Decoded REF CURSOR column", "column", col, "cursorID", cursorID, "columns", len(columns))
+		rxd.refCursorRows[col] = newRefCursorRows(rxd.shelf, rxd.sessCtx, driverCommon.SB4(cursorID), columns)
+	} else {
+		common.Odl.Debug("Decoded NULL REF CURSOR column", "column", col)
+	}
+	rxd.row[col] = nil
+	rxd.lobColContext = append(rxd.lobColContext, nil)
+	return nil
+}
+
+// getRefCursorRows returns REF CURSOR child rows aligned with RXD columns.
+func (rxd *tTIrxd) getRefCursorRows() []*ttcRowsRefCursor { return rxd.refCursorRows }
 
 // _unmarshalScalarColumn decodes a single column's value into rxd.row[col].
 // Reads length and value per TTC wire format. Returns error on failure.

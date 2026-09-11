@@ -441,6 +441,15 @@ func initMessagesEn() {
 	// Action:   Use an identifier with a supported length and characters.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidIdentifier), "invalid SQL identifier")
+	// Document: No
+	message.SetString(language.English, string(oracleErrors.ImplicitResultFactoriesNotConfigured), "implicit result factories are not configured")
+	// Document: No
+	// Comment: Arg[0]: TTC message type.
+	message.SetString(language.English, string(oracleErrors.UnexpectedImplicitResultPrefetchMessage), "unexpected implicit result prefetch message: %d")
+	// Document: No
+	message.SetString(language.English, string(oracleErrors.RefCursorFactoriesNotConfigured), "REF CURSOR factories are not configured")
+	// Document: No
+	message.SetString(language.English, string(oracleErrors.ImplicitResultMessageCreationFailed), "failed to create implicit result message")
 
 	// Document: No
 	message.SetString(language.English, string(oracleErrors.CancelOperationError), "cancel operation failed")

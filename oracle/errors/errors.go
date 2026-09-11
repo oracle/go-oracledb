@@ -169,6 +169,18 @@ const (
 	InvalidIdentifier ErrorCode = "OGD-00162"
 	// NetworkInternalError indicates an unexpected network-driver state.
 	NetworkInternalError ErrorCode = "OGD-00163"
+	// ImplicitResultFactoriesNotConfigured indicates that an implicit-result
+	// decoder was used before its required row or DCB factory was configured.
+	ImplicitResultFactoriesNotConfigured ErrorCode = "OGD-00166"
+	// UnexpectedImplicitResultPrefetchMessage indicates that the server sent an
+	// unsupported TTC message while prefetched implicit-result rows were read.
+	UnexpectedImplicitResultPrefetchMessage ErrorCode = "OGD-00167"
+	// RefCursorFactoriesNotConfigured indicates that REF CURSOR decoding was
+	// attempted before its descriptor or rows factory was configured.
+	RefCursorFactoriesNotConfigured ErrorCode = "OGD-00168"
+	// ImplicitResultMessageCreationFailed indicates that the driver could not
+	// create the TTC message used to decode implicit results.
+	ImplicitResultMessageCreationFailed ErrorCode = "OGD-00169"
 
 	// Driver Internal Error
 	InternalError ErrorCode = "OGD-00062"

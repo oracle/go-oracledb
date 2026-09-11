@@ -289,7 +289,21 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIoac_UnMarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnMarshalFrom_Fail},
 	{Name: "TestTTIoac_MarshalTo_Success", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_MarshalTo_Success},
 	{Name: "TestTTIoac_MarshalTo_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_MarshalTo_Fail},
+	{Name: "TestTTIoac_SignedArrayElementCount", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_SignedArrayElementCount},
+	{Name: "TestTTIoac_AddFlagsContinuation", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_AddFlagsContinuation},
+	{Name: "TestTTIoac_UnmarshalNormalizesNumberLength", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnmarshalNormalizesNumberLength},
+	{Name: "TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength},
 	{Name: "TestTTIoac_Setters", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_Setters},
+	{Name: "TestImplicitResultRowsNextResultSet", Categories: "unitary", Exclusive: false, Fn: TestImplicitResultRowsNextResultSet},
+	{Name: "TestTTCRows_RefCursorNextAndClose", Categories: "unitary", Exclusive: false, Fn: TestTTCRows_RefCursorNextAndClose},
+	{Name: "TestTTIimplres_ZeroResultSets", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_ZeroResultSets},
+	{Name: "TestTTIimplres_MultipleResultSets", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_MultipleResultSets},
+	{Name: "TestTTIimplres_RejectsTruncatedMessages", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_RejectsTruncatedMessages},
+	{Name: "TestTTIimplres_PrefetchCompletion", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchCompletion},
+	{Name: "TestTTIimplres_PrefetchColumnPresenceVector", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchColumnPresenceVector},
+	{Name: "TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage},
+	{Name: "TestTTIimplres_DecodeErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_DecodeErrors},
+	{Name: "TestTTIimplres_RefCursorDCBHeaderErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_RefCursorDCBHeaderErrors},
 	{Name: "TestTTIOallRPA_Unmarshal_Drop", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Drop},
 	{Name: "TestTTIOallRPA_Unmarshal_Create", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Create},
 	{Name: "TestTTIOallRPA_Unmarshal_Insert", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Insert},
@@ -406,6 +420,10 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIrxd_GetMsgCode", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_GetMsgCode},
 	{Name: "TestTTIrxd_BvcOnFirstRow_ReturnsError", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_BvcOnFirstRow_ReturnsError},
 	{Name: "TestTTIrxd_Setters", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_Setters},
+	{Name: "TestTTIrxd_UnmarshalRefCursorColumn", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalRefCursorColumn},
+	{Name: "TestTTIrxd_RefCursorZeroAndBVCReuse", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorZeroAndBVCReuse},
+	{Name: "TestTTIrxd_RefCursorDCBRequired", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorDCBRequired},
+	{Name: "TestTTIrxd_RefCursorDecodeErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorDecodeErrors},
 	{Name: "TestTTIrxd_UnmarshalFrom_ErrorCases", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalFrom_ErrorCases},
 	{Name: "TestTTIrxd_UnmarshalFrom", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalFrom},
 	{Name: "TestTTIrxd_bvc_IntegrationTest", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_bvc_IntegrationTest},
@@ -1087,6 +1105,9 @@ type mockOer struct {
 }
 
 func (m *mockOer) getError() error                { return m.err }
+func (m *mockOer) getReturnCode() common.UB2      { return 0 }
+func (m *mockOer) getErrorCode() common.UB4       { return 0 }
+func (m *mockOer) init()                          {}
 func (m *mockOer) GetMsgCode() common.MessageType { return TTIOER }
 
 type mockNetworkSession struct {
