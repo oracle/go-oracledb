@@ -114,6 +114,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestMarshalNullPTR", Categories: "unitary", Exclusive: false, Fn: TestMarshalNullPTR},
 	{Name: "TestMarshalCLR", Categories: "unitary", Exclusive: false, Fn: TestMarshalCLR},
 	{Name: "TestMarshalKeyValue", Categories: "unitary", Exclusive: false, Fn: TestMarshalKeyValue},
+	{Name: "TestMarshalKeyValuePairWithName", Categories: "unitary", Exclusive: false, Fn: TestMarshalKeyValuePairWithName},
+	{Name: "TestNewKeywordValuePairWithNameLimits", Categories: "unitary", Exclusive: false, Fn: TestNewKeywordValuePairWithNameLimits},
 	{Name: "TestFlush", Categories: "unitary", Exclusive: false, Fn: TestFlush},
 	{Name: "TestUnmarshalUB1", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalUB1},
 	{Name: "TestUnmarshalUB2", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalUB2},
