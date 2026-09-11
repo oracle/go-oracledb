@@ -422,7 +422,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIrxd_Setters", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_Setters},
 	{Name: "TestTTIrxd_UnmarshalRefCursorColumn", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalRefCursorColumn},
 	{Name: "TestTTIrxd_RefCursorZeroAndBVCReuse", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorZeroAndBVCReuse},
-	{Name: "TestTTIrxd_RefCursorFactoriesRequired", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorFactoriesRequired},
+	{Name: "TestTTIrxd_RefCursorDCBRequired", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorDCBRequired},
 	{Name: "TestTTIrxd_RefCursorDecodeErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorDecodeErrors},
 	{Name: "TestTTIrxd_UnmarshalFrom_ErrorCases", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalFrom_ErrorCases},
 	{Name: "TestTTIrxd_UnmarshalFrom", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalFrom},
@@ -1105,6 +1105,9 @@ type mockOer struct {
 }
 
 func (m *mockOer) getError() error                { return m.err }
+func (m *mockOer) getReturnCode() common.UB2      { return 0 }
+func (m *mockOer) getErrorCode() common.UB4       { return 0 }
+func (m *mockOer) init()                          {}
 func (m *mockOer) GetMsgCode() common.MessageType { return TTIOER }
 
 type mockNetworkSession struct {

@@ -232,6 +232,10 @@ func init() {
 	if err != nil {
 		common.Odl.Warn("Failed to register TTC 17 implicit result message", "error", err)
 	}
+	err = MessageRegistry.Register(TTIIMPLRES, 14, newTTIimplres14)
+	if err != nil {
+		common.Odl.Warn("Failed to register TTC 14 implicit result message", "error", err)
+	}
 	err = MessageRegistry.Register(TTIIMPLRES, MinTTCProtocolVersion, newTTIimplres)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIIMPLRES", "error", err)

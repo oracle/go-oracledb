@@ -50,11 +50,18 @@ import (
 
 // tTIOerIface defines an interface for Oracle error data protocol unmarshalling and processing.
 type tTIOerIface interface {
+	driverCommon.Message[driverCommon.MessageType]
+	// init clears the previous OER state before decoding the next message.
+	init()
 	// getError gets the wrapped error sent back from the server.
 	// in some context. Oer can be received but that do not indicate an error situation.
 	// when that is the case, this method return nil.
 	// 'getError() == nil' is equivalent as 'GetErrorCode() == 0'
 	getError() error
+	// getReturnCode returns the primary Oracle return code.
+	getReturnCode() driverCommon.UB2
+	// getErrorCode returns the extended Oracle error code.
+	getErrorCode() driverCommon.UB4
 }
 
 // tTIoer represents the Oracle error (OER) structure for version 0-6.
@@ -530,6 +537,12 @@ func (o *tTIoer) getError() error {
 	}
 	return common.NewOERMessageError(fmt.Sprintf("ORA-%05d", o.retCode), string(o.errorMsg))
 }
+
+// getReturnCode returns the primary Oracle return code.
+func (o *tTIoer) getReturnCode() driverCommon.UB2 { return o.retCode }
+
+// getErrorCode returns the extended Oracle error code.
+func (o *tTIoer) getErrorCode() driverCommon.UB4 { return o.oerrcd2 }
 
 // GetCurRowNumber returns the number of rows that were returned in the oer message.
 func (o *tTIoer) GetCurRowNumber() driverCommon.UB8 {
