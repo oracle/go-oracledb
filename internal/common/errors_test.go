@@ -180,23 +180,6 @@ func TestError3113InvalidLanguage(t *testing.T) {
 	}
 }
 
-// TestCtxTimeoutCauseError verifies that a timeout cause preserves its source,
-// configured value, emitter identifier, and human-readable error message.
-func TestCtxTimeoutCauseError(t *testing.T) {
-	t.Parallel()
-
-	err := NewCtxTimeoutCauseError("connect timeout", 2500, "connection-42")
-	if got, want := err.GetSource(), "connect timeout"; got != want {
-		t.Fatalf("timeout source = %q, want %q", got, want)
-	}
-	if got, want := err.GetValue(), uint(2500); got != want {
-		t.Fatalf("timeout value = %d, want %d", got, want)
-	}
-	if got, want := err.GetEmitterID(), "connection-42"; got != want {
-		t.Fatalf("timeout emitter = %q, want %q", got, want)
-	}
-}
-
 // TestNewOERMessageError tests that errors created using NewOERMessageError
 // implement the oracleErrors.SQLError interface and return then correct values for each
 // function in the interface

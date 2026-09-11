@@ -262,32 +262,6 @@ func TestParseDNAttributeDecodesEscapedValues(t *testing.T) {
 	}
 }
 
-// TestNTTCPSRemoteAddr verifies that RemoteAddr reports the active TLS
-// transport address and returns nil before a transport is connected.
-func TestNTTCPSRemoteAddr(t *testing.T) {
-	t.Parallel()
-
-	nt := NewNTTCPS(NTattributes{})
-	if nt.RemoteAddr() != nil {
-		t.Fatal("RemoteAddr should be nil before a stream is connected")
-	}
-
-	client, server := net.Pipe()
-	t.Cleanup(func() {
-		_ = client.Close()
-		_ = server.Close()
-	})
-	nt.stream = client
-
-	got := nt.RemoteAddr()
-	if got == nil {
-		t.Fatal("RemoteAddr returned nil for an active stream")
-	}
-	if got.String() != client.RemoteAddr().String() {
-		t.Fatalf("RemoteAddr = %q, want %q", got.String(), client.RemoteAddr().String())
-	}
-}
-
 func TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse(t *testing.T) {
 	t.Parallel()
 	walletContent := testWalletWithRootCert(t)

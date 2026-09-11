@@ -47,6 +47,34 @@ can be accepted.
 1. We will assign the pull request to 2-3 people for review before it is merged.
 
 ## Coding style
+
+### Documentation
+
+All methods must be documented. THe documentation block should contain information about inputs and outputs
+including error case. 
+
+ex 
+```go
+// Foo multiplies a positive number given as parameter.
+// Parameters:
+//
+//	number : the number to be computed
+//
+// Returns:
+//
+//	. the multiplied number
+//	. En error if givne number is equal or less than zero
+func Foo(number int) (int, error) {
+  if (number <= 0) {
+    return 0, return NewOracleError(...)
+  }
+	return number * 2, nil
+}
+```
+
+All testing methods should be documented with information about test purpose and expectations. 
+
+
 ### Code format
 
 The code must be formatted the same way. Code format is one of the validation steps of pipelines run beside merge-request

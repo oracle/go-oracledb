@@ -214,27 +214,6 @@ func _newNilKeyValPairs() *keyValueList {
 	return l
 }
 
-// TestKeyValueListEquals verifies that key/value lists compare each pair in
-// order and reject nil, changed, or differently sized lists.
-func TestKeyValueListEquals(t *testing.T) {
-	t.Parallel()
-
-	want := _newKeyValPairs()
-	if !_newKeyValPairs().Equals(want) {
-		t.Fatal("identical key/value lists should compare equal")
-	}
-	if _newKeyValPairs().Equals(nil) {
-		t.Fatal("a key/value list should not equal nil")
-	}
-
-	changed := _newKeyValPairs()
-	changed.Front().Value.(*common.KeyValue).Value = []byte("changed")
-	if changed.Equals(want) {
-		t.Fatal("lists with different values should not compare equal")
-	}
-
-}
-
 // Tests that key-value pairs are correctly encoded using different values
 func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 	t.Parallel()

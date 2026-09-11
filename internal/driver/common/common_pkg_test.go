@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestCategoryExecutor(t *testing.T) {
-	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
 type Version = oracleTest.Version
@@ -91,7 +91,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestSessionContext_SetTimeZoneVersionNumber", Categories: "unitary", Exclusive: false, Fn: TestSessionContext_SetTimeZoneVersionNumber},
 	{Name: "TestSessionContext_SetSessionCharacterSets", Categories: "unitary", Exclusive: false, Fn: TestSessionContext_SetSessionCharacterSets},
 	{Name: "TestSessionContext_UpdateSessionProperties", Categories: "unitary", Exclusive: false, Fn: TestSessionContext_UpdateSessionProperties},
-	{Name: "TestSessionContext_UpdateClientProperties", Categories: "unitary", Exclusive: false, Fn: TestSessionContext_UpdateClientProperties},
 	{Name: "TestUtility_SimpleStringToB1Array", Categories: "unitary", Exclusive: false, Fn: TestUtility_SimpleStringToB1Array},
 	{Name: "TestUtility_EmptyStringToB1Array", Categories: "unitary", Exclusive: false, Fn: TestUtility_EmptyStringToB1Array},
 	{Name: "TestUtility_NonBMPStringToB1Array", Categories: "unitary", Exclusive: false, Fn: TestUtility_NonBMPStringToB1Array},

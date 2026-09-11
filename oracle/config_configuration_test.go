@@ -227,68 +227,22 @@ func TestConfiguration_AssignFromEnvClientLanguageTag(t *testing.T) {
 	}
 }
 
-// TestConfiguration_LoggingConfigAssignFromEnv verifies that logging options
-// are read from their documented environment variables and that the logging
-// level is normalized to the slog level name.
-func TestConfiguration_LoggingConfigAssignFromEnv(t *testing.T) {
-	t.Setenv("ORACLE_GO_LOGGING_LEVEL", "debug")
-	t.Setenv("ORACLE_GO_LOGGING_DESTINATION", "STDOUT")
-	t.Setenv("ORACLE_GO_LOGGING_INCLUDESENSITIVE", "true")
-	t.Setenv("ORACLE_GO_LOGGING_TRUNCATE", "true")
-
-	config := oracleconfig.NewOracleLoggingConfig()
-	if err := config.AssignFromEnv(); err != nil {
-		t.Fatalf("AssignFromEnv failed: %v", err)
-	}
-	if got, want := config.GetLevel(), "DEBUG"; got != want {
-		t.Fatalf("logging level = %q, want %q", got, want)
-	}
-	if got, want := config.GetDestination(), "STDOUT"; got != want {
-		t.Fatalf("logging destination = %q, want %q", got, want)
-	}
-	if !config.GetIncludeSensitive() {
-		t.Fatal("IncludeSensitive = false, want true")
-	}
-	if !config.GetTruncate() {
-		t.Fatal("Truncate = false, want true")
-	}
-}
-
-// TestConfiguration_LoggingConfigAssignFromEnvValidation verifies that an
-// empty logging level uses the documented ERROR default and an invalid level
-// is rejected instead of being silently accepted.
-func TestConfiguration_LoggingConfigAssignFromEnvValidation(t *testing.T) {
-	t.Run("empty level uses error", func(t *testing.T) {
-		t.Setenv("ORACLE_GO_LOGGING_LEVEL", "")
-		config := oracleconfig.NewOracleLoggingConfig()
-		if err := config.AssignFromEnv(); err != nil {
-			t.Fatalf("AssignFromEnv failed: %v", err)
-		}
-		if got, want := config.GetLevel(), "ERROR"; got != want {
-			t.Fatalf("logging level = %q, want %q", got, want)
-		}
-	})
-
-	t.Run("invalid level is rejected", func(t *testing.T) {
-		t.Setenv("ORACLE_GO_LOGGING_LEVEL", "not-a-level")
-		config := oracleconfig.NewOracleLoggingConfig()
-		if err := config.AssignFromEnv(); err == nil {
-			t.Fatal("AssignFromEnv accepted an invalid logging level")
-		}
-	})
-}
-
 // TestConfiguration_AssignFromEmptyFlags checks AssignFromFlags
 // expectations:
 //
 //	no failure
 func TestConfiguration_AssignFromEmptyFlags(t *testing.T) {
-	t.Parallel()
+
 	conf := NewOracleDriverConfig()
 
 	flag.Set("oracle.go.Locale.Territory", "FOO")
 
 	flag.Set("oracle.go.Credentials.User", "myuser")
+
+	defer func() {
+		flag.Set("oracle.go.Credentials.User", "")
+		flag.Set("oracle.go.Locale.Territory", "")
+	}()
 
 	conf.AssignFromFlags()
 

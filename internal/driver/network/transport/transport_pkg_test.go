@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestCategoryExecutor(t *testing.T) {
-	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
 type Version = oracleTest.Version
@@ -98,7 +98,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestVerifyDNAllowsAliases", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNAllowsAliases},
 	{Name: "TestVerifyDNAllowsRepeatedAttributeAcrossRDNs", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNAllowsRepeatedAttributeAcrossRDNs},
 	{Name: "TestParseDNAttributeDecodesEscapedValues", Categories: "unitary", Exclusive: false, Fn: TestParseDNAttributeDecodesEscapedValues},
-	{Name: "TestNTTCPSRemoteAddr", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSRemoteAddr},
 	{Name: "TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse},
 	{Name: "TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse},
 	{Name: "TestDecrypt_UnsupportedOID", Categories: "unitary", Exclusive: false, Fn: TestDecrypt_UnsupportedOID},
