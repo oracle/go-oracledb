@@ -247,7 +247,10 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 	common.Odl.Debug("dialing remote host")
 	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", address.String())
 	if err != nil {
-		opError := err.(*net.OpError)
+		var opError *net.OpError
+		if !errors.As(err, &opError) {
+			return err
+		}
 		if errors.Is(err, context.DeadlineExceeded) ||
 			opError.Timeout() {
 			reportedCause := context.Cause(dialCtxToBeUsed)
