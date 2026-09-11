@@ -231,6 +231,33 @@ const (
 	// ProviderNotFound indicates that no provider was found in the registry for
 	// the wanted provider type
 	ProviderNotFound ErrorCode = "OGD-00206"
+
+	// OsonBufferError indicates an invalid or out-of-bounds access to an OSON byte buffer.
+	OsonBufferError ErrorCode = "OGD-00300"
+	// OsonHeaderError indicates that an OSON document has an invalid, truncated,
+	// or unsupported header.
+	OsonHeaderError ErrorCode = "OGD-00301"
+	// OsonParsingError indicates that an OSON document has an invalid or
+	// unsupported tree layout or opcode stream.
+	OsonParsingError ErrorCode = "OGD-00302"
+	// JSONNilReceiver indicates a public oracle/json API was called on an uninitialized receiver.
+	JSONNilReceiver ErrorCode = "OGD-00303"
+	// JSONScanTypeUnsupportedError indicates Scan received a source type that oracle/json does not accept.
+	JSONScanTypeUnsupportedError ErrorCode = "OGD-00304"
+	// JSONKindMismatchError indicates the caller requested the wrong high-level JSON wrapper for the value kind.
+	JSONKindMismatchError ErrorCode = "OGD-00305"
+	// JSONArrayIndexOutOfRangeError indicates array element lookup used an invalid index.
+	JSONArrayIndexOutOfRangeError ErrorCode = "OGD-00306"
+	// OsonEncodingError indicates that a value or internal encoder state cannot
+	// be converted into an OSON document.
+	OsonEncodingError ErrorCode = "OGD-00307"
+	// OsonUnsupportedScalarError indicates that an OSON document contains a
+	// scalar opcode the driver does not support.
+	OsonUnsupportedScalarError ErrorCode = "OGD-00308"
+	// JSONAccessError indicates a JSON access request used an invalid access path or mode.
+	JSONAccessError ErrorCode = "OGD-00309"
+	// JSONRenderingError indicates an Oracle JSON value could not be rendered as JSON text.
+	JSONRenderingError ErrorCode = "OGD-00310"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error

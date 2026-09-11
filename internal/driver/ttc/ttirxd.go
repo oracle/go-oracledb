@@ -344,7 +344,7 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 			return err
 		}
 	case DtyBlob, DtyJSON:
-		if err := rxd._unmarshalBlobColumn(ctx, mar, col, dtyType); err != nil {
+		if err := rxd._unmarshalBlobColumn(ctx, mar, col); err != nil {
 			return err
 		}
 	default:
@@ -533,8 +533,7 @@ _unmarshalBlobColumn unmarshals a prefetched BLOB or JSON column and its LOB met
 Description:
 
 	Reads the TTC LOB header for binary LOB payloads, including prefetch metadata, inline
-	prefetched bytes, and the server-side locator. When the datatype is JSON, the function
-	also consumes the trailing JSON indicator fields emitted by the protocol. The decoded
+	prefetched bytes, and the server-side locator. The decoded
 	raw bytes are stored in rxd.row[col] and the associated LOB metadata is appended to
 	rxd.lobColContext.
 
@@ -550,7 +549,7 @@ Returns:
 Errors:
   - Returns an error when the prefetched column payload cannot be read from the wire.
 */
-func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, col int, dtyType DtyType) error {
+func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
 	// length
 	lob := &lobColumnContext{}
 	var err error
@@ -562,11 +561,7 @@ func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Ma
 	if lob.LobLength == 0 {
 		rxd.row[col] = nil
 		rxd.lobColContext = append(rxd.lobColContext, lob)
-		if dtyType == DtyJSON {
-			if err = rxd._processIndicator(ctx, mar, col); err != nil {
-				return err
-			}
-		}
+
 		return nil
 	}
 
@@ -605,15 +600,7 @@ func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Ma
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
 
-	// indicator
-	if dtyType == DtyJSON {
-		if err = rxd._processIndicator(ctx, mar, col); err != nil {
-			return err
-		}
-	}
-
 	rxd.lobColContext = append(rxd.lobColContext, lob)
 
 	return nil
-
 }

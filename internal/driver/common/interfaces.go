@@ -41,6 +41,7 @@ package common
 import (
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 )
 
 const (
@@ -93,4 +94,158 @@ type DataBuffer interface {
 type ConnectionInstantiator interface {
 	// GetConnection returns a new connection to the database
 	GetConnection(ctx context.Context) (driver.Conn, error)
+}
+
+// Kind identifies the shape of a JSONNode.
+//
+// OSON has several scalar encodings, but callers generally need to distinguish
+// only objects, arrays, and scalars. Kind deliberately describes that JSON
+// shape rather than an OSON opcode or an Oracle database type.
+type Kind uint8
+
+const (
+	// KindObject identifies an object node.
+	KindObject Kind = iota
+	// KindArray identifies an array node.
+	KindArray
+	// KindScalar identifies a scalar node, including null.
+	KindScalar
+)
+
+// JSONNumber holds the decimal text of a JSON number.
+//
+// JSONNumber exists so an OSON NUMBER can be materialized without first being
+// rounded to float64. It is analogous to [encoding/json.Number]: although its
+// Go representation is a string, MarshalJSON writes it as a JSON number rather
+// than as a quoted JSON string.
+//
+// A JSONNumber is expected to contain a valid JSON number. MarshalJSON does not
+// validate values constructed directly by a caller.
+type JSONNumber string
+
+// MarshalJSON returns num as an unquoted JSON number.
+func (num JSONNumber) MarshalJSON() ([]byte, error) {
+	return []byte(num), nil
+}
+
+// JSONOption controls how an OSON node is converted to ordinary Go values.
+// Options affect the whole value: an object or array passes the selected option
+// to every descendant it materializes.
+type JSONOption uint8
+
+const (
+	// JSONOptDefault materializes JSON numbers as float64. This matches the
+	// default representation used when encoding/json decodes into an any, but
+	// conversion can round integers and decimals that float64 cannot represent
+	// exactly.
+	JSONOptDefault JSONOption = iota
+
+	// JSONOptNumberAsString materializes JSON numbers as JSONNumber. Use this
+	// option when decimal digits must survive decoding, comparison, and a later
+	// JSON or OSON encoding without float64 rounding. The result remains a JSON
+	// number, not a JSON string.
+	JSONOptNumberAsString
+)
+
+// JSONNode represents one value in an OSON byte sequence.
+//
+// Decoding is lazy: creating a node reads only the OSON bytes needed to identify
+// that node and locate its direct children. It does not decode the child values.
+// Get creates another lazy node for one child. GetValue, Value, and
+// String converts values to JSON text and, for a container, decodes the
+// complete subtree. This lets callers inspect a large document without
+// converting parts they do not need.
+//
+// Implementations must propagate the requested JSONOption through the entire
+// subtree and return an error if any selected child cannot be decoded. The
+// materialized forms are map[string]any for objects, []any for arrays, and the
+// corresponding Go value for scalars.
+//
+// JSONNode embeds json.Marshaler so OSON nodes can be passed directly to
+// encoding/json. This is required because encoding/json does not use the
+// String method when marshaling a value, and OSON scalar values can require a
+// JSON representation that differs from their materialized Go type. Container
+// implementations retain the existing map and slice rendering behavior, while
+// scalar implementations provide the scalar-specific rendering policy.
+type JSONNode interface {
+	json.Marshaler
+
+	// Kind reports whether the node is an object, array, or scalar.
+	Kind() Kind
+
+	// GetValue recursively materializes the node using opts.
+	//
+	// GetValue returns any because the result type depends on Kind. The Value
+	// methods on JSONObjectNode, JSONArrayNode, and JSONScalarNode provide the
+	// same operation with a shape-specific result type. An implementation of a
+	// specialized node must make Value(opts) and GetValue(opts) describe the
+	// same value; Value exists separately because Go interface methods cannot
+	// refine an any return type to map[string]any or []any.
+	GetValue(opts JSONOption) (any, error)
+
+	// String returns the JSON text representation of the node. It returns
+	// an error if the node cannot be decoded or represented as JSON.
+	String() (string, error)
+}
+
+// JSONObjectNode is a JSONNode whose Kind is KindObject.
+//
+// An object member is one field name and its associated child value. Creating
+// an object node reads the object opcode, member count, field names, and the
+// byte offset of each child from the OSON bytes. It stops there: the child
+// values remain encoded. Get creates a lazy node for one child; Value decodes
+// them all.
+type JSONObjectNode interface {
+	JSONNode
+
+	// Get returns the child node named by key. The result is false when key is
+	// absent or its node cannot be constructed.
+	Get(key string) (JSONNode, bool)
+
+	// Len returns the number of object members. Each member is one field name and
+	// its associated child value.
+	Len() int
+
+	// Keys returns the field name of every object member. Their order is
+	// unspecified.
+	Keys() []string
+
+	// Value recursively materializes the object as a map. It is the typed form
+	// of GetValue; both methods must apply opts to every member.
+	Value(opts JSONOption) (map[string]any, error)
+}
+
+// JSONArrayNode is a JSONNode whose Kind is KindArray.
+//
+// Creating an array node reads the array opcode, element count, and the byte
+// offset of each child from the OSON bytes. It stops there: the child values
+// remain encoded. Get creates a lazy node for one child; Value decodes them all.
+type JSONArrayNode interface {
+	JSONNode
+
+	// Get returns the child node at the zero-based index. The result is false
+	// when index is out of range or its node cannot be constructed.
+	Get(index int) (JSONNode, bool)
+
+	// Len returns the number of array elements.
+	Len() int
+
+	// Value recursively materializes the array as a slice, preserving element
+	// order. It is the typed form of GetValue; both methods must apply opts to
+	// every element.
+	Value(opts JSONOption) ([]any, error)
+}
+
+// JSONScalarNode is a JSONNode whose Kind is KindScalar.
+//
+// In addition to the RFC 8259 scalar values, OSON can represent native Oracle
+// scalar values such as dates, timestamps, intervals, and binary data. Value
+// returns the driver's corresponding Go representation for those values.
+type JSONScalarNode interface {
+	JSONNode
+
+	// Value decodes the scalar using opts. It is the typed-shape counterpart of
+	// GetValue; for a scalar both return any because the concrete Go type depends
+	// on the OSON scalar encoding.
+	Value(opts JSONOption) (any, error)
 }
