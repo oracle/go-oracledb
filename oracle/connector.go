@@ -100,6 +100,7 @@ type oracleConnector = connector
 func buildOracleConnector(driver driver.Driver, cfg *naming.ParsedConfig, drvConfig *oracleconfig.OracleDriverConfig) driver.Connector {
 	// this should never return an error, both functions are being set to not nil values
 	connector, _ := newOracleConnector(cfg, drvConfig, session.ConnectToOptionWithConnectionID, drv.GetConnectionInstantiator)
+	connector.(*oracleConnector).driver = driver
 	return connector
 }
 

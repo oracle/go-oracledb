@@ -606,6 +606,15 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "Test_ttiSTA_getConnectionShouldBeDropped", Categories: "unitary", Exclusive: false, Fn: Test_ttiSTA_getConnectionShouldBeDropped},
 
 	{Name: "TestTypeRep_UnMarshalFrom_TooManyTypeRepresentations", Categories: "unitary", Exclusive: false, Fn: TestTypeRep_UnMarshalFrom_TooManyTypeRepresentations},
+	{Name: "TestTTCRowsColumnsNextAndMetadata", Categories: "unitary", Exclusive: false, Fn: TestTTCRowsColumnsNextAndMetadata},
+	{Name: "TestTTCRowsColumnTypeDatabaseTypeNameMappings", Categories: "unitary", Exclusive: false, Fn: TestTTCRowsColumnTypeDatabaseTypeNameMappings},
+	{Name: "TestTTCResult", Categories: "unitary", Exclusive: false, Fn: TestTTCResult},
+	{Name: "TestDecodeNumberColumn", Categories: "unitary", Exclusive: false, Fn: TestDecodeNumberColumn},
+	{Name: "TestDecodeTextColumns", Categories: "unitary", Exclusive: false, Fn: TestDecodeTextColumns},
+	{Name: "TestDecodeBooleanColumn", Categories: "unitary", Exclusive: false, Fn: TestDecodeBooleanColumn},
+	{Name: "TestDecodeFloatingAndTemporalColumns", Categories: "unitary", Exclusive: false, Fn: TestDecodeFloatingAndTemporalColumns},
+	{Name: "TestDecodeIntervalAndLobColumns", Categories: "unitary", Exclusive: false, Fn: TestDecodeIntervalAndLobColumns},
+	{Name: "TestRowDecodeError", Categories: "unitary", Exclusive: false, Fn: TestRowDecodeError},
 }
 
 // ArrayBasedDataBuffer is an implementation of DataBuffer for testing purposes.

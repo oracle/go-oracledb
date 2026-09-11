@@ -47,6 +47,22 @@ import (
 	"golang.org/x/text/language"
 )
 
+// TestNewCtxTimeoutCauseError verifies that a timeout error preserves the
+// source, timeout value, and emitter identifier supplied by its caller.
+func TestNewCtxTimeoutCauseError(t *testing.T) {
+	err := NewCtxTimeoutCauseError("connect", 250, "cid-1")
+
+	if err.GetSource() != "connect" {
+		t.Fatalf("source = %q, want connect", err.GetSource())
+	}
+	if err.GetValue() != 250 {
+		t.Fatalf("value = %d, want 250", err.GetValue())
+	}
+	if err.GetEmitterID() != "cid-1" {
+		t.Fatalf("emitter = %q, want cid-1", err.GetEmitterID())
+	}
+}
+
 // tests behavior in case of unknown error.
 func TestErrorUnknownCode(t *testing.T) {
 	t.Parallel()
