@@ -285,12 +285,18 @@ func NewTestingEnvironment(fileName string) (TestingEnvironment, error) {
 	return TestingEnvironment{driverConfigs: driverConfigs}, nil
 }
 
+// GetConfig retrieve config by name
+// Returns: the config if found and enabled
+// Error: config is not found or disabled
 func (e *TestingEnvironment) GetConfig(name string) (*TestConfig, error) {
 	if e.driverConfigs == nil {
 		return nil, fmt.Errorf("attempt to get a configuration but not configuration available")
 	}
 	for _, config := range e.driverConfigs {
 		if config.ConfigName == name {
+			if !config.Enabled {
+				return nil, fmt.Errorf("configuration %s is disabled", name)
+			}
 			return &config, nil
 		}
 	}

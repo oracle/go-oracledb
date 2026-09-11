@@ -154,7 +154,7 @@ func TestDriver_ConfigurationWithConnectorWithFlagOverwrite(t *testing.T) {
 // verifies that dsn have precedence over configuration
 // when credentials are specified in dsn, they cannot be present in configuration
 func TestDriver_ConfigurationWithCredentialsWithDsnNegative(t *testing.T) {
-
+	t.Parallel()
 	c := NewOracleDriverConfig()
 	c.Credentials.User = "foo"
 	c.Credentials.Password = "bar"
@@ -164,8 +164,7 @@ func TestDriver_ConfigurationWithCredentialsWithDsnNegative(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Should have receive an error")
 	}
-	t.Log("received an error", err.Error())
-
+	t.Log("received expected  error", err.Error())
 }
 
 // TestDriver_ConfigurationLogging dummy test to activate logging.
