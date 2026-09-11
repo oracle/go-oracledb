@@ -368,9 +368,9 @@ func TestReadOnlyTransaction(t *testing.T) {
 	}
 }
 
-// TestSavepointRollback verifies a rollback to a savepoint preserves changes
-// made before the savepoint and removes later changes.
-func TestSavepointRollback(t *testing.T) {
+// TestDriver_SavepointRollback verifies a rollback to a savepoint keeps the
+// first insert and removes the later insert.
+func TestDriver_SavepointRollback(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")

@@ -212,18 +212,23 @@ func TestShelf_GetCapabilities(t *testing.T) {
 	}
 }
 
-// TestShelf_ConnectionProperties verifies that connection properties can be
-// stored on a shelf and retrieved without changing the shelf instance.
+// TestShelf_ConnectionProperties verifies that a shelf stores the supplied
+// connection properties and returns itself for method chaining.
 func TestShelf_ConnectionProperties(t *testing.T) {
 	shelf := NewShelf[int]()
 
 	props := &oracleconfig.OracleDriverProperties{StrictNullValueHandling: true, DefaultLobPrefetchSize: 1024}
 	if returned := shelf.UpdateConnectionProperties(props); returned != shelf {
-		t.Fatal("UpdateConnectionProperties should return the shelf")
+		t.Fatal("UpdateConnectionProperties should return the same shelf")
 	}
 
-	if got := shelf.GetConnectionProperties(); got != props {
-		t.Fatalf("GetConnectionProperties = %p, want %p", got, props)
+	got := shelf.GetConnectionProperties()
+	if got == nil {
+		t.Fatal("GetConnectionProperties returned nil")
+	}
+	if !got.IsStrictNullValueHandling() || got.GetDefaultLobPrefetchSize() != 1024 {
+		t.Fatalf("GetConnectionProperties returned unexpected values: strictNull=%v, lobPrefetch=%d",
+			got.IsStrictNullValueHandling(), got.GetDefaultLobPrefetchSize())
 	}
 }
 

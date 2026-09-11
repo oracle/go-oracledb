@@ -1406,8 +1406,8 @@ func TestDriver_Select_NullFromComputedExpression(t *testing.T) {
 	}
 }
 
-// TestDriver_Select_JoinQuery verifies a join returns the expected matching
-// values from both tables.
+// TestDriver_Select_JoinQuery verifies a positional bind filters a join and
+// the driver scans both returned strings.
 func TestDriver_Select_JoinQuery(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1470,8 +1470,8 @@ func TestDriver_Select_JoinQuery(t *testing.T) {
 	}
 }
 
-// TestDriver_Select_SubqueryInFrom verifies a derived table in the FROM clause
-// returns the expected aggregated row.
+// TestDriver_Select_SubqueryInFrom verifies a positional bind filters a
+// derived table and the driver scans its aggregate result.
 func TestDriver_Select_SubqueryInFrom(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1537,8 +1537,8 @@ func TestDriver_Select_SubqueryInFrom(t *testing.T) {
 	}
 }
 
-// TestDriver_Select_GroupByHaving verifies GROUP BY and HAVING return only the
-// groups that satisfy the aggregate condition.
+// TestDriver_Select_GroupByHaving verifies two positional binds are passed to
+// GROUP BY and HAVING and the driver scans the one matching aggregate row.
 func TestDriver_Select_GroupByHaving(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -1624,8 +1624,8 @@ func TestDriver_Select_GroupByHaving(t *testing.T) {
 	}
 }
 
-// TestDriver_Select_NamedArgMultipleSameParamRefs verifies one named argument
-// can be used by multiple references in a SELECT statement.
+// TestDriver_Select_NamedArgMultipleSameParamRefs verifies one named bind can
+// be used three times and the driver returns the matching row.
 func TestDriver_Select_NamedArgMultipleSameParamRefs(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {

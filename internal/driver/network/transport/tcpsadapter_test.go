@@ -7,6 +7,7 @@
 package transport
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -20,6 +21,76 @@ import (
 	"testing"
 	"time"
 )
+
+// TestNTTCPReceiveBufferTooSmall verifies Receive rejects a request that is
+// larger than the destination buffer without reading from the connection.
+func TestNTTCPReceiveBufferTooSmall(t *testing.T) {
+	t.Parallel()
+	nt := NewNTTCP(NTattributes{}, 1521)
+	n, err := nt.Receive(context.Background(), make([]byte, 1), 2)
+	if err == nil {
+		t.Fatal("expected buffer-too-small error")
+	}
+	if n != 0 {
+		t.Fatalf("bytes read = %d, want 0", n)
+	}
+}
+
+// TestNTTCPSClear verifies Clear releases the TLS configuration on a TCPS
+// adapter.
+func TestNTTCPSClear(t *testing.T) {
+	t.Parallel()
+	nt := NewNTTCPS(NTattributes{})
+	nt.config = &tls.Config{}
+	nt.Clear()
+	if nt.config != nil {
+		t.Fatal("Clear should remove the TLS configuration")
+	}
+}
+
+// TestProcessWalletEmptyAndUnknownBlock verifies empty wallets are accepted
+// and unknown PEM blocks are rejected.
+func TestProcessWalletEmptyAndUnknownBlock(t *testing.T) {
+	t.Parallel()
+	nt := NewNTTCPS(NTattributes{})
+	if err := nt.processWallet(); err != nil {
+		t.Fatalf("processWallet with empty wallet returned error: %v", err)
+	}
+	if nt.clientCert != nil || nt.rootCAs != nil {
+		t.Fatal("empty wallet should not configure certificates")
+	}
+
+	content := pem.EncodeToMemory(&pem.Block{Type: "BOGUS", Bytes: []byte("x")})
+	nt = NewNTTCPS(NTattributes{WalletContent: content})
+	if err := nt.processWallet(); err == nil {
+		t.Fatal("expected unknown PEM block error")
+	}
+}
+
+// TestParseAndVerifyDN verifies matching and mismatching configured
+// distinguished names.
+func TestParseAndVerifyDN(t *testing.T) {
+	t.Parallel()
+	got, err := parseConfiguredDN("CN=db.example.com, O=Oracle, OU=Drivers")
+	if err != nil {
+		t.Fatalf("parseConfiguredDN returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("parsed unexpected values: %#v", got)
+	}
+
+	rawSubject, err := asn1.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal subject: %v", err)
+	}
+	cert := &x509.Certificate{RawSubject: rawSubject}
+	if err := verifyDN(cert, "CN=db.example.com,O=Oracle,OU=Drivers"); err != nil {
+		t.Fatalf("verifyDN returned error: %v", err)
+	}
+	if err := verifyDN(cert, "CN=other,O=Oracle,OU=Drivers"); err == nil {
+		t.Fatal("expected DN mismatch")
+	}
+}
 
 func TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared(t *testing.T) {
 	t.Parallel()

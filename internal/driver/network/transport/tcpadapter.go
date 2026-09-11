@@ -95,13 +95,8 @@ type ioOperationResult struct {
 	ioerr     error // error of the I/O operation
 }
 
-// Send send buffer bytes to the underlying stream
-// parameters:
-//   - ctx : context to be used while reading
-//   - buf : the buffer to be sent.
-//
-// returns :
-//   - error raised during read operation
+// Send writes all bytes in buf to the underlying stream. It returns an error
+// when the write fails or the context is cancelled.
 func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 
 	var ctxToBeUsed context.Context
@@ -148,8 +143,10 @@ func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 	}
 }
 
-// Receive reads bytes2Read bytes from the underlying stream into buf. If
-// bytes2Read is greater than len(buf), it returns an error and does not read.
+// Receive reads bytes2Read bytes from the underlying stream into buf.
+// ctx controls the read, buf receives the bytes, and bytes2Read is the number
+// of bytes requested. It returns the number of bytes read and an error when
+// buf is too small, the stream read fails, or the context is cancelled.
 func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error) {
 
 	if bytes2Read > len(buf) {
@@ -264,7 +261,7 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 	return nil
 }
 
-// Connect establishes a network transport connection
+// Connect establishes a network transport connection to address.
 func (nt *nttcp) Connect(ctx context.Context, address Address) error {
 	nt.originHost = address.OriginHost
 	nt.host = address.Host
@@ -303,6 +300,7 @@ func (nt *nttcp) Connect(ctx context.Context, address Address) error {
 	return nil
 }
 
+// Disconnect closes the transport stream and clears the connected state.
 func (nt *nttcp) Disconnect() error {
 	nt.connected = false
 	if nt.stream != nil {

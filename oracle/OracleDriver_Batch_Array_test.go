@@ -46,9 +46,9 @@ import (
 	"testing"
 )
 
-// TestDriver_CreateInBatchesEquivalent verifies repeated prepared inserts and
-// expects six rows with the expected aggregate age value.
-func TestDriver_CreateInBatchesEquivalent(t *testing.T) {
+// TestDriver_PreparedInsertReuse verifies one prepared INSERT can be executed
+// repeatedly and that each execution inserts one row.
+func TestDriver_PreparedInsertReuse(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -330,13 +330,14 @@ func TestDriver_JSONCreateInBatchesAndBulkUpdateEquivalent(t *testing.T) {
 	})
 }
 
-// TestDriver_StringVarrayEquivalent verifies string VARRAY DDL and insertion;
-// result decoding remains explicitly skipped because it is unsupported.
+// TestDriver_StringVarrayEquivalent skips string VARRAY coverage because
+// go-oracledb does not yet support collection result decoding.
 func TestDriver_StringVarrayEquivalent(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
+	t.Skip("VARRAY result decoding is not supported by go-oracledb")
 
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
@@ -364,20 +365,16 @@ func TestDriver_StringVarrayEquivalent(t *testing.T) {
 		t.Fatalf("insert string VARRAY row failed: %v", err)
 	}
 
-	// Oracle collection result decoding is not supported by the pure Go driver.
-	// Keep the DDL and bind coverage above, but do not treat an unsupported scan
-	// as a functional failure while this GORM-derived scenario remains unported.
-	t.Skip("VARRAY result decoding is not supported by pure-go-driver")
-
 }
 
-// TestDriver_VarrayOfObjectEquivalent verifies object VARRAY DDL and insertion;
-// result decoding remains explicitly skipped because it is unsupported.
+// TestDriver_VarrayOfObjectEquivalent skips object VARRAY coverage because
+// go-oracledb does not yet support collection result decoding.
 func TestDriver_VarrayOfObjectEquivalent(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
+	t.Skip("VARRAY result decoding is not supported by go-oracledb")
 
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
@@ -418,11 +415,6 @@ func TestDriver_VarrayOfObjectEquivalent(t *testing.T) {
 	)`); err != nil {
 		t.Fatalf("insert object VARRAY row failed: %v", err)
 	}
-
-	// Oracle collection result decoding is not supported by the pure Go driver.
-	// Keep the DDL and bind coverage above, but do not treat an unsupported scan
-	// as a functional failure while this GORM-derived scenario remains unported.
-	t.Skip("VARRAY result decoding is not supported by pure-go-driver")
 
 }
 

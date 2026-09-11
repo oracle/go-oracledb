@@ -1649,12 +1649,16 @@ func TestDriver_DMLReturning_Insert_BooleanColumn(t *testing.T) {
 	}
 }
 
-// TestDriver_DMLReturning_Merge_InsertGeneratedIdentity verifies MERGE
-// RETURNING returns the generated identity for a newly inserted row.
+// TestDriver_DMLReturning_Merge_InsertGeneratedIdentity verifies the driver
+// binds a MERGE statement and maps its generated identity and other OUT values
+// back to Go values.
 func TestDriver_DMLReturning_Merge_InsertGeneratedIdentity(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
+	}
+	if TestingConfig.DatabaseVersion.Major < 23 {
+		t.Skip("MERGE RETURNING requires Oracle 23c or later")
 	}
 
 	db, err := openTestDBWithConfig(TestingConfig)
@@ -1742,12 +1746,15 @@ RETURNING id, external_id, name INTO :out_id, :out_external_id, :out_name`)
 	}
 }
 
-// TestDriver_DMLReturning_PLSQLForallMerge_MixedScalars verifies PL/SQL
-// FORALL MERGE RETURNING handles mixed scalar output values in row order.
+// TestDriver_DMLReturning_PLSQLForallMerge_MixedScalars verifies the driver
+// binds two FORALL MERGE rows and keeps each returned scalar with its row.
 func TestDriver_DMLReturning_PLSQLForallMerge_MixedScalars(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
+	}
+	if TestingConfig.DatabaseVersion.Major < 23 {
+		t.Skip("FORALL MERGE RETURNING requires Oracle 23c or later")
 	}
 
 	db, err := openTestDBWithConfig(TestingConfig)

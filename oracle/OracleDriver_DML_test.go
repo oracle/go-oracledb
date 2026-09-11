@@ -880,8 +880,8 @@ func TestDriver_Prepared_SelectMultipleRows_Re_exec_BindTypeChange(t *testing.T)
 	}
 }
 
-// TestDriver_DeleteWithRowIDSubqueryLimit verifies a DELETE using a ROWID
-// subquery and row limit removes only the intended rows.
+// TestDriver_DeleteWithRowIDSubqueryLimit verifies a bound DELETE removes one
+// matching row and reports the affected-row count correctly.
 func TestDriver_DeleteWithRowIDSubqueryLimit(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -924,15 +924,23 @@ func TestDriver_DeleteWithRowIDSubqueryLimit(t *testing.T) {
 		}
 	}
 
-	if _, err := db.ExecContext(ctx, `
+	result, err := db.ExecContext(ctx, `
 		DELETE FROM `+table+`
 		WHERE rowid IN (
 			SELECT rowid FROM `+table+`
 			WHERE name LIKE :1
 			ORDER BY id DESC FETCH FIRST 1 ROWS ONLY
 		)
-	`, "del-limited-%"); err != nil {
+	`, "del-limited-%")
+	if err != nil {
 		t.Fatalf("limited raw delete failed: %v", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatalf("rows affected retrieval failed: %v", err)
+	}
+	if rowsAffected != 1 {
+		t.Fatalf("rows affected = %d, want 1", rowsAffected)
 	}
 
 	var remaining int64
