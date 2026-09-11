@@ -221,6 +221,47 @@ func TestVerifyDNAllowsRepeatedAttributeAcrossRDNs(t *testing.T) {
 	}
 }
 
+// TestParseDNAttributeDecodesEscapedValues verifies that configured DN
+// attributes preserve escaped separators, decode hexadecimal escapes, and
+// retain an explicitly escaped space inside the value.
+func TestParseDNAttributeDecodesEscapedValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "escaped separator and hexadecimal comma",
+			input: `CN=db\=primary\2Cnode`,
+			want:  "db=primary,node",
+		},
+		{
+			name:  "escaped space is part of the value",
+			input: `CN=service\ name`,
+			want:  "service name",
+		},
+		{
+			name:  "unescaped trailing spaces are trimmed",
+			input: "CN=service   ",
+			want:  "service",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attribute, err := parseDNAttribute(tt.input)
+			if err != nil {
+				t.Fatalf("parseDNAttribute(%q) failed: %v", tt.input, err)
+			}
+			if got, ok := attribute.Value.(string); !ok || got != tt.want {
+				t.Fatalf("attribute value = %#v, want %q", attribute.Value, tt.want)
+			}
+		})
+	}
+}
+
 func TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse(t *testing.T) {
 	t.Parallel()
 	walletContent := testWalletWithRootCert(t)

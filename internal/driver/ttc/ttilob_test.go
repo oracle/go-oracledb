@@ -100,6 +100,73 @@ func TestTTIlob_SetDefinition_NilDefinition(t *testing.T) {
 	}
 }
 
+// TestLobDefinitionConstructors verifies that each LOB operation constructor
+// sets the operation-specific amount, locator, and null-handling fields that
+// the TTC marshaller expects.
+func TestLobDefinitionConstructors(t *testing.T) {
+	t.Parallel()
+
+	source := newLocator(driverCommon.B1Array{1, 2, 3}, 4)
+	readCases := []struct {
+		name       string
+		definition *lobDefinition
+		operation  lobOperationCode
+		lobAmt     driverCommon.UB8
+		sendAmount bool
+		nullO2U    bool
+	}{
+		{name: "get length", definition: NewLobDefinitionForGetLengthOperation(source), operation: kplobGetLength, sendAmount: true},
+		{name: "chunk size", definition: NewLobDefinitionForGetChunkSizeOperation(source), operation: kplobPageSize, sendAmount: true},
+		{name: "trim", definition: NewLobDefinitionForTrimOperation(source, 17), operation: kplobTrim, lobAmt: 17, sendAmount: true},
+		{name: "open", definition: NewLobDefinitionForOpenOperation(source, LobOpenModeReadWrite, kplobOpen), operation: kplobOpen, lobAmt: driverCommon.UB8(LobOpenModeReadWrite), sendAmount: true},
+		{name: "close", definition: NewLobDefinitionForCloseOperation(source, kplobClose), operation: kplobClose},
+		{name: "is open", definition: NewLobDefinitionForIsOpenOperation(source, kplobIsOpen), operation: kplobIsOpen, nullO2U: true},
+	}
+
+	for _, tc := range readCases {
+		t.Run(tc.name, func(t *testing.T) {
+			def := tc.definition
+			if def.getSourceLocator() != source {
+				t.Fatal("constructor did not preserve the source locator")
+			}
+			if def.operation != tc.operation {
+				t.Fatalf("operation = %v, want %v", def.operation, tc.operation)
+			}
+			if def.lobAmt != tc.lobAmt {
+				t.Fatalf("lobAmt = %d, want %d", def.lobAmt, tc.lobAmt)
+			}
+			if def.sendLobAmt != tc.sendAmount {
+				t.Fatalf("sendLobAmt = %t, want %t", def.sendLobAmt, tc.sendAmount)
+			}
+			if def.nullO2U != tc.nullO2U {
+				t.Fatalf("nullO2U = %t, want %t", def.nullO2U, tc.nullO2U)
+			}
+		})
+	}
+
+	t.Run("temporary create", func(t *testing.T) {
+		def := NewLobDefinitionForTemporaryCreate(32, 1, 2, 60, true, 873)
+		if def.operation != kplobTmpCreate {
+			t.Fatalf("operation = %v, want %v", def.operation, kplobTmpCreate)
+		}
+		if def.destinationLocator == nil || def.destinationLocator.offset != 2 {
+			t.Fatalf("destination locator metadata was not initialized: %#v", def.destinationLocator)
+		}
+		if got, want := def.destinationLength, driverCommon.SB4(60); got != want {
+			t.Fatalf("destination length = %d, want %d", got, want)
+		}
+		if got, want := def.lobAmt, driverCommon.UB8(60); got != want {
+			t.Fatalf("temporary LOB amount = %d, want %d", got, want)
+		}
+		if def.lobscnl != 1 || len(def.lobscn) != 1 || def.lobscn[0] != 1 {
+			t.Fatalf("cache metadata = (%d, %v), want (1, [1])", def.lobscnl, def.lobscn)
+		}
+		if got, want := def.charsetID, driverCommon.UB2(873); got != want {
+			t.Fatalf("charset ID = %d, want %d", got, want)
+		}
+	})
+}
+
 // TestTTIlob_GetMsgCode ensures TTIFUN is returned for the message code.
 func TestTTIlob_GetMsgCode(t *testing.T) {
 	t.Parallel()
