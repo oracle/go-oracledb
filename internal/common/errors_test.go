@@ -180,6 +180,7 @@ func TestError3113InvalidLanguage(t *testing.T) {
 	}
 }
 
+// TestRefCursorErrorsAreLocalized verifies RefCursor errors have English translations.
 func TestRefCursorErrorsAreLocalized(t *testing.T) {
 	t.Parallel()
 	ms := NewLocalizationService(language.English)

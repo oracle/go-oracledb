@@ -138,6 +138,7 @@ func (rxd *tTIrxd) setPrevRow(row []driverCommon.B1Array) {
 	rxd.prevRow = row
 }
 
+// setPrevRefCursorRows retains REF CURSOR child rows for BVC column carry.
 func (rxd *tTIrxd) setPrevRefCursorRows(rows []*ttcRowsRefCursor) { rxd.prevRefCursorRows = rows }
 
 // setPrevLobColumnContext assigns the per-column LOB metadata for the previous

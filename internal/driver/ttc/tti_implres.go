@@ -233,10 +233,15 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			common.Odl.Debug("Decoded implicit result BVC", "cursorID", rows.cursorID, "columns", len(columns), "presentColumns", bvc.bvcColSent.Cardinality())
 		case TTIRXD:
 			common.Odl.Debug("Decoding implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount, "hasBVC", state.bvcFound, "hasPreviousRow", state.prevRow != nil)
+			// Configure the version-specific RXD decoder with the preceding row
+			// state so BVC-omitted columns can be carried into this row.
 			rxd := state.createRXD(p.rxd, columns, p.shelf, p.sessCtx)
+			// Decode the wire image before retaining it: REF CURSOR columns may
+			// include nested DCB metadata that is consumed by RXD decoding.
 			if err = rxd.UnMarshalFrom(ctx, mar); err != nil {
 				return err
 			}
+			// Retain decoded values and make them the source for the next BVC row.
 			state.handleRXDRow(rxd)
 			common.Odl.Debug("Decoded implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount-1, "columns", len(rxd.row), "totalRows", len(rows.rowData))
 		case TTIIMPLOER:

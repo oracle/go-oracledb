@@ -247,6 +247,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 
 // TestTTIoac_SignedArrayElementCount verifies the OAC oacmal field accepts
 // Oracle's negative sentinel values used by described (non-array) columns.
+// TestTTIoac_SignedArrayElementCount preserves the signed OAC array count sentinel.
 func TestTTIoac_SignedArrayElementCount(t *testing.T) {
 	ctx := context.Background()
 	dataBuffer, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
@@ -265,6 +266,7 @@ func TestTTIoac_SignedArrayElementCount(t *testing.T) {
 	}
 }
 
+// TestTTIoac_AddFlagsContinuation combines continuation flag bits.
 func TestTTIoac_AddFlagsContinuation(t *testing.T) {
 	oac := &tTIoac{flagsContinuation: 0x01}
 	oac.addFlagsContinuation(0x04)
@@ -273,10 +275,12 @@ func TestTTIoac_AddFlagsContinuation(t *testing.T) {
 	}
 }
 
+// TestTTIoac_UnmarshalNormalizesNumberLength applies the TTC NUMBER length default.
 func TestTTIoac_UnmarshalNormalizesNumberLength(t *testing.T) {
 	testTTIoacUnmarshalLengthNormalization(t, DtyNum, _oacMaxLengthNumber)
 }
 
+// TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength applies TTC temporal length defaults.
 func TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -292,6 +296,7 @@ func TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength(t *testing.T) {
 	}
 }
 
+// testTTIoacUnmarshalLengthNormalization verifies the datatype-specific OAC length default.
 func testTTIoacUnmarshalLengthNormalization(t *testing.T, typ DtyType, want common.UB4) {
 	t.Helper()
 	ctx := context.Background()

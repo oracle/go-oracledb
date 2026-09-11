@@ -281,6 +281,7 @@ func checkNamedValue(nv *driver.NamedValue) error {
 	return driver.ErrSkip
 }
 
+// isRefCursorDestination reports whether v is a destination pointer for a REF CURSOR OUT bind.
 func isRefCursorDestination(v any) bool {
 	switch v.(type) {
 	case *driver.Rows:

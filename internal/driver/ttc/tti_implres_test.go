@@ -47,6 +47,7 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
+// TestImplicitResultRowsNextResultSet switches between prefetched implicit result sets.
 func TestImplicitResultRowsNextResultSet(t *testing.T) {
 	first := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("FIRST"), DataType: DtyChr}}), 0)
 	first.rowData = [][]driverCommon.B1Array{{[]byte("one")}}
@@ -79,6 +80,7 @@ func TestImplicitResultRowsNextResultSet(t *testing.T) {
 	}
 }
 
+// TestTTCRows_RefCursorNextAndClose decodes cursor columns and closes child rows once.
 func TestTTCRows_RefCursorNextAndClose(t *testing.T) {
 	child := newRefCursorResultRows(newTTCRows(nil), 0)
 	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("CUR"), DataType: DtyCur}}), 0)
@@ -107,8 +109,12 @@ func TestTTCRows_RefCursorNextAndClose(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("child close calls = %d, want 1", calls)
 	}
+	if err := rows.Next(dest); err != io.EOF {
+		t.Fatalf("Next() after Close() error = %v, want io.EOF", err)
+	}
 }
 
+// TestTTIimplres_ZeroResultSets decodes an IMPLRES message with no result sets.
 func TestTTIimplres_ZeroResultSets(t *testing.T) {
 	ctx := context.Background()
 	_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
@@ -131,6 +137,7 @@ func TestTTIimplres_ZeroResultSets(t *testing.T) {
 	}
 }
 
+// TestTTIimplres_NewDCBUsesMessageVersion selects version-matched DCB decoders.
 func TestTTIimplres_NewDCBUsesMessageVersion(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -161,6 +168,7 @@ func TestTTIimplres_NewDCBUsesMessageVersion(t *testing.T) {
 	}
 }
 
+// TestTTIimplres_MultipleResultSets decodes metadata for multiple implicit cursors.
 func TestTTIimplres_MultipleResultSets(t *testing.T) {
 	ctx := context.Background()
 	_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
@@ -196,6 +204,7 @@ func TestTTIimplres_MultipleResultSets(t *testing.T) {
 	}
 }
 
+// TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages rejects invalid IMPLRES inputs.
 func TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages(t *testing.T) {
 	ctx := context.Background()
 	_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
@@ -213,6 +222,7 @@ func TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages(t *testing.T) {
 	}
 }
 
+// TestTTIimplres_PrefetchCompletion retains prefetched rows through the terminal OER.
 func TestTTIimplres_PrefetchCompletion(t *testing.T) {
 	ctx := context.Background()
 	_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
@@ -263,6 +273,7 @@ func TestTTIimplres_PrefetchCompletion(t *testing.T) {
 	}
 }
 
+// TestTTIimplres_PrefetchColumnPresenceVector carries omitted columns through BVC.
 func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 	ctx := context.Background()
 	_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
@@ -291,6 +302,7 @@ func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 	}
 }
 
+// TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage validates prefetch setup and framing.
 func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
 	implres, ok := newTTIimplres().(*tTIimplres)
 	if !ok || implres.GetMsgCode() != TTIIMPLRES {
@@ -317,6 +329,7 @@ func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
 	}
 }
 
+// TestTTIimplres_DecodeErrors propagates metadata, row, and terminal decode failures.
 func TestTTIimplres_DecodeErrors(t *testing.T) {
 	ctx := context.Background()
 	newMarshaller := func() driverCommon.Marshaller {
@@ -355,6 +368,7 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 	}
 }
 
+// TestTTIimplres_RefCursorDCBHeaderErrors rejects malformed nested REF CURSOR metadata.
 func TestTTIimplres_RefCursorDCBHeaderErrors(t *testing.T) {
 	ctx := context.Background()
 	for _, payload := range [][]byte{nil, {0}} {
@@ -492,6 +506,7 @@ func marshalSuccessfulOER(ctx context.Context, mar driverCommon.Marshaller) erro
 	return mar.MarshalUB8(ctx, 0) // extended row count
 }
 
+// marshalEmptyRXH emits an RXH header for one prefetched implicit-result row.
 func marshalEmptyRXH(ctx context.Context, mar driverCommon.Marshaller) error {
 	if err := mar.MarshalUB1(ctx, 0); err != nil {
 		return err

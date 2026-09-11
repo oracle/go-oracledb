@@ -190,8 +190,12 @@ func (r *ttcRows) Columns() []string {
 
 // Next implements driver.Rows.Next. It advances the cursorId and assigns each
 // column's raw []common.B1Array value as a type provided in dest. Row count is
-// computed once and cached to avoid repeated len() calls.
+// computed once and cached to avoid repeated len() calls. It returns io.EOF
+// after Close so a closed cursor cannot perform a deferred fetch.
 func (r *ttcRows) Next(dest []driver.Value) error {
+	if r.closed {
+		return io.EOF
+	}
 	if r.beforeNext != nil {
 		if err := r.beforeNext(); err != nil {
 			return err

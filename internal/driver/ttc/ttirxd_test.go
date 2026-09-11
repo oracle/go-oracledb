@@ -248,6 +248,7 @@ func TestTTIrxd_Setters(t *testing.T) {
 	}
 }
 
+// TestTTIrxd_UnmarshalRefCursorColumn decodes a REF CURSOR column and its metadata.
 func TestTTIrxd_UnmarshalRefCursorColumn(t *testing.T) {
 	ctx := context.Background()
 	_, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
@@ -274,6 +275,7 @@ func TestTTIrxd_UnmarshalRefCursorColumn(t *testing.T) {
 	}
 }
 
+// TestTTIrxd_RefCursorDCBUsesMessageVersion selects version-matched nested UDS decoders.
 func TestTTIrxd_RefCursorDCBUsesMessageVersion(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -296,6 +298,7 @@ func TestTTIrxd_RefCursorDCBUsesMessageVersion(t *testing.T) {
 	}
 }
 
+// TestTTIrxd_RefCursorZeroAndBVCReuse handles null cursors and BVC-carried cursors.
 func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 	ctx := context.Background()
 	t.Run("zero cursor ID", func(t *testing.T) {
@@ -332,6 +335,7 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 	})
 }
 
+// TestTTIrxd_RefCursorDCBRequired rejects REF CURSOR data without a DCB decoder.
 func TestTTIrxd_RefCursorDCBRequired(t *testing.T) {
 	rxd := &tTIrxd{}
 	rxd.setNumberOfColumns(1)
@@ -341,6 +345,7 @@ func TestTTIrxd_RefCursorDCBRequired(t *testing.T) {
 	}
 }
 
+// TestTTIrxd_RefCursorDecodeErrors reports malformed REF CURSOR wire payloads.
 func TestTTIrxd_RefCursorDecodeErrors(t *testing.T) {
 	ctx := context.Background()
 	newRXD := func() *tTIrxd {
