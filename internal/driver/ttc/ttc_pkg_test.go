@@ -298,7 +298,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTCRows_RefCursorNextAndClose", Categories: "unitary", Exclusive: false, Fn: TestTTCRows_RefCursorNextAndClose},
 	{Name: "TestTTIimplres_ZeroResultSets", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_ZeroResultSets},
 	{Name: "TestTTIimplres_MultipleResultSets", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_MultipleResultSets},
-	{Name: "TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages},
+	{Name: "TestTTIimplres_RejectsTruncatedMessages", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_RejectsTruncatedMessages},
 	{Name: "TestTTIimplres_PrefetchCompletion", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchCompletion},
 	{Name: "TestTTIimplres_PrefetchColumnPresenceVector", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchColumnPresenceVector},
 	{Name: "TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage},

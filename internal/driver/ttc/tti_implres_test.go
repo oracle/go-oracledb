@@ -204,14 +204,10 @@ func TestTTIimplres_MultipleResultSets(t *testing.T) {
 	}
 }
 
-// TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages rejects invalid IMPLRES inputs.
-func TestTTIimplres_RejectsUnconfiguredAndTruncatedMessages(t *testing.T) {
+// TestTTIimplres_RejectsTruncatedMessages rejects incomplete IMPLRES inputs.
+func TestTTIimplres_RejectsTruncatedMessages(t *testing.T) {
 	ctx := context.Background()
 	_, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 1024)
-	if err := (&tTIimplres{}).UnMarshalFrom(ctx, mar); err == nil {
-		t.Fatal("unconfigured implicit-result decoder returned nil error")
-	}
-
 	implres := &tTIimplres{
 		dcb: newTTIdcb().(*tTIdcb),
 		rxd: newTTIrxd().(*tTIrxd),

@@ -142,10 +142,6 @@ Notes:
     TTIIMPLRES factory before this method is called.
 */
 func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	if p.dcb == nil || p.rxd == nil || p.oer == nil {
-		return common.NewOracleError(oracleErrors.ImplicitResultFactoriesNotConfigured, nil)
-	}
-
 	resultSetCount, err := mar.UnmarshalUB4(ctx)
 	if err != nil {
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
