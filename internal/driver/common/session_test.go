@@ -59,9 +59,14 @@ func TestSessionContext_SetTimeZoneVersionNumber(t *testing.T) {
 	session := NewSessionContext()
 	session.SetTimeZoneVersionNumber(42)
 
-	if session.timeZoneVersionNumber != 42 {
-		t.Fatalf("expected timeZoneVersionNumber to be %d, got %d", 42, session.timeZoneVersionNumber)
+	if value, ok := session.GetClientProperties().GetProperty(TimeZoneVersionNumber).(byte); ok {
+		if value != 42 {
+			t.Fatalf("expected timeZoneVersionNumber to be %d, got %d", 42, value)
+		}
+	} else {
+		t.Fatal("expected timeZoneVersionNumber to be if type byte")
 	}
+
 }
 
 func TestSessionContext_SetSessionCharacterSets(t *testing.T) {

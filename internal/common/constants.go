@@ -70,10 +70,14 @@ var BackgroundContext context.Context = context.Background()
 type LogonMode int64
 
 const (
+	// KpzLogon indicates flags applicable to logon.
+	KpzLogon LogonMode = 0x00000001
 	// KpzLogonSysdba indicates SYSDBA privilege logon
 	KpzLogonSysdba LogonMode = 0x00000020
 	// KpzLogonSysoper indicates SYSOPER privilege logon
 	KpzLogonSysoper LogonMode = 0x00000040
+	// KpzLogonToken indicates token-based authentication.
+	KpzLogonToken LogonMode = 0x20000000
 )
 
 var logonModeName = map[LogonMode]string{

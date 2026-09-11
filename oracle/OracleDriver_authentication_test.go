@@ -44,13 +44,71 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 )
+
+const (
+	testOCITokenFileName      = "token"
+	testOCIPrivateKeyFileName = "oci_db_key.pem"
+)
+
+// testOCITokenProvider implements SignedTokenAuthenticationProvider with token
+// and private key material read from files configured by the integration test.
+type testOCITokenProvider struct {
+	tokenPath      string
+	privateKeyPath string
+}
+
+// Token returns the OCI IAM token read from tokenPath.
+//
+// Parameters:
+//   - _ : the caller context, unused by this file-backed provider.
+//
+// Returns:
+//   - the trimmed token content.
+//   - an error if tokenPath cannot be read.
+func (p testOCITokenProvider) Token(_ context.Context) (string, error) {
+	return readTrimmedFile(p.tokenPath)
+}
+
+// PrivateKeyForToken returns the PEM private key associated with token.
+//
+// Parameters:
+//   - _ : the caller context, unused by this file-backed provider.
+//   - token: the token being authenticated.
+//
+// Returns:
+//   - the PEM-encoded private key bytes.
+//   - an error if privateKeyPath cannot be read.
+func (p testOCITokenProvider) PrivateKeyForToken(_ context.Context, token string) ([]byte, error) {
+	return os.ReadFile(p.privateKeyPath)
+}
+
+// testOAuthTokenProvider implements TokenAuthenticationProvider with a token
+// read from a file configured by the integration test.
+type testOAuthTokenProvider struct {
+	tokenPath string
+}
+
+// Token returns the OAuth access token read from tokenPath.
+//
+// Parameters:
+//   - _ : the caller context, unused by this file-backed provider.
+//
+// Returns:
+//   - the trimmed token content.
+//   - an error if tokenPath cannot be read.
+func (p testOAuthTokenProvider) Token(_ context.Context) (string, error) {
+	return readTrimmedFile(p.tokenPath)
+}
 
 // TestDriver_Authentication_TTIWRN verifies that an Oracle warning emitted
 // during authentication is consumed without failing the connection and is
@@ -156,4 +214,111 @@ func TestDriver_Authentication_TTIWRN(t *testing.T) {
 func isInsufficientPrivilegeError(err error) bool {
 	return err != nil && (strings.Contains(err.Error(), string(oracleErrors.InsufficientPrivilege)) ||
 		strings.Contains(err.Error(), "ORA-01031"))
+}
+
+// TestDriver_Authentication_OCIToken verifies OCI IAM token authentication by
+// connecting to an Autonomous Database and querying DUAL. Set
+// ORACLE_GO_OCI_TOKEN_CONNECT_DESCRIPTOR, ORACLE_GO_OCI_TOKEN_LOCATION (optional)
+// and ORACLE_GO_OCI_TOKEN_EXPECTED_USER to run this integration test.
+func TestDriver_Authentication_OCIToken(t *testing.T) {
+	connectDescriptor := os.Getenv("ORACLE_GO_OCI_TOKEN_CONNECT_DESCRIPTOR")
+	tokenLocation := os.Getenv("ORACLE_GO_OCI_TOKEN_LOCATION")
+	expectedUser := os.Getenv("ORACLE_GO_OCI_TOKEN_EXPECTED_USER")
+
+	if connectDescriptor == "" || expectedUser == "" || tokenLocation == "" {
+		t.Skip("OCI token authentication requires ORACLE_GO_OCI_TOKEN_CONNECT_DESCRIPTOR, ORACLE_GO_OCI_TOKEN_LOCATION and ORACLE_GO_OCI_TOKEN_EXPECTED_USER")
+	}
+
+	cfg := NewOracleDriverConfig()
+	cfg.ConnectDescriptor = connectDescriptor
+
+	connector, err := NewOracleConnector(cfg)
+	if err != nil {
+		t.Fatalf("failed to create OCI token connector: %v", err)
+	}
+	registrar, ok := connector.(oracleProviders.ProviderRegistrar)
+	if !ok {
+		t.Fatal("connector does not support provider registration")
+	}
+	registrar.RegisterProvider(testOCITokenProvider{
+		tokenPath:      filepath.Join(tokenLocation, testOCITokenFileName),
+		privateKeyPath: filepath.Join(tokenLocation, testOCIPrivateKeyFileName),
+	})
+
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	ctx := context.Background()
+
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatalf("OCI token authentication ping failed: %v", err)
+	}
+
+	var result string
+	if err := db.QueryRowContext(ctx, "SELECT USER FROM SYS.DUAL").Scan(&result); err != nil {
+		t.Fatalf("OCI token authentication query failed: %v", err)
+	}
+	if result != expectedUser {
+		t.Fatalf("unexpected OCI token authentication query result: got %q, want %q", result, expectedUser)
+	}
+}
+
+// TestDriver_Authentication_OAuth verifies OAuth token authentication by
+// connecting to a Database and querying DUAL. Set
+// ORACLE_GO_OAUTH_CONNECT_DESCRIPTOR, ORACLE_GO_OAUTH_TOKEN_LOCATION and
+// ORACLE_GO_OAUTH_EXPECTED_USER to run this integration test.
+func TestDriver_Authentication_OAuth(t *testing.T) {
+	connectDescriptor := os.Getenv("ORACLE_GO_OAUTH_CONNECT_DESCRIPTOR")
+	tokenLocation := os.Getenv("ORACLE_GO_OAUTH_TOKEN_LOCATION")
+	expectedUser := os.Getenv("ORACLE_GO_OAUTH_EXPECTED_USER")
+
+	if connectDescriptor == "" || tokenLocation == "" || expectedUser == "" {
+		t.Skip("OAuth token authentication requires ORACLE_GO_OAUTH_CONNECT_DESCRIPTOR, ORACLE_GO_OAUTH_TOKEN_LOCATION and ORACLE_GO_OAUTH_EXPECTED_USER")
+	}
+
+	cfg := NewOracleDriverConfig()
+	cfg.ConnectDescriptor = connectDescriptor
+
+	connector, err := NewOracleConnector(cfg)
+	if err != nil {
+		t.Fatalf("failed to create OAuth token connector: %v", err)
+	}
+	registrar, ok := connector.(oracleProviders.ProviderRegistrar)
+	if !ok {
+		t.Fatal("connector does not support provider registration")
+	}
+	registrar.RegisterProvider(testOAuthTokenProvider{tokenPath: tokenLocation})
+
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	ctx := context.Background()
+
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatalf("OAuth token authentication ping failed: %v", err)
+	}
+
+	var result string
+	if err := db.QueryRowContext(ctx, "SELECT USER FROM SYS.DUAL").Scan(&result); err != nil {
+		t.Fatalf("OAuth token authentication query failed: %v", err)
+	}
+	if result != expectedUser {
+		t.Fatalf("unexpected OAuth token authentication query result: got %q, want %q", result, expectedUser)
+	}
+}
+
+// readTrimmedFile returns the contents of path without surrounding whitespace.
+//
+// Parameters:
+//   - path: the file to read.
+//
+// Returns:
+//   - the trimmed file contents.
+//   - an error if path cannot be read.
+func readTrimmedFile(path string) (string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(content)), nil
 }

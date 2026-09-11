@@ -1587,7 +1587,7 @@ func TestDriver_DMLReturning_Insert_BooleanColumn(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion < 23 {
+	if TestingConfig.DatabaseVersion.Major < 23 {
 		t.Skip("Native BOOLEAN RETURNING requires Oracle 23c or later")
 	}
 

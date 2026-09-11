@@ -17,6 +17,10 @@ inputs:
     required: true
   database-password:
     required: true
+  database-protocol:
+    required: true
+  database-port:
+    required: true
 
 runs:
   using: composite
@@ -35,9 +39,9 @@ runs:
            },
            "\"database\"": {
              "\"host\"": TEST_DB_HOST,
-             "\"port\"": 1521,
+             "\"port\"": TEST_DB_PORT,
              "\"servicename\"": TEST_DB_SERVICE,
-             "\"protocol\"": "\"tcp\""
+             "\"protocol\"": TEST_DB_PROTOCOL
            },
            "\"credentials"\": {
              "\"username"\": TEST_DB_USER,
@@ -48,10 +52,12 @@ runs:
       run: |
         echo -n  "${{ env.GO_DRIVER_CONFIGURATIONS }}" \
           | sed \
-              -e "s/TEST_DB_VERSION/${{ inputs.database-version }}/g" \
+              -e "s/TEST_DB_VERSION/\"${{ inputs.database-version }}\"/g" \
               -e "s/TEST_DB_SERVICE/\"${{ inputs.database-service }}\"/g" \
               -e "s/TEST_DB_HOST/\"${{ inputs.database-host }}\"/g" \
               -e "s/TEST_DB_USER/\"${{ inputs.database-user }}\"/g" \
               -e "s/TEST_DB_PASSWORD/\"${{ inputs.database-password }}\"/g" \
+              -e "s/TEST_DB_PORT/${{ inputs.database-port }}/g" \
+              -e "s/TEST_DB_PROTOCOL/\"${{ inputs.database-protocol }}\"/g" \
           > "${{ inputs.configuration-file }}"
-        
+        cat ${{ inputs.configuration-file }}

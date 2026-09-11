@@ -1,0 +1,127 @@
+name: functional-validation-for-forked-repo
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch name
+        required: true
+        type: string
+      test_category:
+        description: The test category to run
+        required: false
+        type: string
+        default: functional
+env:
+  VALIDATION_USER_NAME: ogd_test_user
+  ORACLE_DRIVER_MODULE: "github.com/oracle/go-oracledb/v26/oracle"
+
+
+concurrency:
+  group: "${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  check_format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 10
+      - uses: ./.github/actions/setup-go-env
+      - run: "gofmt -l $(find ${{ github.workspace }} -type f \\( -not -path '*/.go/*' -a -not -path */.git/* \\) -name \\*.go) | awk ' {print $0} END {exit NR}'"
+
+  check_source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 10
+      - uses: ./.github/actions/setup-go-env
+      - run: go vet ./...
+
+  build:
+    needs:
+      - check_source
+      - check_format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-go-env
+      - run: go build ./...
+
+  unit_tests:
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-go-env
+      - uses: ./.github/actions/list-go-packages
+        id: go-packages
+      - run: |
+          mkdir -p ${{ github.workspace }}/coverage/unit
+          go test -parallel=10  -shuffle=on -v ${{ steps.go-packages.outputs.packages }} -coverpkg=./... -cover -run TestCategoryExecutor -args -test.gocoverdir=${{ github.workspace }}/coverage/unit  -test.category="unitary"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+            name: coverage-unit
+            path: ${{ github.workspace }}/coverage/unit
+            if-no-files-found: error
+
+  coverage:
+    needs:
+      - unit_tests
+      - validate_driver
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-go-env
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-unit
+          path: ${{ github.workspace }}/coverage/unit
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-sanity
+          path: ${{ github.workspace }}/coverage/sanity
+      - run: |
+          mkdir -p ${{ github.workspace }}/coverage/merged
+          go tool covdata merge -i=${{ github.workspace }}/coverage/unit,${{ github.workspace }}/coverage/sanity -o ${{ github.workspace }}/coverage/merged
+          go tool covdata textfmt -i=${{ github.workspace }}/coverage/merged -o=${{ github.workspace }}/coverage.out
+      - run: |
+          go tool cover -func=${{ github.workspace }}/coverage.out |awk -v threshold=80 '{split($1,t,":") ; sub(/%$/,"",$3) ; files[t[1]]+=$3 ; files_a[t[1]]++} END {for (k in files) { if (k != "total") printf ("%80s --> %.2f%%\n",k,files[k]/files_a[k]);} } END {printf ("%80s --> %.2f%%\n","total",files["total"]) ; if (files["total"] < threshold) {exit 1}} '
+
+  validate_driver:
+    if: ${{ github.repository != 'oracle/go-oracledb' }}
+    needs:
+      - unit_tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-go-env
+      - uses: gvenzl/setup-oracle-free@v1
+        with:
+          app-user: $VALIDATION_USER_NAME
+          app-user-password: ${{ secrets.test_user_password }}
+          container-name: oracledb
+      - uses: ./.github/actions/setup-test-configuration
+        with:
+          database-version: "26.0.0"
+          database-service: "FREEPDB1"
+          database-host: "localhost"
+          database-user: ${{ env.VALIDATION_USER_NAME }}
+          database-password: ${{ secrets.test_user_password }}
+          database-port: "1521"
+          database-protocol: "tcp"
+      - run: |
+          mkdir -p ${{ github.workspace }}/coverage/sanity
+          go test -parallel=10  -shuffle=on -v $ORACLE_DRIVER_MODULE -coverpkg=./... -cover -run TestCategoryExecutor  -args -test.gocoverdir=${{ github.workspace }}/coverage/sanity -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-sanity
+          path: ${{ github.workspace }}/coverage/sanity
+          if-no-files-found: error

@@ -38,17 +38,24 @@
 
 package common
 
+const (
+	TimeZoneVersionNumber    = "timeZoneVersionNumber"
+	DriverCharacterSet       = "driverCharacterSet"
+	SessionNCharCharacterSet = "sessionNCharCharacterSet"
+	RemoteAddress            = "remoteAddress"
+	RemotePort               = "remotePort"
+	ConnectDescriptor        = "connectDescriptor"
+)
+
 // SessionContext connection session context. This holds database session information
 type SessionContext struct {
-	sessionProperties        *Properties[string] // sessionProperties represents the negotiated properties during OAuth
-	timeZoneVersionNumber    byte
-	driverCharacterSet       UB2
-	sessionNCharCharacterSet UB2
+	sessionProperties *Properties[string] // sessionProperties represents the negotiated properties during OAuth
+	clientProperties  *Properties[string] // clientProperties contains properties needed by the client
 }
 
 // SetTimeZoneVersionNumber sets the time zone version number in the session context.
 func (s *SessionContext) SetTimeZoneVersionNumber(v byte) {
-	s.timeZoneVersionNumber = v
+	s.clientProperties.SetProperty(TimeZoneVersionNumber, v)
 }
 
 // SetSessionCharacterSets records the negotiated driver and NCHAR character sets for the session.
@@ -57,18 +64,28 @@ func (s *SessionContext) SetTimeZoneVersionNumber(v byte) {
 // the driver only supports AL32UTF8 pairings at present; capturing the client character set avoids
 // implying wider charset coverage that is not yet implemented.
 func (s *SessionContext) SetSessionCharacterSets(driverCS, ncharCS UB2) {
-	s.driverCharacterSet = driverCS
-	s.sessionNCharCharacterSet = ncharCS
+	s.clientProperties.SetProperty(DriverCharacterSet, driverCS)
+	s.clientProperties.SetProperty(SessionNCharCharacterSet, ncharCS)
 }
 
 // DriverCharacterSet returns the negotiated driver character set identifier (cliRIN/cliROUT).
 func (s *SessionContext) DriverCharacterSet() UB2 {
-	return s.driverCharacterSet
+	if s.clientProperties != nil && s.clientProperties.ContainsKey(DriverCharacterSet) {
+		if ub2value, ok := s.clientProperties.GetProperty(DriverCharacterSet).(UB2); ok {
+			return ub2value
+		}
+	}
+	return 0
 }
 
 // SessionNCharCharacterSet returns the negotiated NCHAR character set identifier (TTIPRO.NCharCharset).
 func (s *SessionContext) SessionNCharCharacterSet() UB2 {
-	return s.sessionNCharCharacterSet
+	if s.clientProperties != nil && s.clientProperties.ContainsKey(SessionNCharCharacterSet) {
+		if ub2value, ok := s.clientProperties.GetProperty(SessionNCharCharacterSet).(UB2); ok {
+			return ub2value
+		}
+	}
+	return 0
 }
 
 // UpdateSessionProperties updates/adds the session properties with new values
@@ -81,6 +98,16 @@ func (s *SessionContext) GetSessionProperties() *Properties[string] {
 	return s.sessionProperties
 }
 
+// UpdateClientProperties updates/adds the client properties with new values
+func (s *SessionContext) UpdateClientProperties(props *Properties[string]) {
+	s.clientProperties.PutAll(props)
+}
+
+// GetClientProperties gets the client properties
+func (s *SessionContext) GetClientProperties() *Properties[string] {
+	return s.clientProperties
+}
+
 // NewSessionContext creates a new context
 // User is retrieved form current system user (see user.Current()).
 // sessionProgram  is retrieved form current system user (see os.Executable()).
@@ -88,5 +115,6 @@ func (s *SessionContext) GetSessionProperties() *Properties[string] {
 func NewSessionContext() *SessionContext {
 	return &SessionContext{
 		sessionProperties: NewProperties[string](),
+		clientProperties:  NewProperties[string](),
 	}
 }

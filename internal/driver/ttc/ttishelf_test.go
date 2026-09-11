@@ -41,11 +41,13 @@ package ttc
 import (
 	"context"
 	"database/sql/driver"
+	"reflect"
 	"testing"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
+	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 	"golang.org/x/text/language"
 )
 
@@ -72,6 +74,96 @@ func TestTTIShelf_NewShelf(t *testing.T) {
 
 	if shelf.getEventService() != shelf.getEventService() {
 		t.Fatal("event service should be kept on the shelf")
+	}
+}
+
+// TestNewMessageStreamerRegistersConnectionValidator verifies that a newly
+// created message streamer participates in shelf connection validation.
+func TestNewMessageStreamerRegistersConnectionValidator(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[driverCommon.MessageType]()
+	streamer := NewMessageStreamer(shelf)
+	validators := shelf._validatorRegistry.GetAll()
+
+	if len(validators) != 1 {
+		t.Fatalf("validator count = %d, want 1", len(validators))
+	}
+	if validators[0] != streamer {
+		t.Fatalf("registered validator = %p, want streamer %p", validators[0], streamer)
+	}
+}
+
+type shelfConnectionValidator struct {
+	valid bool
+}
+
+func (s *shelfConnectionValidator) isValid(context.Context) bool {
+	return s.valid
+}
+
+type recordingConnectionValidator struct {
+	name   string
+	valid  bool
+	called *[]string
+}
+
+func (v *recordingConnectionValidator) isValid(context.Context) bool {
+	*v.called = append(*v.called, v.name)
+	return v.valid
+}
+
+// TestTTIShelf_ValidateConnection verifies that the shelf reports invalid
+// connections and accepts shelves with no invalid validators.
+func TestTTIShelf_ValidateConnection(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		validator stateValidator
+		wantError bool
+	}{
+		{name: "no validators", wantError: false},
+		{name: "valid connection", validator: &shelfConnectionValidator{valid: true}, wantError: false},
+		{name: "invalid connection", validator: &shelfConnectionValidator{valid: false}, wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shelf := newShelf[driverCommon.MessageType]()
+			if tt.validator != nil {
+				shelf.registerStateValidator(tt.validator)
+			}
+
+			err := shelf.checkCurrentState(context.Background())
+			if (err != nil) != tt.wantError {
+				t.Fatalf("error presence = %t, want %t; error = %v", err != nil, tt.wantError, err)
+			}
+			if tt.wantError {
+				sqlErr, ok := err.(oracleErrors.SQLError)
+				if !ok || sqlErr.ErrorCode() != string(oracleErrors.InternalError) {
+					t.Fatalf("error = %T %v, want InternalError", err, err)
+				}
+			}
+		})
+	}
+}
+
+// TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator verifies that
+// validation preserves registration order and short-circuits on failure.
+func TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[driverCommon.MessageType]()
+	called := []string{}
+	shelf.registerStateValidator(&recordingConnectionValidator{name: "first", valid: true, called: &called})
+	shelf.registerStateValidator(&recordingConnectionValidator{name: "second", valid: false, called: &called})
+	shelf.registerStateValidator(&recordingConnectionValidator{name: "third", valid: true, called: &called})
+
+	err := shelf.checkCurrentState(context.Background())
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if got, want := called, []string{"first", "second"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("validators called = %v, want %v", got, want)
 	}
 }
 
@@ -121,13 +213,13 @@ func TestTTIShelf_LocalizedStatementExecError(t *testing.T) {
 	mockStr := &mockStreamer{}
 
 	shelf := newShelf[driverCommon.MessageType]()
-	shelf.RegisterLocalizationService(common.NewLocalizationService(language.French))
+	shelf.RegisterLocalizationService(internalCommon.NewLocalizationService(language.French))
 	shelf.RegisterMessageStreamer(mockStr)
 
 	stmt := &Statement{
 		shelf: shelf,
 		execStatementExecutor: execContextFunc(func(context.Context, *qualifiedSQLStatement, []driver.NamedValue) (driver.Result, error) {
-			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+			return nil, internalCommon.NewOracleError(oracleErrors.InternalError, nil)
 		}),
 	}
 
@@ -142,6 +234,38 @@ func TestTTIShelf_LocalizedStatementExecError(t *testing.T) {
 	}
 	if got, want := err.Error(), "OGD-00062 - erreur interne factice."; got != want {
 		t.Fatalf("unexpected localized error %q, want %q", got, want)
+	}
+}
+
+// TestTTIShelf_RegisterProviderRegistry stores a provider registry on the shelf
+// and verifies the same instance is returned by the getter.
+func TestTTIShelf_RegisterProviderRegistry(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[int]()
+	registry := internalCommon.NewSafeRegistry[oracleProviders.Provider]()
+
+	shelf.registerProviderRegistry(registry)
+
+	if got := shelf.getProviderRegistry(); got != registry {
+		t.Fatalf("expected provider registry %p, got %p", registry, got)
+	}
+}
+
+// TestTTIShelf_RegisterProviderRegistry_ReplacesExistingRegistry verifies that
+// registering a second provider registry replaces the previous one on the shelf.
+func TestTTIShelf_RegisterProviderRegistry_ReplacesExistingRegistry(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[int]()
+	firstRegistry := internalCommon.NewSafeRegistry[oracleProviders.Provider]()
+	secondRegistry := internalCommon.NewSafeRegistry[oracleProviders.Provider]()
+
+	shelf.registerProviderRegistry(firstRegistry)
+	shelf.registerProviderRegistry(secondRegistry)
+
+	if got := shelf.getProviderRegistry(); got != secondRegistry {
+		t.Fatalf("expected replacement provider registry %p, got %p", secondRegistry, got)
 	}
 }
 
@@ -174,7 +298,7 @@ func (t *testCodecFactory) getDefineOac(_ DtyType, _ columnContext, _ driverComm
 func TestTTIShelf_StatementDrain(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
-	sessCtx := &driverCommon.SessionContext{}
+	sessCtx := driverCommon.NewSessionContext()
 	s1, _ := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")
 	s2, _ := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")
 	s3, _ := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")

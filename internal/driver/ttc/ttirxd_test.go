@@ -590,7 +590,7 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 	exec := &statementExecutorSelect{
 		statementProcessor: statementProcessor{
 			shelf:   shelf,
-			sessCtx: &common.SessionContext{},
+			sessCtx: common.NewSessionContext(),
 		},
 		resultMetadata: selectResultMetadata{columns: []columnContext{
 			{DataType: DtyVCS},

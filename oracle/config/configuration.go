@@ -521,19 +521,18 @@ func toString(item interface{}) string {
 }
 
 // OracleDriverConfig Driver configuration template type.
-// This structure match the driver JSON configuration
-// Field tags used:
 //
-//	 internal: the field is not considered as configuration item
-//		cliVisible: the field is not expose as cli flag
-//		propertyName: field property alias name to use instead of field's name
-//		ns_name: field property EZ connect format equivalent
-//		default: field default value as string
-//		help: field usage set in flags.
-//		validator: field validator func to be call before setting a value
-//		isConfigGroup: When set, this indicates that the field is a nested configuration group
-//		     that must be processed. Some fields are structs, like language.Tag but should not be
-//		     treated as group of configuration but as configuration value (see shouldExpandConfigurationField() )
+// Field tags used:
+//   - internal: the field is not considered as configuration item
+//   - cliVisible: the field is not expose as cli flag
+//   - propertyName: field property alias name to use instead of field's name
+//   - ns_name: field property EZ connect format equivalent
+//   - default: field default value as string
+//   - help: field usage set in flags.
+//   - validator: field validator func to be call before setting a value
+//   - isConfigGroup: When set, this indicates that the field is a nested configuration group
+//     that must be processed. Some fields are structs, like language.Tag but should not be
+//     treated as group of configuration but as configuration value (see shouldExpandConfigurationField() )
 type OracleDriverConfig struct {
 	_allConfigurationField *list.List                 `internal:"true"`
 	_configKeysPrefix      string                     `internal:"true"`

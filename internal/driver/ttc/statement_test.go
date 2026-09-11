@@ -308,7 +308,7 @@ func runSeededStatementQuery(t *testing.T, query string, args []driver.NamedValu
 	registerTestCodecs(shelf, 20)
 	seedPreparedSelectResponse(t, ctx, dbuf)
 
-	stmt, err := newStatement(shelf, &drvierCommon.SessionContext{}, query)
+	stmt, err := newStatement(shelf, drvierCommon.NewSessionContext(), query)
 	if err != nil {
 		t.Fatalf("newStatement failed: %v", err)
 	}

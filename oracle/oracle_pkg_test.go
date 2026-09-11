@@ -39,557 +39,243 @@
 package oracle
 
 import (
-	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
+
+	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
 func TestMain(m *testing.M) {
-	err := InitConfig()
+	err := oracleTest.InitConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
 		os.Exit(1)
-	} else {
-		os.Exit(m.Run())
 	}
+	TestEnvironement = oracleTest.TestEnvironement
+	TestingConfig = oracleTest.TestingConfig
+	DefaultTestConfig = oracleTest.DefaultTestConfig
+	os.Exit(m.Run())
 }
 
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{
-	{"TestDriver_ConfigurationWithConnectorBasic", "functional", true, TestDriver_ConfigurationWithConnectorBasic},
-	{"TestDriver_ConfigurationWithConnectorWithEnvOverwrite", "functional", true, TestDriver_ConfigurationWithConnectorWithEnvOverwrite},
-	{"TestDriver_ConfigurationWithConnectorWithFlagOverwrite", "functional", true, TestDriver_ConfigurationWithConnectorWithFlagOverwrite},
-	{"TestConfiguration_AssignFromEmptyMap", "unitary", false, TestConfiguration_AssignFromEmptyMap},
-	{"TestConfiguration_AssignFromMapUnknownKey", "unitary", false, TestConfiguration_AssignFromMapUnknownKey},
-	{"TestConfiguration_AssignFromMap", "unitary", false, TestConfiguration_AssignFromMap},
-	{"TestConfiguration_AssignFromMapValidatedIntString", "unitary", false, TestConfiguration_AssignFromMapValidatedIntString},
-	{"TestConfiguration_AssignFromEnv", "unitary", true, TestConfiguration_AssignFromEnv},
-	{"TestConfiguration_AssignFromEnvValidatedIntString", "unitary", true, TestConfiguration_AssignFromEnvValidatedIntString},
-	{"TestConfiguration_AssignFromEmptyFlags", "unitary", false, TestConfiguration_AssignFromEmptyFlags},
-	{"TestConfiguration_Clone", "unitary", false, TestConfiguration_Clone},
-	{"TestConfiguration_DefaultClientLanguageIsLanguageTag", "unitary", false, TestConfiguration_DefaultClientLanguageIsLanguageTag},
-	{"TestConfiguration_AssignFromMapClientLanguageTag", "unitary", false, TestConfiguration_AssignFromMapClientLanguageTag},
-	{"TestConfiguration_AssignFromEnvClientLanguageTag", "unitary", true, TestConfiguration_AssignFromEnvClientLanguageTag},
-	{"TestConfiguration_toNSConnectionParameters", "unitary", false, TestConfiguration_toNSConnectionParameters},
-	{"TestConfiguration_InitLoggingWithConfigFileDestination", "unitary", false, TestConfiguration_InitLoggingWithConfigFileDestination},
-	{"TestEnquoteLiteral", "unitary", false, TestEnquoteLiteral},
-	{"TestEnquoteNCharLiteral", "unitary", false, TestEnquoteNCharLiteral},
-	{"TestIsSimpleIdentifier", "unitary", false, TestIsSimpleIdentifier},
-	{"TestEnquoteIdentifier", "unitary", false, TestEnquoteIdentifier},
-	{"TestDriver_ConfigurationWithCredentialsWithDsnNegative", "unitary", false, TestDriver_ConfigurationWithCredentialsWithDsnNegative},
-	{"TestDriver_ConfigurationLogging", "unitary", false, TestDriver_ConfigurationLogging},
-	{"TestDriver_OpenConnectorUsesNSParamOverConfig", "unitary", false, TestDriver_OpenConnectorUsesNSParamOverConfig},
-	{"TestDriver_Table_Create", "sanity", false, TestDriver_Table_Create},
-	{"TestDriver_DropTable_DeniesAccess", "functional", false, TestDriver_DropTable_DeniesAccess},
-	{"TestDriver_AlterSessionSetLanguage", "functional", false, TestDriver_AlterSessionSetLanguage},
-	{"TestDriver_Table_Insert", "functional", false, TestDriver_Table_Insert},
-	{"TestDriver_Insert_Select", "functional", false, TestDriver_Insert_Select},
-	{"TestDriver_PLSQL_AnonymousBlock_Sanity", "functional", false, TestDriver_PLSQL_AnonymousBlock_Sanity},
-	{"TestDriver_PLSQL_CreateInsertSelectDrop", "functional", false, TestDriver_PLSQL_CreateInsertSelectDrop},
-	{"TestDriver_PLSQL_BreakCausedByTimeout", "functional", false, TestDriver_PLSQL_BreakCausedByTimeout},
-	{"TestDriver_Select_BooleanTypes_23c", "functional", false, TestDriver_Select_BooleanTypes_23c},
-	{"TestDriver_Select_CharacterTypes", "functional", false, TestDriver_Select_CharacterTypes},
-	{"TestDriver_Select_DATE", "functional", false, TestDriver_Select_DATE},
-	{"TestDriver_Select_TIMESTAMP", "functional", false, TestDriver_Select_TIMESTAMP},
-	{"TestDriver_Select_TimestampWithTimeZone", "functional", false, TestDriver_Select_TimestampWithTimeZone},
-	{"TestDriver_Select_TimestampWithLocalTimeZone", "functional", false, TestDriver_Select_TimestampWithLocalTimeZone},
-	{"TestDriver_Select_Intervals", "functional", false, TestDriver_Select_Intervals},
-	{"TestDriver_Select_NumericFloatTypes", "functional", false, TestDriver_Select_NumericFloatTypes},
-	{"TestDriver_Select_Number_NoPrecisionScale", "functional", false, TestDriver_Select_Number_NoPrecisionScale},
-	{"TestDriver_Select_NumberPrecision", "functional", false, TestDriver_Select_NumberPrecision},
-	{"TestDriver_VarcharLargePayload", "functional", false, TestDriver_VarcharLargePayload},
-	{"TestDriver_Select_Number_MaxPrecisionScale", "functional", false, TestDriver_Select_Number_MaxPrecisionScale},
-	{"TestDriver_Select_Number_MaxPrecisionInteger", "functional", false, TestDriver_Select_Number_MaxPrecisionInteger},
-	{"TestDriver_Select_Number_And_BinaryDouble", "functional", false, TestDriver_Select_Number_And_BinaryDouble},
-	{"TestDriver_Table_Select", "functional", false, TestDriver_Table_Select},
-	{"TestTimeoutConnectWithTransportConnectTimeout", "functional", false, TestTimeoutConnectWithTransportConnectTimeout},
-	{"TestTimeoutConnectWithTransportConnectTimeoutAndContext", "functional", false, TestTimeoutConnectWithTransportConnectTimeoutAndContext},
-	{"TestTimeoutConnectWithTransportConnectTimeoutAndContextGreater", "functional/cyclops", false, TestTimeoutConnectWithTransportConnectTimeoutAndContextGreater},
-	{"TestTimeoutConnectWithRecvTimeout", "functional/cyclops", false, TestTimeoutConnectWithRecvTimeout},
-	{"TestTimeoutConnectWithConnectTimeout", "functional/cyclops", false, TestTimeoutConnectWithConnectTimeout},
-	{"TestTimeoutConnectWithRecvConnectTimeoutAndContext", "functional/cyclops", false, TestTimeoutConnectWithRecvConnectTimeoutAndContext},
-	{"TestTimeoutConnectWithRecvConnectTimeoutAndContextGreater", "functional/cyclops", false, TestTimeoutConnectWithRecvConnectTimeoutAndContextGreater},
-	{"TestTimeoutConnectTimeoutPrecedence1", "functional/cyclops", false, TestTimeoutConnectTimeoutPrecedence1},
-	{"TestTimeoutConnectTimeoutPrecedence2", "functional/cyclops", false, TestTimeoutConnectTimeoutPrecedence2},
-	{"TestTimeoutConnectTimeoutPrecedence3", "functional/cyclops", false, TestTimeoutConnectTimeoutPrecedence3},
-	{"TestTimeoutConnectTimeoutPrecedence4", "functional", false, TestTimeoutConnectTimeoutPrecedence4},
-	{"TestDriver_Functional_SelectDual", "sanity", false, TestDriver_Functional_SelectDual},
-	{"TestDriver_SimpleConnection", "sanity", false, TestDriver_SimpleConnection},
-	{"TestDriver_Authentication_TTIWRN", "functional", false, TestDriver_Authentication_TTIWRN},
-	{"TestDriver_TCPS_Pipeline_SelectDual", "sanity", false, TestDriver_TCPS_Pipeline_SelectDual},
-	{"TestDriver_TCPS_Pipeline_InvalidCertDn", "sanity", false, TestDriver_TCPS_Pipeline_InvalidCertDn},
-	{"TestDriver_TCPS_Pipeline_InvalidWalletLocation", "sanity", false, TestDriver_TCPS_Pipeline_InvalidWalletLocation},
-	{"TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN", "sanity", false, TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN},
-	{"TestDriver_Prepared_Insert_Select_Ordinal", "sanity", false, TestDriver_Prepared_Insert_Select_Ordinal},
-	{"TestDriver_Prepared_Insert_Select_Named", "functional", false, TestDriver_Prepared_Insert_Select_Named},
-	{"TestDriver_PLSQL_Prepared_Binds", "functional", false, TestDriver_PLSQL_Prepared_Binds},
-	{"TestDriver_Select_BooleanTypes_23c_Prepared_Statement", "functional", false, TestDriver_Select_BooleanTypes_23c_Prepared_Statement},
-	{"TestDriver_Select_BooleanTypes_23c_Prepared_Statement_Named", "functional", false, TestDriver_Select_BooleanTypes_23c_Prepared_Statement_Named},
-	{"TestDriver_Select_BooleanTypes_19c", "functional", false, TestDriver_Select_BooleanTypes_19c},
-	{"TestDriver_Select_BooleanTypes_19c_Prepared_Statement", "functional", false, TestDriver_Select_BooleanTypes_19c_Prepared_Statement},
-	{"TestDriver_Select_BooleanTypes_19c_Prepared_Statement_Named", "functional", false, TestDriver_Select_BooleanTypes_19c_Prepared_Statement_Named},
-	{"TestDriver_Select_CharacterTypes_Ordinal", "functional", false, TestDriver_Select_CharacterTypes_Ordinal},
-	{"TestDriver_Select_CharacterTypes_Named", "functional", false, TestDriver_Select_CharacterTypes_Named},
-	{"TestDriver_Select_DATE_Prepared_Named", "functional", false, TestDriver_Select_DATE_Prepared_Named},
-	{"TestDriver_Select_TIMESTAMP_Prepared_Named", "functional", false, TestDriver_Select_TIMESTAMP_Prepared_Named},
-	{"TestDriver_Select_TimestampWithTimeZone_Prepared_Named", "functional", false, TestDriver_Select_TimestampWithTimeZone_Prepared_Named},
-	{"TestDriver_Select_TimestampWithLocalTimeZone_Prepared_Named", "functional", false, TestDriver_Select_TimestampWithLocalTimeZone_Prepared_Named},
-	{"TestDriver_Select_TimestampWithTimeZone_Prepared_LoadLocation_And_Offset", "functional", false, TestDriver_Select_TimestampWithTimeZone_Prepared_LoadLocation_And_Offset},
-	{"TestDriver_Prepared_InsertAndSelect_AllTypes", "functional", false, TestDriver_Prepared_InsertAndSelect_AllTypes},
-	{"TestDriver_Prepared_InsertAndSelect_AllTypes_StrictNulls", "functional", false, TestDriver_Prepared_InsertAndSelect_AllTypes_StrictNulls},
-	{"TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls", "functional", false, TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls},
-	{"TestDriver_Prepared_Statement_Re_exec_With_Different_Arg_Counts_Negative", "functional", false, TestDriver_Prepared_Statement_Re_exec_With_Different_Arg_Counts_Negative},
-	{"TestDriver_Exec_Query_cursor_leak", "robustness", false, TestDriver_Exec_Query_cursor_leak},
-	{"TestDriver_Select_Query_cursor_leak", "robustness", false, TestDriver_Select_Query_cursor_leak},
-	{"TestDriver_PreparedStatement_Query_cursor_leak", "robustness", false, TestDriver_PreparedStatement_Query_cursor_leak},
-	{"TestQueryNonExistentTable_NegativeCase", "functional", false, TestQueryNonExistentTable_NegativeCase},
-	{"TestPreparedStatementNonExistentTable_NegativeCase", "functional", false, TestPreparedStatementNonExistentTable_NegativeCase},
-	{"TestSelectSpecificColumnsNonExistentTable_NegativeCase", "functional", false, TestSelectSpecificColumnsNonExistentTable_NegativeCase},
-	{"TestCountQueryNonExistentTable_NegativeCase", "functional", false, TestCountQueryNonExistentTable_NegativeCase},
-	{"TestJoinWithNonExistentTable_NegativeCase", "functional", false, TestJoinWithNonExistentTable_NegativeCase},
-	{"TestSubqueryWithNonExistentTable_NegativeCase", "functional", false, TestSubqueryWithNonExistentTable_NegativeCase},
-	{"TestDescribeNonExistentTable_NegativeCase", "functional", false, TestDescribeNonExistentTable_NegativeCase},
-	{"TestInvalidTableNameSyntax_NegativeCase", "functional", false, TestInvalidTableNameSyntax_NegativeCase},
-	{"TestQuerySystemTableWithoutPrivilege_NegativeCase", "functional", false, TestQuerySystemTableWithoutPrivilege_NegativeCase},
-	{"TestQueryAccessibleTable_PositiveCase", "functional", false, TestQueryAccessibleTable_PositiveCase},
-	{"TestQueryDictionaryViewWithoutPrivilege_NegativeCase", "functional", false, TestQueryDictionaryViewWithoutPrivilege_NegativeCase},
-	{"TestInsertAndSelectSmallRAW", "functional", false, TestInsertAndSelectSmallRAW},
-	{"TestInsertAndSelectLargeRAW", "functional", false, TestInsertAndSelectLargeRAW},
-	{"TestInsertAndSelectNullRAW", "functional", false, TestInsertAndSelectNullRAW},
-	{"TestRAWMultipleRows", "functional", false, TestRAWMultipleRows},
-	{"TestRAWUpdateOperation", "functional", false, TestRAWUpdateOperation},
-	{"TestRAWTypeSystemIntegration", "functional", false, TestRAWTypeSystemIntegration},
-	{"TestDriver_Prepared_InsertMultipleRows_Re_exec", "functional", false, TestDriver_Prepared_InsertMultipleRows_Re_exec},
-	{"TestDriver_Bind_ReusedNamedParameter", "functional", false, TestDriver_Bind_ReusedNamedParameter},
-	{"TestDriver_Prepared_SelectMultipleRows_Re_exec_BindTypeChange", "functional", false, TestDriver_Prepared_SelectMultipleRows_Re_exec_BindTypeChange},
-	{"TestDriver_Prepared_SelectMultipleRows_Re_exec", "functional", false, TestDriver_Prepared_SelectMultipleRows_Re_exec},
+var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestDriver_ConfigurationWithConnectorBasic", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorBasic},
+	{Name: "TestDriver_ConfigurationWithConnectorWithEnvOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithEnvOverwrite},
+	{Name: "TestDriver_ConfigurationWithConnectorWithFlagOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithFlagOverwrite},
+	{Name: "TestConfiguration_AssignFromEmptyMap", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromEmptyMap},
+	{Name: "TestConfiguration_AssignFromMapUnknownKey", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapUnknownKey},
+	{Name: "TestConfiguration_AssignFromMap", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMap},
+	{Name: "TestConfiguration_AssignFromMapValidatedIntString", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapValidatedIntString},
+	{Name: "TestConfiguration_AssignFromEnv", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnv},
+	{Name: "TestConfiguration_AssignFromEnvValidatedIntString", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnvValidatedIntString},
+	{Name: "TestConfiguration_AssignFromEmptyFlags", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEmptyFlags},
+	{Name: "TestConfiguration_Clone", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_Clone},
+	{Name: "TestConfiguration_DefaultClientLanguageIsLanguageTag", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_DefaultClientLanguageIsLanguageTag},
+	{Name: "TestConfiguration_AssignFromMapClientLanguageTag", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapClientLanguageTag},
+	{Name: "TestConfiguration_AssignFromEnvClientLanguageTag", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnvClientLanguageTag},
+	{Name: "TestConfiguration_toNSConnectionParameters", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_toNSConnectionParameters},
+	{Name: "TestConfiguration_InitLoggingWithConfigFileDestination", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_InitLoggingWithConfigFileDestination},
+	{Name: "TestEnquoteLiteral", Categories: "unitary", Exclusive: false, Fn: TestEnquoteLiteral},
+	{Name: "TestEnquoteNCharLiteral", Categories: "unitary", Exclusive: false, Fn: TestEnquoteNCharLiteral},
+	{Name: "TestIsSimpleIdentifier", Categories: "unitary", Exclusive: false, Fn: TestIsSimpleIdentifier},
+	{Name: "TestEnquoteIdentifier", Categories: "unitary", Exclusive: false, Fn: TestEnquoteIdentifier},
+	{Name: "TestDriver_ConfigurationWithCredentialsWithDsnNegative", Categories: "unitary", Exclusive: false, Fn: TestDriver_ConfigurationWithCredentialsWithDsnNegative},
+	{Name: "TestDriver_ConfigurationLogging", Categories: "unitary", Exclusive: false, Fn: TestDriver_ConfigurationLogging},
+	{Name: "TestDriver_OpenConnectorUsesNSParamOverConfig", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorUsesNSParamOverConfig},
+	{Name: "TestDriver_Table_Create", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_Table_Create},
+	{Name: "TestDriver_DropTable_DeniesAccess", Categories: "functional", Exclusive: false, Fn: TestDriver_DropTable_DeniesAccess},
+	{Name: "TestDriver_AlterSessionSetLanguage", Categories: "functional", Exclusive: false, Fn: TestDriver_AlterSessionSetLanguage},
+	{Name: "TestDriver_Table_Insert", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Insert},
+	{Name: "TestDriver_Insert_Select", Categories: "functional", Exclusive: false, Fn: TestDriver_Insert_Select},
+	{Name: "TestDriver_PLSQL_AnonymousBlock_Sanity", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_AnonymousBlock_Sanity},
+	{Name: "TestDriver_PLSQL_CreateInsertSelectDrop", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_CreateInsertSelectDrop},
+	{Name: "TestDriver_PLSQL_BreakCausedByTimeout", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_BreakCausedByTimeout},
+	{Name: "TestDriver_Select_BooleanTypes_23c", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BooleanTypes_23c},
+	{Name: "TestDriver_Select_CharacterTypes", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_CharacterTypes},
+	{Name: "TestDriver_Select_DATE", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_DATE},
+	{Name: "TestDriver_Select_TIMESTAMP", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TIMESTAMP},
+	{Name: "TestDriver_Select_TimestampWithTimeZone", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TimestampWithTimeZone},
+	{Name: "TestDriver_Select_TimestampWithLocalTimeZone", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TimestampWithLocalTimeZone},
+	{Name: "TestDriver_Select_Intervals", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_Intervals},
+	{Name: "TestDriver_Select_NumericFloatTypes", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_NumericFloatTypes},
+	{Name: "TestDriver_Select_Number_NoPrecisionScale", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_Number_NoPrecisionScale},
+	{Name: "TestDriver_Select_NumberPrecision", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_NumberPrecision},
+	{Name: "TestDriver_VarcharLargePayload", Categories: "functional", Exclusive: false, Fn: TestDriver_VarcharLargePayload},
+	{Name: "TestDriver_Select_Number_MaxPrecisionScale", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_Number_MaxPrecisionScale},
+	{Name: "TestDriver_Select_Number_MaxPrecisionInteger", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_Number_MaxPrecisionInteger},
+	{Name: "TestDriver_Select_Number_And_BinaryDouble", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_Number_And_BinaryDouble},
+	{Name: "TestDriver_Table_Select", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Select},
+	{Name: "TestTimeoutConnectWithTransportConnectTimeout", Categories: "functional", Exclusive: false, Fn: TestTimeoutConnectWithTransportConnectTimeout},
+	{Name: "TestTimeoutConnectWithTransportConnectTimeoutAndContext", Categories: "functional", Exclusive: false, Fn: TestTimeoutConnectWithTransportConnectTimeoutAndContext},
+	{Name: "TestTimeoutConnectWithTransportConnectTimeoutAndContextGreater", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectWithTransportConnectTimeoutAndContextGreater},
+	{Name: "TestTimeoutConnectWithRecvTimeout", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectWithRecvTimeout},
+	{Name: "TestTimeoutConnectWithConnectTimeout", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectWithConnectTimeout},
+	{Name: "TestTimeoutConnectWithRecvConnectTimeoutAndContext", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectWithRecvConnectTimeoutAndContext},
+	{Name: "TestTimeoutConnectWithRecvConnectTimeoutAndContextGreater", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectWithRecvConnectTimeoutAndContextGreater},
+	{Name: "TestTimeoutConnectTimeoutPrecedence1", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectTimeoutPrecedence1},
+	{Name: "TestTimeoutConnectTimeoutPrecedence2", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectTimeoutPrecedence2},
+	{Name: "TestTimeoutConnectTimeoutPrecedence3", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectTimeoutPrecedence3},
+	{Name: "TestTimeoutConnectTimeoutPrecedence4", Categories: "functional", Exclusive: false, Fn: TestTimeoutConnectTimeoutPrecedence4},
+	{Name: "TestDriver_Functional_SelectDual", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_Functional_SelectDual},
+	{Name: "TestDriver_SimpleConnection", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_SimpleConnection},
+	{Name: "TestDriver_Authentication_TTIWRN", Categories: "functional", Exclusive: false, Fn: TestDriver_Authentication_TTIWRN},
+	{Name: "TestDriver_Authentication_OCIToken", Categories: "functional", Exclusive: false, Fn: TestDriver_Authentication_OCIToken},
+	{Name: "TestDriver_Authentication_OAuth", Categories: "functional", Exclusive: false, Fn: TestDriver_Authentication_OAuth},
+	{Name: "TestDriver_TCPS_Pipeline_SelectDual", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_TCPS_Pipeline_SelectDual},
+	{Name: "TestDriver_TCPS_Pipeline_InvalidCertDn", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_TCPS_Pipeline_InvalidCertDn},
+	{Name: "TestDriver_TCPS_Pipeline_InvalidWalletLocation", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_TCPS_Pipeline_InvalidWalletLocation},
+	{Name: "TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_TCPS_Pipeline_DNMatchOff_AllowsInvalidDN},
+	{Name: "TestDriver_Prepared_Insert_Select_Ordinal", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_Prepared_Insert_Select_Ordinal},
+	{Name: "TestDriver_Prepared_Insert_Select_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_Insert_Select_Named},
+	{Name: "TestDriver_PLSQL_Prepared_Binds", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_Prepared_Binds},
+	{Name: "TestDriver_Select_BooleanTypes_23c_Prepared_Statement", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BooleanTypes_23c_Prepared_Statement},
+	{Name: "TestDriver_Select_BooleanTypes_23c_Prepared_Statement_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BooleanTypes_23c_Prepared_Statement_Named},
+	{Name: "TestDriver_Select_BooleanTypes_19c", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BooleanTypes_19c},
+	{Name: "TestDriver_Select_BooleanTypes_19c_Prepared_Statement", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BooleanTypes_19c_Prepared_Statement},
+	{Name: "TestDriver_Select_BooleanTypes_19c_Prepared_Statement_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BooleanTypes_19c_Prepared_Statement_Named},
+	{Name: "TestDriver_Select_CharacterTypes_Ordinal", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_CharacterTypes_Ordinal},
+	{Name: "TestDriver_Select_CharacterTypes_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_CharacterTypes_Named},
+	{Name: "TestDriver_Select_DATE_Prepared_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_DATE_Prepared_Named},
+	{Name: "TestDriver_Select_TIMESTAMP_Prepared_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TIMESTAMP_Prepared_Named},
+	{Name: "TestDriver_Select_TimestampWithTimeZone_Prepared_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TimestampWithTimeZone_Prepared_Named},
+	{Name: "TestDriver_Select_TimestampWithLocalTimeZone_Prepared_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TimestampWithLocalTimeZone_Prepared_Named},
+	{Name: "TestDriver_Select_TimestampWithTimeZone_Prepared_LoadLocation_And_Offset", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TimestampWithTimeZone_Prepared_LoadLocation_And_Offset},
+	{Name: "TestDriver_Prepared_InsertAndSelect_AllTypes", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_InsertAndSelect_AllTypes},
+	{Name: "TestDriver_Prepared_InsertAndSelect_AllTypes_StrictNulls", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_InsertAndSelect_AllTypes_StrictNulls},
+	{Name: "TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls},
+	{Name: "TestDriver_Prepared_Statement_Re_exec_With_Different_Arg_Counts_Negative", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_Statement_Re_exec_With_Different_Arg_Counts_Negative},
+	{Name: "TestDriver_Exec_Query_cursor_leak", Categories: "robustness", Exclusive: false, Fn: TestDriver_Exec_Query_cursor_leak},
+	{Name: "TestDriver_Select_Query_cursor_leak", Categories: "robustness", Exclusive: false, Fn: TestDriver_Select_Query_cursor_leak},
+	{Name: "TestDriver_PreparedStatement_Query_cursor_leak", Categories: "robustness", Exclusive: false, Fn: TestDriver_PreparedStatement_Query_cursor_leak},
+	{Name: "TestDriver_Select_5000Rows_NumberColumn", Categories: "robustness", Exclusive: false, Fn: TestDriver_Select_5000Rows_NumberColumn},
+	{Name: "TestDriver_Insert_5000Rows_NumberColumn", Categories: "robustness", Exclusive: false, Fn: TestDriver_Insert_5000Rows_NumberColumn},
+	{Name: "TestDriver_Select_5000Rows_ComplexTypes", Categories: "robustness", Exclusive: false, Fn: TestDriver_Select_5000Rows_ComplexTypes},
+	{Name: "TestDriver_ConcurrentQueriesOnSharedDB", Categories: "robustness", Exclusive: false, Fn: TestDriver_ConcurrentQueriesOnSharedDB},
+	{Name: "TestQueryNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestQueryNonExistentTable_NegativeCase},
+	{Name: "TestPreparedStatementNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestPreparedStatementNonExistentTable_NegativeCase},
+	{Name: "TestSelectSpecificColumnsNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestSelectSpecificColumnsNonExistentTable_NegativeCase},
+	{Name: "TestCountQueryNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestCountQueryNonExistentTable_NegativeCase},
+	{Name: "TestJoinWithNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestJoinWithNonExistentTable_NegativeCase},
+	{Name: "TestSubqueryWithNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestSubqueryWithNonExistentTable_NegativeCase},
+	{Name: "TestDescribeNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestDescribeNonExistentTable_NegativeCase},
+	{Name: "TestInvalidTableNameSyntax_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestInvalidTableNameSyntax_NegativeCase},
+	{Name: "TestQuerySystemTableWithoutPrivilege_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestQuerySystemTableWithoutPrivilege_NegativeCase},
+	{Name: "TestQueryAccessibleTable_PositiveCase", Categories: "functional", Exclusive: false, Fn: TestQueryAccessibleTable_PositiveCase},
+	{Name: "TestQueryDictionaryViewWithoutPrivilege_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestQueryDictionaryViewWithoutPrivilege_NegativeCase},
+	{Name: "TestInsertAndSelectSmallRAW", Categories: "functional", Exclusive: false, Fn: TestInsertAndSelectSmallRAW},
+	{Name: "TestInsertAndSelectLargeRAW", Categories: "functional", Exclusive: false, Fn: TestInsertAndSelectLargeRAW},
+	{Name: "TestInsertAndSelectNullRAW", Categories: "functional", Exclusive: false, Fn: TestInsertAndSelectNullRAW},
+	{Name: "TestRAWMultipleRows", Categories: "functional", Exclusive: false, Fn: TestRAWMultipleRows},
+	{Name: "TestRAWUpdateOperation", Categories: "functional", Exclusive: false, Fn: TestRAWUpdateOperation},
+	{Name: "TestRAWTypeSystemIntegration", Categories: "functional", Exclusive: false, Fn: TestRAWTypeSystemIntegration},
+	{Name: "TestDriver_Prepared_InsertMultipleRows_Re_exec", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_InsertMultipleRows_Re_exec},
+	{Name: "TestDriver_Bind_ReusedNamedParameter", Categories: "functional", Exclusive: false, Fn: TestDriver_Bind_ReusedNamedParameter},
+	{Name: "TestDriver_Prepared_SelectMultipleRows_Re_exec_BindTypeChange", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_SelectMultipleRows_Re_exec_BindTypeChange},
+	{Name: "TestDriver_Prepared_SelectMultipleRows_Re_exec", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_SelectMultipleRows_Re_exec},
 
-	{"TestCommit", "functional", false, TestCommit},
-	{"TestRollback", "functional", false, TestRollback},
-	{"TestRollbackThroughContextServerSleep", "functional", false, TestRollbackThroughContextServerSleep},
-	{"TestRollbackThroughContextCancel", "functional", false, TestRollbackThroughContextCancel},
+	{Name: "TestCommit", Categories: "functional", Exclusive: false, Fn: TestCommit},
+	{Name: "TestRollback", Categories: "functional", Exclusive: false, Fn: TestRollback},
+	{Name: "TestRollbackThroughContextServerSleep", Categories: "functional", Exclusive: false, Fn: TestRollbackThroughContextServerSleep},
+	{Name: "TestRollbackThroughContextCancel", Categories: "functional", Exclusive: false, Fn: TestRollbackThroughContextCancel},
 
-	{"TestDriver_Prepared_Insert_Clob_Small", "functional", false, TestDriver_Prepared_Insert_Clob_Small},
-	{"TestDriver_Prepared_Insert_Clob_Large", "functional", false, TestDriver_Prepared_Insert_Clob_Large},
-	{"TestDriver_Prepared_Insert_Blob_Small", "functional", false, TestDriver_Prepared_Insert_Blob_Small},
-	{"TestDriver_Prepared_Insert_Blob_Large", "functional", false, TestDriver_Prepared_Insert_Blob_Large},
+	{Name: "TestDriver_Prepared_Insert_Clob_Small", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_Insert_Clob_Small},
+	{Name: "TestDriver_Prepared_Insert_Clob_Large", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_Insert_Clob_Large},
+	{Name: "TestDriver_Prepared_Insert_Blob_Small", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_Insert_Blob_Small},
+	{Name: "TestDriver_Prepared_Insert_Blob_Large", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_Insert_Blob_Large},
 
-	{"TestReadOnlyTransaction", "functional", false, TestReadOnlyTransaction},
+	{Name: "TestReadOnlyTransaction", Categories: "functional", Exclusive: false, Fn: TestReadOnlyTransaction},
 
-	{"TestDriver_Table_Select_JSON", "functional", false, TestDriver_Table_Select_JSON},
-	{"TestDriver_Table_Select_NullJSON", "functional", false, TestDriver_Table_Select_NullJSON},
-	{"TestDriver_Table_Select_CLOB", "functional", false, TestDriver_Table_Select_CLOB},
-	{"TestDriver_Table_Select_BLOB", "functional", false, TestDriver_Table_Select_BLOB},
-	{"TestDriver_Table_Insert_Select_CLOB_BLOB_MultiRows", "functional", false, TestDriver_Table_Insert_Select_CLOB_BLOB_MultiRows},
-	{"TestDriver_Table_Insert_Select_JSON_MultiRows", "functional", false, TestDriver_Table_Insert_Select_JSON_MultiRows},
+	{Name: "TestDriver_Table_Select_JSON", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Select_JSON},
+	{Name: "TestDriver_Table_Select_NullJSON", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Select_NullJSON},
+	{Name: "TestDriver_Table_Select_CLOB", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Select_CLOB},
+	{Name: "TestDriver_Table_Select_BLOB", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Select_BLOB},
+	{Name: "TestDriver_Table_Insert_Select_CLOB_BLOB_MultiRows", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Insert_Select_CLOB_BLOB_MultiRows},
+	{Name: "TestDriver_Table_Insert_Select_JSON_MultiRows", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Insert_Select_JSON_MultiRows},
 
-	{"TestDriver_DMLReturning_Insert_Ordinal", "functional", false, TestDriver_DMLReturning_Insert_Ordinal},
-	{"TestDriver_DMLReturning_Update_Named", "functional", false, TestDriver_DMLReturning_Update_Named},
-	{"TestDriver_DMLReturning_Insert_MultipleScalarTypes", "functional", false, TestDriver_DMLReturning_Insert_MultipleScalarTypes},
-	{"TestDriver_DMLReturning_Delete_Ordinal", "functional", false, TestDriver_DMLReturning_Delete_Ordinal},
-	{"TestDriver_DMLReturning_Update_Named_NoStmt", "functional", false, TestDriver_DMLReturning_Update_Named_NoStmt},
-	{"TestDriver_DMLReturning_ZeroRowsAffected", "functional", false, TestDriver_DMLReturning_ZeroRowsAffected},
-	{"TestDriver_DMLReturning_Delete_ZeroRowsAffected", "functional", false, TestDriver_DMLReturning_Delete_ZeroRowsAffected},
-	{"TestDriver_DMLReturning_Insert_RAW", "functional", false, TestDriver_DMLReturning_Insert_RAW},
-	{"TestDriver_DMLReturning_Insert_CHAR", "functional", false, TestDriver_DMLReturning_Insert_CHAR},
-	{"TestDriver_DMLReturning_PreparedStmt_ReExecution", "functional", false, TestDriver_DMLReturning_PreparedStmt_ReExecution},
-	{"TestDriver_DMLReturning_InTransaction_Rollback", "functional", false, TestDriver_DMLReturning_InTransaction_Rollback},
-	{"TestDriver_DMLReturning_InTransaction_Commit", "functional", false, TestDriver_DMLReturning_InTransaction_Commit},
-	{"TestDriver_DMLReturning_Insert_InOut", "functional", false, TestDriver_DMLReturning_Insert_InOut},
-	{"TestDriver_DMLReturning_Update_MultipleRows", "functional", false, TestDriver_DMLReturning_Update_MultipleRows},
-	{"TestDriver_DMLReturning_Insert_NullableColumn", "functional", false, TestDriver_DMLReturning_Insert_NullableColumn},
-	{"TestDriver_DMLReturning_Insert_NullBinaryFloatIntoNullFloat64", "functional", false, TestDriver_DMLReturning_Insert_NullBinaryFloatIntoNullFloat64},
-	{"TestDriver_DMLReturning_Insert_TimestampWithLocalTZ", "functional", false, TestDriver_DMLReturning_Insert_TimestampWithLocalTZ},
-	{"TestDriver_DMLReturning_Insert_NumberScalePrecision", "functional", false, TestDriver_DMLReturning_Insert_NumberScalePrecision},
-	{"TestDriver_DMLReturning_BinaryFloatColumn", "functional", false, TestDriver_DMLReturning_BinaryFloatColumn},
-	{"TestDriver_DMLReturning_Insert_BooleanColumn", "functional", false, TestDriver_DMLReturning_Insert_BooleanColumn},
-	{"TestDriver_PLSQL_InOut_NumberFunction", "functional", false, TestDriver_PLSQL_InOut_NumberFunction},
-	{"TestDriver_PLSQL_InOut_VarcharProcedure", "functional", false, TestDriver_PLSQL_InOut_VarcharProcedure},
-	{"TestDriver_PLSQL_ProcedureWithInOut", "functional", false, TestDriver_PLSQL_ProcedureWithInOut},
-	{"TestDriver_PLSQL_ProcedureWithInOut_AllTypes", "functional", false, TestDriver_PLSQL_ProcedureWithInOut_AllTypes},
-	{"TestDriver_PLSQL_InOut_NumberFunction_ReExecuteSameStatement", "functional", false, TestDriver_PLSQL_InOut_NumberFunction_ReExecuteSameStatement},
-	{"TestDriver_PLSQL_InOut_NumberFunction_ReExecuteSameStatement_NamedBinds", "functional", false, TestDriver_PLSQL_InOut_NumberFunction_ReExecuteSameStatement_NamedBinds},
+	{Name: "TestDriver_DMLReturning_Insert_Ordinal", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_Ordinal},
+	{Name: "TestDriver_DMLReturning_Update_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Update_Named},
+	{Name: "TestDriver_DMLReturning_Insert_MultipleScalarTypes", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_MultipleScalarTypes},
+	{Name: "TestDriver_DMLReturning_Delete_Ordinal", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Delete_Ordinal},
+	{Name: "TestDriver_DMLReturning_Update_Named_NoStmt", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Update_Named_NoStmt},
+	{Name: "TestDriver_DMLReturning_ZeroRowsAffected", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_ZeroRowsAffected},
+	{Name: "TestDriver_DMLReturning_Delete_ZeroRowsAffected", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Delete_ZeroRowsAffected},
+	{Name: "TestDriver_DMLReturning_Insert_RAW", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_RAW},
+	{Name: "TestDriver_DMLReturning_Insert_CHAR", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_CHAR},
+	{Name: "TestDriver_DMLReturning_PreparedStmt_ReExecution", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_PreparedStmt_ReExecution},
+	{Name: "TestDriver_DMLReturning_InTransaction_Rollback", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_InTransaction_Rollback},
+	{Name: "TestDriver_DMLReturning_InTransaction_Commit", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_InTransaction_Commit},
+	{Name: "TestDriver_DMLReturning_Insert_InOut", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_InOut},
+	{Name: "TestDriver_DMLReturning_Update_MultipleRows", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Update_MultipleRows},
+	{Name: "TestDriver_DMLReturning_Insert_NullableColumn", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_NullableColumn},
+	{Name: "TestDriver_DMLReturning_Insert_NullBinaryFloatIntoNullFloat64", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_NullBinaryFloatIntoNullFloat64},
+	{Name: "TestDriver_DMLReturning_Insert_TimestampWithLocalTZ", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_TimestampWithLocalTZ},
+	{Name: "TestDriver_DMLReturning_Insert_NumberScalePrecision", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_NumberScalePrecision},
+	{Name: "TestDriver_DMLReturning_BinaryFloatColumn", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_BinaryFloatColumn},
+	{Name: "TestDriver_DMLReturning_Insert_BooleanColumn", Categories: "functional", Exclusive: false, Fn: TestDriver_DMLReturning_Insert_BooleanColumn},
+	{Name: "TestDriver_PLSQL_InOut_NumberFunction", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_InOut_NumberFunction},
+	{Name: "TestDriver_PLSQL_InOut_VarcharProcedure", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_InOut_VarcharProcedure},
+	{Name: "TestDriver_PLSQL_ProcedureWithInOut", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_ProcedureWithInOut},
+	{Name: "TestDriver_PLSQL_ProcedureWithInOut_AllTypes", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_ProcedureWithInOut_AllTypes},
+	{Name: "TestDriver_PLSQL_InOut_NumberFunction_ReExecuteSameStatement", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_InOut_NumberFunction_ReExecuteSameStatement},
+	{Name: "TestDriver_PLSQL_InOut_NumberFunction_ReExecuteSameStatement_NamedBinds", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_InOut_NumberFunction_ReExecuteSameStatement_NamedBinds},
 
-	{"TestDriver_PLSQL_InOut_NumberFunctionDoubleBind", "functional", false, TestDriver_PLSQL_InOut_NumberFunctionDoubleBind},
+	{Name: "TestDriver_PLSQL_InOut_NumberFunctionDoubleBind", Categories: "functional", Exclusive: false, Fn: TestDriver_PLSQL_InOut_NumberFunctionDoubleBind},
 
-	{"TestDriver_TRIGGER_GormTest", "functional", false, TestDriver_TRIGGER_GormTest},
+	{Name: "TestDriver_TRIGGER_GormTest", Categories: "functional", Exclusive: false, Fn: TestDriver_TRIGGER_GormTest},
 
-	{"TestDriver_SQLNullTypes_BindInputs", "functional", false, TestDriver_SQLNullTypes_BindInputs},
-	{"TestDriver_SQLNullTypes_DMLReturning_OutDest", "functional", false, TestDriver_SQLNullTypes_DMLReturning_OutDest},
-	{"TestDriver_SQLNullTypes_PLSQL_InOut", "functional", false, TestDriver_SQLNullTypes_PLSQL_InOut},
-	{"TestDriver_SQLNullTypes_PLSQL_InOut_UsingSetupObjects", "functional", false, TestDriver_SQLNullTypes_PLSQL_InOut_UsingSetupObjects},
-	{"TestDriver_SQLNullTypes_PLSQL_InOut_NullInputs", "functional", false, TestDriver_SQLNullTypes_PLSQL_InOut_NullInputs},
+	{Name: "TestDriver_SQLNullTypes_BindInputs", Categories: "functional", Exclusive: false, Fn: TestDriver_SQLNullTypes_BindInputs},
+	{Name: "TestDriver_SQLNullTypes_DMLReturning_OutDest", Categories: "functional", Exclusive: false, Fn: TestDriver_SQLNullTypes_DMLReturning_OutDest},
+	{Name: "TestDriver_SQLNullTypes_PLSQL_InOut", Categories: "functional", Exclusive: false, Fn: TestDriver_SQLNullTypes_PLSQL_InOut},
+	{Name: "TestDriver_SQLNullTypes_PLSQL_InOut_UsingSetupObjects", Categories: "functional", Exclusive: false, Fn: TestDriver_SQLNullTypes_PLSQL_InOut_UsingSetupObjects},
+	{Name: "TestDriver_SQLNullTypes_PLSQL_InOut_NullInputs", Categories: "functional", Exclusive: false, Fn: TestDriver_SQLNullTypes_PLSQL_InOut_NullInputs},
 
-	{"TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails", "unitary", false, TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails},
-	{"TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails", "unitary", false, TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails},
-	{"TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess", "unitary", false, TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess},
-	{"TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess", "unitary", false, TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess},
-	{"TestDriver_InsertForeignKeyViolation", "functional", false, TestDriver_InsertForeignKeyViolation},
-	{"TestDriver_Varchar2_TrailingSpacesPreserved", "functional", false, TestDriver_Varchar2_TrailingSpacesPreserved},
-	{"TestDriver_Varchar2_EmptyStringIsNull", "functional", false, TestDriver_Varchar2_EmptyStringIsNull},
-	{"TestDriver_Varchar2_EmbeddedNULRoundTrip", "functional", false, TestDriver_Varchar2_EmbeddedNULRoundTrip},
-	{"TestDriver_Varchar2_BoundaryLengths", "functional", false, TestDriver_Varchar2_BoundaryLengths},
-	{"TestDriver_Select_ZeroRows_FilterCondition", "functional", false, TestDriver_Select_ZeroRows_FilterCondition},
-	{"TestDriver_Select_RowWithNullColumn", "functional", false, TestDriver_Select_RowWithNullColumn},
-	{"TestDriver_Select_MultipleRows_SomeNulls", "functional", false, TestDriver_Select_MultipleRows_SomeNulls},
-	{"TestDriver_Select_AllNullExceptPK", "functional", false, TestDriver_Select_AllNullExceptPK},
-	{"TestDriver_Select_NullFromComputedExpression", "functional", false, TestDriver_Select_NullFromComputedExpression},
-	{"TestDriver_OpenConnectorReturnsInvalidDSNParameterError", "unitary", false, TestDriver_OpenConnectorReturnsInvalidDSNParameterError},
-	{"TestDriver_OpenConnectorStoresConnectDescriptorFromDSN", "unitary", false, TestDriver_OpenConnectorStoresConnectDescriptorFromDSN},
-	{"TestDriver_OpenConnectorUsesFallbackConnectDescriptor", "unitary", false, TestDriver_OpenConnectorUsesFallbackConnectDescriptor},
-	{"TestDriver_OpenConnectorUsesNSParam", "unitary", false, TestDriver_OpenConnectorUsesNSParam},
-	{"TestDriver_OpenConnectorUsesNSProperty", "unitary", false, TestDriver_OpenConnectorUsesNSProperty},
-	{"TestDriver_OpenConnectorUsesParam", "unitary", false, TestDriver_OpenConnectorUsesParam},
-	{"TestConnection_ResetSessionKo", "functional", false, TestConnection_ResetSessionKo},
-	{"TestConnection_ResetSessionOk", "functional", false, TestConnection_ResetSessionOk},
-	{"TestConnection_ResetSessionPool", "functional", false, TestConnection_ResetSessionPool},
-	{"TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls_NullScanners", "functional", false, TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls_NullScanners},
-	{"TestDriver_Prepared_Insert_Nclob_Small", "functional", false, TestDriver_Prepared_Insert_Nclob_Small},
-	{"TestDriver_Select_NumericFloatTypes_Prepared_Named", "functional", false, TestDriver_Select_NumericFloatTypes_Prepared_Named},
-	{"TestDriver_TCPS_DN_Components_WhiteSpaces", "manual", false, TestDriver_TCPS_DN_Components_WhiteSpaces},
-	{"TestDriver_TCPS_Handshake_EnforcesDNMatching_WhitespaceMismatchRejection", "manual", false, TestDriver_TCPS_Handshake_EnforcesDNMatching_WhitespaceMismatchRejection},
-	{"TestDriver_TCPS_InvalidCertDn", "manual", false, TestDriver_TCPS_InvalidCertDn},
-	{"TestDriver_TCPS_SSL_SERVER_DN_MATCH_DEFAULT", "manual", false, TestDriver_TCPS_SSL_SERVER_DN_MATCH_DEFAULT},
-	{"TestDriver_TCPS_SSL_SERVER_DN_MATCH_OFF", "manual", false, TestDriver_TCPS_SSL_SERVER_DN_MATCH_OFF},
-	{"TestDriver_Table_Create_Multiple_Connections", "functional", false, TestDriver_Table_Create_Multiple_Connections},
-	{"TestIssue_ColumnTypeDatabaseCharTypeName", "functional", false, TestIssue_ColumnTypeDatabaseCharTypeName},
-	{"TestIssue_ColumnTypeDatabaseTypeName", "functional", false, TestIssue_ColumnTypeDatabaseTypeName},
-	{"TestIssue_ColumnTypePrecisionScale", "functional", false, TestIssue_ColumnTypePrecisionScale},
-	{"TestIssue_DecodeBinaryColumnType", "functional", false, TestIssue_DecodeBinaryColumnType},
-	{"TestServerError", "functional", false, TestServerError},
+	{Name: "TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails},
+	{Name: "TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails},
+	{Name: "TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess},
+	{Name: "TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess},
+	{Name: "TestDriver_InsertForeignKeyViolation", Categories: "functional", Exclusive: false, Fn: TestDriver_InsertForeignKeyViolation},
+	{Name: "TestDriver_Varchar2_TrailingSpacesPreserved", Categories: "functional", Exclusive: false, Fn: TestDriver_Varchar2_TrailingSpacesPreserved},
+	{Name: "TestDriver_Varchar2_EmptyStringIsNull", Categories: "functional", Exclusive: false, Fn: TestDriver_Varchar2_EmptyStringIsNull},
+	{Name: "TestDriver_Varchar2_EmbeddedNULRoundTrip", Categories: "functional", Exclusive: false, Fn: TestDriver_Varchar2_EmbeddedNULRoundTrip},
+	{Name: "TestDriver_Varchar2_BoundaryLengths", Categories: "functional", Exclusive: false, Fn: TestDriver_Varchar2_BoundaryLengths},
+	{Name: "TestDriver_Select_ZeroRows_FilterCondition", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_ZeroRows_FilterCondition},
+	{Name: "TestDriver_Select_RowWithNullColumn", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_RowWithNullColumn},
+	{Name: "TestDriver_Select_MultipleRows_SomeNulls", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_MultipleRows_SomeNulls},
+	{Name: "TestDriver_Select_AllNullExceptPK", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_AllNullExceptPK},
+	{Name: "TestDriver_Select_NullFromComputedExpression", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_NullFromComputedExpression},
+	{Name: "TestDriver_OpenConnectorReturnsInvalidDSNParameterError", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorReturnsInvalidDSNParameterError},
+	{Name: "TestDriver_OpenConnectorStoresConnectDescriptorFromDSN", Categories: "unitary", Exclusive: true, Fn: TestDriver_OpenConnectorStoresConnectDescriptorFromDSN},
+	{Name: "TestDriver_OpenConnectorUsesFallbackConnectDescriptor", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorUsesFallbackConnectDescriptor},
+	{Name: "TestDriver_OpenConnectorUsesNSParam", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorUsesNSParam},
+	{Name: "TestDriver_OpenConnectorUsesNSProperty", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorUsesNSProperty},
+	{Name: "TestDriver_OpenConnectorUsesParam", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorUsesParam},
+	{Name: "TestConnection_ResetSessionKo", Categories: "functional", Exclusive: false, Fn: TestConnection_ResetSessionKo},
+	{Name: "TestConnection_ResetSessionOk", Categories: "functional", Exclusive: false, Fn: TestConnection_ResetSessionOk},
+	{Name: "TestConnection_ResetSessionPool", Categories: "functional", Exclusive: false, Fn: TestConnection_ResetSessionPool},
+	{Name: "TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls_NullScanners", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_InsertAndSelect_AllTypes_DefaultValuesForNulls_NullScanners},
+	{Name: "TestDriver_Prepared_Insert_Nclob_Small", Categories: "functional", Exclusive: false, Fn: TestDriver_Prepared_Insert_Nclob_Small},
+	{Name: "TestDriver_Select_NumericFloatTypes_Prepared_Named", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_NumericFloatTypes_Prepared_Named},
+	{Name: "TestDriver_TCPS_DN_Components_WhiteSpaces", Categories: "manual", Exclusive: false, Fn: TestDriver_TCPS_DN_Components_WhiteSpaces},
+	{Name: "TestDriver_TCPS_Handshake_EnforcesDNMatching_WhitespaceMismatchRejection", Categories: "manual", Exclusive: false, Fn: TestDriver_TCPS_Handshake_EnforcesDNMatching_WhitespaceMismatchRejection},
+	{Name: "TestDriver_TCPS_InvalidCertDn", Categories: "manual", Exclusive: false, Fn: TestDriver_TCPS_InvalidCertDn},
+	{Name: "TestDriver_TCPS_SSL_SERVER_DN_MATCH_DEFAULT", Categories: "manual", Exclusive: false, Fn: TestDriver_TCPS_SSL_SERVER_DN_MATCH_DEFAULT},
+	{Name: "TestDriver_TCPS_SSL_SERVER_DN_MATCH_OFF", Categories: "manual", Exclusive: false, Fn: TestDriver_TCPS_SSL_SERVER_DN_MATCH_OFF},
+	{Name: "TestDriver_Table_Create_Multiple_Connections", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Create_Multiple_Connections},
+	{Name: "TestIssue_ColumnTypeDatabaseCharTypeName", Categories: "functional", Exclusive: false, Fn: TestIssue_ColumnTypeDatabaseCharTypeName},
+	{Name: "TestIssue_ColumnTypeDatabaseTypeName", Categories: "functional", Exclusive: false, Fn: TestIssue_ColumnTypeDatabaseTypeName},
+	{Name: "TestIssue_ColumnTypePrecisionScale", Categories: "functional", Exclusive: false, Fn: TestIssue_ColumnTypePrecisionScale},
+	{Name: "TestIssue_DecodeBinaryColumnType", Categories: "functional", Exclusive: false, Fn: TestIssue_DecodeBinaryColumnType},
+	{Name: "TestServerError", Categories: "functional", Exclusive: false, Fn: TestServerError},
 }
 
 func TestCategoryExecutor(t *testing.T) {
-	var regularCases, exclusiveCases []struct {
-		name       string
-		categories string
-		exclusive  bool
-		f          func(t *testing.T)
-	}
-
-	for _, c := range testCases {
-		cats := strings.Split(c.categories, ",")
-		for _, p := range cats {
-			if strings.Compare(strings.TrimSpace(p), TestCategory) == 0 {
-				if c.exclusive {
-					exclusiveCases = append(exclusiveCases, c)
-				} else {
-					regularCases = append(regularCases, c)
-				}
-				break
-			}
-		}
-	}
-
-	if len(regularCases) > 0 {
-		t.Run("parallel", func(t *testing.T) {
-			t.Parallel()
-			for _, c := range regularCases {
-				t.Run(c.name, c.f)
-			}
-		})
-	}
-
-	for _, c := range exclusiveCases {
-		t.Run(c.name, c.f)
-	}
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
-// TestConfig structure that represents a testing configuration
-// A configuration contains any information neede to connect to a database
-type TestConfig struct {
-	ConfigName      string `json:"config_name"`
-	DatabaseVersion int    `json:"database_version"`
-	Enabled         bool
+type Version = oracleTest.Version
+type TestConfig = oracleTest.TestConfig
+type TestingEnvironment = oracleTest.TestingEnvironment
 
-	Driver struct {
-		Name string
-	}
-
-	Database struct {
-		ServiceName  string
-		SIDName      string `json:",omitempty"`
-		InstanceName string `json:",omitempty"`
-		Port         int16
-		Host         string
-		Protocol     string
-		ServerType   string `json:",omitempty"` // dedicated/shared
-	}
-
-	Credentials struct {
-		Username  string
-		Password  string
-		LogonMode string
-	}
-
-	Security struct {
-		WalletLocation      string `json:"wallet_location,omitempty"`
-		SslServerDnMatch    string `json:"ssl_server_dn_match,omitempty"`
-		SslServerCertDn     string `json:"ssl_server_cert_dn,omitempty"`
-		SslAllowWeakDnMatch string `json:"ssl_allow_weak_dn_match,omitempty"`
-	}
-
-	ConnectionProperties struct {
-		StrictNullValueHandling string `json:"oracle.go.StrictNullValueHandling"`
-	}
-}
-
-// _assignStringIfNeeded assign "from" value to src if from is a valid string
-func _assignStringIfNeeded(src *string, from string) {
-	if len(strings.TrimSpace(from)) > 0 {
-		*src = from
-	}
-}
-
-// _assignIntIfNeeded assign "from" value to src if from is a valid int
-func _assignIntIfNeeded(src *int16, from int16) {
-	if from >= 0 {
-		*src = from
-	}
-}
-
-// Clone clones a test config
-func (t *TestConfig) Clone() *TestConfig {
-	newOne := &TestConfig{}
-	newOne.Driver.Name = t.Driver.Name
-	newOne.Database.ServiceName = t.Database.ServiceName
-	newOne.Database.SIDName = t.Database.SIDName
-	newOne.Database.InstanceName = t.Database.InstanceName
-	newOne.Database.Host = t.Database.Host
-	newOne.Database.Port = t.Database.Port
-	newOne.Database.Protocol = t.Database.Protocol
-	newOne.Database.ServerType = t.Database.ServerType
-
-	newOne.Credentials.Username = t.Credentials.Username
-	newOne.Credentials.Password = t.Credentials.Password
-	newOne.Credentials.LogonMode = t.Credentials.LogonMode
-
-	newOne.Security = t.Security
-
-	return newOne
-}
-
-// MergeWith merges config "from" with value currently assigned
-//
-//	returned the merged config
-func (t *TestConfig) MergeWith(from *TestConfig) {
-
-	_assignStringIfNeeded(&(t.Driver.Name), from.Driver.Name)
-
-	_assignStringIfNeeded(&(t.Database.ServiceName), from.Database.ServiceName)
-	_assignStringIfNeeded(&(t.Database.SIDName), from.Database.SIDName)
-	_assignStringIfNeeded(&(t.Database.InstanceName), from.Database.InstanceName)
-	_assignStringIfNeeded(&(t.Database.ServerType), from.Database.ServerType)
-	_assignIntIfNeeded(&(t.Database.Port), from.Database.Port)
-	_assignStringIfNeeded(&(t.Database.Host), from.Database.Protocol)
-	_assignStringIfNeeded(&(t.Database.Protocol), from.Database.Protocol)
-
-	_assignStringIfNeeded(&(t.Credentials.Username), from.Credentials.Username)
-	_assignStringIfNeeded(&(t.Credentials.Password), from.Credentials.Password)
-	_assignStringIfNeeded(&(t.Credentials.LogonMode), from.Credentials.LogonMode)
-
-	_assignStringIfNeeded(&(t.Security.WalletLocation), from.Security.WalletLocation)
-	_assignStringIfNeeded(&(t.Security.SslServerDnMatch), from.Security.SslServerDnMatch)
-	_assignStringIfNeeded(&(t.Security.SslServerCertDn), from.Security.SslServerCertDn)
-	_assignStringIfNeeded(&(t.Security.SslAllowWeakDnMatch), from.Security.SslAllowWeakDnMatch)
-}
-
-// GetConnectionString Build a connection string from a test config
-func (t *TestConfig) GetConnectionDSN() string {
-	dsn := t.GetConnectionStringWithProperties(nil)
-	s := strings.SplitN(dsn, "@", 2)
-	return s[1]
-}
-
-// GetConnectionString Build a connection string from a test config
-func (t *TestConfig) GetConnectionString() string {
-	return t.GetConnectionStringWithProperties(nil)
-}
-
-// GetConnectionStringWithProperties Build a connection string from a test config and some properties
-func (t *TestConfig) GetConnectionStringWithProperties(properties map[string]string) string {
-	var b strings.Builder
-	if properties != nil {
-		for k, v := range properties {
-			b.WriteString(fmt.Sprintf("(%s=%s)", k, v))
-		}
-	}
-	var res = fmt.Sprintf("%s/%s@(description=%s(address=(protocol=%s)(host=%s)(port=%d))(connect_data=",
-		t.Credentials.Username,
-		t.Credentials.Password,
-		b.String(),
-		t.Database.Protocol,
-		t.Database.Host,
-		t.Database.Port)
-
-	var resC strings.Builder
-	resC.WriteString(res)
-	if len(t.Database.ServiceName) > 0 {
-		resC.WriteString(fmt.Sprintf("(service_name=%s)", t.Database.ServiceName))
-		if len(t.Database.InstanceName) > 0 {
-			resC.WriteString(fmt.Sprintf("(instance_name=%s)", t.Database.InstanceName))
-		}
-	} else {
-		if len(t.Database.SIDName) > 0 {
-			resC.WriteString(fmt.Sprintf("(sid=%s)", t.Database.SIDName))
-		}
-	}
-
-	if len(t.Database.ServerType) > 0 {
-		resC.WriteString(fmt.Sprintf("(server=%s)", t.Database.ServerType))
-	}
-
-	resC.WriteString(")") // close connect_data
-
-	// Add security if present
-	if t.Security.WalletLocation != "" || t.Security.SslServerDnMatch != "" ||
-		t.Security.SslServerCertDn != "" || t.Security.SslAllowWeakDnMatch != "" {
-		resC.WriteString("(security=")
-		if t.Security.WalletLocation != "" {
-			resC.WriteString(fmt.Sprintf("(wallet_location=%s)", t.Security.WalletLocation))
-		}
-		if t.Security.SslServerDnMatch != "" {
-			resC.WriteString(fmt.Sprintf("(ssl_server_dn_match=%s)", t.Security.SslServerDnMatch))
-		}
-		if t.Security.SslAllowWeakDnMatch != "" {
-			resC.WriteString(fmt.Sprintf("(ssl_allow_weak_dn_match=%s)", t.Security.SslAllowWeakDnMatch))
-		}
-		if t.Security.SslServerCertDn != "" {
-			resC.WriteString(fmt.Sprintf("(ssl_server_cert_dn=\"%s\")", t.Security.SslServerCertDn))
-		}
-		resC.WriteString(")")
-	}
-
-	resC.WriteString(")") // close description
-
-	if len(t.Credentials.LogonMode) > 0 {
-		resC.WriteString(fmt.Sprintf("?oracle.go.Credentials.logonMode=%s", t.Credentials.LogonMode))
-	}
-	return resC.String()
-}
-
-// GetConnectionStringWithMergedConfig Build a connection string from a test config after merging with a given config
-func (t *TestConfig) GetConnectionStringWithMergedConfig(config *TestConfig) string {
-
-	_c := t.Clone()
-	_c.MergeWith(config)
-	return _c.GetConnectionStringWithProperties(nil)
-
-}
-
-// TestingEnvironment Holds driver configuration for tests
-type TestingEnvironment struct {
-	// Testing configuration array parsec from YAML file
-	driverConfigs []TestConfig
-}
-
-// DefaultTestConfig Default reference to TestEnvironement
-// That should not be that way but we need
-// a way to pass config to sub package.
-// that will be removed after refactoring
 var DefaultTestConfig *TestConfig
-
-// NewTestingEnvironment creates a new environment for given file
-// On failure, error is returned
-func NewTestingEnvironment(fileName string) (TestingEnvironment, error) {
-
-	var driverConfigs []TestConfig
-
-	// load YAML file
-	_, err := os.Stat(fileName)
-	if os.IsNotExist(err) {
-		return TestingEnvironment{},
-			fmt.Errorf("specified configuration file %s do not exists", fileName)
-	}
-	f, err := os.Open(fileName)
-	if err != nil {
-		return TestingEnvironment{},
-			fmt.Errorf("unable to open configuration %s: %v",
-				fileName,
-				err)
-	}
-	defer func(f *os.File) {
-		err := f.Close()
-		if err != nil {
-			//ignored
-		}
-	}(f)
-
-	decoder := json.NewDecoder(f)
-	err = decoder.Decode(&driverConfigs)
-	if err != nil {
-		return TestingEnvironment{},
-			fmt.Errorf("unable to read configuration %s: %w", fileName, err)
-	}
-
-	return TestingEnvironment{
-		driverConfigs: driverConfigs,
-	}, nil
-}
-
-// GetConfig gets a configuration by name.
-// Returns null if the configuration is not found
-func (e *TestingEnvironment) GetConfig(name string) (*TestConfig, error) {
-	if e.driverConfigs == nil {
-		return nil, fmt.Errorf("attempt to get a configuration but not configuration available")
-	}
-	for _, config := range e.driverConfigs {
-		if config.ConfigName == name {
-			return &config, nil
-		}
-	}
-	return nil, fmt.Errorf("no configuration %s found", name)
-
-}
-
-// Test configuration flag. This flag gives configuration file path
-//
-//	is mandatory to run the test
-var configFileName string
-
-// Test configuration flag. This flag will specify which
-// configuration to use.
-var configName string
-
 var TestEnvironement TestingEnvironment
-
-// TestingConfig Usable by tests, may be nil if not flag provided
 var TestingConfig *TestConfig
-
-// TestCategory category of tests to be un
-var TestCategory string
-
-// InitConfig init the environment configuration
-// Main task is to parse dirver config flags and populate the
-// default configuration
-func InitConfig() error {
-
-	flag.StringVar(&configFileName, "driver.config.filename", "", "testing config name")
-	flag.StringVar(&configName, "driver.config.name", "", "testing config name")
-
-	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
-	if !flag.Parsed() {
-		flag.Parse()
-	}
-	if len(configFileName) != 0 {
-		env, err := NewTestingEnvironment(configFileName)
-		if err != nil {
-			return fmt.Errorf("cannot get test environment : %w", err)
-		}
-		TestEnvironement = env
-
-		if len(configName) != 0 {
-			TestingConfig, _ = TestEnvironement.GetConfig(configName)
-			// Keep DefaultTestConfig in sync for legacy driver API
-			DefaultTestConfig = TestingConfig
-		}
-	}
-	return nil
-}

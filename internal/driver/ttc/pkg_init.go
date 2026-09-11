@@ -56,7 +56,6 @@ import (
 const MinTTCProtocolVersion = 12 // 19.1
 
 var currentDriverName driverCommon.B1Array
-var currentDriverExternalName = driverCommon.StringToB1Array(driverNameDefault + "_" + driverDefaultResourceManagerID)
 var currentDriverACLValue = driverCommon.StringToB1Array(defaultACLValue)
 var currentDriverInternalName = driverCommon.StringToB1Array("go_ttc_impl")
 
@@ -72,17 +71,17 @@ var _authClientCapabilitiesVal = driverCommon.StringToB1Array(strconv.Itoa(0x000
 
 // static information used by oauth message
 var _keyValStaticInfoForOsesskey = list.New()
-var _keyValStaticInfoForOAuth1 = list.New()
 var _keyValStaticInfoForOAuth2 = list.New()
-var _keyValStaticInfoForOAuthConnectString *list.Element
 
 var _dummyTerminalName = driverCommon.StringToB1Array("unknown")
 var currentUserName driverCommon.B1Array
+var currentProcessPath driverCommon.B1Array
 
 // _initEnvironmentStaticInformation initializes static values from the current environment.
 func _initEnvironmentStaticInformation() {
 
 	currentTerminal := driverCommon.StringToB1Array("unknown")
+	// To be consistent with other drivers like JDBC-thin that add their version:
 	currentDriverName = driverCommon.StringToB1Array(driverNameDefault + " : " + common.DriverVersion)
 
 	if u, err := user.Current(); err == nil {
@@ -91,8 +90,6 @@ func _initEnvironmentStaticInformation() {
 		common.Odl.Info(fmt.Sprintf("using default as user name"))
 		currentUserName = driverCommon.StringToB1Array("unknown")
 	}
-
-	var currentProcessPath driverCommon.B1Array
 
 	if e, err := os.Executable(); err == nil {
 		currentProcessPath = driverCommon.StringToB1Array(filepath.Base(e))
@@ -116,11 +113,6 @@ func _initEnvironmentStaticInformation() {
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authMachine), Value: currentMachineName})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authPid), Value: currentProcessId})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authSid), Value: currentUserName})
-
-	_keyValStaticInfoForOAuth1.PushBack(&driverCommon.KeyValue{Key: _authTerminalKey, Value: _dummyTerminalName})
-	_keyValStaticInfoForOAuth1.PushBack(&driverCommon.KeyValue{Key: _authConnectStringKey, Value: nil})
-	_keyValStaticInfoForOAuthConnectString = _keyValStaticInfoForOAuth1.Back()
-	_keyValStaticInfoForOAuth1.PushBack(&driverCommon.KeyValue{Key: _authProgramNmKey, Value: currentProcessPath})
 
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authMachineKey, Value: currentMachineName})
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authPidKey, Value: currentProcessId})

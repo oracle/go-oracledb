@@ -39,93 +39,69 @@
 package transport
 
 import (
-	"flag"
+	"fmt"
 	"os"
-	"strings"
 	"testing"
+
+	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
-// TestCategory category of tests to be un
-var TestCategory string
-
 func TestMain(m *testing.M) {
-	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
+	err := oracleTest.InitConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
+		os.Exit(1)
+	}
+	TestEnvironement = oracleTest.TestEnvironement
+	TestingConfig = oracleTest.TestingConfig
+	DefaultTestConfig = oracleTest.DefaultTestConfig
 	os.Exit(m.Run())
 }
 
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{
-	{"TestParsePKCS8EncryptedPrivateKey_HappyPath", "unitary", false, TestParsePKCS8EncryptedPrivateKey_HappyPath},
-	{"TestParsePKCS8EncryptedPrivateKey_NilBlock", "unitary", false, TestParsePKCS8EncryptedPrivateKey_NilBlock},
-	{"TestParsePKCS8EncryptedPrivateKey_WrongBlockType", "unitary", false, TestParsePKCS8EncryptedPrivateKey_WrongBlockType},
-	{"TestParsePKCS8EncryptedPrivateKey_WrongKey", "unitary", false, TestParsePKCS8EncryptedPrivateKey_WrongKey},
-	{"TestParsePKCS8EncryptedPrivateKey_CorruptedBytes", "unitary", false, TestParsePKCS8EncryptedPrivateKey_CorruptedBytes},
-	{"TestStripPKCS7Padding_Valid", "unitary", false, TestStripPKCS7Padding_Valid},
-	{"TestStripPKCS7Padding_PadByteZero", "unitary", false, TestStripPKCS7Padding_PadByteZero},
-	{"TestStripPKCS7Padding_PadByteExceedsBlockSize", "unitary", false, TestStripPKCS7Padding_PadByteExceedsBlockSize},
-	{"TestStripPKCS7Padding_InconsistentPadBytes", "unitary", false, TestStripPKCS7Padding_InconsistentPadBytes},
-	{"TestStripPKCS7Padding_EmptyData", "unitary", false, TestStripPKCS7Padding_EmptyData},
-	{"TestHashForPBKDF2PRF", "unitary", false, TestHashForPBKDF2PRF},
-	{"TestKeyLengthForOID", "unitary", false, TestKeyLengthForOID},
-	{"TestDecryptCBC_AES_RoundTrip", "unitary", false, TestDecryptCBC_AES_RoundTrip},
-	{"TestDecryptCBC_IVLengthMismatch", "unitary", false, TestDecryptCBC_IVLengthMismatch},
-	{"TestDecryptCBC_EmptyCiphertext", "unitary", false, TestDecryptCBC_EmptyCiphertext},
-	{"TestDecryptCBC_CiphertextNotMultipleOfBlockSize", "unitary", false, TestDecryptCBC_CiphertextNotMultipleOfBlockSize},
-	{"TestDecryptCBC_InvalidKey", "unitary", false, TestDecryptCBC_InvalidKey},
-	{"TestDecryptCBC_3DES_RoundTrip", "unitary", false, TestDecryptCBC_3DES_RoundTrip},
-	{"TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared", "unitary", false, TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared},
-	{"TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate", "unitary", false, TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate},
-	{"TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate", "unitary", false, TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate},
-	{"TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback", "unitary", false, TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback},
-	{"TestNTTCPSVerifyPostAcceptDNMatchSkipsWhenStrictMatchAlreadyEnabled", "unitary", false, TestNTTCPSVerifyPostAcceptDNMatchSkipsWhenStrictMatchAlreadyEnabled},
-	{"TestVerifyDNWithMultiValuedRDN", "unitary", false, TestVerifyDNWithMultiValuedRDN},
-	{"TestVerifyDNAllowsAliases", "unitary", false, TestVerifyDNAllowsAliases},
-	{"TestVerifyDNAllowsRepeatedAttributeAcrossRDNs", "unitary", false, TestVerifyDNAllowsRepeatedAttributeAcrossRDNs},
-	{"TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse", "unitary", false, TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse},
-	{"TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse", "unitary", false, TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse},
-	{"TestDecrypt_UnsupportedOID", "unitary", false, TestDecrypt_UnsupportedOID},
-	{"TestNTTCPSProcessWalletRejectsWalletWithoutCertificatesEvenWithSystemTrust", "unitary", false, TestNTTCPSProcessWalletRejectsWalletWithoutCertificatesEvenWithSystemTrust},
-	{"TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength", "unitary", false, TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength},
-	{"TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params", "unitary", false, TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params},
-	{"TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID", "unitary", false, TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID},
+func TestCategoryExecutor(t *testing.T) {
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
-func TestCategoryExecutor(t *testing.T) {
-	var regularCases, exclusiveCases []struct {
-		name       string
-		categories string
-		exclusive  bool
-		f          func(t *testing.T)
-	}
+type Version = oracleTest.Version
+type TestConfig = oracleTest.TestConfig
+type TestingEnvironment = oracleTest.TestingEnvironment
 
-	for _, c := range testCases {
-		cats := strings.Split(c.categories, ",")
-		for _, p := range cats {
-			if strings.Compare(strings.TrimSpace(p), TestCategory) == 0 {
-				if c.exclusive {
-					exclusiveCases = append(exclusiveCases, c)
-				} else {
-					regularCases = append(regularCases, c)
-				}
-				break
-			}
-		}
-	}
+var DefaultTestConfig *TestConfig
+var TestEnvironement TestingEnvironment
+var TestingConfig *TestConfig
 
-	if len(regularCases) > 0 {
-		t.Run("parallel", func(t *testing.T) {
-			t.Parallel()
-			for _, c := range regularCases {
-				t.Run(c.name, c.f)
-			}
-		})
-	}
-
-	for _, c := range exclusiveCases {
-		t.Run(c.name, c.f)
-	}
+var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestParsePKCS8EncryptedPrivateKey_HappyPath", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_HappyPath},
+	{Name: "TestParsePKCS8EncryptedPrivateKey_NilBlock", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_NilBlock},
+	{Name: "TestParsePKCS8EncryptedPrivateKey_WrongBlockType", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_WrongBlockType},
+	{Name: "TestParsePKCS8EncryptedPrivateKey_WrongKey", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_WrongKey},
+	{Name: "TestParsePKCS8EncryptedPrivateKey_CorruptedBytes", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_CorruptedBytes},
+	{Name: "TestStripPKCS7Padding_Valid", Categories: "unitary", Exclusive: false, Fn: TestStripPKCS7Padding_Valid},
+	{Name: "TestStripPKCS7Padding_PadByteZero", Categories: "unitary", Exclusive: false, Fn: TestStripPKCS7Padding_PadByteZero},
+	{Name: "TestStripPKCS7Padding_PadByteExceedsBlockSize", Categories: "unitary", Exclusive: false, Fn: TestStripPKCS7Padding_PadByteExceedsBlockSize},
+	{Name: "TestStripPKCS7Padding_InconsistentPadBytes", Categories: "unitary", Exclusive: false, Fn: TestStripPKCS7Padding_InconsistentPadBytes},
+	{Name: "TestStripPKCS7Padding_EmptyData", Categories: "unitary", Exclusive: false, Fn: TestStripPKCS7Padding_EmptyData},
+	{Name: "TestHashForPBKDF2PRF", Categories: "unitary", Exclusive: false, Fn: TestHashForPBKDF2PRF},
+	{Name: "TestKeyLengthForOID", Categories: "unitary", Exclusive: false, Fn: TestKeyLengthForOID},
+	{Name: "TestDecryptCBC_AES_RoundTrip", Categories: "unitary", Exclusive: false, Fn: TestDecryptCBC_AES_RoundTrip},
+	{Name: "TestDecryptCBC_IVLengthMismatch", Categories: "unitary", Exclusive: false, Fn: TestDecryptCBC_IVLengthMismatch},
+	{Name: "TestDecryptCBC_EmptyCiphertext", Categories: "unitary", Exclusive: false, Fn: TestDecryptCBC_EmptyCiphertext},
+	{Name: "TestDecryptCBC_CiphertextNotMultipleOfBlockSize", Categories: "unitary", Exclusive: false, Fn: TestDecryptCBC_CiphertextNotMultipleOfBlockSize},
+	{Name: "TestDecryptCBC_InvalidKey", Categories: "unitary", Exclusive: false, Fn: TestDecryptCBC_InvalidKey},
+	{Name: "TestDecryptCBC_3DES_RoundTrip", Categories: "unitary", Exclusive: false, Fn: TestDecryptCBC_3DES_RoundTrip},
+	{Name: "TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared},
+	{Name: "TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate},
+	{Name: "TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate},
+	{Name: "TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback},
+	{Name: "TestNTTCPSVerifyPostAcceptDNMatchSkipsWhenStrictMatchAlreadyEnabled", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchSkipsWhenStrictMatchAlreadyEnabled},
+	{Name: "TestVerifyDNWithMultiValuedRDN", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNWithMultiValuedRDN},
+	{Name: "TestVerifyDNAllowsAliases", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNAllowsAliases},
+	{Name: "TestVerifyDNAllowsRepeatedAttributeAcrossRDNs", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNAllowsRepeatedAttributeAcrossRDNs},
+	{Name: "TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse},
+	{Name: "TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse},
+	{Name: "TestDecrypt_UnsupportedOID", Categories: "unitary", Exclusive: false, Fn: TestDecrypt_UnsupportedOID},
+	{Name: "TestNTTCPSProcessWalletRejectsWalletWithoutCertificatesEvenWithSystemTrust", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSProcessWalletRejectsWalletWithoutCertificatesEvenWithSystemTrust},
+	{Name: "TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength},
+	{Name: "TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params},
+	{Name: "TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID},
 }

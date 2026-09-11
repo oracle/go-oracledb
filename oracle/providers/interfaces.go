@@ -36,23 +36,41 @@
 ** SOFTWARE.
  */
 
-package session
+package providers
 
-import "errors"
+import "context"
 
-var (
-	ErrConnectionIncomplete  = errors.New("connection incomplete")
-	ErrBufferEmpty           = errors.New("provided buffer is empty")
-	ErrBufferOverflow        = errors.New("receive buffer exceeds maximum size")
-	ErrProxyNotImplemented   = errors.New("HTTPS proxy support is not implemented")
-	ErrPacketTooShort        = errors.New("packet too short")
-	ErrInvalidPacket         = errors.New("invalid packet")          // Added
-	ErrConnectionInband      = errors.New("inband connection error") // Added
-	ErrUnsupportedPacketType = errors.New("unsupported packet type")
-	ErrConnectionClosed      = errors.New("connection closed")
-	ErrNoActiveConnection    = errors.New("cannot flush: no active connection")
-	ErrFlushFailed           = errors.New("flush failed")
-	ErrUnmarshalFailed       = errors.New("failed to unmarshal packet")
-	ErrTLSInitFailure        = errors.New("TLS initialization failure") // Moved from ntTcp.go
-	// ErrBreakpacket             = errors.New("Break-packet received")
-)
+// ProviderRegistrar registers runtime providers used by the connector during
+// connection establishment.
+//
+// RegisterProvider adds provider to the connector so it is available to future
+// connection attempts.
+type ProviderRegistrar interface {
+	RegisterProvider(Provider)
+}
+
+// Provider is the marker interface implemented by connector-extensible runtime
+// providers.
+type Provider interface{}
+
+/*** TOKEN AUTHENTICATION ***/
+
+// TokenAuthenticationProvider returns the token used for token-based database
+// authentication flows.
+type TokenAuthenticationProvider interface {
+	Provider
+	// Token returns the token string to authenticate with and any retrieval error.
+	Token(context.Context) (string, error)
+}
+
+// SignedTokenAuthenticationProvider extends TokenAuthenticationProvider with
+// the private key material required for signed token authentication.
+type SignedTokenAuthenticationProvider interface {
+	TokenAuthenticationProvider
+	// PrivateKeyForToken returns the PEM-encoded private key associated with
+	// token. Implementations must keep the association valid for every token
+	// they return until that token expires.
+	PrivateKeyForToken(context.Context, string) ([]byte, error)
+}
+
+/*** END OF TOKEN AUTHENTICATION ***/

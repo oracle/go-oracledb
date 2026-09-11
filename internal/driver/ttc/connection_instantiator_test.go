@@ -53,7 +53,7 @@ import (
 func TestAuthencationFactoryWithNilParameters(t *testing.T) {
 	t.Parallel()
 
-	auth, err := GetAuthenticator(nil)
+	auth, err := GetAuthenticator(nil, nil)
 	if err == nil {
 		t.Fatalf("get authenticator test failed %v", err)
 	}
@@ -68,7 +68,7 @@ func TestAuthencationFactoryBasic(t *testing.T) {
 	c.Credentials.User = "foo"
 	c.Credentials.Password = "bar"
 	c.ConnectDescriptor = "connection string"
-	auth, err := GetAuthenticator(c)
+	auth, err := GetAuthenticator(c, nil)
 	if err != nil {
 		t.Fatalf("get authenticator test failed %v", err)
 	}
@@ -125,17 +125,19 @@ func TestGetConnection(t *testing.T) {
 			shelf := newShelf[driverCommon.MessageType]()
 			shelf.RegisterMessageStreamer(mockStr)
 			shelf.RegisterMessageFactory(mockFac)
-			ciConnectionProps := &oracleconfig.OracleDriverProperties{}
+			oracleconfig := &oracleconfig.OracleDriverConfig{
+				DriverProperties: oracleconfig.OracleDriverProperties{},
+			}
 			ci := &connectionInstantiator{
 				negotiator: &mockNegotiator{
 					sessCtx: driverCommon.NewSessionContext(),
 					shelf:   shelf,
 					err:     tt.negotiatorErr,
 				},
-				authenticator:        &mockAuthenticator{err: tt.authErr},
-				ns:                   ns,
-				connectionProperties: ciConnectionProps,
-				localizationService:  common.NewLocalizationService(language.English),
+				authenticator:       &mockAuthenticator{err: tt.authErr},
+				ns:                  ns,
+				drvierConfig:        oracleconfig,
+				localizationService: common.NewLocalizationService(language.English),
 				newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
 					return newTestConnection(shelf, sessCtx, ns), nil
 				},
@@ -182,17 +184,21 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{err: nil}})
 	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
 
+	oracleconfig := &oracleconfig.OracleDriverConfig{
+		DriverProperties: oracleconfig.OracleDriverProperties{},
+	}
+
 	ci := &connectionInstantiator{
 		negotiator: &mockNegotiator{
 			sessCtx: driverCommon.NewSessionContext(),
 			shelf:   shelf,
 		},
-		authenticator:        &mockAuthenticator{},
-		ns:                   &mockNetworkSession{},
-		connectionProperties: &oracleconfig.OracleDriverProperties{},
+		authenticator: &mockAuthenticator{},
+		ns:            &mockNetworkSession{},
 		newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
 			return newTestConnection(shelf, sessCtx, ns), nil
 		},
+		drvierConfig:        oracleconfig,
 		localizationService: nil,
 	}
 

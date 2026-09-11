@@ -53,11 +53,11 @@ import (
 
 func main() {
 	// Keep credentials separate from the connect descriptor when using a connector.
-	connectDescriptor := os.Getenv("ORACLE_CONNECT_DESCRIPTOR")
+	connectDescriptor := os.Getenv("ORACLE_DSN")
 	user := os.Getenv("ORACLE_USER")
 	password := os.Getenv("ORACLE_PASSWORD")
 	if connectDescriptor == "" || user == "" || password == "" {
-		log.Fatal("set ORACLE_CONNECT_DESCRIPTOR, ORACLE_USER, and ORACLE_PASSWORD")
+		log.Fatal("set ORACLE_DSN, ORACLE_USER, and ORACLE_PASSWORD")
 	}
 
 	// Build an explicit driver configuration for NewOracleConnector.

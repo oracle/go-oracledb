@@ -52,9 +52,33 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 )
 
-type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession) (driverCommon.ConnectionInstantiator, error)
+// ConnInstantiatorFactory creates a connection instantiator for an established
+// network session and the connector's currently registered providers.
+//
+// Parameters:
+//   - config: the Oracle driver configuration for the connection attempt.
+//   - ns: the established network session to bind to the instantiator.
+//   - providerRegistry: the provider registry registered on the connector for this attempt.
+//
+// Returns:
+//   - a connection instantiator bound to ns.
+//   - an error if the instantiator cannot be created.
+type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error)
+
+// ConnCreator opens a network session for a specific connection option and
+// connection identifier.
+//
+// Parameters:
+//   - ctx: the context controlling the network connection attempt.
+//   - option: the resolved connection option to connect to.
+//   - connectionID: the connection identifier associated with the attempt.
+//
+// Returns:
+//   - the connected network session.
+//   - an error if the network session cannot be established.
 type ConnCreator func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error)
 
 // connector implements the database/sql/driver.connector interface for Oracle databases,
@@ -65,6 +89,7 @@ type connector struct {
 	connectorConfig         *oracleconfig.OracleDriverConfig
 	connCreator             ConnCreator
 	connInstantiatorFactory ConnInstantiatorFactory
+	providerRegistry        common.Registry[oracleProviders.Provider]
 }
 
 // used in tests
@@ -88,6 +113,7 @@ func newOracleConnector(cfg *naming.ParsedConfig, drvConfig *oracleconfig.Oracle
 		connectorConfig:         drvConfig,
 		connCreator:             connCreator,
 		connInstantiatorFactory: connInstantiatorFactory,
+		providerRegistry:        common.NewSafeRegistry[oracleProviders.Provider](),
 	}, nil
 }
 
@@ -177,7 +203,7 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	common.Odl.Debug("Network session established")
 
-	connInstantiator, err := c.connInstantiatorFactory(c.connectorConfig, ns)
+	connInstantiator, err := c.connInstantiatorFactory(c.connectorConfig, ns, c.providerRegistry)
 	if err != nil {
 		e := common.NewOracleError(oracleErrors.ConnectFailed, err)
 		return nil, localizationService.LocalizeError(e)
@@ -193,4 +219,13 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 // Driver returns the database/sql/driver.Driver for this connector.
 func (c *connector) Driver() driver.Driver {
 	return c.driver
+}
+
+// RegisterProvider adds a runtime provider that will be made available to
+// future connection attempts created from this connector.
+//
+// Parameters:
+//   - provider: the provider to append to the connector registry.
+func (c *connector) RegisterProvider(provider oracleProviders.Provider) {
+	c.providerRegistry.Register(provider)
 }

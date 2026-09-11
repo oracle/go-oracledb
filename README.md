@@ -1,5 +1,7 @@
 # Oracle Database Driver for Go
 
+[<img height="20" src="https://testpilot.oracle.com/ords/testpilot/badges/github/oracle/go-oracledb">](https://testpilot.oracle.com)
+
 Oracle Database Driver for Go is a native Go driver for Go's [database/sql](https://pkg.go.dev/database/sql) package. It supports Oracle Database versions
 19c and higher.
 

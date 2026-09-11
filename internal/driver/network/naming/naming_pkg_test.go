@@ -39,220 +39,196 @@
 package naming
 
 import (
-	"flag"
+	"fmt"
 	"os"
-	"strings"
 	"testing"
+
+	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
-// TestCategory category of tests to be un
-var TestCategory string
-
 func TestMain(m *testing.M) {
-	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
+	err := oracleTest.InitConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
+		os.Exit(1)
+	}
+	TestEnvironement = oracleTest.TestEnvironement
+	TestingConfig = oracleTest.TestingConfig
+	DefaultTestConfig = oracleTest.DefaultTestConfig
 	os.Exit(m.Run())
 }
 
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{
-	{"TestNewConnectionIterator_Basic", "unitary", false, TestNewConnectionIterator_Basic},
-	{"TestConnectionIterator_Next_Basic", "unitary", false, TestConnectionIterator_Next_Basic},
-	{"TestExtractDescription_DefaultSecurity", "unitary", false, TestExtractDescription_DefaultSecurity},
-	{"TestConnectionIterator_HasNext", "unitary", false, TestConnectionIterator_HasNext},
-	{"TestConnectionIterator_Reset", "unitary", false, TestConnectionIterator_Reset},
-	{"TestConnectionIterator_Remaining_And_Total", "unitary", false, TestConnectionIterator_Remaining_And_Total},
-	{"TestConnectionIterator_ConnectStringFormat", "unitary", false, TestConnectionIterator_ConnectStringFormat},
-	{"TestConnectionIterator_RetryCount_Single", "unitary", false, TestConnectionIterator_RetryCount_Single},
-	{"TestConnectionIterator_RetryCount_Multiple_Addresses", "unitary", false, TestConnectionIterator_RetryCount_Multiple_Addresses},
-	{"TestConnectionIterator_RetryCount_Zero", "unitary", false, TestConnectionIterator_RetryCount_Zero},
-	{"TestConnectionIterator_RetryCount_Negative", "unitary", false, TestConnectionIterator_RetryCount_Negative},
-	{"TestConnectionIterator_RetryDelay_Configuration", "unitary", false, TestConnectionIterator_RetryDelay_Configuration},
-	{"TestConnectionIterator_RetryDelay_Zero", "unitary", false, TestConnectionIterator_RetryDelay_Zero},
-	{"TestConnectionIterator_RetryDelay_ActualWait", "functional", false, TestConnectionIterator_RetryDelay_ActualWait},
-	{"TestConnectionIterator_RetryDelay_ContextCancellation", "unitary", false, TestConnectionIterator_RetryDelay_ContextCancellation},
-	{"TestConnectionIterator_Failover_DescriptionList_Enabled", "unitary", false, TestConnectionIterator_Failover_DescriptionList_Enabled},
-	{"TestIterator_DescriptionList_RootMissing", "unitary", false, TestIterator_DescriptionList_RootMissing},
-	{"TestIterator_ExtractConnectDataNode_Cases", "unitary", false, TestIterator_ExtractConnectDataNode_Cases},
-	{"TestIterator_buildFromAddresses_Empty", "unitary", false, TestIterator_buildFromAddresses_Empty},
-	{"TestIterator_extractConnectDataNode_GetNodePath", "unitary", false, TestIterator_extractConnectDataNode_GetNodePath},
-	{"TestIterator_findDescriptionNode_WrongRootAndOutOfRange", "unitary", false, TestIterator_findDescriptionNode_WrongRootAndOutOfRange},
-	{"TestIterator_Remaining_ExhaustedEarlyReturn", "unitary", false, TestIterator_Remaining_ExhaustedEarlyReturn},
-	{"TestConnectionIterator_Failover_DescriptionList_Disabled", "unitary", false, TestConnectionIterator_Failover_DescriptionList_Disabled},
-	{"TestConnectionIterator_Failover_DescriptionList_Default", "unitary", false, TestConnectionIterator_Failover_DescriptionList_Default},
-	{"TestConnectionIterator_Failover_Description_Enabled", "unitary", false, TestConnectionIterator_Failover_Description_Enabled},
-	{"TestConnectionIterator_Failover_Description_Disabled", "unitary", false, TestConnectionIterator_Failover_Description_Disabled},
-	{"TestConnectionIterator_Failover_Mixed_Settings", "unitary", false, TestConnectionIterator_Failover_Mixed_Settings},
-	{"TestConnectionIterator_LoadBalance_DescriptionList", "unitary", false, TestConnectionIterator_LoadBalance_DescriptionList},
-	{"TestConnectionIterator_LoadBalance_Description", "unitary", false, TestConnectionIterator_LoadBalance_Description},
-	{"TestConnectionIterator_LoadBalance_Off", "unitary", false, TestConnectionIterator_LoadBalance_Off},
-	{"TestConnectionIterator_Complex_Scenario_All_Features", "unitary", false, TestConnectionIterator_Complex_Scenario_All_Features},
-	{"TestConnectionIterator_Failover_And_Retry_Combined", "unitary", false, TestConnectionIterator_Failover_And_Retry_Combined},
-	{"TestConnectionIterator_LoadBalance_And_Failover_Disabled", "unitary", false, TestConnectionIterator_LoadBalance_And_Failover_Disabled},
-	{"TestConnectionIterator_CollectAllAddresses", "unitary", false, TestConnectionIterator_CollectAllAddresses},
-	{"TestConnectionIterator_MultipleAddressLists", "unitary", false, TestConnectionIterator_MultipleAddressLists},
-	{"TestConnectionIterator_SingleAddress", "unitary", false, TestConnectionIterator_SingleAddress},
-	{"TestConnectionIterator_AddressesOnly", "unitary", false, TestConnectionIterator_AddressesOnly},
-	{"TestConnectionIterator_AddressesOnly_ConnectStringStructure", "unitary", false, TestConnectionIterator_AddressesOnly_ConnectStringStructure},
-	{"TestConnectionIterator_DescriptionList_Basic", "unitary", false, TestConnectionIterator_DescriptionList_Basic},
-	{"TestConnectionIterator_DescriptionList_MultipleAddresses", "unitary", false, TestConnectionIterator_DescriptionList_MultipleAddresses},
-	{"TestConnectionIterator_Empty_Context", "unitary", false, TestConnectionIterator_Empty_Context},
-	{"TestConnectionIterator_NoConnectData", "unitary", false, TestConnectionIterator_NoConnectData},
-	{"TestConnectionIterator_ZeroAddressesAfterFailover", "unitary", false, TestConnectionIterator_ZeroAddressesAfterFailover},
-	{"TestConnectionIterator_NilRootNode", "unitary", false, TestConnectionIterator_NilRootNode},
-	{"TestConnectionIterator_NilDescription", "unitary", false, TestConnectionIterator_NilDescription},
-	{"TestConnectionIterator_NilDescriptionList", "unitary", false, TestConnectionIterator_NilDescriptionList},
-	{"TestConnectionIterator_MissingAddressFields", "unitary", false, TestConnectionIterator_MissingAddressFields},
-	{"TestConnectionIterator_MixedValidInvalidAddresses", "unitary", false, TestConnectionIterator_MixedValidInvalidAddresses},
-	{"TestConnectionIterator_InvalidConnectionString", "unitary", false, TestConnectionIterator_InvalidConnectionString},
-	{"TestConnectionIterator_ParamsAssociationPerAddress", "unitary", false, TestConnectionIterator_ParamsAssociationPerAddress},
-	{"TestConnectionIterator_DifferentConnectDataPerDescription", "unitary", false, TestConnectionIterator_DifferentConnectDataPerDescription},
-	{"TestConnectionIterator_LargeNumberOfAttempts", "unitary", true, TestConnectionIterator_LargeNumberOfAttempts},
-	{"TestConnectionIterator_VeryLargeRetryCount", "unitary", false, TestConnectionIterator_VeryLargeRetryCount},
-	{"TestConnectionIterator_Reset_WithLoadBalance", "unitary", false, TestConnectionIterator_Reset_WithLoadBalance},
-	{"TestConnectionIterator_Reset_PreservesTotal", "unitary", false, TestConnectionIterator_Reset_PreservesTotal},
-	{"TestConnectionIterator_MultipleResets", "unitary", false, TestConnectionIterator_MultipleResets},
-	{"TestConnectionIterator_ExhaustionBehavior", "unitary", false, TestConnectionIterator_ExhaustionBehavior},
-	{"TestConnectionIterator_SingleAttemptMultipleCalls", "unitary", false, TestConnectionIterator_SingleAttemptMultipleCalls},
-	{"TestConnectionIterator_ManyDescriptions", "unitary", false, TestConnectionIterator_ManyDescriptions},
-	{"TestConnectionIterator_ManyAddresses", "unitary", false, TestConnectionIterator_ManyAddresses},
-	{"TestConnectionIterator_RoundRobin", "unitary", false, TestConnectionIterator_RoundRobin},
-	{"TestParseSimple", "unitary", false, TestParseSimple},
-	{"TestParseComplex", "unitary", false, TestParseComplex},
-	{"TestParseSimpleWithConnectionProperties", "unitary", false, TestParseSimpleWithConnectionProperties},
-	{"TestParseEmpty", "unitary", false, TestParseEmpty},
-	{"TestParseWhitespaceOnly", "unitary", false, TestParseWhitespaceOnly},
-	{"TestParseInvalid", "unitary", false, TestParseInvalid},
-	{"TestGetValue", "unitary", false, TestGetValue},
-	{"TestGetValueNotFound", "unitary", false, TestGetValueNotFound},
-	{"TestGetNode", "unitary", false, TestGetNode},
-	{"TestToString", "unitary", false, TestToString},
-	{"TestChildCount", "unitary", false, TestChildCount},
-	{"TestGetChild", "unitary", false, TestGetChild},
-	{"TestParseUnexpectedOpeningParenWithoutName", "unitary", false, TestParseUnexpectedOpeningParenWithoutName},
-	{"TestParseUnexpectedClosingParen", "unitary", false, TestParseUnexpectedClosingParen},
-	{"TestParseUnexpectedToken", "unitary", false, TestParseUnexpectedToken},
-	{"TestGetValueNonLeafNode", "unitary", false, TestGetValueNonLeafNode},
-	{"TestGetNodeEmptyPath", "unitary", false, TestGetNodeEmptyPath},
-	{"TestGetNodeWrongRootName", "unitary", false, TestGetNodeWrongRootName},
-	{"TestGetNodeEmptySegment", "unitary", false, TestGetNodeEmptySegment},
-	{"TestGetChildInvalidIndex", "unitary", false, TestGetChildInvalidIndex},
-	{"TestGetNodeRootPath", "unitary", false, TestGetNodeRootPath},
-	{"TestResolveConnectStringUrl_EZConnect", "unitary", false, TestResolveConnectStringUrl_EZConnect},
-	{"TestResolveConnectStringUrl_TNS", "unitary", false, TestResolveConnectStringUrl_TNS},
-	{"TestParseDSNString_InvalidInputs", "unitary", false, TestParseDSNString_InvalidInputs},
-	{"TestParseDSNString_LongTNS_WithProperties_CleanConnectString", "unitary", false, TestParseDSNString_LongTNS_WithProperties_CleanConnectString},
-	{"TestParseDSNString_ParseError", "unitary", false, TestParseDSNString_ParseError},
-	{"TestParseDSNString_ExtractContextError", "unitary", false, TestParseDSNString_ExtractContextError},
-	{"TestParseDSNString_ConversionError", "unitary", false, TestParseDSNString_ConversionError},
-	{"TestParseDSNString_EmptyPassword", "unitary", false, TestParseDSNString_EmptyPassword},
-	{"TestParseIterative_NoTokens", "unitary", false, TestParseIterative_NoTokens},
-	{"TestExtractConnectionContext_Success", "unitary", false, TestExtractConnectionContext_Success},
-	{"TestExtractConnectionContext_Errors", "unitary", false, TestExtractConnectionContext_Errors},
-	{"TestExtractDescription_Complete", "unitary", false, TestExtractDescription_Complete},
-	{"TestExtractDescription_CompressionLevels", "unitary", false, TestExtractDescription_CompressionLevels},
-	{"TestExtractAddressList_FullEmptyAndErrors", "unitary", false, TestExtractAddressList_FullEmptyAndErrors},
-	{"TestExtractDescriptionList_FullEmptyAndErrors", "unitary", false, TestExtractDescriptionList_FullEmptyAndErrors},
-	{"TestExtractAddress_SuccessAndError", "unitary", false, TestExtractAddress_SuccessAndError},
-	{"TestExtractConnectData_SuccessEmptyAndError", "unitary", false, TestExtractConnectData_SuccessEmptyAndError},
-	{"TestExtractSecurity_SuccessEmptyAndError", "unitary", false, TestExtractSecurity_SuccessEmptyAndError},
-	{"TestHelpersAndMethods", "unitary", false, TestHelpersAndMethods},
-	{"TestExtractDescription_ErrorPropagation", "unitary", false, TestExtractDescription_ErrorPropagation},
-	{"TestCoverage_MissingFlags", "unitary", false, TestCoverage_MissingFlags},
-	{"TestParseEzConnect_SimpleHostAndService", "unitary", false, TestParseEzConnect_SimpleHostAndService},
-	{"TestParseEzConnect_DefaultPort", "unitary", false, TestParseEzConnect_DefaultPort},
-	{"TestParseEzConnect_InvalidPorts", "unitary", false, TestParseEzConnect_InvalidPorts},
-	{"TestParseEzConnect_ValidPort_Boundary", "unitary", false, TestParseEzConnect_ValidPort_Boundary},
-	{"TestParseEzConnect_Protocols", "unitary", false, TestParseEzConnect_Protocols},
-	{"TestParseEzConnect_InvalidProtocol", "unitary", false, TestParseEzConnect_InvalidProtocol},
-	{"TestParseEzConnect_MultipleHosts", "unitary", false, TestParseEzConnect_MultipleHosts},
-	{"TestParseEzConnect_MultipleAddressGroups", "unitary", false, TestParseEzConnect_MultipleAddressGroups},
-	{"TestParseEzConnect_ServerModeAndInstance", "unitary", false, TestParseEzConnect_ServerModeAndInstance},
-	{"TestParseEzConnect_ExtendedParams", "unitary", false, TestParseEzConnect_ExtendedParams},
-	{"TestParseEzConnect_QuotedParamValue", "unitary", false, TestParseEzConnect_QuotedParamValue},
-	{"TestParseEzConnect_ParameterAliases", "unitary", false, TestParseEzConnect_ParameterAliases},
-	{"TestParseEzConnect_HTTPSProxy", "unitary", false, TestParseEzConnect_HTTPSProxy},
-	{"TestParseEzConnect_IPv6Address", "unitary", false, TestParseEzConnect_IPv6Address},
-	{"TestParseEzConnect_IPv6WithMultipleHosts", "unitary", false, TestParseEzConnect_IPv6WithMultipleHosts},
-	{"TestParseEzConnect_EmptyServiceVariants", "unitary", false, TestParseEzConnect_EmptyServiceVariants},
-	{"TestParseEzConnect_WhitespaceRemoval", "unitary", false, TestParseEzConnect_WhitespaceRemoval},
-	{"TestParseEzConnect_EmptyURL", "unitary", false, TestParseEzConnect_EmptyURL},
-	{"TestParseEzConnect_SecurityParams", "unitary", false, TestParseEzConnect_SecurityParams},
-	{"TestParseEzConnect_ConnectionPoolParams", "unitary", false, TestParseEzConnect_ConnectionPoolParams},
-	{"TestParseEzConnect_ComplexMultiHostScenario", "unitary", false, TestParseEzConnect_ComplexMultiHostScenario},
-	{"TestParseExtendedParams_InvalidFormat", "unitary", false, TestParseExtendedParams_InvalidFormat},
-	{"TestParseExtendedParams_EmptyString", "unitary", false, TestParseExtendedParams_EmptyString},
-	{"TestParseExtendedParams_MultipleParams", "unitary", false, TestParseExtendedParams_MultipleParams},
-	{"TestParseEzConnect_InvalidExtendedParams", "unitary", false, TestParseEzConnect_InvalidExtendedParams},
-	{"TestParseEzConnect_EmptyAddressGroups", "unitary", false, TestParseEzConnect_EmptyAddressGroups},
-	{"TestParseHostList_TrailingComma", "unitary", false, TestParseHostList_TrailingComma},
-	{"TestParseHostList_MultipleHosts", "unitary", false, TestParseHostList_MultipleHosts},
-	{"TestParseHostList_EmptyHost", "unitary", false, TestParseHostList_EmptyHost},
-	{"TestParseAddressGroups_MultipleGroups", "unitary", false, TestParseAddressGroups_MultipleGroups},
-	{"TestParseAddressGroups_EmptyString", "unitary", false, TestParseAddressGroups_EmptyString},
-	{"TestBuildAddress_TCPWithoutProxy", "unitary", false, TestBuildAddress_TCPWithoutProxy},
-	{"TestBuildAddress_TCPSWithProxy", "unitary", false, TestBuildAddress_TCPSWithProxy},
-	{"TestBuildAddress_IPv6", "unitary", false, TestBuildAddress_IPv6},
-	{"TestBuildConnectData_AllParams", "unitary", false, TestBuildConnectData_AllParams},
-	{"TestBuildConnectData_EmptyService", "unitary", false, TestBuildConnectData_EmptyService},
-	{"TestBuildSecurity_AllParams", "unitary", false, TestBuildSecurity_AllParams},
-	{"TestBuildSecurity_Empty", "unitary", false, TestBuildSecurity_Empty},
-	{"TestBuildDescriptionParams_AutoLoadBalance", "unitary", false, TestBuildDescriptionParams_AutoLoadBalance},
-	{"TestBuildDescriptionParams_ExplicitLoadBalance", "unitary", false, TestBuildDescriptionParams_ExplicitLoadBalance},
-	{"TestBuildAddressList_SingleGroup", "unitary", false, TestBuildAddressList_SingleGroup},
-	{"TestBuildAddressList_MultipleGroups", "unitary", false, TestBuildAddressList_MultipleGroups},
-	{"TestSplitAndParseExtendedParams_WithParams", "unitary", false, TestSplitAndParseExtendedParams_WithParams},
-	{"TestParseMainURL_AllComponents", "unitary", false, TestParseMainURL_AllComponents},
-	{"TestParseMainURL_MinimalURL", "unitary", false, TestParseMainURL_MinimalURL},
-	{"TestParseHostList_DefaultPort_InMiddle", "unitary", false, TestParseHostList_DefaultPort_InMiddle},
-	{"TestParseEzConnect_HTTPSProxyWithoutPort", "unitary", false, TestParseEzConnect_HTTPSProxyWithoutPort},
-	{"TestSplitAndParseExtendedParams_ParensBeforeParams", "unitary", false, TestSplitAndParseExtendedParams_ParensBeforeParams},
-	{"TestConnectionIterator_Attempt_EZConnect_PreservesQuotedWalletLocation", "unitary", false, TestConnectionIterator_Attempt_EZConnect_PreservesQuotedWalletLocation},
-	{"TestConnectionIterator_Attempt_LongTNS_PreservesQuotedServerCertDN", "unitary", false, TestConnectionIterator_Attempt_LongTNS_PreservesQuotedServerCertDN},
-	{"TestParseDSNString_CommaBetweenNodes_FailsFast", "unitary", false, TestParseDSNString_CommaBetweenNodes_FailsFast},
-	{"TestParseDSNString_EZConnect_Quotes_Spaces", "unitary", false, TestParseDSNString_EZConnect_Quotes_Spaces},
-	{"TestParseEzConnect_Whitespace_Removal_Preserve", "unitary", false, TestParseEzConnect_Whitespace_Removal_Preserve},
-	{"TestParse_PreservesQuotedValues", "unitary", false, TestParse_PreservesQuotedValues},
-	{"TestResolveAddresses_ContextHandling", "unitary", false, TestResolveAddresses_ContextHandling},
-	{"TestResolveAddresses_DNSExpansion", "unitary", false, TestResolveAddresses_DNSExpansion},
-	{"TestResolveAddresses_HostClassification", "unitary", false, TestResolveAddresses_HostClassification},
+func TestCategoryExecutor(t *testing.T) {
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
-func TestCategoryExecutor(t *testing.T) {
-	var regularCases, exclusiveCases []struct {
-		name       string
-		categories string
-		exclusive  bool
-		f          func(t *testing.T)
-	}
+type Version = oracleTest.Version
+type TestConfig = oracleTest.TestConfig
+type TestingEnvironment = oracleTest.TestingEnvironment
 
-	for _, c := range testCases {
-		cats := strings.Split(c.categories, ",")
-		for _, p := range cats {
-			if strings.Compare(strings.TrimSpace(p), TestCategory) == 0 {
-				if c.exclusive {
-					exclusiveCases = append(exclusiveCases, c)
-				} else {
-					regularCases = append(regularCases, c)
-				}
-				break
-			}
-		}
-	}
+var DefaultTestConfig *TestConfig
+var TestEnvironement TestingEnvironment
+var TestingConfig *TestConfig
 
-	if len(regularCases) > 0 {
-		t.Run("parallel", func(t *testing.T) {
-			t.Parallel()
-			for _, c := range regularCases {
-				t.Run(c.name, c.f)
-			}
-		})
-	}
-
-	for _, c := range exclusiveCases {
-		t.Run(c.name, c.f)
-	}
+var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestNewConnectionIterator_Basic", Categories: "unitary", Exclusive: false, Fn: TestNewConnectionIterator_Basic},
+	{Name: "TestConnectionIterator_Next_Basic", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Next_Basic},
+	{Name: "TestExtractDescription_DefaultSecurity", Categories: "unitary", Exclusive: false, Fn: TestExtractDescription_DefaultSecurity},
+	{Name: "TestConnectionIterator_HasNext", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_HasNext},
+	{Name: "TestConnectionIterator_Reset", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Reset},
+	{Name: "TestConnectionIterator_Remaining_And_Total", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Remaining_And_Total},
+	{Name: "TestConnectionIterator_ConnectStringFormat", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_ConnectStringFormat},
+	{Name: "TestConnectionIterator_RetryCount_Single", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_RetryCount_Single},
+	{Name: "TestConnectionIterator_RetryCount_Multiple_Addresses", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_RetryCount_Multiple_Addresses},
+	{Name: "TestConnectionIterator_RetryCount_Zero", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_RetryCount_Zero},
+	{Name: "TestConnectionIterator_RetryCount_Negative", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_RetryCount_Negative},
+	{Name: "TestConnectionIterator_RetryDelay_Configuration", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_RetryDelay_Configuration},
+	{Name: "TestConnectionIterator_RetryDelay_Zero", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_RetryDelay_Zero},
+	{Name: "TestConnectionIterator_RetryDelay_ActualWait", Categories: "functional", Exclusive: false, Fn: TestConnectionIterator_RetryDelay_ActualWait},
+	{Name: "TestConnectionIterator_RetryDelay_ContextCancellation", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_RetryDelay_ContextCancellation},
+	{Name: "TestConnectionIterator_Failover_DescriptionList_Enabled", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Failover_DescriptionList_Enabled},
+	{Name: "TestIterator_DescriptionList_RootMissing", Categories: "unitary", Exclusive: false, Fn: TestIterator_DescriptionList_RootMissing},
+	{Name: "TestIterator_ExtractConnectDataNode_Cases", Categories: "unitary", Exclusive: false, Fn: TestIterator_ExtractConnectDataNode_Cases},
+	{Name: "TestIterator_buildFromAddresses_Empty", Categories: "unitary", Exclusive: false, Fn: TestIterator_buildFromAddresses_Empty},
+	{Name: "TestIterator_extractConnectDataNode_GetNodePath", Categories: "unitary", Exclusive: false, Fn: TestIterator_extractConnectDataNode_GetNodePath},
+	{Name: "TestIterator_findDescriptionNode_WrongRootAndOutOfRange", Categories: "unitary", Exclusive: false, Fn: TestIterator_findDescriptionNode_WrongRootAndOutOfRange},
+	{Name: "TestIterator_Remaining_ExhaustedEarlyReturn", Categories: "unitary", Exclusive: false, Fn: TestIterator_Remaining_ExhaustedEarlyReturn},
+	{Name: "TestConnectionIterator_Failover_DescriptionList_Disabled", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Failover_DescriptionList_Disabled},
+	{Name: "TestConnectionIterator_Failover_DescriptionList_Default", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Failover_DescriptionList_Default},
+	{Name: "TestConnectionIterator_Failover_Description_Enabled", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Failover_Description_Enabled},
+	{Name: "TestConnectionIterator_Failover_Description_Disabled", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Failover_Description_Disabled},
+	{Name: "TestConnectionIterator_Failover_Mixed_Settings", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Failover_Mixed_Settings},
+	{Name: "TestConnectionIterator_LoadBalance_DescriptionList", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_LoadBalance_DescriptionList},
+	{Name: "TestConnectionIterator_LoadBalance_Description", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_LoadBalance_Description},
+	{Name: "TestConnectionIterator_LoadBalance_Off", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_LoadBalance_Off},
+	{Name: "TestConnectionIterator_Complex_Scenario_All_Features", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Complex_Scenario_All_Features},
+	{Name: "TestConnectionIterator_Failover_And_Retry_Combined", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Failover_And_Retry_Combined},
+	{Name: "TestConnectionIterator_LoadBalance_And_Failover_Disabled", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_LoadBalance_And_Failover_Disabled},
+	{Name: "TestConnectionIterator_CollectAllAddresses", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_CollectAllAddresses},
+	{Name: "TestConnectionIterator_MultipleAddressLists", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_MultipleAddressLists},
+	{Name: "TestConnectionIterator_SingleAddress", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_SingleAddress},
+	{Name: "TestConnectionIterator_AddressesOnly", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_AddressesOnly},
+	{Name: "TestConnectionIterator_AddressesOnly_ConnectStringStructure", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_AddressesOnly_ConnectStringStructure},
+	{Name: "TestConnectionIterator_DescriptionList_Basic", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_DescriptionList_Basic},
+	{Name: "TestConnectionIterator_DescriptionList_MultipleAddresses", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_DescriptionList_MultipleAddresses},
+	{Name: "TestConnectionIterator_Empty_Context", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Empty_Context},
+	{Name: "TestConnectionIterator_NoConnectData", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_NoConnectData},
+	{Name: "TestConnectionIterator_ZeroAddressesAfterFailover", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_ZeroAddressesAfterFailover},
+	{Name: "TestConnectionIterator_NilRootNode", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_NilRootNode},
+	{Name: "TestConnectionIterator_NilDescription", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_NilDescription},
+	{Name: "TestConnectionIterator_NilDescriptionList", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_NilDescriptionList},
+	{Name: "TestConnectionIterator_MissingAddressFields", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_MissingAddressFields},
+	{Name: "TestConnectionIterator_MixedValidInvalidAddresses", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_MixedValidInvalidAddresses},
+	{Name: "TestConnectionIterator_InvalidConnectionString", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_InvalidConnectionString},
+	{Name: "TestConnectionIterator_ParamsAssociationPerAddress", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_ParamsAssociationPerAddress},
+	{Name: "TestConnectionIterator_DifferentConnectDataPerDescription", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_DifferentConnectDataPerDescription},
+	{Name: "TestConnectionIterator_LargeNumberOfAttempts", Categories: "unitary", Exclusive: true, Fn: TestConnectionIterator_LargeNumberOfAttempts},
+	{Name: "TestConnectionIterator_VeryLargeRetryCount", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_VeryLargeRetryCount},
+	{Name: "TestConnectionIterator_Reset_WithLoadBalance", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Reset_WithLoadBalance},
+	{Name: "TestConnectionIterator_Reset_PreservesTotal", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Reset_PreservesTotal},
+	{Name: "TestConnectionIterator_MultipleResets", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_MultipleResets},
+	{Name: "TestConnectionIterator_ExhaustionBehavior", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_ExhaustionBehavior},
+	{Name: "TestConnectionIterator_SingleAttemptMultipleCalls", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_SingleAttemptMultipleCalls},
+	{Name: "TestConnectionIterator_ManyDescriptions", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_ManyDescriptions},
+	{Name: "TestConnectionIterator_ManyAddresses", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_ManyAddresses},
+	{Name: "TestConnectionIterator_RoundRobin", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_RoundRobin},
+	{Name: "TestParseSimple", Categories: "unitary", Exclusive: false, Fn: TestParseSimple},
+	{Name: "TestParseComplex", Categories: "unitary", Exclusive: false, Fn: TestParseComplex},
+	{Name: "TestParseSimpleWithConnectionProperties", Categories: "unitary", Exclusive: false, Fn: TestParseSimpleWithConnectionProperties},
+	{Name: "TestParseEmpty", Categories: "unitary", Exclusive: false, Fn: TestParseEmpty},
+	{Name: "TestParseWhitespaceOnly", Categories: "unitary", Exclusive: false, Fn: TestParseWhitespaceOnly},
+	{Name: "TestParseInvalid", Categories: "unitary", Exclusive: false, Fn: TestParseInvalid},
+	{Name: "TestGetValue", Categories: "unitary", Exclusive: false, Fn: TestGetValue},
+	{Name: "TestGetValueNotFound", Categories: "unitary", Exclusive: false, Fn: TestGetValueNotFound},
+	{Name: "TestGetNode", Categories: "unitary", Exclusive: false, Fn: TestGetNode},
+	{Name: "TestToString", Categories: "unitary", Exclusive: false, Fn: TestToString},
+	{Name: "TestChildCount", Categories: "unitary", Exclusive: false, Fn: TestChildCount},
+	{Name: "TestGetChild", Categories: "unitary", Exclusive: false, Fn: TestGetChild},
+	{Name: "TestParseUnexpectedOpeningParenWithoutName", Categories: "unitary", Exclusive: false, Fn: TestParseUnexpectedOpeningParenWithoutName},
+	{Name: "TestParseUnexpectedClosingParen", Categories: "unitary", Exclusive: false, Fn: TestParseUnexpectedClosingParen},
+	{Name: "TestParseUnexpectedToken", Categories: "unitary", Exclusive: false, Fn: TestParseUnexpectedToken},
+	{Name: "TestGetValueNonLeafNode", Categories: "unitary", Exclusive: false, Fn: TestGetValueNonLeafNode},
+	{Name: "TestGetNodeEmptyPath", Categories: "unitary", Exclusive: false, Fn: TestGetNodeEmptyPath},
+	{Name: "TestGetNodeWrongRootName", Categories: "unitary", Exclusive: false, Fn: TestGetNodeWrongRootName},
+	{Name: "TestGetNodeEmptySegment", Categories: "unitary", Exclusive: false, Fn: TestGetNodeEmptySegment},
+	{Name: "TestGetChildInvalidIndex", Categories: "unitary", Exclusive: false, Fn: TestGetChildInvalidIndex},
+	{Name: "TestGetNodeRootPath", Categories: "unitary", Exclusive: false, Fn: TestGetNodeRootPath},
+	{Name: "TestResolveConnectStringUrl_EZConnect", Categories: "unitary", Exclusive: false, Fn: TestResolveConnectStringUrl_EZConnect},
+	{Name: "TestResolveConnectStringUrl_TNS", Categories: "unitary", Exclusive: false, Fn: TestResolveConnectStringUrl_TNS},
+	{Name: "TestParseDSNString_InvalidInputs", Categories: "unitary", Exclusive: false, Fn: TestParseDSNString_InvalidInputs},
+	{Name: "TestParseDSNString_LongTNS_WithProperties_CleanConnectString", Categories: "unitary", Exclusive: false, Fn: TestParseDSNString_LongTNS_WithProperties_CleanConnectString},
+	{Name: "TestParseDSNString_ParseError", Categories: "unitary", Exclusive: false, Fn: TestParseDSNString_ParseError},
+	{Name: "TestParseDSNString_ExtractContextError", Categories: "unitary", Exclusive: false, Fn: TestParseDSNString_ExtractContextError},
+	{Name: "TestParseDSNString_ConversionError", Categories: "unitary", Exclusive: false, Fn: TestParseDSNString_ConversionError},
+	{Name: "TestParseDSNString_EmptyPassword", Categories: "unitary", Exclusive: false, Fn: TestParseDSNString_EmptyPassword},
+	{Name: "TestParseIterative_NoTokens", Categories: "unitary", Exclusive: false, Fn: TestParseIterative_NoTokens},
+	{Name: "TestExtractConnectionContext_Success", Categories: "unitary", Exclusive: false, Fn: TestExtractConnectionContext_Success},
+	{Name: "TestExtractConnectionContext_Errors", Categories: "unitary", Exclusive: false, Fn: TestExtractConnectionContext_Errors},
+	{Name: "TestExtractDescription_Complete", Categories: "unitary", Exclusive: false, Fn: TestExtractDescription_Complete},
+	{Name: "TestExtractDescription_CompressionLevels", Categories: "unitary", Exclusive: false, Fn: TestExtractDescription_CompressionLevels},
+	{Name: "TestExtractAddressList_FullEmptyAndErrors", Categories: "unitary", Exclusive: false, Fn: TestExtractAddressList_FullEmptyAndErrors},
+	{Name: "TestExtractDescriptionList_FullEmptyAndErrors", Categories: "unitary", Exclusive: false, Fn: TestExtractDescriptionList_FullEmptyAndErrors},
+	{Name: "TestExtractAddress_SuccessAndError", Categories: "unitary", Exclusive: false, Fn: TestExtractAddress_SuccessAndError},
+	{Name: "TestExtractConnectData_SuccessEmptyAndError", Categories: "unitary", Exclusive: false, Fn: TestExtractConnectData_SuccessEmptyAndError},
+	{Name: "TestExtractSecurity_SuccessEmptyAndError", Categories: "unitary", Exclusive: false, Fn: TestExtractSecurity_SuccessEmptyAndError},
+	{Name: "TestHelpersAndMethods", Categories: "unitary", Exclusive: false, Fn: TestHelpersAndMethods},
+	{Name: "TestExtractDescription_ErrorPropagation", Categories: "unitary", Exclusive: false, Fn: TestExtractDescription_ErrorPropagation},
+	{Name: "TestCoverage_MissingFlags", Categories: "unitary", Exclusive: false, Fn: TestCoverage_MissingFlags},
+	{Name: "TestParseEzConnect_SimpleHostAndService", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_SimpleHostAndService},
+	{Name: "TestParseEzConnect_DefaultPort", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_DefaultPort},
+	{Name: "TestParseEzConnect_InvalidPorts", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_InvalidPorts},
+	{Name: "TestParseEzConnect_ValidPort_Boundary", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_ValidPort_Boundary},
+	{Name: "TestParseEzConnect_Protocols", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_Protocols},
+	{Name: "TestParseEzConnect_InvalidProtocol", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_InvalidProtocol},
+	{Name: "TestParseEzConnect_MultipleHosts", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_MultipleHosts},
+	{Name: "TestParseEzConnect_MultipleAddressGroups", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_MultipleAddressGroups},
+	{Name: "TestParseEzConnect_ServerModeAndInstance", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_ServerModeAndInstance},
+	{Name: "TestParseEzConnect_ExtendedParams", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_ExtendedParams},
+	{Name: "TestParseEzConnect_QuotedParamValue", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_QuotedParamValue},
+	{Name: "TestParseEzConnect_ParameterAliases", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_ParameterAliases},
+	{Name: "TestParseEzConnect_HTTPSProxy", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_HTTPSProxy},
+	{Name: "TestParseEzConnect_IPv6Address", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_IPv6Address},
+	{Name: "TestParseEzConnect_IPv6WithMultipleHosts", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_IPv6WithMultipleHosts},
+	{Name: "TestParseEzConnect_EmptyServiceVariants", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_EmptyServiceVariants},
+	{Name: "TestParseEzConnect_WhitespaceRemoval", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_WhitespaceRemoval},
+	{Name: "TestParseEzConnect_EmptyURL", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_EmptyURL},
+	{Name: "TestParseEzConnect_SecurityParams", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_SecurityParams},
+	{Name: "TestParseEzConnect_ConnectionPoolParams", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_ConnectionPoolParams},
+	{Name: "TestParseEzConnect_ComplexMultiHostScenario", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_ComplexMultiHostScenario},
+	{Name: "TestParseExtendedParams_InvalidFormat", Categories: "unitary", Exclusive: false, Fn: TestParseExtendedParams_InvalidFormat},
+	{Name: "TestParseExtendedParams_EmptyString", Categories: "unitary", Exclusive: false, Fn: TestParseExtendedParams_EmptyString},
+	{Name: "TestParseExtendedParams_MultipleParams", Categories: "unitary", Exclusive: false, Fn: TestParseExtendedParams_MultipleParams},
+	{Name: "TestParseEzConnect_InvalidExtendedParams", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_InvalidExtendedParams},
+	{Name: "TestParseEzConnect_EmptyAddressGroups", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_EmptyAddressGroups},
+	{Name: "TestParseHostList_TrailingComma", Categories: "unitary", Exclusive: false, Fn: TestParseHostList_TrailingComma},
+	{Name: "TestParseHostList_MultipleHosts", Categories: "unitary", Exclusive: false, Fn: TestParseHostList_MultipleHosts},
+	{Name: "TestParseHostList_EmptyHost", Categories: "unitary", Exclusive: false, Fn: TestParseHostList_EmptyHost},
+	{Name: "TestParseAddressGroups_MultipleGroups", Categories: "unitary", Exclusive: false, Fn: TestParseAddressGroups_MultipleGroups},
+	{Name: "TestParseAddressGroups_EmptyString", Categories: "unitary", Exclusive: false, Fn: TestParseAddressGroups_EmptyString},
+	{Name: "TestBuildAddress_TCPWithoutProxy", Categories: "unitary", Exclusive: false, Fn: TestBuildAddress_TCPWithoutProxy},
+	{Name: "TestBuildAddress_TCPSWithProxy", Categories: "unitary", Exclusive: false, Fn: TestBuildAddress_TCPSWithProxy},
+	{Name: "TestBuildAddress_IPv6", Categories: "unitary", Exclusive: false, Fn: TestBuildAddress_IPv6},
+	{Name: "TestBuildConnectData_AllParams", Categories: "unitary", Exclusive: false, Fn: TestBuildConnectData_AllParams},
+	{Name: "TestBuildConnectData_EmptyService", Categories: "unitary", Exclusive: false, Fn: TestBuildConnectData_EmptyService},
+	{Name: "TestBuildSecurity_AllParams", Categories: "unitary", Exclusive: false, Fn: TestBuildSecurity_AllParams},
+	{Name: "TestBuildSecurity_Empty", Categories: "unitary", Exclusive: false, Fn: TestBuildSecurity_Empty},
+	{Name: "TestBuildDescriptionParams_AutoLoadBalance", Categories: "unitary", Exclusive: false, Fn: TestBuildDescriptionParams_AutoLoadBalance},
+	{Name: "TestBuildDescriptionParams_ExplicitLoadBalance", Categories: "unitary", Exclusive: false, Fn: TestBuildDescriptionParams_ExplicitLoadBalance},
+	{Name: "TestBuildAddressList_SingleGroup", Categories: "unitary", Exclusive: false, Fn: TestBuildAddressList_SingleGroup},
+	{Name: "TestBuildAddressList_MultipleGroups", Categories: "unitary", Exclusive: false, Fn: TestBuildAddressList_MultipleGroups},
+	{Name: "TestSplitAndParseExtendedParams_WithParams", Categories: "unitary", Exclusive: false, Fn: TestSplitAndParseExtendedParams_WithParams},
+	{Name: "TestParseMainURL_AllComponents", Categories: "unitary", Exclusive: false, Fn: TestParseMainURL_AllComponents},
+	{Name: "TestParseMainURL_MinimalURL", Categories: "unitary", Exclusive: false, Fn: TestParseMainURL_MinimalURL},
+	{Name: "TestParseHostList_DefaultPort_InMiddle", Categories: "unitary", Exclusive: false, Fn: TestParseHostList_DefaultPort_InMiddle},
+	{Name: "TestParseEzConnect_HTTPSProxyWithoutPort", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_HTTPSProxyWithoutPort},
+	{Name: "TestSplitAndParseExtendedParams_ParensBeforeParams", Categories: "unitary", Exclusive: false, Fn: TestSplitAndParseExtendedParams_ParensBeforeParams},
+	{Name: "TestConnectionIterator_Attempt_EZConnect_PreservesQuotedWalletLocation", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Attempt_EZConnect_PreservesQuotedWalletLocation},
+	{Name: "TestConnectionIterator_Attempt_LongTNS_PreservesQuotedServerCertDN", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Attempt_LongTNS_PreservesQuotedServerCertDN},
+	{Name: "TestParseDSNString_CommaBetweenNodes_FailsFast", Categories: "unitary", Exclusive: false, Fn: TestParseDSNString_CommaBetweenNodes_FailsFast},
+	{Name: "TestParseDSNString_EZConnect_Quotes_Spaces", Categories: "unitary", Exclusive: false, Fn: TestParseDSNString_EZConnect_Quotes_Spaces},
+	{Name: "TestParseEzConnect_Whitespace_Removal_Preserve", Categories: "unitary", Exclusive: false, Fn: TestParseEzConnect_Whitespace_Removal_Preserve},
+	{Name: "TestParse_PreservesQuotedValues", Categories: "unitary", Exclusive: false, Fn: TestParse_PreservesQuotedValues},
+	{Name: "TestResolveAddresses_ContextHandling", Categories: "unitary", Exclusive: false, Fn: TestResolveAddresses_ContextHandling},
+	{Name: "TestResolveAddresses_DNSExpansion", Categories: "unitary", Exclusive: false, Fn: TestResolveAddresses_DNSExpansion},
+	{Name: "TestResolveAddresses_HostClassification", Categories: "unitary", Exclusive: false, Fn: TestResolveAddresses_HostClassification},
 }

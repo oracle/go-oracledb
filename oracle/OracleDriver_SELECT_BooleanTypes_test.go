@@ -55,7 +55,7 @@ func TestDriver_Select_BooleanTypes_23c(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion < 23 {
+	if TestingConfig.DatabaseVersion.Major < 23 {
 		t.Skip("Boolean Type is not supported for DB < 23")
 	}
 	config := TestingConfig.Clone()
@@ -249,7 +249,7 @@ func TestDriver_Select_BooleanTypes_23c_Prepared_Statement(t *testing.T) {
 		t.Skip("No configuration available")
 	}
 
-	if TestingConfig.DatabaseVersion < 23 {
+	if TestingConfig.DatabaseVersion.Major < 23 {
 		t.Skip("Boolean Type is not supported for DB < 23")
 	}
 	db, err := openTestDBWithConfig(TestingConfig)
@@ -377,7 +377,7 @@ func TestDriver_Select_BooleanTypes_23c_Prepared_Statement_Named(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion < 23 {
+	if TestingConfig.DatabaseVersion.Major < 23 {
 		t.Skip("Boolean Type is not supported for DB < 23")
 	}
 	db, err := openTestDBWithConfig(TestingConfig)

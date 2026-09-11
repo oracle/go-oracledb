@@ -90,8 +90,12 @@ const (
 	authClientCapabilities = "AUTH_CLIENT_CAPABILITIES"
 	authPbkdf2VgenCount    = "AUTH_PBKDF2_VGEN_COUNT"
 	authPbkdf2SderCount    = "AUTH_PBKDF2_SDER_COUNT"
-	driverNameDefault      = "oracledb"
+	driverNameDefault      = "go-oracledb" // driverNameDefault is reported in V$SESSION_CONNECT_INFO.CLIENT_DRIVER.
 	authOraEdition         = "AUTH_ORA_EDITION"
+
+	authToken     = "AUTH_TOKEN"
+	authHeader    = "AUTH_HEADER"
+	authSignature = "AUTH_SIGNATURE"
 
 	passwordBufferLength = 2112
 	kolrugEnable         = 0x0001
@@ -307,49 +311,49 @@ func (o *oAuth) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) e
 		err = engine.MarshalPTR(ctx) // authusr*
 		if err != nil {
 			common.Odl.Warn("Error marshalling authusr", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 		}
 		err = engine.MarshalSB4(ctx, driverCommon.SB4(len(o.user))) // authusrl
 		if err != nil {
 			common.Odl.Warn("Error marshalling authusrl", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 		}
 	} else {
 		err = engine.MarshalNullPTR(ctx) // authusr*
 		if err != nil {
 			common.Odl.Warn("Error marshalling authusr", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 		}
 		err = engine.MarshalSB4(ctx, 0)
 		if err != nil {
 			common.Odl.Warn("Error marshalling authusrl", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 		}
 	}
 	err = engine.MarshalUB4(ctx, driverCommon.UB4(o.logonMode)) // authflg
 	if err != nil {
 		common.Odl.Warn("Error marshalling authflg", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 	err = engine.MarshalPTR(ctx) // authivl
 	if err != nil {
 		common.Odl.Warn("Error marshalling authivl", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 	err = engine.MarshalUB4(ctx, driverCommon.UB4(o.keyValList.Len())) // authivln
 	if err != nil {
 		common.Odl.Warn("Error marshalling authivln", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 	err = engine.MarshalPTR(ctx) // authovl
 	if err != nil {
 		common.Odl.Warn("Error marshalling authovl", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 	err = engine.MarshalPTR(ctx) // authovln
 	if err != nil {
 		common.Odl.Warn("Error marshalling authovln", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
 	// --------pisdef finished. Now send data
@@ -357,13 +361,13 @@ func (o *oAuth) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) e
 		err = engine.MarshalChar(ctx, o.user)
 		if err != nil {
 			common.Odl.Warn("Error marshalling oauth", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 		}
 	}
 	err = ((driverCommon.Marshallable)(o.keyValList)).MarshalTo(ctx, engine)
 	if err != nil {
 		common.Odl.Warn("Error marshalling oauth", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
 	return nil
@@ -395,6 +399,18 @@ func (o *oAuth) prepareForOAUTH(luser driverCommon.B1Array,
 	return nil
 }
 
+// prepareForTokenOAUTH initializes the OAUTH request fields used for token
+// authentication flows.
+//
+// Parameters:
+//   - luser: the optional user payload to include in the logon mode setup.
+func (o *oAuth) prepareForTokenOAUTH(luser driverCommon.B1Array) {
+	o.initializeLogonModeForOAUTH(luser, o.logonMode, nil)
+	o.setVSessionKeyValsForOAUTH()
+	o.setAlterSessionKeyValsForOAUTH()
+	o.setDriverIdentityKeyValsForOAUTH()
+}
+
 // Initializes logonMode before executing an oauth call.
 // llogonMode Logon mode specified by an external caller.
 // for instance.
@@ -411,6 +427,9 @@ func (o *oAuth) initializeLogonModeForOAUTH(luser driverCommon.B1Array, llogonMo
 var _authPasswordKey = driverCommon.StringToB1Array(authPassword)
 var _authPbkdf2SpeedyKey = driverCommon.StringToB1Array(authPbkdf2SpeedyKey)
 var _authSesskey = driverCommon.StringToB1Array(authSesskey)
+var _authTokenKey = driverCommon.StringToB1Array(authToken)
+var _authHeaderKey = driverCommon.StringToB1Array(authHeader)
+var _authSignatureKey = driverCommon.StringToB1Array(authSignature)
 
 // Adds password-related key-value pairs to the authentication request, including encrypted password and speedy key if provided.
 func (o *oAuth) setPasswordKeyValsForOAUTH(lpassword []byte, speedyKey []byte) {
@@ -427,22 +446,55 @@ func (o *oAuth) setPasswordKeyValsForOAUTH(lpassword []byte, speedyKey []byte) {
 	}
 }
 
+// setTokenKeyValsForOAUTH adds token-based authentication values to the OAUTH
+// request, and includes the signed header fields when provided.
+//
+// Parameters:
+//   - token: the bearer or OCI IAM token to send to the server.
+//   - header: the optional token header payload to send for signed OCI flows.
+//   - signature: the optional signature for header when header is provided.
+//
+// Returns:
+//   - an error if the key/value list cannot be updated.
+func (o *oAuth) setTokenKeyValsForOAUTH(token string, header string, signature string) error {
+	o.keyValList.PushBack(&driverCommon.KeyValue{
+		Key:   _authTokenKey,
+		Value: driverCommon.StringToB1Array(token),
+	})
+
+	// If there is no header stop here
+	if len(header) == 0 {
+		return nil
+	}
+
+	// Add header and signature
+	o.keyValList.PushBack(&driverCommon.KeyValue{
+		Key:   _authHeaderKey,
+		Value: driverCommon.StringToB1Array(header),
+	})
+	o.keyValList.PushBack(&driverCommon.KeyValue{
+		Key:   _authSignatureKey,
+		Value: driverCommon.StringToB1Array(signature),
+	})
+
+	return nil
+}
+
 var _authProxyClientNameKey = driverCommon.StringToB1Array(authProxyClientName)
 
 // Adds virtual session key-value pairs to the authentication request, including terminal,
 // program, machine, and process information.
 func (o *oAuth) setVSessionKeyValsForOAUTH() {
-
-	o.keyValList.PushBackList(_keyValStaticInfoForOAuth1)
-	// fill non-static information
-	v := _keyValStaticInfoForOAuthConnectString.Value.(*driverCommon.KeyValue)
-	v.Value = o.connectString
+	o.keyValList.PushBack(&driverCommon.KeyValue{Key: _authTerminalKey, Value: _dummyTerminalName})
+	// The connect string is request-specific. Keeping it on the message avoids
+	// sharing mutable authentication state across concurrent connections.
+	o.keyValList.PushBack(&driverCommon.KeyValue{Key: _authConnectStringKey, Value: o.connectString})
+	o.keyValList.PushBack(&driverCommon.KeyValue{Key: _authProgramNmKey, Value: currentProcessPath})
 	if len(o.clientName) != 0 {
 		o.keyValList.PushBack(&driverCommon.KeyValue{Key: _authProxyClientNameKey, Value: o.clientName})
 	}
 
 	o.keyValList.PushBackList(_keyValStaticInfoForOAuth2)
-
 }
 
 var _authOraEditionKey = driverCommon.StringToB1Array(authOraEdition)
@@ -645,7 +697,7 @@ func (rpa *OAuthRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Mars
 	rpa.outNbPairs, err = engine.UnmarshalUB2(ctx)
 	if err != nil {
 		common.Odl.Warn("Unable to unmarshal oAuth RPA, cant' get pairs count", "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAUTH RPA")
 	}
 	if err = validateAuthKeyValueLength("pairs", driverCommon.SB4(rpa.outNbPairs), maxAuthKeyValuePairs); err != nil {
 		return err
@@ -656,7 +708,7 @@ func (rpa *OAuthRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Mars
 	err = ((driverCommon.UnMarshallable)(keyValueList)).UnMarshalFrom(ctx, engine)
 	if err != nil {
 		common.Odl.Warn("Unable to unmarshal oAuth RPA, cant' unmarshal key/value pairs", "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAUTH RPA")
 	}
 
 	rpa.connectionValues = driverCommon.NewProperties[string]()
@@ -668,20 +720,20 @@ func (rpa *OAuthRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Mars
 
 	if !rpa.connectionValues.ContainsKey(authDbMountID) {
 		common.Odl.Warn("Unable to unmarshal oAuth RPA, missing property", "property", authDbMountID)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "OAUTH RPA")
 	}
 
 	authDBMountID, err := rpa.connectionValues.GetTrimmedString(authDbMountID)
 	if err != nil {
 		common.Odl.Warn("Unable to get authDbMountID while unmarshalling oAuth RPA", "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAUTH RPA")
 
 	}
 
 	parseLong, err := strconv.ParseInt(authDBMountID, 10, 64)
 	if err != nil {
 		common.Odl.Warn("Unable to parse int while unmarshalling oAuth RPA", "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAUTH RPA")
 	}
 
 	if authDBMountID != "" &&

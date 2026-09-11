@@ -43,8 +43,10 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
+	oracleCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
@@ -61,6 +63,34 @@ func TestNewOAuth_Success(t *testing.T) {
 	}
 	if oAuth.GetFuncCode() != oauth {
 		t.Errorf("Expected function code oauth, got %v", oAuth.GetFuncCode())
+	}
+}
+
+// TestOAuth_prepareForTokenOAUTH verifies that token-based OAuth sets the
+// token logon mode and adds the required session initialization values.
+func TestOAuth_prepareForTokenOAUTH(t *testing.T) {
+	t.Parallel()
+	oauth := NewOAuth().(*oAuth)
+	oauth.setLogonMode(oracleCommon.KpzLogonToken.Value())
+	oauth.prepareForTokenOAUTH(common.StringToB1Array("token-user"))
+
+	if oauth.logonMode != KpzLogon|oracleCommon.KpzLogonToken.Value() {
+		t.Fatalf("logonMode = %d, want %d", oauth.logonMode, KpzLogon|oracleCommon.KpzLogonToken.Value())
+	}
+	if oauth.keyValList == nil || oauth.keyValList.Len() < 3 {
+		t.Fatalf("token OAUTH should include session, alter-session, and driver identity values")
+	}
+	for _, key := range []string{authConnectString, authAlterSession, authSessionClientDrvnm} {
+		found := false
+		for e := oauth.keyValList.Front(); e != nil; e = e.Next() {
+			if common.B1ArrayToString(e.Value.(*common.KeyValue).Key) == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("token OAUTH missing %s key", key)
+		}
 	}
 }
 
@@ -430,6 +460,51 @@ func TestOAuth_setPasswordKeyValsForOAUTH_WithEncryptedKB(t *testing.T) {
 	if !foundSessKey {
 		t.Error("Session key not found")
 	}
+}
+
+func TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal(t *testing.T) {
+	connectString := func(oauth *oAuth) string {
+		t.Helper()
+		for element := oauth.keyValList.Front(); element != nil; element = element.Next() {
+			keyValue := element.Value.(*common.KeyValue)
+			if common.B1ArrayToString(keyValue.Key) == authConnectString {
+				return common.B1ArrayToString(keyValue.Value)
+			}
+		}
+		t.Fatal("AUTH_CONNECT_STRING not found")
+		return ""
+	}
+
+	first := NewOAuth().(*oAuth)
+	first.setConnectString("first")
+	first.setVSessionKeyValsForOAUTH()
+
+	second := NewOAuth().(*oAuth)
+	second.setConnectString("second")
+	second.setVSessionKeyValsForOAUTH()
+
+	if got := connectString(first); got != "first" {
+		t.Fatalf("first AUTH_CONNECT_STRING = %q, want first", got)
+	}
+	if got := connectString(second); got != "second" {
+		t.Fatalf("second AUTH_CONNECT_STRING = %q, want second", got)
+	}
+
+	var waitGroup sync.WaitGroup
+	for index := range 16 {
+		expected := strconv.Itoa(index)
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			oauth := NewOAuth().(*oAuth)
+			oauth.setConnectString(expected)
+			oauth.setVSessionKeyValsForOAUTH()
+			if got := connectString(oauth); got != expected {
+				t.Errorf("AUTH_CONNECT_STRING = %q, want %q", got, expected)
+			}
+		}()
+	}
+	waitGroup.Wait()
 }
 
 // TestOAuth_setDriverIdentityKeyValsForOAUTH tests driver identity key-value setting.
