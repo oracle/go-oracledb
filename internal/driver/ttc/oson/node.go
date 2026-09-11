@@ -156,30 +156,6 @@ func IsOson(data drvCommon.B1Array) bool {
 	return binary.BigEndian.Uint32(data[:osonUB4Size])&osonMagicPrefixMask == osonMagicPrefix
 }
 
-// jsonCompatibleValue converts raw binary values to the hexadecimal string
-// representation used by OSON JSON rendering. Container values are traversed
-// so binary children do not fall back to encoding/json's base64 representation.
-func jsonCompatibleValue(value any) any {
-	switch value := value.(type) {
-	case []byte:
-		return fmt.Sprintf("%X", value)
-	case []any:
-		converted := make([]any, len(value))
-		for i, item := range value {
-			converted[i] = jsonCompatibleValue(item)
-		}
-		return converted
-	case map[string]any:
-		converted := make(map[string]any, len(value))
-		for key, item := range value {
-			converted[key] = jsonCompatibleValue(item)
-		}
-		return converted
-	default:
-		return value
-	}
-}
-
 // newNodeAt resolves one node at offset and returns the matching OSON node.
 //
 // It reads the node opcode, resolves forwarding records, then dispatches to

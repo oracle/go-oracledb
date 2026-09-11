@@ -41,6 +41,7 @@ package common
 import (
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 )
 
 const (
@@ -159,7 +160,16 @@ const (
 // subtree and return an error if any selected child cannot be decoded. The
 // materialized forms are map[string]any for objects, []any for arrays, and the
 // corresponding Go value for scalars.
+//
+// JSONNode embeds json.Marshaler so OSON nodes can be passed directly to
+// encoding/json. This is required because encoding/json does not use the
+// String method when marshaling a value, and OSON scalar values can require a
+// JSON representation that differs from their materialized Go type. Container
+// implementations retain the existing map and slice rendering behavior, while
+// scalar implementations provide the scalar-specific rendering policy.
 type JSONNode interface {
+	json.Marshaler
+
 	// Kind reports whether the node is an object, array, or scalar.
 	Kind() Kind
 

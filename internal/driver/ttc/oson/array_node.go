@@ -166,18 +166,34 @@ func (array *arrayNode) GetValue(opts drvCommon.JSONOption) (any, error) {
 // Errors:
 //   - child node construction, value decoding, or JSON encoding failure.
 func (array *arrayNode) String() (string, error) {
-	materializedArray, err := array.Value(drvCommon.JSONOptNumberAsString)
-	if err != nil {
-		return "", err
-	}
-
-	jsonBytes, err := json.Marshal(jsonCompatibleValue(materializedArray))
+	jsonBytes, err := json.Marshal(array)
 	if err != nil {
 		common.Odl.Debug("arrayNode.String: failed", "error", err, "offset", array.offset)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
 	common.Odl.Debug("arrayNode.String: completed", "offset", array.offset, "textBytes", len(jsonBytes))
 	return string(jsonBytes), nil
+}
+
+// MarshalJSON implements encoding/json.Marshaler.
+//
+// It marshals each child node directly so arrays retain their existing shape
+// while scalar nodes own the scalar-specific marshaling policy.
+func (array *arrayNode) MarshalJSON() ([]byte, error) {
+	values := make([]json.RawMessage, len(array.childOffsets))
+	for index, offset := range array.childOffsets {
+		child, err := newNodeAt(array.buf, array.header, offset)
+		if err != nil {
+			return nil, err
+		}
+
+		values[index], err = child.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return json.Marshal(values)
 }
 
 // Get implements the JSONArrayNode interface.

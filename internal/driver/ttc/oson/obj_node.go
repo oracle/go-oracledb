@@ -353,18 +353,34 @@ func (obj *objectNode) GetValue(opts drvCommon.JSONOption) (any, error) {
 // Errors:
 //   - child node construction, value decoding, or JSON encoding failure.
 func (obj *objectNode) String() (string, error) {
-	value, err := obj.Value(drvCommon.JSONOptNumberAsString)
-	if err != nil {
-		return "", err
-	}
-
-	text, err := json.Marshal(jsonCompatibleValue(value))
+	text, err := json.Marshal(obj)
 	if err != nil {
 		common.Odl.Debug("objectNode.String: failed", "error", err, "offset", obj.offset)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
 	common.Odl.Debug("objectNode.String: completed", "offset", obj.offset, "textBytes", len(text))
 	return string(text), nil
+}
+
+// MarshalJSON implements encoding/json.Marshaler.
+//
+// It marshals each child node directly so objects retain their existing shape
+// while scalar nodes own the scalar-specific marshaling policy.
+func (obj *objectNode) MarshalJSON() ([]byte, error) {
+	values := make(map[string]json.RawMessage, len(obj.childrenOffsets))
+	for name, offset := range obj.childrenOffsets {
+		child, err := newNodeAt(obj.buf, obj.header, offset)
+		if err != nil {
+			return nil, err
+		}
+
+		values[name], err = child.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return json.Marshal(values)
 }
 
 // Get implements the JSONObjectNode interface.

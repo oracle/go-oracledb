@@ -139,27 +139,45 @@ func (scalar *scalarNode) GetValue(opt drvCommon.JSONOption) (any, error) {
 // Errors:
 //   - unsupported scalar opcode, payload decode failure, or JSON marshal failure.
 func (scalar *scalarNode) String() (string, error) {
-	value, err := scalar.Value(drvCommon.JSONOptNumberAsString)
-	if err != nil {
-		return "", err
-	}
-
-	if timestamp, ok := value.(time.Time); ok {
-		switch scalar.opcode {
-		case osonOpDate, osonOpTimestamp, osonOpTimestamp7:
-			// DATE and TIMESTAMP do not carry a timezone in their OSON payload.
-			// Avoid time.Time's default JSON form, which adds the local offset.
-			value = timestamp.Format("2006-01-02T15:04:05.999999999")
-		}
-	}
-
-	text, err := json.Marshal(jsonCompatibleValue(value))
+	text, err := json.Marshal(scalar)
 	if err != nil {
 		common.Odl.Debug("scalarNode.String: failed", "error", err, "offset", scalar.offset, "opcode", scalar.opcode)
 		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
 	}
 	common.Odl.Debug("scalarNode.String: completed", "offset", scalar.offset, "opcode", scalar.opcode, "textBytes", len(text))
 	return string(text), nil
+}
+
+// MarshalJSON implements encoding/json.Marshaler.
+//
+// Scalar marshaling inspects the decoded Go type and OSON opcode so each scalar
+// can choose its JSON representation without requiring a materialized parent
+// map or slice to rewrite the value.
+func (scalar *scalarNode) MarshalJSON() ([]byte, error) {
+	value, err := scalar.Value(drvCommon.JSONOptNumberAsString)
+	if err != nil {
+		return nil, err
+	}
+
+	switch value := value.(type) {
+	case drvCommon.JSONNumber:
+		return []byte(value), nil
+	case time.Time:
+		switch scalar.opcode {
+		case osonOpDate, osonOpTimestamp, osonOpTimestamp7:
+			// DATE and TIMESTAMP do not carry a timezone in their OSON payload.
+			// Avoid time.Time's default JSON form, which adds the local offset.
+			return json.Marshal(value.Format("2006-01-02T15:04:05.999999999"))
+		default:
+			return json.Marshal(value)
+		}
+	case []byte:
+		// OSON binary values render as hexadecimal JSON strings rather than
+		// encoding/json's default base64 strings.
+		return json.Marshal(fmt.Sprintf("%X", value))
+	default:
+		return json.Marshal(value)
+	}
 }
 
 // Value implements the JSONScalarNode interface.
