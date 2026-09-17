@@ -104,4 +104,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID},
+	{Name: "TestNTTCPReceiveBufferTooSmall", Categories: "unitary", Exclusive: false, Fn: TestNTTCPReceiveBufferTooSmall},
+	{Name: "TestNTTCPSClear", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSClear},
+	{Name: "TestProcessWalletEmptyAndUnknownBlock", Categories: "unitary", Exclusive: false, Fn: TestProcessWalletEmptyAndUnknownBlock},
+	{Name: "TestParseAndVerifyDN", Categories: "unitary", Exclusive: false, Fn: TestParseAndVerifyDN},
 }
