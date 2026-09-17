@@ -56,7 +56,7 @@ type tTIrxd struct {
 	numberOfColumns driverCommon.UB4
 	// rowCount is the zero-based index of the row currently being processed/unmarshalled.
 	rowCount driverCommon.UB4
-	// row holds, for the current row, a common.B1Array (wire-format bytes) for each column.
+	// row holds, for the current row, a driverCommon.B1Array (wire-format bytes) for each column.
 	// row[i] gives the raw data for column i for this row.
 	row []driverCommon.B1Array
 	// prevRow contains each column's data from the previous unmarshalled row, used for column-carry (BVC logic).
@@ -64,6 +64,9 @@ type tTIrxd struct {
 	// prevLobColContext contains the LOB metadata aligned with prevRow for BVC
 	// column carry.
 	prevLobColContext []*lobColumnContext
+	// prevRefCursorRows aligns with prevRow and carries REF CURSOR values when
+	// BVC omits the corresponding column in the current row.
+	prevRefCursorRows []*ttcRowsRefCursor
 	// bvcColSent is a BitSet indicating which columns are present in this row (per BVC protocol column-carry rules).
 	bvcColSent *driverCommon.BitSet
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
@@ -73,18 +76,42 @@ type tTIrxd struct {
 	bindRow        []driverCommon.B1Array
 	columnContexts []columnContext
 	lobColContext  []*lobColumnContext
+	oacs           []driverCommon.Marshallable
+	// refCursorRows aligns with row and holds decoded REF CURSOR child rows.
+	refCursorRows []*ttcRowsRefCursor
 
 	numberOfReturningPositions int
 	isDmlReturning             bool
 
-	// session character set
+	// shelf and sessCtx initialize decoded REF CURSOR child rows.
+	shelf   *ttiShelf[driverCommon.MessageType]
+	sessCtx *driverCommon.SessionContext
+	// sessCharSet and sessNCharSet decode character data in REF CURSOR metadata.
 	sessCharSet  driverCommon.UB2
 	sessNCharSet driverCommon.UB2
+	// refCursorDCB decodes REF CURSOR metadata using the negotiated TTC
+	// protocol version.
+	refCursorDCB *tTIdcb
 }
 
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
 func newTTIrxd() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIrxd{}
+	return &tTIrxd{refCursorDCB: newTTIdcb().(*tTIdcb)}
+}
+
+// newTTIrxd17 creates an RXD decoder for TTC versions 17-19.
+func newTTIrxd17() driverCommon.Message[driverCommon.MessageType] {
+	return &tTIrxd{refCursorDCB: newTTIdcb17().(*tTIdcb)}
+}
+
+// newTTIrxd20 creates an RXD decoder for TTC versions 20-23.
+func newTTIrxd20() driverCommon.Message[driverCommon.MessageType] {
+	return &tTIrxd{refCursorDCB: newTTIdcb20().(*tTIdcb)}
+}
+
+// newTTIrxd24 creates an RXD decoder for TTC version 24 and later.
+func newTTIrxd24() driverCommon.Message[driverCommon.MessageType] {
+	return &tTIrxd{refCursorDCB: newTTIdcb24().(*tTIdcb)}
 }
 
 // GetMsgCode implements Message.GetMsgCode, returning the TTC RXD message code.
@@ -111,6 +138,9 @@ func (rxd *tTIrxd) setNumberofReturningArgs(numberofArgs int) {
 func (rxd *tTIrxd) setPrevRow(row []driverCommon.B1Array) {
 	rxd.prevRow = row
 }
+
+// setPrevRefCursorRows retains REF CURSOR child rows for BVC column carry.
+func (rxd *tTIrxd) setPrevRefCursorRows(rows []*ttcRowsRefCursor) { rxd.prevRefCursorRows = rows }
 
 // setPrevLobColumnContext assigns the per-column LOB metadata for the previous
 // row. BVC decoding carries this metadata together with omitted column data.
@@ -142,6 +172,21 @@ func (rxd *tTIrxd) setSessionCharacterSet(sessCharSet driverCommon.UB2) {
 	rxd.sessCharSet = sessCharSet
 }
 
+// SetShelf supplies the shared shelf used to initialize decoded REF CURSOR rows.
+func (rxd *tTIrxd) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
+	rxd.shelf = shelf
+}
+
+// SetSessionContext supplies the session context used by REF CURSOR metadata
+// and its child rows.
+func (rxd *tTIrxd) SetSessionContext(sessCtx *driverCommon.SessionContext) {
+	rxd.sessCtx = sessCtx
+	if sessCtx != nil {
+		rxd.setSessionCharacterSet(sessCtx.DriverCharacterSet())
+		rxd.setSessionNCharacterSet(sessCtx.SessionNCharCharacterSet())
+	}
+}
+
 func (rxd *tTIrxd) getLobColumnContext() []*lobColumnContext {
 	return rxd.lobColContext
 }
@@ -159,6 +204,10 @@ func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array) {
 	rxd.bindRow = row
 }
 
+func (rxd *tTIrxd) setCurrentOACs(oacs []driverCommon.Marshallable) {
+	rxd.oacs = oacs
+}
+
 /*
 MarshalTo writes the RXD bind payload for outgoing messages (single row).
 
@@ -174,6 +223,34 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 	bindCount := len(rxd.bindRow)
 	for i := 0; i < bindCount; i++ {
 		val := rxd.bindRow[i]
+		var requestedType common.DtyType
+		if i < len(rxd.oacs) {
+			if oac, ok := rxd.oacs[i].(*tTIoac); ok {
+				requestedType = common.DtyType(oac.requestedtype)
+			}
+		}
+		if requestedType == common.DtyRSet {
+			if err := engine.MarshalUB1(ctx, driverCommon.UB1(1)); err != nil {
+				common.Odl.Error("tTIrxd.MarshalTo: failed to write Ref Cursor indicator",
+					"error", err, "stage", "null-indicator", "index", i)
+				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+			}
+			if err := engine.MarshalUB1(ctx, driverCommon.UB1(0)); err != nil {
+				common.Odl.Error("tTIrxd.MarshalTo: failed to write Ref Cursor indicator",
+					"error", err, "stage", "null-indicator", "index", i)
+				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+			}
+			continue
+		}
+		if requestedType == common.DtyNty {
+			// A NAMED_TYPE bind is not a bare CLR image. The protocol writes the three
+			// empty locator fields, version-control number, image length, and
+			// image flags before the pickled collection/object image.
+			if err := rxd.marshalNamedTypeBind(ctx, engine, val); err != nil {
+				return err
+			}
+			continue
+		}
 		if val == nil {
 			// Write CLR null indicator
 			if err := engine.MarshalUB1(ctx, driverCommon.UB1(0)); err != nil {
@@ -193,6 +270,34 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 	return nil
 }
 
+// marshalNamedTypeBind writes the TTC NAMED_TYPE envelope followed by its
+// pickled image. REF_TYPE values use the ordinary CLR path; only NAMED_TYPE
+// carries this envelope.
+func (rxd *tTIrxd) marshalNamedTypeBind(ctx context.Context, engine driverCommon.Marshaller, image driverCommon.B1Array) error {
+	for i := 0; i < 3; i++ { // TOID, OID, and snapshot locator are empty for a bind image.
+		empty := dynamicAllocatedArray{}
+		if err := empty.MarshalTo(ctx, engine); err != nil {
+			return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+		}
+	}
+	if err := engine.MarshalUB2(ctx, 0); err != nil { // VCN
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	if err := engine.MarshalUB4(ctx, driverCommon.UB4(len(image))); err != nil {
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	if err := engine.MarshalUB2(ctx, 1); err != nil { // image flags
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	if len(image) == 0 {
+		return nil
+	}
+	if err := engine.MarshalCLR(ctx, image, 0, len(image)); err != nil {
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	return nil
+}
+
 // UnMarshalFrom reads and decodes either a regular RXD result-set row or a DML/PLSQL
 // RETURNING-bind payload from the provided Marshaller per TTC specifications.
 // It uses column/row information previously set on the struct and applies BVC
@@ -202,6 +307,8 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	// DML returning case
 	if rxd.numberOfReturningPositions > 0 && rxd.isDmlReturning {
 		rxd.row = make([]driverCommon.B1Array, rxd.numberOfReturningPositions)
+		rxd.refCursorRows = make([]*ttcRowsRefCursor, rxd.numberOfReturningPositions)
+		rxd.lobColContext = make([]*lobColumnContext, 0, rxd.numberOfReturningPositions)
 		for col := 0; col < rxd.numberOfReturningPositions; col++ {
 			numberOfRows, err := mar.UnmarshalUB4(ctx)
 			if err != nil {
@@ -210,7 +317,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 				return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 			}
 			for row := 0; row < int(numberOfRows); row++ {
-				if err := rxd._unmarshalScalarColumn(ctx, mar, col); err != nil {
+				if err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col); err != nil {
 					return err
 				}
 				if err := rxd._processDMLPlSqlIndicator(ctx, mar, col); err != nil {
@@ -260,6 +367,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 			return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 		}
 		rxd.row = make([]driverCommon.B1Array, rxd.numberOfColumns)
+		rxd.refCursorRows = make([]*ttcRowsRefCursor, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
 			if rxd.bvcColSent != nil && rxd.bvcColSent.Get(col) {
 				err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
@@ -278,6 +386,9 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 					copy(tmp, rxd.prevRow[col])
 					rxd.row[col] = tmp
 				}
+				if rxd.prevRefCursorRows != nil {
+					rxd.refCursorRows[col] = rxd.prevRefCursorRows[col]
+				}
 				var lobContext *lobColumnContext
 				if rxd.prevLobColContext != nil {
 					lobContext = rxd.prevLobColContext[col]
@@ -288,6 +399,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	} else {
 		// Non-BVC: all columns present, unmarshal each as fresh.
 		rxd.row = make([]driverCommon.B1Array, rxd.numberOfColumns)
+		rxd.refCursorRows = make([]*ttcRowsRefCursor, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
 			err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
 			if err != nil {
@@ -312,7 +424,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	return nil
 }
 
-func (rxd *tTIrxd) getColumnDataType(col int) DtyType {
+func (rxd *tTIrxd) getColumnDataType(col int) common.DtyType {
 	return rxd.columnContexts[col].DataType
 }
 
@@ -337,13 +449,32 @@ Returns:
 Errors:
   - Propagates errors returned by the delegated column unmarshalling helper.
 */
-func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
+func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType common.DtyType, mar driverCommon.Marshaller, col int) error {
+	// A zero OAC maximum length in a described query denotes a constant SQL
+	// NULL. The logical result-set layout retains the column, but its RXD row
+	// has no value (or CLR length byte). This null-by-describe rule does not
+	// apply to PL/SQL OUT or DML RETURNING binds: those always carry their CLR
+	// and trailing indicator, even when their declared maximum length is zero.
+	if rxd.numberOfReturningPositions == 0 && rxd.columnContexts[col].Length == 0 {
+		rxd.row[col] = nil
+		rxd.lobColContext = append(rxd.lobColContext, nil)
+		return nil
+	}
+
 	switch dtyType {
-	case DtyClob:
+	case common.DtyCur:
+		if err := rxd._unmarshalRefCursorColumn(ctx, mar, col); err != nil {
+			return err
+		}
+	case common.DtyNty, common.DtyINty:
+		if err := rxd._unmarshalNamedTypeColumn(ctx, mar, col); err != nil {
+			return err
+		}
+	case common.DtyClob:
 		if err := rxd._unmarshalClobColumn(ctx, mar, col); err != nil {
 			return err
 		}
-	case DtyBlob, DtyJSON:
+	case common.DtyBlob, common.DtyJSON:
 		if err := rxd._unmarshalBlobColumn(ctx, mar, col, dtyType); err != nil {
 			return err
 		}
@@ -355,6 +486,89 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 	}
 	return nil
 }
+
+// _unmarshalNamedTypeColumn reads the TTC NAMED_TYPE envelope. A named type
+// is not a bare CLR: its three locator DALCs, VCN, declared image length, and
+// flags precede the pickled collection/object image.
+func (rxd *tTIrxd) _unmarshalNamedTypeColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
+	for i := 0; i < 3; i++ { // TOID, OID, snapshot locator
+		var locator dynamicAllocatedArray
+		if err := locator.UnMarshalFrom(ctx, mar); err != nil {
+			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+		}
+	}
+	if _, err := mar.UnmarshalUB2(ctx); err != nil { // VCN
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	imageLength, err := mar.UnmarshalUB4(ctx)
+	if err != nil {
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	if _, err = mar.UnmarshalUB2(ctx); err != nil { // image flags
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	if imageLength == 0 {
+		rxd.row[col] = nil
+		rxd.lobColContext = append(rxd.lobColContext, nil)
+		return nil
+	}
+	image, _, err := mar.UnmarshalCLRColumnData(ctx)
+	if err != nil {
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	rxd.row[col] = image
+	rxd.lobColContext = append(rxd.lobColContext, nil)
+	return nil
+}
+
+/*
+_unmarshalRefCursorColumn decodes a REF CURSOR descriptor and cursor ID,
+storing initialized child rows aligned with the current RXD column.
+
+Description:
+
+  - Uses the version-specific DCB decoder to read the child cursor metadata.
+  - Reads the server cursor ID and initializes its rows directly with the RXD
+    shelf and session context.
+  - Stores nil for a NULL cursor while preserving per-column alignment for row,
+    LOB, and RefCursor data.
+
+Parameters:
+
+  - ctx: context governing protocol unmarshalling.
+  - mar: TTC marshaller positioned at the REF CURSOR descriptor.
+  - col: index of the REF CURSOR column in the current RXD row.
+
+Returns:
+
+  - error: a descriptor or cursor-ID decoding error; nil after the column is
+    aligned with the current row.
+*/
+func (rxd *tTIrxd) _unmarshalRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
+	if err := rxd.refCursorDCB.unmarshalFromRefCursor(ctx, mar); err != nil {
+		return err
+	}
+	columns, err := rxd.refCursorDCB.getColumnContexts()
+	if err != nil {
+		return err
+	}
+	cursorID, err := mar.UnmarshalUB4(ctx)
+	if err != nil {
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+	}
+	if cursorID != 0 {
+		common.Odl.Debug("Decoded REF CURSOR column", "column", col, "cursorID", cursorID, "columns", len(columns))
+		rxd.refCursorRows[col] = newRefCursorRows(ctx, rxd.shelf, rxd.sessCtx, driverCommon.SB4(cursorID), columns)
+	} else {
+		common.Odl.Debug("Decoded NULL REF CURSOR column", "column", col)
+	}
+	rxd.row[col] = nil
+	rxd.lobColContext = append(rxd.lobColContext, nil)
+	return nil
+}
+
+// getRefCursorRows returns REF CURSOR child rows aligned with RXD columns.
+func (rxd *tTIrxd) getRefCursorRows() []*ttcRowsRefCursor { return rxd.refCursorRows }
 
 // _unmarshalScalarColumn decodes a single column's value into rxd.row[col].
 // Reads length and value per TTC wire format. Returns error on failure.
@@ -550,7 +764,7 @@ Returns:
 Errors:
   - Returns an error when the prefetched column payload cannot be read from the wire.
 */
-func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, col int, dtyType DtyType) error {
+func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, col int, dtyType common.DtyType) error {
 	// length
 	lob := &lobColumnContext{}
 	var err error
@@ -562,7 +776,7 @@ func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Ma
 	if lob.LobLength == 0 {
 		rxd.row[col] = nil
 		rxd.lobColContext = append(rxd.lobColContext, lob)
-		if dtyType == DtyJSON {
+		if dtyType == common.DtyJSON {
 			if err = rxd._processIndicator(ctx, mar, col); err != nil {
 				return err
 			}
@@ -606,7 +820,7 @@ func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Ma
 	}
 
 	// indicator
-	if dtyType == DtyJSON {
+	if dtyType == common.DtyJSON {
 		if err = rxd._processIndicator(ctx, mar, col); err != nil {
 			return err
 		}

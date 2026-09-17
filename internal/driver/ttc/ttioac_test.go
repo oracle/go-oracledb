@@ -43,6 +43,7 @@ import (
 	"strings"
 	"testing"
 
+	typeCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
@@ -56,11 +57,11 @@ func TestTTIoac_NewTTIoac(t *testing.T) {
 		expectedDataType common.UB1
 		expectedMaxlen   common.UB4
 	}{
-		{"Varchar", DtyChr, 128, common.UB1(DtyChr), 128},
-		{"Rowid", DtyRdd, 4, common.UB1(DtyRiD), 4},
-		{"Number", DtyNum, 32, common.UB1(DtyNum), 32},
-		{"Binary", DtyVbi, 255, common.UB1(DtyBin), 255},
-		{"Cursor", DtyRSet, 0, common.UB1(DtyCur), 4},
+		{"Varchar", typeCommon.DtyChr, 128, common.UB1(typeCommon.DtyChr), 128},
+		{"Rowid", typeCommon.DtyRdd, 4, common.UB1(typeCommon.DtyRiD), 4},
+		{"Number", typeCommon.DtyNum, 32, common.UB1(typeCommon.DtyNum), 32},
+		{"Binary", typeCommon.DtyVbi, 255, common.UB1(typeCommon.DtyBin), 255},
+		{"Cursor", typeCommon.DtyRSet, 0, common.UB1(typeCommon.DtyCur), 4},
 		{"Unhandled", 111, 44, common.UB1(111), 44},
 	}
 
@@ -100,17 +101,17 @@ func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
 			}
 			switch tc.name {
 			case "valid chr unmarshal":
-				// Check selected fields for validTtioacChrUnmarshalDump (should decode to DtyChr)
-				if obj.dataType != common.UB1(DtyChr) {
-					t.Errorf("expected dataType DtyChr (%d), got %d", DtyChr, obj.dataType)
+				// Check selected fields for validTtioacChrUnmarshalDump (should decode to common.DtyChr)
+				if obj.dataType != common.UB1(typeCommon.DtyChr) {
+					t.Errorf("expected dataType common.DtyChr (%d), got %d", typeCommon.DtyChr, obj.dataType)
 				}
 				if obj.maxLength != 4000 {
 					t.Errorf("expected maxLength 40000, got %d", obj.maxLength)
 				}
 			case "valid num unmarshal":
-				// Check selected fields for validTtioacNumUnmarshalDump (should decode to DtyNum)
-				if obj.dataType != common.UB1(DtyNum) {
-					t.Errorf("expected dataType DtyNum (%d), got %d", DtyNum, obj.dataType)
+				// Check selected fields for validTtioacNumUnmarshalDump (should decode to common.DtyNum)
+				if obj.dataType != common.UB1(typeCommon.DtyNum) {
+					t.Errorf("expected dataType common.DtyNum (%d), got %d", typeCommon.DtyNum, obj.dataType)
 				}
 				if obj.scale != common.SB1(NumberScaleFloatSentinel) {
 					t.Errorf("expected scale %d, got %d", NumberScaleFloatSentinel, obj.scale)
@@ -180,7 +181,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 		maxLength    common.UB4
 		codepointLen common.UB4
 		collationID  common.UB4
-		nbArrayElts  common.UB4
+		nbArrayElts  common.SB4
 		versionNum   common.UB2
 		flagsCont    common.UB8
 		toid         []byte
@@ -188,7 +189,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:         "varchar",
-			accessorType: DtyChr,
+			accessorType: typeCommon.DtyChr,
 			maxlen:       42,
 			charsetID:    common.UB2(1789),
 			charsetForm:  common.UB1(2),
@@ -197,14 +198,14 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 			maxLength:    common.UB4(42),
 			codepointLen: common.UB4(100),
 			collationID:  common.UB4(56),
-			nbArrayElts:  common.UB4(7),
+			nbArrayElts:  common.SB4(7),
 			versionNum:   common.UB2(2),
 			flagsCont:    common.UB8(9),
 			toid:         []byte{1, 2, 3},
 		},
 		{
 			name:         "dtynum",
-			accessorType: DtyNum,
+			accessorType: typeCommon.DtyNum,
 			maxlen:       22,
 			charsetID:    common.UB2(0),
 			charsetForm:  common.UB1(0),
@@ -213,7 +214,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 			maxLength:    common.UB4(22),
 			codepointLen: common.UB4(88),
 			collationID:  common.UB4(9),
-			nbArrayElts:  common.UB4(3),
+			nbArrayElts:  common.SB4(3),
 			versionNum:   common.UB2(1),
 			flagsCont:    common.UB8(0),
 			toid:         []byte{},
@@ -245,11 +246,81 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 	}
 }
 
+// TestTTIoac_SignedArrayElementCount verifies the OAC oacmal field accepts
+// Oracle's negative sentinel values used by described (non-array) columns.
+// TestTTIoac_SignedArrayElementCount preserves the signed OAC array count sentinel.
+func TestTTIoac_SignedArrayElementCount(t *testing.T) {
+	ctx := context.Background()
+	dataBuffer, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
+	original := newTTIoac(DtyChr, 42)
+	original.nbArrayElements = -1
+	if err := original.MarshalTo(ctx, mar); err != nil {
+		t.Fatalf("MarshalTo failed: %v", err)
+	}
+	dataBuffer.currentReadPosition = 0
+	decoded := &tTIoac{}
+	if err := decoded.UnMarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("UnMarshalFrom failed for negative oacmal: %v", err)
+	}
+	if decoded.nbArrayElements != -1 {
+		t.Fatalf("nbArrayElements = %d, want -1", decoded.nbArrayElements)
+	}
+}
+
+// TestTTIoac_AddFlagsContinuation combines continuation flag bits.
+func TestTTIoac_AddFlagsContinuation(t *testing.T) {
+	oac := &tTIoac{flagsContinuation: 0x01}
+	oac.addFlagsContinuation(0x04)
+	if oac.flagsContinuation != 0x05 {
+		t.Fatalf("flagsContinuation = %#x, want %#x", oac.flagsContinuation, common.UB8(0x05))
+	}
+}
+
+// TestTTIoac_UnmarshalNormalizesNumberLength applies the TTC NUMBER length default.
+func TestTTIoac_UnmarshalNormalizesNumberLength(t *testing.T) {
+	testTTIoacUnmarshalLengthNormalization(t, DtyNum, _oacMaxLengthNumber)
+}
+
+// TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength applies TTC temporal length defaults.
+func TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		typ  DtyType
+		want common.UB4
+	}{
+		{name: "DATE", typ: DtyDat, want: _oacMaxLengthDate},
+		{name: "TIMESTAMP WITH TIME ZONE", typ: DtyStz, want: _oacMaxLengthStampTZ},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			testTTIoacUnmarshalLengthNormalization(t, test.typ, test.want)
+		})
+	}
+}
+
+// testTTIoacUnmarshalLengthNormalization verifies the datatype-specific OAC length default.
+func testTTIoacUnmarshalLengthNormalization(t *testing.T, typ DtyType, want common.UB4) {
+	t.Helper()
+	ctx := context.Background()
+	dataBuffer, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
+	original := newTTIoac(typ, 1)
+	if err := original.MarshalTo(ctx, mar); err != nil {
+		t.Fatalf("marshal OAC: %v", err)
+	}
+	dataBuffer.currentReadPosition = 0
+	decoded := &tTIoac{}
+	if err := decoded.UnMarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("unmarshal OAC: %v", err)
+	}
+	if decoded.maxLength != want {
+		t.Fatalf("maxLength = %d, want %d", decoded.maxLength, want)
+	}
+}
+
 // TestTTIoac_MarshalTo_Fail tests failure scenarios when marshalling TTIoac due to write errors.
 func TestTTIoac_MarshalTo_Fail(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	orig := newTTIoac(DtyChr, 42)
+	orig := newTTIoac(typeCommon.DtyChr, 42)
 	orig.characterSetID = 1789
 	orig.characterSetForm = 2
 	orig.precision = 5
@@ -282,8 +353,8 @@ func TestTTIoac_MarshalTo_Fail(t *testing.T) {
 		{"Fail on Write characterSetForm", 6, failOnWriteByte},
 		{"Fail on Write codepointLengthLimit", 8, failOnWriteBytes},
 		{"Fail on Write collationId", 9, failOnWriteBytes},
-		// Explicitly fail on UB2(p.scale) for DtyNum
-		{"Fail on MarshalUB2 scale DtyNum", 1, failOnWriteBytes},
+		// Explicitly fail on UB2(p.scale) for common.DtyNum
+		{"Fail on MarshalUB2 scale common.DtyNum", 1, failOnWriteBytes},
 	}
 
 	for _, tc := range cases {
@@ -291,9 +362,9 @@ func TestTTIoac_MarshalTo_Fail(t *testing.T) {
 			payload := make([]byte, 2048)
 			mar := createMarshaller(payload, tc.failType, tc.failCount)
 			var err error
-			if tc.name == "Fail on MarshalUB2 scale DtyNum" {
-				// DtyNum config to enter MarshalUB2 scale block
-				dtyNum := newTTIoac(DtyNum, 22)
+			if tc.name == "Fail on MarshalUB2 scale common.DtyNum" {
+				// common.DtyNum config to enter MarshalUB2 scale block
+				dtyNum := newTTIoac(typeCommon.DtyNum, 22)
 				dtyNum.scale = common.SB1(7)
 				err = dtyNum.MarshalTo(ctx, mar)
 			} else {

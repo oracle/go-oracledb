@@ -408,7 +408,7 @@ func (config *OracleLoggingConfig) AssignFromEnv() error {
 func (config *OracleLoggingConfig) AssignFromFlags() error {
 
 	if !flag.Parsed() {
-		flag.Parse()
+		return nil
 	}
 
 	// grab used flags
@@ -996,7 +996,7 @@ func (config *OracleDriverConfig) AssignFromEnv() error {
 
 func (config *OracleDriverConfig) AssignFromFlags() error {
 	if !flag.Parsed() {
-		flag.Parse()
+		return nil
 	}
 	return config.loadFromFlags()
 }

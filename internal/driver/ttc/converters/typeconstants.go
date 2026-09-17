@@ -44,12 +44,12 @@ import "github.com/oracle/go-oracledb/v26/internal/driver/common"
 // Values reflect Oracle's wire representations to prevent truncation when
 // allocating buffers for binds/defines.
 const (
-	// EmptyStringOacLength is the minimum TTC OAC length to use for DtyVCS binds.
+	// EmptyStringOacLength is the minimum TTC OAC length to use for common.DtyVCS binds.
 	// Empty strings still require an OAC length of 4.
 	EmptyStringOacLength common.UB4 = 4
 
 	// MaxBoolLength is the maximum number of bytes needed to encode a Go bool
-	// as a TTC DtyBol value. The on-wire form typically uses 1–2 bytes, but 4 is
+	// as a TTC common.DtyBol value. The on-wire form typically uses 1–2 bytes, but 4 is
 	// used here to align with UB4 and provide headroom when constructing OACs.
 	MaxBoolLength common.UB4 = 4
 
@@ -65,7 +65,7 @@ const (
 	// WITH TIME ZONE in TTC (13 bytes).
 	MaxTimeStampLength common.UB4 = 13
 
-	// MaxNullLength is the maximum number of bytes required by Null DtyVcs
+	// MaxNullLength is the maximum number of bytes required by Null common.DtyVcs
 	// TTC (4 bytes).
 	MaxNullLength common.UB4 = 4
 

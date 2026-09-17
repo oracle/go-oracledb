@@ -46,6 +46,7 @@ import (
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	common "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	"github.com/oracle/go-oracledb/v26/oracle/errors"
 	"github.com/oracle/go-oracledb/v26/oracle/providers"
 )
@@ -74,6 +75,7 @@ type ttiShelf[T any] struct {
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
 	_validatorRegistry       internalCommon.Registry[stateValidator]
+	adtByTOID                map[string]*datatype.ObjectType
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
@@ -87,6 +89,7 @@ func newShelf[T any]() *ttiShelf[T] {
 		_statements:        make(map[*Statement]weak.Pointer[Statement]),
 		_eventService:      newEventService(),
 		_validatorRegistry: internalCommon.NewRegistry[stateValidator](),
+		adtByTOID:     make(map[string]*datatype.ObjectType),
 	}
 }
 

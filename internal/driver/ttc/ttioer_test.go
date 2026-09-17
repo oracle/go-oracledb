@@ -42,6 +42,8 @@ import (
 	"context"
 	"regexp"
 	"testing"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestNewTTIoer ensures the constructor sets struct fields as expected.
@@ -138,6 +140,19 @@ func TestTTIoer_GetError(t *testing.T) {
 	expected := "ORA-00942 - table or view does not exist"
 	if got := err.Error(); got != expected {
 		t.Errorf("Unexpected error string. Got: %q, want: %q", got, expected)
+	}
+
+	oer = &tTIoer{retCode: 0, oerrcd2: 942, errorMsg: []byte("ORA-00942 - table or view does not exist")}
+	err = oer.getError()
+	if err == nil {
+		t.Fatal("Expected error when extended error code is non-zero, got nil")
+	}
+	sqlErr, ok := err.(oracleErrors.SQLError)
+	if !ok {
+		t.Fatalf("getError() type = %T, want oracleErrors.SQLError", err)
+	}
+	if got, want := sqlErr.ErrorCode(), "ORA-00942"; got != want {
+		t.Errorf("extended OER error code = %q, want %q", got, want)
 	}
 }
 

@@ -39,9 +39,11 @@
 package ttc
 
 import (
+	"context"
 	"database/sql/driver"
 	"io"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -91,7 +93,7 @@ type columnContext struct {
 	DBTypeName           driverCommon.B1Array
 	ScanType             *reflect.Type
 	Length               int64
-	DataType             DtyType
+	DataType             common.DtyType
 	Precision            int64
 	Scale                int8
 	KernelPosition       int
@@ -99,6 +101,8 @@ type columnContext struct {
 	CharsetForm          uint8
 	CharsetID            uint16
 	Nullable             bool
+	NamedTypeTOID        driverCommon.B1Array
+	NamedTypeVersion     uint16
 	LobContext           *lobColumnContext
 	serverTimeZoneOffset int16
 }
@@ -116,10 +120,21 @@ type columnContext struct {
 //   - RowsColumnTypePrecisionScale
 //   - RowsColumnTypeScanType
 type ttcRows struct {
-	// row buffer
+	// rowData holds raw TTC values and currentRowIdx identifies the next row.
 	rowData       [][]driverCommon.B1Array
 	currentRowIdx int
 	numOfRows     int
+	closed        bool
+	closeErr      error
+	// beforeNext performs optional work, such as the first RefCursor fetch,
+	// before advancing through buffered rows.
+	beforeNext func() error
+	// columnDecoder optionally replaces the standard scalar decoder for rows
+	// containing protocol-specific values such as REF CURSOR columns.
+	columnDecoder func(int) (driver.Value, error)
+	// cleanup releases row-specific server resources before the rows are marked
+	// closed. It must be idempotent through the closed flag above.
+	cleanup func() error
 
 	// metadata caches for ColumnType* interfaces
 	columnContexts []columnContext
@@ -127,6 +142,30 @@ type ttcRows struct {
 	shelf          *ttiShelf[driverCommon.MessageType]
 
 	strictNullHandlingValue bool
+}
+
+// ttcRowsRefCursor owns the state specific to an already-open server cursor.
+type ttcRowsRefCursor struct {
+	*ttcRows
+	// refCursorData aligns with rowData and holds a child cursor for each REF
+	// CURSOR-valued column.
+	refCursorData [][]*ttcRowsRefCursor
+	// cursorID identifies the server cursor represented by these rows.
+	cursorID driverCommon.SB4
+	// fetchOnce and fetchErr cache the one deferred fetch for a server cursor.
+	fetchOnce sync.Once
+	// fetch issues the TTC fetch operation when rows were not pre-fetched.
+	fetch    func() error
+	fetchErr error
+}
+
+// ttcRowsRefCursorImplicitFetch exposes ordered implicit cursors as result sets.
+type ttcRowsRefCursorImplicitFetch struct {
+	*ttcRows
+	// implicitRows preserves the order of cursors returned by RETURN_RESULT.
+	implicitRows []*ttcRowsRefCursor
+	// currentResultSet identifies the implicit cursor currently exposed to the caller.
+	currentResultSet int
 }
 
 // SetShelf injects the shared TTC shelf instance used to resolve codecs and
@@ -153,14 +192,27 @@ func (r *ttcRows) Columns() []string {
 
 // Next implements driver.Rows.Next. It advances the cursorId and assigns each
 // column's raw []common.B1Array value as a type provided in dest. Row count is
-// computed once and cached to avoid repeated len() calls.
+// computed once and cached to avoid repeated len() calls. It returns io.EOF
+// after Close so a closed cursor cannot perform a deferred fetch.
 func (r *ttcRows) Next(dest []driver.Value) error {
+	if r.closed {
+		return io.EOF
+	}
+	if r.beforeNext != nil {
+		if err := r.beforeNext(); err != nil {
+			return err
+		}
+	}
+	decode := r.decodeColumnValue
+	if r.columnDecoder != nil {
+		decode = r.columnDecoder
+	}
 	if r.currentRowIdx >= r.numOfRows {
 		return io.EOF
 	}
 	rawRow := r.rowData[r.currentRowIdx]
 	for i := range rawRow {
-		val, err := r.decodeColumnValue(i)
+		val, err := decode(i)
 		if err != nil {
 			return r.shelf.LocalizeError(err)
 		}
@@ -191,7 +243,16 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	if len(data) == 0 {
 		return r.handleNull(i, dtype, scale), nil
 	}
-
+	if (dtype == common.DtyINty || dtype == common.DtyNty) && colCtx.NamedTypeTOID != nil {
+		if typ := r.shelf.adtByTOID[string(colCtx.NamedTypeTOID)]; typ != nil {
+			if typ.Collection {
+				return decodeCollectionImage(data, typ, r.shelf.GetCodecFactory())
+			}
+			return decodeObjectImage(data, typ, r.shelf.GetCodecFactory())
+		}
+	}
+	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]
+	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
 	decoder, err := r.shelf.GetCodecFactory().getDecoder(dtype)
 	if err != nil || decoder == nil {
 		// Preserve unknown types as raw bytes
@@ -220,7 +281,7 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 // Outputs:
 //   - driver.Value representing the NULL substitution (for example 0, "", time.Time{}),
 //     or nil when no specific default applies.
-func (r *ttcRows) handleNull(i int, dtype DtyType, scale int8) driver.Value {
+func (r *ttcRows) handleNull(i int, dtype common.DtyType, scale int8) driver.Value {
 	if !r.strictNullHandlingValue {
 		if val, ok := _defaultValueForNull(dtype, scale); ok {
 			return val
@@ -247,7 +308,7 @@ func (r *ttcRows) handleNull(i int, dtype DtyType, scale int8) driver.Value {
 //
 // Numeric defaults consider scale to decide between integer, floating-point, or
 // decimal string representations.
-func _defaultValueForNull(dtype DtyType, scale int8) (driver.Value, bool) {
+func _defaultValueForNull(dtype common.DtyType, scale int8) (driver.Value, bool) {
 	if resolver, ok := defaultNullValueResolvers[dtype]; ok {
 		return resolver(scale)
 	}
@@ -271,42 +332,42 @@ func constantDefaultNullValue(value driver.Value) defaultNullValueResolver {
 // defaultNullValueResolvers defines the default substitution for TTC datatypes when
 // strict null handling is disabled. Numeric types are handled separately because the
 // default representation depends on scale metadata.
-var defaultNullValueResolvers = map[DtyType]defaultNullValueResolver{
-	DtyNum:      defaultNumericValue,
-	DtyVnu:      defaultNumericValue,
-	DtyInt:      defaultNumericValue,
-	DtyPdn:      defaultNumericValue,
-	DtyUin:      defaultNumericValue,
-	DtySls:      defaultNumericValue,
-	DtyIbFloat:  constantDefaultNullValue(float64(0)),
-	DtyIbDouble: constantDefaultNullValue(float64(0)),
-	DtyChr:      constantDefaultNullValue(""),
-	DtyStr:      constantDefaultNullValue(""),
-	DtyVCS:      constantDefaultNullValue(""),
-	DtyAfc:      constantDefaultNullValue(""),
-	DtyAvc:      constantDefaultNullValue(""),
-	DtyBin:      constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyVbi:      constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyLbi:      constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyBlob:     constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyDblob:    constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyBol:      constantDefaultNullValue(false),
-	DtyDat:      constantDefaultNullValue(time.Time{}),
-	DtyEdate:    constantDefaultNullValue(time.Time{}),
-	DtyStamp:    constantDefaultNullValue(time.Time{}),
-	DtyEstamp:   constantDefaultNullValue(time.Time{}),
-	DtyStz:      constantDefaultNullValue(time.Time{}),
-	DtyEstz:     constantDefaultNullValue(time.Time{}),
-	DtySitz:     constantDefaultNullValue(time.Time{}),
-	DtyEsitz:    constantDefaultNullValue(time.Time{}),
-	DtyTime:     constantDefaultNullValue(time.Time{}),
-	DtyEtime:    constantDefaultNullValue(time.Time{}),
-	DtyTtz:      constantDefaultNullValue(time.Time{}),
-	DtyEttz:     constantDefaultNullValue(time.Time{}),
-	DtyIym:      constantDefaultNullValue("00-00"),
-	DtyEiym:     constantDefaultNullValue("00-00"),
-	DtyIds:      constantDefaultNullValue("00 00:00:00.0"),
-	DtyEids:     constantDefaultNullValue("00 00:00:00.0"),
+var defaultNullValueResolvers = map[common.DtyType]defaultNullValueResolver{
+	common.DtyNum:      defaultNumericValue,
+	common.DtyVnu:      defaultNumericValue,
+	common.DtyInt:      defaultNumericValue,
+	common.DtyPdn:      defaultNumericValue,
+	common.DtyUin:      defaultNumericValue,
+	common.DtySls:      defaultNumericValue,
+	common.DtyIbFloat:  constantDefaultNullValue(float64(0)),
+	common.DtyIbDouble: constantDefaultNullValue(float64(0)),
+	common.DtyChr:      constantDefaultNullValue(""),
+	common.DtyStr:      constantDefaultNullValue(""),
+	common.DtyVCS:      constantDefaultNullValue(""),
+	common.DtyAfc:      constantDefaultNullValue(""),
+	common.DtyAvc:      constantDefaultNullValue(""),
+	common.DtyBin:      constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyVbi:      constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyLbi:      constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyBlob:     constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyDblob:    constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyBol:      constantDefaultNullValue(false),
+	common.DtyDat:      constantDefaultNullValue(time.Time{}),
+	common.DtyEdate:    constantDefaultNullValue(time.Time{}),
+	common.DtyStamp:    constantDefaultNullValue(time.Time{}),
+	common.DtyEstamp:   constantDefaultNullValue(time.Time{}),
+	common.DtyStz:      constantDefaultNullValue(time.Time{}),
+	common.DtyEstz:     constantDefaultNullValue(time.Time{}),
+	common.DtySitz:     constantDefaultNullValue(time.Time{}),
+	common.DtyEsitz:    constantDefaultNullValue(time.Time{}),
+	common.DtyTime:     constantDefaultNullValue(time.Time{}),
+	common.DtyEtime:    constantDefaultNullValue(time.Time{}),
+	common.DtyTtz:      constantDefaultNullValue(time.Time{}),
+	common.DtyEttz:     constantDefaultNullValue(time.Time{}),
+	common.DtyIym:      constantDefaultNullValue("00-00"),
+	common.DtyEiym:     constantDefaultNullValue("00-00"),
+	common.DtyIds:      constantDefaultNullValue("00 00:00:00.0"),
+	common.DtyEids:     constantDefaultNullValue("00 00:00:00.0"),
 }
 
 // defaultNumericValue calculates the default driver.Value to surface for
@@ -335,11 +396,193 @@ func defaultNumericValue(scale int8) (driver.Value, bool) {
 	}
 }
 
-// Close implements driver.Rows.Close. No network/protocol resources are owned
-// by this object currently, so this is a no-op.
+// Close implements driver.Rows.Close and runs any row-specific cleanup.
 func (r *ttcRows) Close() error {
-	common.Odl.Debug("closing rows")
+	if r.closed {
+		return r.closeErr
+	}
+	if r.cleanup != nil {
+		if err := r.cleanup(); err != nil {
+			r.closeErr = err
+		}
+	}
+	r.closed = true
+	return r.closeErr
+}
+
+// closeServerCursor queues an OCCA for this server cursor. Push deliberately
+// does not flush, allowing the next normal round trip to carry the close.
+func (r *ttcRowsRefCursor) closeServerCursor() error {
+	common.Odl.Debug("Queueing REF CURSOR close", "cursorID", r.cursorID)
+	msg, err := r.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
+	if err != nil {
+		return r.shelf.LocalizeError(err)
+	}
+	occaMsg := msg.(*tTIOcca)
+	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(r.cursorID)})
+	streamer := r.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	if err := streamer.Push(context.Background(), occaMsg); err != nil {
+		return r.shelf.LocalizeError(err)
+	}
+	r.cursorID = 0
 	return nil
+}
+
+// fetchRows invokes the deferred RefCursor fetch at most once.
+func (r *ttcRowsRefCursor) fetchRows() error {
+	if r.fetch != nil {
+		r.fetchOnce.Do(func() {
+			common.Odl.Debug("Fetching REF CURSOR rows", "cursorID", r.cursorID)
+			r.fetchErr = r.fetch()
+		})
+		if r.fetchErr != nil {
+			common.Odl.Warn("REF CURSOR fetch failed", "cursorID", r.cursorID, "error", r.fetchErr)
+			return r.fetchErr
+		}
+		common.Odl.Debug("REF CURSOR rows fetched", "cursorID", r.cursorID, "rows", r.numOfRows)
+	}
+	return nil
+}
+
+// decodeColumnValue returns child rows for REF CURSOR columns and delegates
+// every other datatype to the embedded base row decoder.
+func (r *ttcRowsRefCursor) decodeColumnValue(i int) (driver.Value, error) {
+	if r.columnContexts[i].DataType != common.DtyCur {
+		return r.ttcRows.decodeColumnValue(i)
+	}
+	if r.currentRowIdx < len(r.refCursorData) && i < len(r.refCursorData[r.currentRowIdx]) {
+		return r.refCursorData[r.currentRowIdx][i], nil
+	}
+	return nil, nil
+}
+
+// closeRefCursors closes child cursors before queueing this cursor's OCCA.
+func (r *ttcRowsRefCursor) closeRefCursors() error {
+	var closeErr error
+	for _, row := range r.refCursorData {
+		for _, cursor := range row {
+			if cursor != nil {
+				if err := cursor.Close(); err != nil && closeErr == nil {
+					closeErr = err
+				}
+			}
+		}
+	}
+	if r.cursorID != 0 {
+		if err := r.closeServerCursor(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+	}
+	return closeErr
+}
+
+// newRefCursorResultRows wraps base rows with RefCursor state and installs the
+// hooks consumed by the single ttcRows Next and Close implementations.
+func newRefCursorResultRows(rows *ttcRows, cursorID driverCommon.SB4) *ttcRowsRefCursor {
+	result := &ttcRowsRefCursor{ttcRows: rows, cursorID: cursorID}
+	rows.beforeNext = result.fetchRows
+	rows.columnDecoder = result.decodeColumnValue
+	rows.cleanup = result.closeRefCursors
+	return result
+}
+
+// newImplicitResultRows returns a RowsNextResultSet implementation over the
+// ordered cursors returned by DBMS_SQL.RETURN_RESULT.
+func newImplicitResultRows(resultSets []*ttcRowsRefCursor) *ttcRowsRefCursorImplicitFetch {
+	result := &ttcRowsRefCursorImplicitFetch{ttcRows: newTTCRows(nil), implicitRows: resultSets}
+	result.ttcRows.cleanup = result.closeImplicitRows
+	return result
+}
+
+// activeImplicitResultSet returns the current implicit cursor, if one exists.
+func (r *ttcRowsRefCursorImplicitFetch) activeImplicitResultSet() *ttcRowsRefCursor {
+	if r.currentResultSet < len(r.implicitRows) {
+		return r.implicitRows[r.currentResultSet]
+	}
+	return nil
+}
+
+// Columns delegates column names to the current implicit result set.
+func (r *ttcRowsRefCursorImplicitFetch) Columns() []string {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.Columns()
+	}
+	return nil
+}
+
+// Next delegates row retrieval to the current implicit result set.
+func (r *ttcRowsRefCursorImplicitFetch) Next(dest []driver.Value) error {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.Next(dest)
+	}
+	return io.EOF
+}
+
+// HasNextResultSet reports whether another implicit cursor is available.
+func (r *ttcRowsRefCursorImplicitFetch) HasNextResultSet() bool {
+	return r.currentResultSet+1 < len(r.implicitRows)
+}
+
+// NextResultSet advances to the next implicit cursor.
+func (r *ttcRowsRefCursorImplicitFetch) NextResultSet() error {
+	if !r.HasNextResultSet() {
+		return io.EOF
+	}
+	r.currentResultSet++
+	return nil
+}
+
+// closeImplicitRows closes every implicit cursor held by this result wrapper.
+func (r *ttcRowsRefCursorImplicitFetch) closeImplicitRows() error {
+	var closeErr error
+	for _, resultSet := range r.implicitRows {
+		if resultSet != nil {
+			if err := resultSet.Close(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+		}
+	}
+	return closeErr
+}
+
+// ColumnTypeDatabaseTypeName delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypeDatabaseTypeName(i int) string {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeDatabaseTypeName(i)
+	}
+	return ""
+}
+
+// ColumnTypeLength delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypeLength(i int) (int64, bool) {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeLength(i)
+	}
+	return 0, false
+}
+
+// ColumnTypeNullable delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypeNullable(i int) (bool, bool) {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeNullable(i)
+	}
+	return false, false
+}
+
+// ColumnTypePrecisionScale delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypePrecisionScale(i int) (int64, int64, bool) {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypePrecisionScale(i)
+	}
+	return 0, 0, false
+}
+
+// ColumnTypeScanType delegates metadata to the current result set.
+func (r *ttcRowsRefCursorImplicitFetch) ColumnTypeScanType(i int) reflect.Type {
+	if current := r.activeImplicitResultSet(); current != nil {
+		return current.ColumnTypeScanType(i)
+	}
+	return reflect.TypeOf([]byte(nil))
 }
 
 // newTTCRows constructs a ttcRows instance from decoded column metadata.
@@ -366,65 +609,65 @@ func newTTCRows(columnContexts []columnContext) *ttcRows {
 func (r *ttcRows) ColumnTypeDatabaseTypeName(index int) string {
 	// inline translation here waiting for refactor of our type registry
 	switch r.columnContexts[index].DataType {
-	case DtyChr:
+	case common.DtyChr:
 		if r.columnContexts[index].CharsetForm == 2 {
 			return "NVARCHAR2"
 		}
 		return "VARCHAR2"
-	case DtyNum, DtyVnu:
+	case common.DtyNum, common.DtyVnu:
 		if r.columnContexts[index].Precision != 0 && r.columnContexts[index].Precision == -127 {
 			return "FLOAT"
 		}
 		return "NUMBER"
-	case DtyLng:
+	case common.DtyLng:
 		return "LONG"
-	case DtyDat:
+	case common.DtyDat:
 		return "DATE"
-	case DtyBin:
+	case common.DtyBin:
 		return "RAW"
-	case DtyLbi:
+	case common.DtyLbi:
 		return "LONG RAW"
-	case DtyAfc:
+	case common.DtyAfc:
 		if r.columnContexts[index].CharsetForm == 2 {
 			return "NCHAR"
 		}
 		return "CHAR"
-	case DtyIbFloat:
+	case common.DtyIbFloat:
 		return "BINARY_FLOAT"
-	case DtyIbDouble:
+	case common.DtyIbDouble:
 		return "BINARY_DOUBLE"
-	case DtyCur:
+	case common.DtyCur:
 		return "REFCURSOR"
-	case DtyRdd, DtyBuri:
+	case common.DtyRdd, common.DtyBuri:
 		return "ROWID"
-	case DtyINty:
+	case common.DtyINty:
 		return "Internal Named Type" // enough for now
-	case DtyIref:
+	case common.DtyIref:
 		return "Internal Named Type" // enough for now
-	case DtyClob:
+	case common.DtyClob:
 		if r.columnContexts[index].CharsetForm == 2 {
 			return "NCLOB"
 		}
 		return "CLOB"
-	case DtyBlob:
+	case common.DtyBlob:
 		return "BLOB"
-	case DtyBFil:
+	case common.DtyBFil:
 		return "BFILE"
-	case DtyJSON:
+	case common.DtyJSON:
 		return "JSON"
-	case DtyVec:
+	case common.DtyVec:
 		return "VECTOR"
-	case DtyStamp:
+	case common.DtyStamp:
 		return "TIMESTAMP"
-	case DtyStz:
+	case common.DtyStz:
 		return "TIMESTAMP WITH TIME ZONE"
-	case DtyIym:
+	case common.DtyIym:
 		return "INTERVALYM"
-	case DtyIds:
+	case common.DtyIds:
 		return "INTERVALDS"
-	case DtySitz:
+	case common.DtySitz:
 		return "TIMESTAMP WITH LOCAL TIME ZONE"
-	case DtyBol:
+	case common.DtyBol:
 		return "BOOLEAN"
 	default:
 		common.Odl.Warn("Do not have name mapping", "type", r.columnContexts[index].DataType)
@@ -454,7 +697,7 @@ func (r *ttcRows) ColumnTypeNullable(index int) (bool, bool) {
 // the precision and scale for decimal types. If not applicable, ok should be false.
 func (r *ttcRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
 	dty := r.columnContexts[index].DataType
-	if dty == DtyNum || dty == DtyVnu {
+	if dty == common.DtyNum || dty == common.DtyVnu {
 		return r.columnContexts[index].Precision, int64(r.columnContexts[index].Scale), true
 	}
 
