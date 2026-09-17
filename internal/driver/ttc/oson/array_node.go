@@ -1,0 +1,274 @@
+/*
+** Copyright (c) 2026 Oracle and/or its affiliates.
+**
+** The Universal Permissive License (UPL), Version 1.0
+**
+** Subject to the condition set forth below, permission is hereby granted to any
+** person obtaining a copy of this software, associated documentation and/or data
+** (collectively the "Software"), free of charge and under any and all copyright
+** rights in the Software, and any and all patent rights owned or freely
+** licensable by each licensor hereunder covering either (i) the unmodified
+** Software as contributed to or provided by such licensor, or (ii) the Larger
+** Works (as defined below), to deal in both
+**
+** (a) the Software, and
+** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
+** one is included with the Software (each a "Larger Work" to which the Software
+** is contributed by such licensors),
+**
+** without restriction, including without limitation the rights to copy, create
+** derivative works of, display, perform, and distribute the Software and make,
+** use, sell, offer for sale, import, export, have made, and have sold the
+** Software and the Larger Work(s), and to sublicense the foregoing rights on
+** either these or other terms.
+**
+** This license is subject to the following condition:
+** The above copyright notice and either this complete permission notice or at
+** a minimum a reference to the UPL must be included in all copies or
+** substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+** SOFTWARE.
+ */
+
+package oson
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+)
+
+// arrayNode implements JSONArrayNode for an OSON array.
+//
+// The concrete type is scoped to package oson. Callers obtain an array node
+// through Parse, which exposes it as JSONNode and keeps the OSON wire
+// representation inside this package. Because JSONArrayNode embeds JSONNode,
+// *arrayNode satisfies both interfaces. After checking Kind, a caller can type
+// assert the returned JSONNode to JSONArrayNode for indexed access.
+//
+// Creating an arrayNode reads only the array metadata: its opcode, element
+// count, and child-offset table. nodeBase retains the OSON document context,
+// while childOffsets identifies the opcode of each element. Element payloads
+// remain encoded until Get creates a node for one element or Value materializes
+// the complete array.
+type arrayNode struct {
+	nodeBase
+	// childOffsets contains the absolute document offset of each array element opcode.
+	childOffsets []int
+}
+
+// newArrayNodeAt parses OSON array metadata at an absolute document offset.
+//
+// Input:
+//   - buf: OSON document reader.
+//   - header: parsed OSON header metadata.
+//   - arrayNodeOffset: absolute document offset of the array opcode.
+//
+// Errors:
+//   - invalid array opcode.
+//   - malformed child-count or child-offset layout.
+func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int) (*arrayNode, error) {
+	opcode, err := buf.readUB1At(arrayNodeOffset)
+	if err != nil {
+		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset)
+		return nil, err
+	}
+	if !isArrayOpcode(opcode) {
+		details := fmt.Sprintf("failed to identify array from opcode 0x%02x", opcode)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", details, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
+	}
+	objectOnlyFlags := opcode & (osonOpChildNoSortBit | osonOpObjectSharedFieldIDsBit | osonOpObjectUpdateOverflowBit)
+	if objectOnlyFlags != 0 {
+		details := fmt.Sprintf("array opcode 0x%02x has invalid flags", opcode)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", details, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
+	}
+	if opcode&osonOpChildSizeBits == osonOpChildDelegateForm {
+		details := fmt.Sprintf("array opcode 0x%02x uses delegate form", opcode)
+		common.Odl.Debug("newArrayNodeAt: failed", "error", details, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, common.NewOracleError(oracleErrors.OsonParsingError, nil, details)
+	}
+
+	elementCount, childOffsetArrayStart, err := readContainerCountAt(buf, arrayNodeOffset+1, opcode)
+	if err != nil {
+		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "opcode", opcode)
+		return nil, err
+	}
+
+	childOffsets, err := readChildOffsetsAt(buf, header, arrayNodeOffset, childOffsetArrayStart, elementCount, opcode)
+	if err != nil {
+		common.Odl.Debug("newArrayNodeAt: failed", "error", err, "offset", arrayNodeOffset, "count", elementCount)
+		return nil, err
+	}
+
+	common.Odl.Debug("newArrayNodeAt: parsed",
+		"offset", arrayNodeOffset,
+		"opcode", opcode,
+		"elements", elementCount,
+		"childOffsetWidth", childOffsetSize(opcode),
+		"childOffsetTable", childOffsetArrayStart)
+	return &arrayNode{
+		nodeBase: nodeBase{
+			buf:    buf,
+			header: header,
+			offset: arrayNodeOffset,
+		},
+		childOffsets: childOffsets,
+	}, nil
+}
+
+// Kind implements the JSONNode interface.
+//
+// Input:
+//   - none.
+//
+// Output:
+//   - drvCommon.KindArray.
+//
+// Errors:
+//   - none.
+func (array *arrayNode) Kind() drvCommon.Kind {
+	return drvCommon.KindArray
+}
+
+// GetValue implements the JSONNode interface.
+//
+// Input:
+//   - opts: JSON materialization options.
+//
+// Output:
+//   - fully materialized array.
+//
+// Errors:
+//   - child node construction or value decoding failure.
+func (array *arrayNode) GetValue(opts drvCommon.JSONOption) (any, error) {
+	return array.Value(opts)
+}
+
+// String implements the JSONNode interface.
+//
+// Input:
+//   - opts: JSON materialization options.
+//
+// Output:
+//   - JSON text for the array.
+//
+// Errors:
+//   - child node construction, value decoding, or JSON encoding failure.
+func (array *arrayNode) String() (string, error) {
+	jsonBytes, err := json.Marshal(array)
+	if err != nil {
+		common.Odl.Debug("arrayNode.String: failed", "error", err, "offset", array.offset)
+		return "", common.NewOracleError(oracleErrors.JSONRenderingError, err)
+	}
+	common.Odl.Debug("arrayNode.String: completed", "offset", array.offset, "textBytes", len(jsonBytes))
+	return string(jsonBytes), nil
+}
+
+// MarshalJSON implements encoding/json.Marshaler.
+//
+// It marshals each child node directly so arrays retain their existing shape
+// while scalar nodes own the scalar-specific marshaling policy.
+func (array *arrayNode) MarshalJSON() ([]byte, error) {
+	values := make([]json.RawMessage, len(array.childOffsets))
+	for index, offset := range array.childOffsets {
+		child, err := newNodeAt(array.buf, array.header, offset)
+		if err != nil {
+			return nil, err
+		}
+
+		values[index], err = child.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return json.Marshal(values)
+}
+
+// Get implements the JSONArrayNode interface.
+//
+// Input:
+//   - index: zero-based array element index.
+//
+// Output:
+//   - child node and true when index resolves successfully.
+//
+// Errors:
+//   - encoded as false for an invalid index or malformed child node.
+func (array *arrayNode) Get(index int) (drvCommon.JSONNode, bool) {
+	if index < 0 || index >= len(array.childOffsets) {
+		return nil, false
+	}
+
+	childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[index])
+	if err != nil {
+		common.Odl.Debug("arrayNode.Get: failed", "error", err, "offset", array.offset, "index", index, "childOffset", array.childOffsets[index])
+		return nil, false
+	}
+	common.Odl.Debug("arrayNode.Get: completed",
+		"offset", array.offset,
+		"index", index,
+		"childOffset", array.childOffsets[index],
+		"childKind", childNode.Kind())
+	return childNode, true
+}
+
+// Len implements the JSONArrayNode interface.
+//
+// Input:
+//   - none.
+//
+// Output:
+//   - Length of the array.
+//
+// Errors:
+//   - none.
+func (array *arrayNode) Len() int {
+	return len(array.childOffsets)
+}
+
+// Value implements the JSONArrayNode interface.
+//
+// Input:
+//   - opts: JSON materialization options.
+//
+// Output:
+//   - fully materialized array.
+//
+// Errors:
+//   - child node construction or value decoding failure.
+func (array *arrayNode) Value(opts drvCommon.JSONOption) ([]any, error) {
+	common.Odl.Debug("arrayNode.Value: begin", "offset", array.offset, "elements", len(array.childOffsets), "options", opts)
+	elementValues := make([]any, len(array.childOffsets))
+	for elementIndex := range array.childOffsets {
+		// Get intentionally returns only a boolean for the public lazy-node API;
+		// materialization must retain the parsing error for its caller.
+		childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[elementIndex])
+		if err != nil {
+			common.Odl.Debug("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex)
+			return nil, err
+		}
+
+		elementValue, err := childNode.GetValue(opts)
+		if err != nil {
+			common.Odl.Debug("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex)
+			return nil, err
+		}
+
+		elementValues[elementIndex] = elementValue
+	}
+
+	common.Odl.Debug("arrayNode.Value: completed", "offset", array.offset, "elements", len(elementValues), "options", opts)
+	return elementValues, nil
+}
