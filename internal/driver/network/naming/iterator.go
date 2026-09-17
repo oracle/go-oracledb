@@ -100,6 +100,7 @@ type ConnectionIterator struct {
 	currentDescIndex int
 	exhausted        bool
 	rng              *rand.Rand
+	downHostCache    *common.ExpiringCache[string]
 	// dnsErrors     []error  // TODO
 }
 
@@ -108,6 +109,10 @@ type ConnectionIterator struct {
 // DNS resolution happens during iterator creation - hostnames are resolved to IPs,
 // and each IP becomes a separate connection attempt.
 func NewConnectionIterator(ctx context.Context, rootNode *Node, connCtx *ConnectionContext) *ConnectionIterator {
+	return newConnectionIterator(ctx, rootNode, connCtx, sharedDownHostCache)
+}
+
+func newConnectionIterator(ctx context.Context, rootNode *Node, connCtx *ConnectionContext, downHostCache *common.ExpiringCache[string]) *ConnectionIterator {
 	iter := &ConnectionIterator{
 		rootNode:         rootNode,
 		context:          connCtx, // extracted properties context(different from the passed context)
@@ -115,6 +120,7 @@ func NewConnectionIterator(ctx context.Context, rootNode *Node, connCtx *Connect
 		currentDescIndex: 0,
 		exhausted:        false,
 		rng:              rand.New(rand.NewSource(time.Now().UnixNano())),
+		downHostCache:    downHostCache,
 	}
 
 	iter.descAttempts = iter.buildDescriptionAttempts(ctx)
@@ -170,6 +176,9 @@ func (ci *ConnectionIterator) Next() *ConnectionOption {
 					ci.roundRobin(desc.Addresses)
 				}
 			}
+			// A host may have failed during the previous cycle. Keep it as a
+			// fallback, but try hosts not in the down-host cache first.
+			ci.reorderAddressesByDownHostStatus(desc.Addresses)
 
 			// Continue to try first address of new cycle
 			continue
@@ -233,6 +242,7 @@ func (ci *ConnectionIterator) Reset() {
 			ci.descAttempts[i].Description.IsLoadBalanceEnabled() {
 			ci.shuffleAddresses(ci.descAttempts[i].Addresses)
 		}
+		ci.reorderAddressesByDownHostStatus(ci.descAttempts[i].Addresses)
 	}
 }
 
@@ -328,6 +338,7 @@ func (ci *ConnectionIterator) buildFromDescriptionList(ctx context.Context, dl *
 			attempts = append(attempts, *descAttempt)
 		}
 	}
+	ci.reorderDescriptionsByDownHostStatus(attempts)
 
 	return attempts
 }
@@ -368,6 +379,7 @@ func (ci *ConnectionIterator) buildFromDescription(ctx context.Context, desc *De
 		// Only keep first address (already shuffled if load_balance=YES)
 		resolvedAddresses = resolvedAddresses[:1]
 	}
+	ci.reorderAddressesByDownHostStatus(resolvedAddresses)
 
 	// Extract CONNECT_DATA node once
 	connectDataNode := ci.extractConnectDataNode(descNode)
@@ -410,6 +422,7 @@ func (ci *ConnectionIterator) buildFromAddresses(ctx context.Context, addresses 
 	if len(resolvedAddresses) == 0 {
 		return []DescriptionAttempts{}
 	}
+	ci.reorderAddressesByDownHostStatus(resolvedAddresses)
 
 	return []DescriptionAttempts{
 		{
@@ -596,4 +609,51 @@ func (ci *ConnectionIterator) roundRobin(addresses []Address) {
 	first := addresses[0]
 	copy(addresses[0:], addresses[1:])
 	addresses[len(addresses)-1] = first
+}
+
+// reorderAddressesByDownHostStatus puts recently unreachable hosts at the end
+// of an attempt cycle. Cached hosts are retained as fallbacks.
+func (ci *ConnectionIterator) reorderAddressesByDownHostStatus(addresses []Address) {
+	stablePartition(addresses, ci.isDownHost)
+}
+
+func (ci *ConnectionIterator) reorderDescriptionsByDownHostStatus(attempts []DescriptionAttempts) {
+	stablePartition(attempts, func(attempt DescriptionAttempts) bool {
+		if len(attempt.Addresses) == 0 {
+			return false
+		}
+		for _, address := range attempt.Addresses {
+			if !ci.isDownHost(address) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+func (ci *ConnectionIterator) isDownHost(address Address) bool {
+	return ci.downHostCache != nil && ci.downHostCache.Contains(address.Host)
+}
+
+// stablePartition preserves the order chosen by load balancing while moving
+// items that match isLast to the end of the slice.
+func stablePartition[T any](items []T, isLast func(T) bool) {
+	if len(items) < 2 {
+		return
+	}
+
+	ordered := make([]T, 0, len(items))
+	last := make([]bool, len(items))
+	for i, item := range items {
+		last[i] = isLast(item)
+		if !last[i] {
+			ordered = append(ordered, item)
+		}
+	}
+	for i, item := range items {
+		if last[i] {
+			ordered = append(ordered, item)
+		}
+	}
+	copy(items, ordered)
 }
