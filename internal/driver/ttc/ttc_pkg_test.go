@@ -483,6 +483,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestOexfen_MarshalTo_Failures", Categories: "unitary", Exclusive: false, Fn: TestOexfen_MarshalTo_Failures},
 
 	{Name: "TestLobExecutor_GetChunkSize", Categories: "unitary", Exclusive: false, Fn: TestLobExecutor_GetChunkSize},
+	{Name: "TestLobDefinitionConstructors", Categories: "unitary", Exclusive: false, Fn: TestLobDefinitionConstructors},
 	{Name: "TestClobExecutor_GetChunkSizeErrors", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_GetChunkSizeErrors},
 	{Name: "TestClobExecutor_CreateTemporaryLob", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_CreateTemporaryLob},
 	{Name: "TestClobExecutor_CreateTemporaryLobErrors", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_CreateTemporaryLobErrors},
