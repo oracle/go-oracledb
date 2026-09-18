@@ -78,8 +78,8 @@ func Test_newTTISTAWithEndOfCallStatusSupport(t *testing.T) {
 	}
 }
 
-// Creates a ttiSTA without eoc support and checks that the ECID sequence number
-// is unmarshalled correctly
+// Test_ttiSTA_UnMarshalFrom_WithoutSupport verifies that an STA without
+// end-of-call status support decodes the ECID sequence number.
 func Test_ttiSTA_UnMarshalFrom_WithoutSupport(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: false}
@@ -99,9 +99,8 @@ func Test_ttiSTA_UnMarshalFrom_WithoutSupport(t *testing.T) {
 	}
 }
 
-// Creates a ttiSTA with eoc support and checks that the ECID sequence number
-// containing the elapsed time and checks that values for elapsed time and ECID
-// sequence number are unmarshalled correctly
+// Test_ttiSTA_UnMarshalFrom_WithSupport verifies that an STA with end-of-call
+// status support decodes elapsed time and the ECID sequence number.
 func Test_ttiSTA_UnMarshalFrom_WithSupport(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: true}
@@ -121,7 +120,7 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport(t *testing.T) {
 	if sta.eocStatus.elapsedTime != 100 {
 		t.Errorf("expected elapsedTime 100, got %v", sta.eocStatus.elapsedTime)
 	}
-	if sta.eocStatus.connectionShouldBeDropped {
+	if sta.eocStatus.connectionShouldBeDropped() {
 		t.Error("expected drop false")
 	}
 	if sta.endToEndECIDSequenceNumber != 42 {
@@ -129,9 +128,8 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport(t *testing.T) {
 	}
 }
 
-// Creates a ttiSTA with eoc support and checks that the ECID sequence number
-// containing the elapsed time and checks that values for elapsed time and ECID
-// sequence number and drop are unmarshalled correctly
+// Test_ttiSTA_UnMarshalFrom_WithSupport_DropFlag verifies that the planned-down
+// flag is decoded from STA end-of-call status.
 func Test_ttiSTA_UnMarshalFrom_WithSupport_DropFlag(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: true}
@@ -151,7 +149,7 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport_DropFlag(t *testing.T) {
 	if sta.eocStatus.elapsedTime != 0 {
 		t.Errorf("expected elapsedTime 0, got %v", sta.eocStatus.elapsedTime)
 	}
-	if !sta.eocStatus.connectionShouldBeDropped {
+	if !sta.eocStatus.connectionShouldBeDropped() {
 		t.Error("expected drop true")
 	}
 	if sta.endToEndECIDSequenceNumber != 42 {
@@ -159,8 +157,8 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport_DropFlag(t *testing.T) {
 	}
 }
 
-// Creates a ttiSTA without eoc support and checks that an error is returned when
-// unmarshalling fails
+// Test_ttiSTA_UnMarshalFrom_ErrorInUB2 verifies that a malformed ECID value
+// returns an unmarshalling error.
 func Test_ttiSTA_UnMarshalFrom_ErrorInUB2(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: false}
@@ -174,8 +172,8 @@ func Test_ttiSTA_UnMarshalFrom_ErrorInUB2(t *testing.T) {
 	}
 }
 
-// Creates a ttiSTA with eoc support and checks that an error is returned when
-// unmarshalling the flag fails
+// Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInEOCS verifies that a malformed
+// end-of-call status flag returns an unmarshalling error.
 func Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInEOCS(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: true}
@@ -191,8 +189,8 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInEOCS(t *testing.T) {
 	}
 }
 
-// Creates a ttiSTA without eoc support and checks that an error is returned when
-// unmarshalling elapsed time fails
+// Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInElapsedTime verifies that a
+// malformed elapsed-time value returns an unmarshalling error.
 func Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInElapsedTime(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: true}
@@ -208,40 +206,52 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInElapsedTime(t *testing.T) {
 	}
 }
 
+// Test_ttiSTA_getConnectionShouldBeDropped verifies planned-down and active
+// transaction flags from TTISTA end-of-call status.
 func Test_ttiSTA_getConnectionShouldBeDropped(t *testing.T) {
 	t.Parallel()
 	msg := &ttiSTA{
 		_supportsEndOfCallStatus: false,
 		eocStatus:                nil,
 	}
-	if msg.isBeingDrainned() {
+	if msg.isBeingDrained() {
 		t.Fatalf("Wrong value returned by connectionStatus.getConnectionShouldBeDropped()")
 	}
 	msg = &ttiSTA{
 		_supportsEndOfCallStatus: true,
 		eocStatus:                nil,
 	}
-	if msg.isBeingDrainned() {
+	if msg.isBeingDrained() {
 		t.Fatalf("Wrong value returned by connectionStatus.getConnectionShouldBeDropped()")
 	}
 	msg = &ttiSTA{
 		_supportsEndOfCallStatus: true,
 		eocStatus: &endOfCallStatus{
-			elapsedTime:               0,
-			connectionShouldBeDropped: false,
+			elapsedTime:          0,
+			endOfCallStatusFlags: 0,
 		},
 	}
-	if msg.isBeingDrainned() {
+	if msg.isBeingDrained() {
 		t.Fatalf("Wrong value returned by connectionStatus.getConnectionShouldBeDropped()")
 	}
 	msg = &ttiSTA{
 		_supportsEndOfCallStatus: true,
 		eocStatus: &endOfCallStatus{
-			elapsedTime:               0,
-			connectionShouldBeDropped: true,
+			elapsedTime:          0,
+			endOfCallStatusFlags: ttiEocfDropWhenReturned,
 		},
 	}
-	if !msg.isBeingDrainned() {
+	if !msg.isBeingDrained() {
 		t.Fatalf("Wrong value returned by connectionStatus.getConnectionShouldBeDropped()")
+	}
+
+	msg = &ttiSTA{
+		_supportsEndOfCallStatus: true,
+		eocStatus: &endOfCallStatus{
+			endOfCallStatusFlags: ttiEocFRo | ttiEocDon | ttiEocCur | ttiEocTTi,
+		},
+	}
+	if !msg.isInTransaction() {
+		t.Fatal("inTransaction() returned false")
 	}
 }

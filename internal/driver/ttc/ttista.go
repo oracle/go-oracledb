@@ -54,6 +54,10 @@ type ttiSTA struct {
 	endToEndECIDSequenceNumber driverCommon.UB2
 }
 
+// String returns a human-readable representation of the TTISTA message.
+//
+// Returns:
+//   - string: Formatted TTISTA state.
 func (t ttiSTA) String() string {
 	return fmt.Sprintf("ttiSTA {_supportsEndOfCallStatus: [%v], eocStatus [%v], endToEndECIDSequenceNumber: [%v]}",
 		t._supportsEndOfCallStatus,
@@ -108,8 +112,20 @@ func RegisterSTAWithCapability() {
 
 }
 
-// isBeingDrainned returns true if the connection should be dropped
+// isBeingDrained returns true if the connection should be dropped
 // due to a planned-down, otherwise false
-func (sta *ttiSTA) isBeingDrainned() bool {
-	return sta._supportsEndOfCallStatus && sta.eocStatus != nil && sta.eocStatus.connectionShouldBeDropped
+//
+// Returns:
+//   - bool: Whether the connection should be dropped.
+func (sta *ttiSTA) isBeingDrained() bool {
+	return sta._supportsEndOfCallStatus && sta.eocStatus != nil && sta.eocStatus.connectionShouldBeDropped()
+}
+
+// isInTransaction returns true if the connection is currently in a transaction,
+// otherwise false.
+//
+// Returns:
+//   - bool: Whether the server reports an active transaction.
+func (sta *ttiSTA) isInTransaction() bool {
+	return sta._supportsEndOfCallStatus && sta.eocStatus != nil && sta.eocStatus.inTransaction()
 }

@@ -66,7 +66,6 @@ func TestCommit(t *testing.T) {
 		t.Fatalf("TestDriver: failed to open connection to %q: %v\n", dsn, err)
 	}
 	defer db.Close()
-	fmt.Println("TestDriver: database connection opened")
 
 	// Setup and clean-up
 	table := createObjectName("transaction_test_commit")
@@ -74,7 +73,7 @@ func TestCommit(t *testing.T) {
 	defer dropTable(context.Background(), db, table)
 
 	// Start the transaction
-	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: false})
+	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: false})
 	if err != nil {
 		t.Fatalf("Unexpected error %v", err)
 	}
@@ -90,7 +89,7 @@ func TestCommit(t *testing.T) {
 		t.Fatalf("Unexpected error %v", err)
 	}
 	if rowsAffected != 1 {
-		t.Fatalf("Wrong number of rows affected, extected 1 but was %d", rowsAffected)
+		t.Fatalf("Wrong number of rows affected, expected 1 but was %d", rowsAffected)
 	}
 
 	// Before the transaction is committed the line inserted above should not be seen by other connections
@@ -131,7 +130,7 @@ func TestCommit(t *testing.T) {
 
 }
 
-// TestRollback hecks that changes are not available to other transactions while
+// TestRollback checks that changes are not available to other transactions while
 // the transaction is opened and that they are not available after the
 // transaction is rolled back
 func TestRollback(t *testing.T) {
@@ -148,7 +147,6 @@ func TestRollback(t *testing.T) {
 		t.Fatalf("TestDriver: failed to open connection to %q: %v\n", dsn, err)
 	}
 	defer db.Close()
-	fmt.Println("TestDriver: database connection opened")
 
 	// Setup and clean-up
 	table := createObjectName("transaction_test_rollback")
@@ -196,8 +194,8 @@ func TestRollback(t *testing.T) {
 
 }
 
-// TestRollbackThroughContextServerSleep tests that the transaction is correcly
-// rollback and that the execution is stopped when the transaction context is
+// TestRollbackThroughContextServerSleep verifies that the transaction is rolled
+// back and execution stops when the transaction context is
 // cancelled before the end of the statement execution.
 func TestRollbackThroughContextServerSleep(t *testing.T) {
 	t.Parallel()
@@ -213,7 +211,6 @@ func TestRollbackThroughContextServerSleep(t *testing.T) {
 		t.Fatalf("TestDriver: failed to open connection to %q: %v\n", dsn, err)
 	}
 	defer db.Close()
-	fmt.Println("TestDriver: database connection opened")
 
 	table := createObjectName("transaction_test_sleep")
 	err = createTable(context.Background(), db, table, map[string]string{"str_value": "VARCHAR(50)"})
@@ -262,8 +259,8 @@ func TestRollbackThroughContextServerSleep(t *testing.T) {
 
 }
 
-// TestRollbackThroughContextCancel tests that the transaction is correcly
-// rollback when the transaction context is cancelled.
+// TestRollbackThroughContextCancel verifies that the transaction is rolled back
+// when the transaction context is cancelled.
 func TestRollbackThroughContextCancel(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -278,7 +275,6 @@ func TestRollbackThroughContextCancel(t *testing.T) {
 		t.Fatalf("TestDriver: failed to open connection to %q: %v\n", dsn, err)
 	}
 	defer db.Close()
-	fmt.Println("TestDriver: database connection opened")
 
 	// setup and clean-up
 	table := createObjectName("transaction_test_cancel")
@@ -327,6 +323,7 @@ func TestRollbackThroughContextCancel(t *testing.T) {
 	}
 }
 
+// TestReadOnlyTransaction verifies that a read-only transaction rejects writes.
 func TestReadOnlyTransaction(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -365,5 +362,133 @@ func TestReadOnlyTransaction(t *testing.T) {
 
 	if _, err := tx.ExecContext(ctx, "INSERT INTO "+table+" (str_value) values ('test')"); err == nil {
 		t.Fatal("INSERT in read-only tx should fail")
+	}
+}
+
+const transactionIsolationQuery = "SELECT BITAND(flag, POWER(2, 28)) FROM V$TRANSACTION"
+
+// transactionIsolationFlags returns the SERIALIZABLE bit from the active
+// transactions visible to the current session. A nonzero value means that the
+// transaction is SERIALIZABLE.
+func transactionIsolationFlags(ctx context.Context, tx *sql.Tx) ([]int64, error) {
+	rows, err := tx.QueryContext(ctx, transactionIsolationQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var flags []int64
+	for rows.Next() {
+		var flag int64
+		if err := rows.Scan(&flag); err != nil {
+			return nil, err
+		}
+		flags = append(flags, flag)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return flags, nil
+}
+
+func hasSerializableTransaction(flags []int64) bool {
+	for _, flag := range flags {
+		if flag != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// TestConnectionTransactionPoolIsolation checks whether SERIALIZABLE
+// transaction state leaks across reuse of the same physical connection in a
+// single-connection pool after the transaction has ended.
+func TestConnectionTransactionPoolIsolation(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx := context.Background()
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open test DB: %v", err)
+	}
+	defer db.Close()
+
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	table := createObjectName("transaction_test_pool_isolation")
+	if err := createTable(ctx, db, table, map[string]string{"id": "NUMBER"}); err != nil {
+		t.Fatalf("create test table: %v", err)
+	}
+	defer dropTable(ctx, db, table)
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("get first connection from pool: %v", err)
+	}
+
+	serializableTx, err := conn.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelSerializable,
+	})
+	if err != nil {
+		_ = conn.Close()
+		t.Fatalf("begin SERIALIZABLE transaction: %v", err)
+	}
+	if _, err := serializableTx.ExecContext(ctx,
+		"INSERT INTO "+table+" (id) VALUES (1)"); err != nil {
+		_ = serializableTx.Rollback()
+		_ = conn.Close()
+		t.Fatalf("start SERIALIZABLE transaction: %v", err)
+	}
+
+	firstFlags, err := transactionIsolationFlags(ctx, serializableTx)
+	if err != nil {
+		_ = serializableTx.Rollback()
+		_ = conn.Close()
+		t.Skip("User does not have access to V$TRANSACTION")
+	}
+	t.Logf("SERIALIZABLE transaction flags: %v", firstFlags)
+	if !hasSerializableTransaction(firstFlags) {
+		_ = serializableTx.Rollback()
+		_ = conn.Close()
+		t.Fatalf("SERIALIZABLE transaction has no nonzero isolation flag: %v", firstFlags)
+	}
+
+	// database/sql keeps a connection held by an active *sql.Tx, so finish the
+	// transaction before returning its *sql.Conn to the pool.
+	if err := serializableTx.Commit(); err != nil {
+		_ = conn.Close()
+		t.Fatalf("rollback SERIALIZABLE transaction: %v", err)
+	}
+
+	if err := conn.Close(); err != nil {
+		t.Fatalf("return first connection to pool: %v", err)
+	}
+
+	conn, err = db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("get second connection from pool: %v", err)
+	}
+	defer conn.Close()
+
+	defaultTx, err := conn.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		t.Fatalf("begin default-isolation transaction after pool reuse: %v", err)
+	}
+	defer defaultTx.Rollback()
+	if _, err := defaultTx.ExecContext(ctx,
+		"INSERT INTO "+table+" (id) VALUES (2)"); err != nil {
+		t.Fatalf("start default-isolation transaction: %v", err)
+	}
+
+	secondFlags, err := transactionIsolationFlags(ctx, defaultTx)
+	if err != nil {
+		t.Fatalf("check default-isolation transaction: %v", err)
+	}
+	t.Logf("default-isolation transaction flags after pool reuse: %v", secondFlags)
+	if hasSerializableTransaction(secondFlags) {
+		t.Errorf("default-isolation transaction retained SERIALIZABLE isolation: %v", secondFlags)
 	}
 }

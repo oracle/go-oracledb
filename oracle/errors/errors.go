@@ -173,6 +173,9 @@ const (
 	InvalidIdentifier ErrorCode = "OGD-00162"
 	// NetworkInternalError indicates an unexpected network-driver state.
 	NetworkInternalError ErrorCode = "OGD-00163"
+	// InvalidGlobalTransactionIDValue indicates a provided global transaction identifier is empty
+	// or exceeds the server-supported size limit.
+	InvalidGlobalTransactionIDValue ErrorCode = "OGD-00164"
 
 	// Driver Internal Error
 	InternalError ErrorCode = "OGD-00062"
@@ -202,7 +205,7 @@ const (
 	// Error in Transaction operation
 	ErrorInTransaction ErrorCode = "OGD-00083"
 	// Error when creating a transaction, ALTER SESSION to set isolation level
-	ConfigureTransactionError ErrorCode = "OGD-00084"
+	StartResumeTransactionFailure ErrorCode = "OGD-00084"
 
 	AuthenticatorError      ErrorCode = "OGD-00091"
 	NegotiatorError         ErrorCode = "OGD-00092"

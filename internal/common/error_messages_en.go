@@ -493,33 +493,32 @@ func initMessagesEn() {
 	// Document: No
 	// Cause:    A call was made to commit or rollback and there is not active
 	//           transaction.
-	// Action:   Start a transaction befor calling commit or rollback.
+	// Action:   Start a transaction before calling commit or rollback.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.NotInTransaction), "Not in transaction")
+	message.SetString(language.English, string(oracleErrors.NotInTransaction), "not in transaction")
 	// Document: No
 	// Cause:    The provided isolation level is not supported.
 	// Action:   Use one of the following isolation levels: LevelSerializable or
 	//           LevelReadCommitted.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.IsolationLevelNotSupported), "Isolation level not supported")
+	message.SetString(language.English, string(oracleErrors.IsolationLevelNotSupported), "isolation level not supported")
 	// Document: No
 	// Cause:    An attempt was made to begin a transaction while a transaction is
 	//           already started.
 	// Action:   Commit or rollback the current transaction before starting a new
 	//           one.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.AlreadyInTransaction), "Isolation level not supported")
+	message.SetString(language.English, string(oracleErrors.AlreadyInTransaction), "there is already an active transaction")
 	// Document: No
 	// Cause:    An error occurred while committing or rolling back the transaction.
-	// Action:   Try agian.
+	// Action:   Try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.ErrorInTransaction), "An error occurred while performing transaction operation %s")
+	message.SetString(language.English, string(oracleErrors.ErrorInTransaction), "an error occurred while performing transaction operation %s")
 	// Document: No
-	// Cause:    An error occurred while executing the ALTER SESSION statement to
-	//           set the transaction ISOLATION LEVEL.
+	// Cause:    An error occurred while starting or resuming a transaction.
 	// Action:   Verify the cause of the error, and try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.ConfigureTransactionError), "Failed to configure transaction")
+	message.SetString(language.English, string(oracleErrors.StartResumeTransactionFailure), "failed to start or resume transaction")
 	// Document: No
 	// Cause:    An error occurred while authenticating.
 	// Action:   Check the credentials and try again.
@@ -557,7 +556,7 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.DatabaseMountStateError), "database is in NOMOUNT state")
 	// Document: Yes
 	// Cause:    No username was provided
-	// Action:   Provide a username and try agian.
+	// Action:   Provide a username and try again.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.EmptyUsernameError), "empty username not supported")
 	// Document: Yes
@@ -577,9 +576,9 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.EmptyTokenError), "token-based authentication token id empty")
 
 	// Document: No
-	// Cause:    An error occured during Token-based authentication
+	// Cause:    An error occurred during Token-based authentication
 	// Action:   Verify that the token provider returns a valid token and private key (for signed token providers)
-	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occured during token authentication")
+	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occurred during token authentication")
 
 	// Document: No
 	// Cause:    A required value could not be retrieved or was empty.
@@ -598,5 +597,10 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.ExpiredToken), "access token has expired")
 
 	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider found of the requested type")
+	// Document: No
+	// Cause:    The provided global transaction ID is empty or exceeds the maximum size accepted by the server.
+	// Action:   Provide a non-empty global transaction ID up to 64 bytes.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidGlobalTransactionIDValue), "invalid global transaction ID value")
 
 }

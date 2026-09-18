@@ -48,6 +48,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	extensions "github.com/oracle/go-oracledb/v26/oracle/extensions"
 )
 
 // keyValueList Key-Value pair list. a list.List of *common.KeyValue
@@ -435,7 +436,139 @@ func getKeyValueFromKeyword(nlsKeys [64]string, keyword keywordValuePair) (strin
 			roleNames := strings.TrimSpace(driverCommon.B1ArrayToString(textValue.value))
 			return al8kwEnabledRoleNamesStr, roleNames
 		}
+	} else if intValue == al8kwSessionlessGlobalTransactionID {
+		if binaryValue.value != nil {
+			sessionlessGlobalTransactionIDSync, err := newSessionlessGlobalTransactionIDSync(binaryValue.value)
+			if err == nil {
+				return sessionlessGlobalTransactionIDProperty, sessionlessGlobalTransactionIDSync
+			}
+		}
 	}
 
 	return "", nil
+}
+
+const (
+	al8kwSessionlessGlobalTransactionID    = 201
+	sessionlessGlobalTransactionIDProperty = "SESSIONLESS_GTRID"
+)
+
+// sessionlessTxSyncReason identifies which side caused a sessionless
+// transaction synchronization event.
+type sessionlessTxSyncReason byte
+
+const (
+	sessionlessGlobalTransactionIDSyncMode   byte = 0xC0
+	sessionlessGlobalTransactionIDSyncSet    byte = 1 << 6
+	sessionlessGlobalTransactionIDSyncUnset  byte = 2 << 6
+	sessionlessGlobalTransactionIDSyncReason byte = 0x3F
+
+	sessionlessGlobalTransactionIDSyncServer sessionlessTxSyncReason = 1
+	sessionlessGlobalTransactionIDSyncClient sessionlessTxSyncReason = 2
+)
+
+// sessionlessGlobalTransactionIDSync is an immutable decoded view of the
+// SESSIONLESS_GTRID session property returned by the server.
+type sessionlessGlobalTransactionIDSync struct {
+	raw                 driverCommon.B1Array
+	globalTransactionID extensions.GlobalTransactionID
+	flags               byte
+	version             byte
+}
+
+// newSessionlessGlobalTransactionIDSync decodes the raw SESSIONLESS_GTRID
+// payload into a typed immutable value object.
+//
+// Parameters:
+//   - raw: SESSIONLESS_GTRID payload containing a global transaction ID, flags,
+//     and version.
+//
+// Returns:
+//   - SessionlessGlobalTransactionIDSync: Decoded synchronization value.
+//   - error: Error if raw does not contain the required flags and version bytes.
+func newSessionlessGlobalTransactionIDSync(raw driverCommon.B1Array) (*sessionlessGlobalTransactionIDSync, error) {
+	if len(raw) < 2 {
+		return nil, common.NewOracleError(oracleErrors.FailUnmarshal, nil, "sessionless global transaction ID")
+	}
+
+	rawCopy := append(driverCommon.B1Array(nil), raw...)
+	return &sessionlessGlobalTransactionIDSync{
+		raw:                 rawCopy,
+		globalTransactionID: append(extensions.GlobalTransactionID(nil), rawCopy[:len(rawCopy)-2]...),
+		flags:               rawCopy[len(rawCopy)-2],
+		version:             rawCopy[len(rawCopy)-1],
+	}, nil
+}
+
+// Raw returns the original immutable SESSIONLESS_GTRID payload bytes.
+//
+// Returns:
+//   - driverCommon.B1Array: Copy of the original payload.
+func (s *sessionlessGlobalTransactionIDSync) Raw() driverCommon.B1Array {
+	return append(driverCommon.B1Array(nil), s.raw...)
+}
+
+// GlobalTransactionID returns the decoded global transaction ID carried by the
+// session property.
+//
+// Returns:
+//   - extensions.GlobalTransactionID: Copy of the decoded global transaction ID.
+func (s *sessionlessGlobalTransactionIDSync) GlobalTransactionID() extensions.GlobalTransactionID {
+	return append(extensions.GlobalTransactionID(nil), s.globalTransactionID...)
+}
+
+// Version returns the serialization version byte carried by the session property.
+//
+// Returns:
+//   - byte: Serialization version.
+func (s *sessionlessGlobalTransactionIDSync) Version() byte {
+	return s.version
+}
+
+// Mode returns the high-bit mode portion of the sessionless sync flags.
+//
+// Returns:
+//   - byte: Synchronization mode.
+func (s *sessionlessGlobalTransactionIDSync) Mode() byte {
+	return s.flags & sessionlessGlobalTransactionIDSyncMode
+}
+
+// Reason returns the low-bit reason portion of the sessionless sync flags.
+//
+// Returns:
+//   - SessionlessTxSyncReason: Synchronization reason.
+func (s *sessionlessGlobalTransactionIDSync) Reason() sessionlessTxSyncReason {
+	return sessionlessTxSyncReason(s.flags & sessionlessGlobalTransactionIDSyncReason)
+}
+
+// IsSet reports whether the server indicates a sessionless transaction is active.
+//
+// Returns:
+//   - bool: True when the synchronization mode indicates an active transaction.
+func (s *sessionlessGlobalTransactionIDSync) IsSet() bool {
+	return s.Mode() == sessionlessGlobalTransactionIDSyncSet
+}
+
+// IsUnset reports whether the server indicates no sessionless transaction is active.
+//
+// Returns:
+//   - bool: True when the synchronization mode indicates no active transaction.
+func (s *sessionlessGlobalTransactionIDSync) IsUnset() bool {
+	return s.Mode() == sessionlessGlobalTransactionIDSyncUnset
+}
+
+// IsSyncServer indicates that the sessionless transaction start/suspend happened on the server.
+//
+// Returns:
+//   - bool: True when the server caused the synchronization event.
+func (s *sessionlessGlobalTransactionIDSync) IsSyncServer() bool {
+	return s.Reason() == sessionlessGlobalTransactionIDSyncServer
+}
+
+// IsSyncClient indicates that the sessionless transaction start/suspend happened on the client.
+//
+// Returns:
+//   - bool: True when the client caused the synchronization event.
+func (s *sessionlessGlobalTransactionIDSync) IsSyncClient() bool {
+	return s.Reason() == sessionlessGlobalTransactionIDSyncClient
 }

@@ -149,8 +149,9 @@ const (
 	koleLob2Cap2gbPrefetch         = "KOLE_LOB2_CAP_2GB_PREFETCH"
 	kpccapCtbShrdKeys              = "KPCCAP_CTB_SHRD_KEYS"
 	kpccapCtbTtc5Vector            = "KPCCAP_CTB_TTC5_VECTOR"
-	kpccapCtbTtc5FlexTxn           = "KPCCAP_CTB_TTC5_FLEX_TXN"
+	kpccapCtbTtc5PipelineBreak     = "KPCCAP_CTB_TTC5_PIPELINE_BREAK"
 	kpccapCtbTtc5CqnPull           = "KPCCAP_CTB_TTC5_CQN_PULL"
+	kpccapCtbTtc5SessionlessTxn    = "KPCCAP_CTB_TTC5_SESSIONLESS_TXN"
 	kpccapCtbTtc5PdbParams         = "KPCCAP_CTB_TTC5_PDB_PARAMS"
 	kpccapCtbTtcspareAltsess       = "KPCCAP_CTB_TTCSPARE_ALTSESS"
 	kpccapCtbFeatureBackportSpare2 = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE2"
@@ -290,15 +291,16 @@ func newCapabilityMetadata() *capability {
 			kpccapCtbTtc4BigTztc:           {index: 40, value: 0x10, isFlag: true, isDefault: true},          // understands 4 byte length DST tables
 			kpccapCtbTtc4ExplBound:         {index: 40, value: 0x40, isFlag: true, isDefault: true},          // Explicit request boundary support
 			kpccapCtSqlidLength:            {index: 41, value: sqlidLength, isFlag: false, isDefault: true},
-			koleLob2CapQuasi:               {index: 42, value: 0x01, isFlag: true, isDefault: true}, // flag used for V4 value based locator feature in 20c
-			koleLob2CapVbl32:               {index: 42, value: 0x02, isFlag: true, isDefault: true}, // For Value based locators, assume default prefetch of 32K
-			koleLob2Cap2gbPrefetch:         {index: 42, value: 0x04, isFlag: true, isDefault: true}, // LOB prefetch buffer can be up to 2G
-			kpccapCtbShrdKeys:              {index: 43, value: 0x00, isFlag: true, isDefault: true}, // Not used default value
-			kpccapCtbTtc5Vector:            {index: 44, value: 0x08, isFlag: true, isDefault: true}, // vector type supported
-			kpccapCtbTtc5FlexTxn:           {index: 44, value: 0x10, isFlag: true, isDefault: true}, // supports Flex transaction
-			kpccapCtbTtc5CqnPull:           {index: 44, value: 0x40, isFlag: true, isDefault: true}, // supports CQN pull model
-			kpccapCtbTtc5PdbParams:         {index: 44, value: 0x80, isFlag: true, isDefault: true}, // container params
-			kpccapCtbTtcspareAltsess:       {index: 45, value: 0x01, isFlag: true, isDefault: true}, // understands alter session pbk
+			koleLob2CapQuasi:               {index: 42, value: 0x01, isFlag: true, isDefault: true},  // flag used for V4 value based locator feature in 20c
+			koleLob2CapVbl32:               {index: 42, value: 0x02, isFlag: true, isDefault: true},  // For Value based locators, assume default prefetch of 32K
+			koleLob2Cap2gbPrefetch:         {index: 42, value: 0x04, isFlag: true, isDefault: true},  // LOB prefetch buffer can be up to 2G
+			kpccapCtbShrdKeys:              {index: 43, value: 0x00, isFlag: true, isDefault: true},  // Not used default value
+			kpccapCtbTtc5Vector:            {index: 44, value: 0x08, isFlag: true, isDefault: true},  // vector type supported
+			kpccapCtbTtc5PipelineBreak:     {index: 44, value: 0x10, isFlag: true, isDefault: false}, // supports pipeline break
+			kpccapCtbTtc5SessionlessTxn:    {index: 44, value: 0x20, isFlag: true, isDefault: true},  // supports sessionless transactions
+			kpccapCtbTtc5CqnPull:           {index: 44, value: 0x40, isFlag: true, isDefault: true},  // supports CQN pull model
+			kpccapCtbTtc5PdbParams:         {index: 44, value: 0x80, isFlag: true, isDefault: true},  // container params
+			kpccapCtbTtcspareAltsess:       {index: 45, value: 0x01, isFlag: true, isDefault: true},  // understands alter session pbk
 			kpccapCtbFeatureBackportSpare2: {index: 46, value: 0x00, isFlag: true, isDefault: true},
 			kpccapCtbFeatureBackportSpare3: {index: 47, value: 0x00, isFlag: true, isDefault: true},
 			kpccapCtbFeatureBackportSpare4: {index: 48, value: 0x00, isFlag: true, isDefault: true},
