@@ -330,6 +330,45 @@ func TestCodecFactory_getBindOac(t *testing.T) {
 	}
 }
 
+// TestCodecFactory_RefCursorRegistrations verifies that REF CURSOR metadata is
+// resolved through the named decoder and bind OAC constructors registered at
+// package initialization.
+func TestCodecFactory_RefCursorRegistrations(t *testing.T) {
+	t.Parallel()
+
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	decoder, err := factory.getDecoder(DtyCur)
+	if err != nil {
+		t.Fatalf("get REF CURSOR decoder: %v", err)
+	}
+	if got, want := decoder.getScanType(columnContext{}), reflect.TypeFor[driver.Rows](); got != want {
+		t.Fatalf("REF CURSOR scan type = %v, want %v", got, want)
+	}
+	value, err := decoder.decodeToType(columnContext{}, nil)
+	if err != nil {
+		t.Fatalf("decode REF CURSOR placeholder: %v", err)
+	}
+	if value != nil {
+		t.Fatalf("REF CURSOR placeholder = %v, want nil", value)
+	}
+
+	var rows driver.Rows
+	oac, err := factory.getBindOac(normalizeBindValue(sql.Out{Dest: &rows}), 0)
+	if err != nil {
+		t.Fatalf("get REF CURSOR bind OAC: %v", err)
+	}
+	refCursorOac, ok := oac.(*tTIoac)
+	if !ok {
+		t.Fatalf("REF CURSOR OAC type = %T, want *tTIoac", oac)
+	}
+	if got, want := refCursorOac.dataType, common.UB1(DtyCur); got != want {
+		t.Fatalf("REF CURSOR OAC data type = %d, want %d", got, want)
+	}
+	if got, want := refCursorOac.maxLength, common.UB4(refCursorBindMaxLength); got != want {
+		t.Fatalf("REF CURSOR OAC max length = %d, want %d", got, want)
+	}
+}
+
 func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.January, 15, 10, 30, 0, 0, time.UTC)

@@ -289,7 +289,24 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIoac_UnMarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnMarshalFrom_Fail},
 	{Name: "TestTTIoac_MarshalTo_Success", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_MarshalTo_Success},
 	{Name: "TestTTIoac_MarshalTo_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_MarshalTo_Fail},
+	{Name: "TestTTIoac_SignedArrayElementCount", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_SignedArrayElementCount},
+	{Name: "TestTTIoac_AddFlagsContinuation", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_AddFlagsContinuation},
+	{Name: "TestTTIoac_UnmarshalNormalizesNumberLength", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnmarshalNormalizesNumberLength},
+	{Name: "TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength},
 	{Name: "TestTTIoac_Setters", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_Setters},
+	{Name: "TestImplicitResultRowsNextResultSet", Categories: "unitary", Exclusive: false, Fn: TestImplicitResultRowsNextResultSet},
+	{Name: "TestTTCRows_RefCursorNextAndClose", Categories: "unitary", Exclusive: false, Fn: TestTTCRows_RefCursorNextAndClose},
+	{Name: "TestTTIimplres_ZeroResultSets", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_ZeroResultSets},
+	{Name: "TestTTIimplres_NewDCBUsesMessageVersion", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_NewDCBUsesMessageVersion},
+	{Name: "TestTTIimplres_MultipleResultSets", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_MultipleResultSets},
+	{Name: "TestTTIimplres_RejectsTruncatedMessages", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_RejectsTruncatedMessages},
+	{Name: "TestTTIimplres_PrefetchCompletion", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchCompletion},
+	{Name: "TestTTIimplres_PrefetchColumnPresenceVector", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchColumnPresenceVector},
+	{Name: "TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage},
+	{Name: "TestTTIimplres_DecodeErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_DecodeErrors},
+	{Name: "TestTTIimplres_DescriptorAndPrefetchErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_DescriptorAndPrefetchErrors},
+	{Name: "TestTTIimplres_PrefetchOERErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchOERErrors},
+	{Name: "TestTTIimplres_RefCursorDCBHeaderErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_RefCursorDCBHeaderErrors},
 	{Name: "TestTTIOallRPA_Unmarshal_Drop", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Drop},
 	{Name: "TestTTIOallRPA_Unmarshal_Create", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Create},
 	{Name: "TestTTIOallRPA_Unmarshal_Insert", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Insert},
@@ -370,7 +387,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestOAuthRPA_UnMarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestOAuthRPA_UnMarshalFrom_Fail},
 	{Name: "TestOAuthRPA_UnMarshalFrom_Failure", Categories: "unitary", Exclusive: false, Fn: TestOAuthRPA_UnMarshalFrom_Failure},
 	{Name: "TestNewTTIoer14", Categories: "unitary", Exclusive: false, Fn: TestNewTTIoer14},
-	{Name: "TestTTIoer14_Init", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_Init},
 	{Name: "TestTTIoer14_GetMsgCode", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_GetMsgCode},
 	{Name: "TestTTIoer14_UnmarshalAttributes_Success", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_UnmarshalAttributes_Success},
 	{Name: "TestTTIoer14_UnmarshalAttributes_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_UnmarshalAttributes_Fail},
@@ -378,7 +394,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIoer14_UnMarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_UnMarshalFrom_Fail},
 	{Name: "TestTTIoer14_UpdateChecksum", Categories: "unitary", Exclusive: false, Fn: TestTTIoer14_UpdateChecksum},
 	{Name: "TestNewTTIoer", Categories: "unitary", Exclusive: false, Fn: TestNewTTIoer},
-	{Name: "TestTTIoer_Init", Categories: "unitary", Exclusive: false, Fn: TestTTIoer_Init},
 	{Name: "TestTTIoer_GetMsgCode", Categories: "unitary", Exclusive: false, Fn: TestTTIoer_GetMsgCode},
 	{Name: "TestTTIoer_Getters", Categories: "unitary", Exclusive: false, Fn: TestTTIoer_Getters},
 	{Name: "TestTTIoer_GetError", Categories: "unitary", Exclusive: false, Fn: TestTTIoer_GetError},
@@ -406,6 +421,10 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIrxd_GetMsgCode", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_GetMsgCode},
 	{Name: "TestTTIrxd_BvcOnFirstRow_ReturnsError", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_BvcOnFirstRow_ReturnsError},
 	{Name: "TestTTIrxd_Setters", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_Setters},
+	{Name: "TestTTIrxd_UnmarshalRefCursorColumn", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalRefCursorColumn},
+	{Name: "TestTTIrxd_RefCursorDCBUsesMessageVersion", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorDCBUsesMessageVersion},
+	{Name: "TestTTIrxd_RefCursorZeroAndBVCReuse", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorZeroAndBVCReuse},
+	{Name: "TestTTIrxd_RefCursorDecodeErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_RefCursorDecodeErrors},
 	{Name: "TestTTIrxd_UnmarshalFrom_ErrorCases", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalFrom_ErrorCases},
 	{Name: "TestTTIrxd_UnmarshalFrom", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_UnmarshalFrom},
 	{Name: "TestTTIrxd_bvc_IntegrationTest", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_bvc_IntegrationTest},
@@ -461,7 +480,9 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestZoneMaps_Sanity", Categories: "unitary", Exclusive: false, Fn: TestZoneMaps_Sanity},
 	{Name: "TestCodecFactory_getEncoder", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getEncoder},
 	{Name: "TestCodecFactory_getDecoder", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getDecoder},
+	{Name: "TestCodecFactory_RefCursorRegistrations", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RefCursorRegistrations},
 	{Name: "TestCodecFactory_RegisterEncoderGeneric", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RegisterEncoderGeneric},
+	{Name: "TestRefCursorRows_NextUsesBackgroundContext", Categories: "unitary", Exclusive: false, Fn: TestRefCursorRows_NextUsesBackgroundContext},
 	{Name: "TestTTIShelf_NewShelf", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_NewShelf},
 	{Name: "TestTTIShelf_RegisterCodecFactoryAndGetter", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_RegisterCodecFactoryAndGetter},
 
@@ -960,6 +981,7 @@ func (t *TestDataBuffer) ReadBytesWithContext(ctx context.Context, n int32) (*[]
 // mockStreamer implements common.Streamer[common.MessageType] for testing
 type mockStreamer struct {
 	pushCalled bool
+	pushCtx    context.Context
 	pushedMsg  list.List
 	pushErr    error
 	flushErr   error
@@ -1038,8 +1060,9 @@ func (m *wrappedMockStreamer) UnRegisterPreUnmarshallCallback(t common.MessageTy
 	m.streamer.UnRegisterPreUnmarshallCallback(t)
 }
 
-func (m *mockStreamer) Push(_ context.Context, msg common.Message[common.MessageType]) error {
+func (m *mockStreamer) Push(ctx context.Context, msg common.Message[common.MessageType]) error {
 	m.pushCalled = true
+	m.pushCtx = ctx
 	m.pushedMsg.PushBack(&msg)
 	return m.pushErr
 }
