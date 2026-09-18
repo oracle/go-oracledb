@@ -55,12 +55,11 @@ func TestConnectionResetter_Reset(t *testing.T) {
 	}
 
 	mockNs := &mockNetworkSession{
-		disconnectCalls: 0,
-		disconnectErr:   nil,
-		sleepDuration:   0,
-		cancelErr:       nil,
+		disconnectErr: nil,
+		sleepDuration: 0,
+		cancelErr:     nil,
 	}
-
+	mockNs.disconnectCalls.Store(0)
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMessageFactory(mockFac)
 	shelf.RegisterMessageStreamer(mockStr)

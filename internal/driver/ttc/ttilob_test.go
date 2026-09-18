@@ -40,12 +40,9 @@ package ttc
 
 import (
 	"context"
-	"io"
-	"log/slog"
 	"strings"
 	"testing"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -155,9 +152,6 @@ func TestTTIlob_MarshalTo_Success(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			originalLogger := common.Odl
-			common.Odl = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
-			t.Cleanup(func() { common.Odl = originalLogger })
 			msg := newTTIlob().(*tTIlob)
 			msg.SetDefinition(tc.def())
 

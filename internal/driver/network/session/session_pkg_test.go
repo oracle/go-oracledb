@@ -81,7 +81,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestSend", Categories: "unitary", Exclusive: false, Fn: TestSend},
 	{Name: "TestReset", Categories: "unitary", Exclusive: false, Fn: TestReset},
 	{Name: "TestDisconnect", Categories: "unitary", Exclusive: false, Fn: TestDisconnect},
-	{Name: "TestPrintPacket", Categories: "unitary", Exclusive: false, Fn: TestPrintPacket},
 	{Name: "TestSendPacketError", Categories: "unitary", Exclusive: true, Fn: TestSendPacketError},
 	{Name: "TestSendConnect", Categories: "unitary", Exclusive: false, Fn: TestSendConnect},
 	{Name: "TestProcessPacket", Categories: "unitary", Exclusive: false, Fn: TestProcessPacket},
