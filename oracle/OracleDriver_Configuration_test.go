@@ -42,7 +42,11 @@ import (
 	"context"
 	"database/sql"
 	"flag"
+	"log/slog"
+	"path/filepath"
 	"testing"
+
+	"github.com/oracle/go-oracledb/v26/internal/common"
 )
 
 // TestDriver_ConfigurationWithConnectorBasic verifies that a connector can be
@@ -178,6 +182,35 @@ func TestDriver_ConfigurationLogging(t *testing.T) {
 	defer func() {
 		GetDefaultDriver().ApplyDriverLoggingConfig(NewOracleLoggingConfig())
 	}()
+}
+
+// TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector verifies that
+// opening a connector does not replace logging configured by the application.
+func TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector(t *testing.T) {
+	driver := NewDriver()
+	loggingConfig := NewOracleLoggingConfig()
+	loggingConfig.Destination = filepath.Join(t.TempDir(), "driver.log")
+	loggingConfig.Level = "DEBUG"
+	driver.ApplyDriverLoggingConfig(loggingConfig)
+	t.Cleanup(func() {
+		driver.ApplyDriverLoggingConfig(NewOracleLoggingConfig())
+	})
+
+	configuredLogger := common.Odl
+	if !configuredLogger.Enabled(context.Background(), slog.LevelDebug) {
+		t.Fatal("expected debug logging to be enabled after applying the configuration")
+	}
+
+	if _, err := driver.openConnector("localhost:1521/freepdb1"); err != nil {
+		t.Fatalf("openConnector failed: %v", err)
+	}
+
+	if common.Odl != configuredLogger {
+		t.Fatal("openConnector replaced the logging configuration")
+	}
+	if !common.Odl.Enabled(context.Background(), slog.LevelDebug) {
+		t.Fatal("expected debug logging configuration to remain enabled after openConnector")
+	}
 }
 
 type testingConnector struct {

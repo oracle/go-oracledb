@@ -135,6 +135,10 @@ type OracleConnectionProperties struct {
 	// Sdu sets the Oracle Net Session Data Unit packet size, in bytes.
 	Sdu int `ns_name:"sdu" validator:"validateZeroOrPositive" help:"sets the Oracle Net Session Data Unit (SDU) packet size in bytes"`
 
+	// Compression requests Oracle Net network compression. Enabled compression
+	// defaults to the supported high-level zlib algorithm.
+	Compression bool `ns_name:"compression" default:"false" validator:"validateBoolean" help:"enables Oracle Net network compression"`
+
 	// SourceRoute enables routing through multiple hosts.
 	SourceRoute bool `ns_name:"source_route" default:"false" validator:"validateBoolean" help:"enables network routing through multiple hosts"`
 
