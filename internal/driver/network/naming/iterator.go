@@ -100,7 +100,7 @@ type ConnectionIterator struct {
 	currentDescIndex int
 	exhausted        bool
 	rng              *rand.Rand
-	downHostCache    *common.ExpiringCache[string]
+	downHostCache    *common.SafeTTLCache[struct{}]
 	// dnsErrors     []error  // TODO
 }
 
@@ -112,7 +112,7 @@ func NewConnectionIterator(ctx context.Context, rootNode *Node, connCtx *Connect
 	return newConnectionIterator(ctx, rootNode, connCtx, sharedDownHostCache)
 }
 
-func newConnectionIterator(ctx context.Context, rootNode *Node, connCtx *ConnectionContext, downHostCache *common.ExpiringCache[string]) *ConnectionIterator {
+func newConnectionIterator(ctx context.Context, rootNode *Node, connCtx *ConnectionContext, downHostCache *common.SafeTTLCache[struct{}]) *ConnectionIterator {
 	iter := &ConnectionIterator{
 		rootNode:         rootNode,
 		context:          connCtx, // extracted properties context(different from the passed context)
@@ -632,7 +632,11 @@ func (ci *ConnectionIterator) reorderDescriptionsByDownHostStatus(attempts []Des
 }
 
 func (ci *ConnectionIterator) isDownHost(address Address) bool {
-	return ci.downHostCache != nil && ci.downHostCache.Contains(address.Host)
+	if ci.downHostCache == nil {
+		return false
+	}
+	_, found := ci.downHostCache.Get(address.Host)
+	return found
 }
 
 // stablePartition preserves the order chosen by load balancing while moving

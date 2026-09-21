@@ -49,6 +49,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -74,6 +75,12 @@ type mockNTAdapter struct {
 	receiveCalls  int
 	lastAddress   transport.Address
 }
+
+type timeoutTestError struct{}
+
+func (timeoutTestError) Error() string   { return "timeout" }
+func (timeoutTestError) Timeout() bool   { return true }
+func (timeoutTestError) Temporary() bool { return true }
 
 func TestHandleAcceptRequiredANO(t *testing.T) {
 	ns := newNetworkSession()
@@ -278,6 +285,55 @@ func TestTransportConnect(t *testing.T) {
 	err = ns.transportConnect(context.Background(), address)
 	if err == nil {
 		t.Errorf("Expected connection error for TCPS")
+	}
+}
+
+func TestIsDownHostError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "network unreachable",
+			err:  syscall.ENETUNREACH,
+			want: true,
+		},
+		{
+			name: "driver transport timeout",
+			err:  common.NewCtxTimeoutCauseError("TransportConnectTimeout", 1000, "test"),
+			want: true,
+		},
+		{
+			name: "network timeout",
+			err:  &net.OpError{Op: "dial", Err: timeoutTestError{}},
+			want: true,
+		},
+		{
+			name: "dns failure",
+			err:  &net.DNSError{Err: "no such host", Name: "missing.example.com"},
+			want: false,
+		},
+		{
+			name: "connection refused",
+			err:  &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED},
+			want: false,
+		},
+		{
+			name: "unrelated error",
+			err:  errors.New("authentication failed"),
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isDownHostError(test.err); got != test.want {
+				t.Fatalf("isDownHostError(%v) = %t, want %t", test.err, got, test.want)
+			}
+		})
 	}
 }
 

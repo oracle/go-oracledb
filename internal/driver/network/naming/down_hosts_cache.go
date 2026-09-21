@@ -33,21 +33,21 @@ import (
 )
 
 const (
-	downHostCacheTTL             = 10 * time.Minute
-	downHostCacheCleanupInterval = time.Minute
+	downHostCacheTTL  = 10 * time.Minute
+	downHostCacheSize = 1024
 )
 
 // sharedDownHostCache is process-wide. New iterators consult it so a failed
 // connection can make later connection requests try healthier hosts first.
-var sharedDownHostCache = common.NewExpiringCache[string](
+var sharedDownHostCache = common.NewSafeTTLCache[struct{}](
+	downHostCacheSize,
 	downHostCacheTTL,
-	downHostCacheCleanupInterval,
 )
 
 // MarkDownHost records a host that could not be reached. The cache only
 // influences connection order; it never removes a host from the attempt list.
 func MarkDownHost(host string) {
 	if host != "" {
-		sharedDownHostCache.Mark(host)
+		sharedDownHostCache.Put(host, struct{}{})
 	}
 }

@@ -72,6 +72,10 @@ var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNewConnectionIterator_Basic", Categories: "unitary", Exclusive: false, Fn: TestNewConnectionIterator_Basic},
+	{Name: "TestNewConnectionIterator_PrioritizesUncachedHosts", Categories: "unitary", Exclusive: false, Fn: TestNewConnectionIterator_PrioritizesUncachedHosts},
+	{Name: "TestMarkDownHost_RecordsHost", Categories: "unitary", Exclusive: false, Fn: TestMarkDownHost_RecordsHost},
+	{Name: "TestConnectionIterator_ReordersDescriptionsWithOnlyDownHosts", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_ReordersDescriptionsWithOnlyDownHosts},
+	{Name: "TestConnectionIterator_ReappliesDownHostOrdering", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_ReappliesDownHostOrdering},
 	{Name: "TestConnectionIterator_Next_Basic", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_Next_Basic},
 	{Name: "TestExtractDescription_DefaultSecurity", Categories: "unitary", Exclusive: false, Fn: TestExtractDescription_DefaultSecurity},
 	{Name: "TestConnectionIterator_HasNext", Categories: "unitary", Exclusive: false, Fn: TestConnectionIterator_HasNext},
