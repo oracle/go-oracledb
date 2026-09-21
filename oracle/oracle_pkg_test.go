@@ -81,6 +81,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestEnquoteIdentifier", Categories: "unitary", Exclusive: false, Fn: TestEnquoteIdentifier},
 	{Name: "TestDriver_ConfigurationWithCredentialsWithDsnNegative", Categories: "unitary", Exclusive: false, Fn: TestDriver_ConfigurationWithCredentialsWithDsnNegative},
 	{Name: "TestDriver_ConfigurationLogging", Categories: "unitary", Exclusive: false, Fn: TestDriver_ConfigurationLogging},
+	{Name: "TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector", Categories: "unitary", Exclusive: false, Fn: TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector},
 	{Name: "TestDriver_OpenConnectorUsesNSParamOverConfig", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorUsesNSParamOverConfig},
 	{Name: "TestDriver_Table_Create", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_Table_Create},
 	{Name: "TestDriver_DropTable_DeniesAccess", Categories: "functional", Exclusive: false, Fn: TestDriver_DropTable_DeniesAccess},

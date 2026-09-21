@@ -294,6 +294,18 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.WalletCACertificatesMissing), "wallet contains no CA certificates")
 	message.SetString(language.English, string(oracleErrors.WalletCACertificatesParseFailed), "failed to parse wallet CA certificates")
 
+	// Document: No
+	// Cause:    A network packet could not be compressed with the negotiated codec.
+	// Action:   Inspect the cause and the compression codec in args[0].
+	// Comment:  Arg[0]: compression codec (zlib)
+	message.SetString(language.English, string(oracleErrors.NetworkCompressionFailed), "Failed to compress network packet using %s")
+
+	// Document: No
+	// Cause:    A compressed network packet could not be decompressed with the negotiated codec.
+	// Action:   Inspect the cause and the compression codec in args[0].
+	// Comment:  Arg[0]: compression codec (zlib)
+	message.SetString(language.English, string(oracleErrors.NetworkDecompressionFailed), "Failed to decompress network packet using %s")
+
 	message.SetString(language.English, string(oracleErrors.ConnectTimeout), "%s Timeout of %d for %s.(CONNECTION_ID=%s)")
 
 	// Document: Yes
