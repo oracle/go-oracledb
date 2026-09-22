@@ -232,10 +232,10 @@ func buildTestTTCRows(nullable bool, dtype common.DtyType, scale int8, strictNul
 }
 
 func TestTTCRowsReturnsNestedRefCursor(t *testing.T) {
-	rows := buildTestTTCRows(true, common.DtyCur, 0, nil)
-	child := newTTCRows([]columnContext{{Name: driverCommon.StringToB1Array("N"), DataType: common.DtyNum}})
+	rows := newRefCursorResultRows(buildTestTTCRows(true, common.DtyCur, 0, nil), 0)
+	child := newRefCursorResultRows(newTTCRows([]columnContext{{Name: driverCommon.StringToB1Array("N"), DataType: common.DtyNum}}), 0)
 	rows.rowData = [][]driverCommon.B1Array{{nil}}
-	rows.refCursorData = [][]*ttcRows{{child}}
+	rows.refCursorData = [][]*ttcRowsRefCursor{{child}}
 	rows.numOfRows = 1
 
 	dest := make([]driver.Value, 1)

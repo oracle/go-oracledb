@@ -72,12 +72,16 @@ func TestDriver_ObjectTypeMetadata(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-	typ, err := datatype.GetObjectType(ctx, conn, typeName)
+	object, err := datatype.NewObject(ctx, conn, typeName)
 	if err != nil {
-		t.Fatalf("GetObjectType(%s): %v", typeName, err)
+		t.Fatalf("NewObject(%s): %v", typeName, err)
 	}
+	typ := object.ObjectType
 	if !typ.IsObject() {
 		t.Fatalf("descriptor is not an object: %#v", typ)
+	}
+	if _, err := datatype.NewCollection(ctx, conn, typeName); err == nil {
+		t.Fatal("NewCollection succeeded for an object type")
 	}
 	if got, want := typ.AttributeNames(), []string{"ID", "NAME", "CREATED_AT"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Fatalf("AttributeNames() = %v, want %v", got, want)
@@ -116,13 +120,9 @@ func TestDriver_ObjectTypeScalarPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-	typ, err := datatype.GetObjectType(ctx, conn, typeName)
+	in, err := datatype.NewObject(ctx, conn, typeName)
 	if err != nil {
-		t.Fatalf("GetObjectType(%s): %v", typeName, err)
-	}
-	in, err := typ.NewObject()
-	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("NewObject(%s): %v", typeName, err)
 	}
 	wantTime := time.Date(2025, 4, 5, 6, 7, 8, 123456789, time.UTC)
 	for name, value := range map[string]any{"ID": int64(42), "NAME": "answer", "CREATED_AT": wantTime} {
@@ -191,10 +191,11 @@ func TestDriver_CompositeObjectPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+parentName+" FORCE") })
 
-	parentType, err := datatype.GetObjectType(ctx, conn, parentName)
+	parent, err := datatype.NewObject(ctx, conn, parentName)
 	if err != nil {
-		t.Fatalf("GetObjectType(%s): %v", parentName, err)
+		t.Fatalf("NewObject(%s): %v", parentName, err)
 	}
+	parentType := parent.ObjectType
 	childType := parentType.Attributes["CHILD"].ObjectType
 	collectionType := parentType.Attributes["NUMBERS"].ObjectType
 	if childType == nil || len(childType.Attributes) != 1 || collectionType == nil || !collectionType.Collection {
@@ -212,10 +213,6 @@ func TestDriver_CompositeObjectPLSQL(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := numbers.Append(int64(7)); err != nil {
-		t.Fatal(err)
-	}
-	parent, err := parentType.NewObject()
-	if err != nil {
 		t.Fatal(err)
 	}
 	if err := parent.Set("CHILD", child); err != nil {
@@ -272,10 +269,11 @@ func TestDriver_ObjectVARRAYPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+collectionName+" FORCE") })
 
-	collectionType, err := datatype.GetObjectType(ctx, conn, collectionName)
+	in, err := datatype.NewCollection(ctx, conn, collectionName)
 	if err != nil {
-		t.Fatalf("GetObjectType(%s): %v", collectionName, err)
+		t.Fatalf("NewCollection(%s): %v", collectionName, err)
 	}
+	collectionType := in.ObjectType
 	if collectionType.CollectionOf == nil || len(collectionType.CollectionOf.Attributes) != 1 {
 		t.Fatalf("object collection metadata = %#v", collectionType.CollectionOf)
 	}
@@ -284,10 +282,6 @@ func TestDriver_ObjectVARRAYPLSQL(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := element.Set("ID", int64(1)); err != nil {
-		t.Fatal(err)
-	}
-	in, err := collectionType.NewCollection()
-	if err != nil {
 		t.Fatal(err)
 	}
 	if err := in.Append(element); err != nil {
@@ -344,10 +338,11 @@ func TestDriver_ObjectTypeHierarchyMetadata(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+subtypeName+" FORCE") })
 
-	base, err := datatype.GetObjectType(ctx, conn, baseName)
+	baseValue, err := datatype.NewObject(ctx, conn, baseName)
 	if err != nil {
-		t.Fatalf("GetObjectType(%s): %v", baseName, err)
+		t.Fatalf("NewObject(%s): %v", baseName, err)
 	}
+	base := baseValue.ObjectType
 	if len(base.SubTypes) != 1 {
 		t.Fatalf("subtypes = %d, want 1", len(base.SubTypes))
 	}

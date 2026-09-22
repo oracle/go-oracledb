@@ -177,9 +177,9 @@ func TestRefCursorOutBindUsesCursorOAC(t *testing.T) {
 	}
 }
 
-func TestGetObjectTypeBindsUnusedMetadataAsRefCursors(t *testing.T) {
+func TestNewCollectionBindsUnusedMetadataAsRefCursors(t *testing.T) {
 	sentinel := errors.New("stop after checking binds")
-	_, err := datatype.GetObjectType(context.Background(), adtMetadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
+	_, err := datatype.NewCollection(context.Background(), adtMetadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
 		if len(args) != 10 {
 			t.Fatalf("bind count = %d, want 10", len(args))
 		}
@@ -195,7 +195,7 @@ func TestGetObjectTypeBindsUnusedMetadataAsRefCursors(t *testing.T) {
 		return nil, sentinel
 	}), "SCHEMA.NUMBER_VARRAY")
 	if !errors.Is(err, sentinel) {
-		t.Fatalf("GetObjectType error = %v, want wrapped sentinel", err)
+		t.Fatalf("NewCollection error = %v, want wrapped sentinel", err)
 	}
 }
 

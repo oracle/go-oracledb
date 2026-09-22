@@ -70,16 +70,16 @@ func TestDriver_NestedTableScalarPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-	typ, err := datatype.GetObjectType(ctx, conn, typeName)
+	in, err := datatype.NewCollection(ctx, conn, typeName)
 	if err != nil {
-		t.Fatalf("GetObjectType(%s): %v", typeName, err)
+		t.Fatalf("NewCollection(%s): %v", typeName, err)
 	}
+	typ := in.ObjectType
 	if typ.IsObject() || typ.VArray || !typ.Collection {
 		t.Fatalf("unexpected nested-table descriptor: %#v", typ)
 	}
-	in, err := typ.NewCollection()
-	if err != nil {
-		t.Fatalf("NewCollection: %v", err)
+	if _, err := datatype.NewObject(ctx, conn, typeName); err == nil {
+		t.Fatal("NewObject succeeded for a nested table")
 	}
 	for _, value := range []any{int64(10), nil, int64(30)} {
 		if err := in.Append(value); err != nil {
@@ -107,7 +107,7 @@ func TestDriver_NestedTableScalarPLSQL(t *testing.T) {
 		t.Fatalf("nested-table element 3 = %#v, %v; want 30", got, err)
 	}
 
-	nullIn, err := typ.NewCollection()
+	nullIn, err := datatype.NewCollection(ctx, conn, typeName)
 	if err != nil {
 		t.Fatalf("NewCollection for NULL: %v", err)
 	}

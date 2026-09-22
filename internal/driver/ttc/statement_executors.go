@@ -739,10 +739,9 @@ Returns:
   - error: non-nil if encoder/OAC factory lookup fails or if encoding fails for any bind value.
 */
 func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value, kind sqlKind) error {
-	// GetObjectType can be used directly through the public API, bypassing
-	// Connection.GetObjectType and its per-connection cache. Register descriptors
-	// carried by the supplied values before preparing OACs so RXD decoding can
-	// resolve the returned TOID on this physical session.
+	// Public ADT constructors load metadata outside the transport package.
+	// Register descriptors carried by the supplied values before preparing OACs
+	// so RXD decoding can resolve the returned TOID on this physical session.
 	e.registerNamedTypes(args)
 	n := len(args)
 

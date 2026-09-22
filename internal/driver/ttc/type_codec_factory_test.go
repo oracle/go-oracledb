@@ -338,7 +338,7 @@ func TestCodecFactory_RefCursorRegistrations(t *testing.T) {
 	t.Parallel()
 
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	decoder, err := factory.getDecoder(DtyCur)
+	decoder, err := factory.getDecoder(typeCommon.DtyCur)
 	if err != nil {
 		t.Fatalf("get REF CURSOR decoder: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestCodecFactory_RefCursorRegistrations(t *testing.T) {
 	if !ok {
 		t.Fatalf("REF CURSOR OAC type = %T, want *tTIoac", oac)
 	}
-	if got, want := refCursorOac.dataType, common.UB1(DtyCur); got != want {
+	if got, want := refCursorOac.dataType, common.UB1(typeCommon.DtyCur); got != want {
 		t.Fatalf("REF CURSOR OAC data type = %d, want %d", got, want)
 	}
 	if got, want := refCursorOac.maxLength, common.UB4(refCursorBindMaxLength); got != want {

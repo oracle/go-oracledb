@@ -163,7 +163,7 @@ func TestParseTDSRejectsTruncatedMetadata(t *testing.T) {
 	}
 }
 
-func TestGetObjectTypePopulatesAttributesFromMetadataCursor(t *testing.T) {
+func TestNewObjectPopulatesAttributesFromMetadataCursor(t *testing.T) {
 	tds := []byte{
 		0, 0, 0, 28, 38, 1, 0, 0, 0, 2, 0, 41, 0, 0, 0, 0, 0, 0,
 		6, 38, 0, // NUMBER(38, 0)
@@ -174,7 +174,7 @@ func TestGetObjectTypePopulatesAttributesFromMetadataCursor(t *testing.T) {
 		{int64(1), "NAME", int64(2), "APP", "VARCHAR2", nil, nil, "YES", nil, nil},
 		{int64(1), "ID", int64(1), "APP", "NUMBER", nil, nil, "YES", nil, nil},
 	}}
-	typ, err := GetObjectType(context.Background(), metadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
+	object, err := NewObject(context.Background(), metadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
 		*args[0].(sql.Out).Dest.(*int64) = 0
 		*args[1].(sql.Out).Dest.(*string) = "APP.PERSON_T"
 		*args[2].(sql.Out).Dest.(*[]byte) = make([]byte, 16)
@@ -186,6 +186,7 @@ func TestGetObjectTypePopulatesAttributesFromMetadataCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	typ := object.ObjectType
 	if !attributes.closed {
 		t.Fatal("attribute metadata cursor was not closed")
 	}
@@ -198,14 +199,41 @@ func TestGetObjectTypePopulatesAttributesFromMetadataCursor(t *testing.T) {
 	if got := typ.Attributes["NAME"].ObjectType; got == nil || got.ElementType != common.DtyVCS || got.ElementSize != 20 {
 		t.Fatalf("NAME metadata = %#v, want VARCHAR2(20)", got)
 	}
-	object, err := typ.NewObject()
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := object.Set("ID", int64(1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := object.Set("MISSING", "value"); err == nil {
 		t.Fatal("Set accepted an attribute absent from metadata")
 	}
+}
+
+func TestNewValueRejectsWrongADTKind(t *testing.T) {
+	objectTDS := []byte{
+		0, 0, 0, 28, 38, 1, 0, 0, 0, 2, 0, 41, 0, 0, 0, 0, 0, 0,
+		6, 38, 0, 7, 0, 20, 0, 0, 0, 42,
+	}
+	if _, err := NewCollection(context.Background(), typeMetadataExecer(objectTDS, "APP.PERSON_T"), "APP.PERSON_T"); err == nil {
+		t.Fatal("NewCollection succeeded for an object type")
+	}
+
+	collectionTDS := []byte{
+		0, 0, 0, 25, 38, 1, 0, 0, 0, 1, 0, 41, 0, 0, 0, 0, 0, 0,
+		27, 0, 0, 0, 25, 251, 42, 0,
+		0, 0, 0, 31, 38, 1, 0, 0, 0, 1, 0, 41, 0, 0, 0, 0, 0, 0,
+		28, 0, 0, 0, 29, 0, 0, 0, 2, 3, 42, 6, 38, 0,
+	}
+	if _, err := NewObject(context.Background(), typeMetadataExecer(collectionTDS, "APP.NUMBERS_T"), "APP.NUMBERS_T"); err == nil {
+		t.Fatal("NewObject succeeded for a collection type")
+	}
+}
+
+func typeMetadataExecer(tds []byte, canonical string) metadataExecer {
+	return metadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
+		*args[0].(sql.Out).Dest.(*int64) = 0
+		*args[1].(sql.Out).Dest.(*string) = canonical
+		*args[2].(sql.Out).Dest.(*[]byte) = make([]byte, 16)
+		*args[3].(sql.Out).Dest.(*int64) = 1
+		*args[4].(sql.Out).Dest.(*[]byte) = tds
+		return nil, nil
+	})
 }

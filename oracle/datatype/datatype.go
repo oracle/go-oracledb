@@ -57,8 +57,9 @@ import (
 
 // ObjectType describes an Oracle object or collection type.
 //
-// The driver populates its metadata fields from the database. Applications use
-// the descriptor to construct Object and ObjectCollection values for binds.
+// The driver populates its metadata fields from the database. Root values are
+// created with NewObject or NewCollection; descriptors remain available from
+// those values for metadata inspection and constructing nested values.
 type ObjectType struct {
 	// CollectionOf describes the element object type when the collection contains
 	// object values.
@@ -169,10 +170,30 @@ type Execer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-// GetObjectType retrieves the metadata for typeName and returns its public ADT
-// descriptor. ex should use the same physical database connection that will
-// later bind values created from the returned descriptor.
-func GetObjectType(ctx context.Context, ex Execer, typeName string) (*ObjectType, error) {
+// NewObject retrieves metadata for typeName and creates an empty object value.
+// ex should use the same physical database connection that will later bind the
+// returned value. It returns an error when typeName identifies a collection.
+func NewObject(ctx context.Context, ex Execer, typeName string) (*Object, error) {
+	typ, err := loadRootObjectType(ctx, ex, typeName)
+	if err != nil {
+		return nil, err
+	}
+	return typ.NewObject()
+}
+
+// NewCollection retrieves metadata for typeName and creates an empty
+// collection value. ex should use the same physical database connection that
+// will later bind the returned value. It returns an error when typeName
+// identifies an object type.
+func NewCollection(ctx context.Context, ex Execer, typeName string) (ObjectCollection, error) {
+	typ, err := loadRootObjectType(ctx, ex, typeName)
+	if err != nil {
+		return ObjectCollection{}, err
+	}
+	return typ.NewCollection()
+}
+
+func loadRootObjectType(ctx context.Context, ex Execer, typeName string) (*ObjectType, error) {
 	if ex == nil || strings.TrimSpace(typeName) == "" {
 		common.Odl.Error("ADT metadata error")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)

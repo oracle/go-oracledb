@@ -144,12 +144,15 @@ func TestDriver_VARRAY_InsertSelectPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	typ, err := datatype.GetObjectType(ctx, conn, typeName)
+	in, err := datatype.NewCollection(ctx, conn, typeName)
 	if err != nil {
-		t.Fatalf("get VARRAY type metadata: %v", err)
+		t.Fatalf("NewCollection(%s): %v", typeName, err)
 	}
-
-	in := mustNumberVARRAY(t, typ, 10, 20, 30)
+	for _, value := range []int64{10, 20, 30} {
+		if err := in.Append(value); err != nil {
+			t.Fatalf("append VARRAY value %d: %v", value, err)
+		}
+	}
 	if _, err = conn.ExecContext(ctx, "INSERT INTO "+tableName+" (id, values_col) VALUES (:1, :2)", int64(1), in); err != nil {
 		t.Fatalf("insert VARRAY: %v", err)
 	}
@@ -197,11 +200,7 @@ func TestDriver_VARRAY_NullBind(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	typ, err := datatype.GetObjectType(ctx, conn, typeName)
-	if err != nil {
-		t.Fatalf("GetObjectType(%s): %v", typeName, err)
-	}
-	nullIn, err := typ.NewCollection()
+	nullIn, err := datatype.NewCollection(ctx, conn, typeName)
 	if err != nil {
 		t.Fatalf("NewCollection(%s): %v", typeName, err)
 	}
@@ -220,20 +219,6 @@ func TestDriver_VARRAY_NullBind(t *testing.T) {
 	if got, err := out.Len(); err != nil || got != 0 {
 		t.Fatalf("NULL VARRAY Len() = %d, %v; want 0", got, err)
 	}
-}
-
-func mustNumberVARRAY(t *testing.T, typ *datatype.ObjectType, values ...int64) datatype.ObjectCollection {
-	t.Helper()
-	collection, err := typ.NewCollection()
-	if err != nil {
-		t.Fatalf("new VARRAY: %v", err)
-	}
-	for _, value := range values {
-		if err = collection.Append(value); err != nil {
-			t.Fatalf("append VARRAY value %d: %v", value, err)
-		}
-	}
-	return collection
 }
 
 func assertNumberVARRAY(t *testing.T, collection datatype.ObjectCollection, want ...int64) {
@@ -297,16 +282,16 @@ func TestDriver_VARRAY_PublicAPIs(t *testing.T) {
 			}
 			t.Cleanup(func() { _, _ = db.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-			typ, err := datatype.GetObjectType(ctx, conn, typeName)
+			collection, err := datatype.NewCollection(ctx, conn, typeName)
 			if err != nil {
-				t.Fatalf("GetObjectType(%s): %v", typeName, err)
+				t.Fatalf("NewCollection(%s): %v", typeName, err)
 			}
+			typ := collection.ObjectType
 			if typ.IsObject() || typ.String() != typ.FullName() || typ.FullName() == "" {
 				t.Fatalf("unexpected VARRAY descriptor: String=%q FullName=%q IsObject=%v", typ.String(), typ.FullName(), typ.IsObject())
 			}
-			collection, err := typ.NewCollection()
-			if err != nil {
-				t.Fatalf("NewCollection: %v", err)
+			if _, err := datatype.NewObject(ctx, conn, typeName); err == nil {
+				t.Fatal("NewObject succeeded for a VARRAY")
 			}
 			for _, value := range tc.values {
 				if err := collection.Append(value); err != nil {
@@ -360,10 +345,9 @@ func assertVARRAYValues(t *testing.T, collection datatype.ObjectCollection, want
 	}
 }
 
-// TestDriver_VARRAY_GetObjectTypeOtherScalarTypes exercises the public
-// GetObjectType API and named collection operations for scalar VARRAY element
-// types other than NUMBER and VARCHAR2.
-func TestDriver_VARRAY_GetObjectTypeOtherScalarTypes(t *testing.T) {
+// TestDriver_VARRAY_OtherScalarTypes exercises named collection operations for
+// scalar VARRAY element types other than NUMBER and VARCHAR2.
+func TestDriver_VARRAY_OtherScalarTypes(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
@@ -404,13 +388,9 @@ func TestDriver_VARRAY_GetObjectTypeOtherScalarTypes(t *testing.T) {
 			}
 			t.Cleanup(func() { _, _ = db.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-			// Use the public API with sql.Conn so metadata retrieval and subsequent
-			// collection binds use the same physical database connection.
-			typ, err := datatype.GetObjectType(ctx, conn, typeName)
-			if err != nil {
-				t.Fatalf("GetObjectType(%s): %v", typeName, err)
-			}
-			collection, err := typ.NewCollection()
+			// Use the public constructor with sql.Conn so metadata retrieval and
+			// subsequent collection binds use the same physical database connection.
+			collection, err := datatype.NewCollection(ctx, conn, typeName)
 			if err != nil {
 				t.Fatalf("NewCollection(%s): %v", tc.name, err)
 			}

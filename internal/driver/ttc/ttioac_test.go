@@ -252,7 +252,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 func TestTTIoac_SignedArrayElementCount(t *testing.T) {
 	ctx := context.Background()
 	dataBuffer, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
-	original := newTTIoac(DtyChr, 42)
+	original := newTTIoac(typeCommon.DtyChr, 42)
 	original.nbArrayElements = -1
 	if err := original.MarshalTo(ctx, mar); err != nil {
 		t.Fatalf("MarshalTo failed: %v", err)
@@ -278,18 +278,18 @@ func TestTTIoac_AddFlagsContinuation(t *testing.T) {
 
 // TestTTIoac_UnmarshalNormalizesNumberLength applies the TTC NUMBER length default.
 func TestTTIoac_UnmarshalNormalizesNumberLength(t *testing.T) {
-	testTTIoacUnmarshalLengthNormalization(t, DtyNum, _oacMaxLengthNumber)
+	testTTIoacUnmarshalLengthNormalization(t, typeCommon.DtyNum, _oacMaxLengthNumber)
 }
 
 // TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength applies TTC temporal length defaults.
 func TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		typ  DtyType
+		typ  typeCommon.DtyType
 		want common.UB4
 	}{
-		{name: "DATE", typ: DtyDat, want: _oacMaxLengthDate},
-		{name: "TIMESTAMP WITH TIME ZONE", typ: DtyStz, want: _oacMaxLengthStampTZ},
+		{name: "DATE", typ: typeCommon.DtyDat, want: _oacMaxLengthDate},
+		{name: "TIMESTAMP WITH TIME ZONE", typ: typeCommon.DtyStz, want: _oacMaxLengthStampTZ},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			testTTIoacUnmarshalLengthNormalization(t, test.typ, test.want)
@@ -298,7 +298,7 @@ func TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength(t *testing.T) {
 }
 
 // testTTIoacUnmarshalLengthNormalization verifies the datatype-specific OAC length default.
-func testTTIoacUnmarshalLengthNormalization(t *testing.T, typ DtyType, want common.UB4) {
+func testTTIoacUnmarshalLengthNormalization(t *testing.T, typ typeCommon.DtyType, want common.UB4) {
 	t.Helper()
 	ctx := context.Background()
 	dataBuffer, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)

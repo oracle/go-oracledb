@@ -319,7 +319,7 @@ func TestTTIrxd_UnmarshalRefCursorColumn(t *testing.T) {
 
 	rxd := newTTIrxd().(*tTIrxd)
 	rxd.setNumberOfColumns(1)
-	rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
+	rxd.setColumnContexts([]columnContext{{DataType: typeCommon.DtyCur}})
 	rxd.SetShelf(newShelf[common.MessageType]())
 	rxd.SetSessionContext(common.NewSessionContext())
 	if err := rxd.UnMarshalFrom(ctx, mar); err != nil {
@@ -369,7 +369,7 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 		}
 		rxd := newTTIrxd().(*tTIrxd)
 		rxd.setNumberOfColumns(1)
-		rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
+		rxd.setColumnContexts([]columnContext{{DataType: typeCommon.DtyCur}})
 		if err := rxd.UnMarshalFrom(ctx, mar); err != nil {
 			t.Fatal(err)
 		}
@@ -382,7 +382,7 @@ func TestTTIrxd_RefCursorZeroAndBVCReuse(t *testing.T) {
 		cursor := newRefCursorResultRows(newTTCRows(nil), 42)
 		rxd := newTTIrxd().(*tTIrxd)
 		rxd.setNumberOfColumns(1)
-		rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
+		rxd.setColumnContexts([]columnContext{{DataType: typeCommon.DtyCur}})
 		rxd.setPrevRow([]common.B1Array{nil})
 		rxd.setPrevRefCursorRows([]*ttcRowsRefCursor{cursor})
 		rxd.setPrevLobColumnContext([]*lobColumnContext{nil})
@@ -402,7 +402,7 @@ func TestTTIrxd_RefCursorDecodeErrors(t *testing.T) {
 	newRXD := func() *tTIrxd {
 		rxd := newTTIrxd().(*tTIrxd)
 		rxd.setNumberOfColumns(1)
-		rxd.setColumnContexts([]columnContext{{DataType: DtyCur}})
+		rxd.setColumnContexts([]columnContext{{DataType: typeCommon.DtyCur}})
 		return rxd
 	}
 
@@ -607,7 +607,7 @@ func TestTTIrxd_UnmarshalFrom_NullByDescribe(t *testing.T) {
 	rxd.setColumnContexts([]columnContext{
 		{DataType: typeCommon.DtyVCS, Length: 128},
 		{DataType: typeCommon.DtyVCS, Length: 0},
-		{DataType: typeCommon.DtyRaw, Length: 16},
+		{DataType: typeCommon.DtyBin, Length: 16},
 	})
 
 	// There is deliberately no CLR for the middle logical column. If it is

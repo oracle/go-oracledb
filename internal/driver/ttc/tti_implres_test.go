@@ -51,12 +51,12 @@ import (
 
 // TestImplicitResultRowsNextResultSet switches between prefetched implicit result sets.
 func TestImplicitResultRowsNextResultSet(t *testing.T) {
-	first := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("FIRST"), DataType: DtyChr}}), 0)
+	first := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("FIRST"), DataType: common.DtyChr}}), 0)
 	first.rowData = [][]driverCommon.B1Array{{[]byte("one")}}
 	first.lobColContext = [][]*lobColumnContext{{nil}}
 	first.numOfRows = 1
 
-	second := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("SECOND"), DataType: DtyChr}}), 0)
+	second := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("SECOND"), DataType: common.DtyChr}}), 0)
 	second.rowData = [][]driverCommon.B1Array{{[]byte("two")}}
 	second.lobColContext = [][]*lobColumnContext{{nil}}
 	second.numOfRows = 1
@@ -85,7 +85,7 @@ func TestImplicitResultRowsNextResultSet(t *testing.T) {
 // TestTTCRows_RefCursorNextAndClose decodes cursor columns and closes child rows once.
 func TestTTCRows_RefCursorNextAndClose(t *testing.T) {
 	child := newRefCursorResultRows(newTTCRows(nil), 0)
-	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("CUR"), DataType: DtyCur}}), 0)
+	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("CUR"), DataType: common.DtyCur}}), 0)
 	rows.rowData = [][]driverCommon.B1Array{{nil}}
 	rows.refCursorData = [][]*ttcRowsRefCursor{{child}}
 	rows.lobColContext = [][]*lobColumnContext{{nil}}
@@ -284,7 +284,7 @@ func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 		t.Fatalf("marshal successful implicit-result OER: %v", err)
 	}
 
-	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: DtyChr}}), 0)
+	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: common.DtyChr}}), 0)
 	shelf, _, _ := newExecTestShelf(1024)
 	if err := (&tTIimplres{dcb: newTTIdcb().(*tTIdcb), oer: newTTIoer().(*tTIoer), shelf: shelf}).unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
 		t.Fatalf("unmarshal implicit-result BVC: %v", err)
@@ -354,7 +354,7 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 			if err := mar.MarshalUB1(ctx, driverCommon.UB1(code)); err != nil {
 				t.Fatal(err)
 			}
-			rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: DtyChr}}), 0)
+			rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: common.DtyChr}}), 0)
 			if err := configured().unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err == nil {
 				t.Fatalf("truncated %s returned nil error", TTCMsgTypeName[code])
 			}
@@ -491,7 +491,7 @@ func marshalImplicitResultDCB(ctx context.Context, mar driverCommon.Marshaller) 
 	if err := mar.MarshalUB1(ctx, 0); err != nil { // undocumented DCB marker
 		return err
 	}
-	if err := newTTIoac(DtyChr, 1).MarshalTo(ctx, mar); err != nil {
+	if err := newTTIoac(common.DtyChr, 1).MarshalTo(ctx, mar); err != nil {
 		return err
 	}
 	if err := mar.MarshalUB1(ctx, 0); err != nil { // nullable
