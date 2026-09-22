@@ -281,29 +281,29 @@ func TestPrepareBindsAndOAC_Encode_Supported(t *testing.T) {
 	}
 
 	expNum, _ := converters.EncodeInt(42)
-	if !bytes.Equal([]byte(row[0]), []byte(expNum)) {
-		t.Fatalf("int64 encoding mismatch: got %v want %v", []byte(row[0]), []byte(expNum))
+	if !bytes.Equal(row[0].payload, expNum) {
+		t.Fatalf("int64 encoding mismatch: got %v want %v", row[0].payload, expNum)
 	}
 	expVcs, _ := converters.EncodeVarchar("X")
-	if !bytes.Equal([]byte(row[1]), []byte(expVcs)) {
-		t.Fatalf("varchar encoding mismatch: got %v want %v", []byte(row[1]), []byte(expVcs))
+	if !bytes.Equal(row[1].payload, expVcs) {
+		t.Fatalf("varchar encoding mismatch: got %v want %v", row[1].payload, expVcs)
 	}
-	if !bytes.Equal([]byte(row[2]), []byte{1, 2, 3}) {
-		t.Fatalf("raw encoding mismatch: got %v want %v", []byte(row[2]), []byte{1, 2, 3})
+	if !bytes.Equal(row[2].payload, []byte{1, 2, 3}) {
+		t.Fatalf("raw encoding mismatch: got %v want %v", row[2].payload, []byte{1, 2, 3})
 	}
-	if row[3] != nil {
+	if row[3].payload != nil {
 		t.Fatalf("nil bind should encode as nil cell, got %v", row[3])
 	}
 	// bool -> representation per current impl
-	if !bytes.Equal([]byte(row[4]), []byte{1, 1}) {
-		t.Fatalf("bool(true) encoding mismatch: got %v want %v", []byte(row[4]), []byte{1})
+	if !bytes.Equal(row[4].payload, []byte{1, 1}) {
+		t.Fatalf("bool(true) encoding mismatch: got %v want %v", row[4].payload, []byte{1})
 	}
-	if !bytes.Equal([]byte(row[5]), []byte{0}) {
-		t.Fatalf("bool(false) encoding mismatch: got %v want %v", []byte(row[5]), []byte{0})
+	if !bytes.Equal(row[5].payload, []byte{0}) {
+		t.Fatalf("bool(false) encoding mismatch: got %v want %v", row[5].payload, []byte{0})
 	}
 	expTS, _ := converters.EncodeTimestampWithTimeZone(ts)
-	if !bytes.Equal([]byte(row[6]), []byte(expTS)) {
-		t.Fatalf("timestamp encoding mismatch: got %v want %v", []byte(row[6]), []byte(expTS))
+	if !bytes.Equal(row[6].payload, expTS) {
+		t.Fatalf("timestamp encoding mismatch: got %v want %v", row[6].payload, expTS)
 	}
 }
 
