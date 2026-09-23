@@ -43,6 +43,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"io"
+	"reflect"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -199,11 +200,13 @@ func TestNewObjectPopulatesAttributesFromMetadataCursor(t *testing.T) {
 	if got := typ.Attributes["NAME"].ObjectType; got == nil || got.ElementType != common.DtyVCS || got.ElementSize != 20 {
 		t.Fatalf("NAME metadata = %#v, want VARCHAR2(20)", got)
 	}
-	if err := object.Set("ID", int64(1)); err != nil {
-		t.Fatal(err)
+	id := object.Value.FieldByName("ID")
+	if !id.IsValid() || !id.CanSet() {
+		t.Fatal("ID is not a settable reflected field")
 	}
-	if err := object.Set("MISSING", "value"); err == nil {
-		t.Fatal("Set accepted an attribute absent from metadata")
+	id.Set(reflect.ValueOf(int64(1)))
+	if missing := object.Value.FieldByName("MISSING"); missing.IsValid() {
+		t.Fatal("dynamic object exposes an attribute absent from metadata")
 	}
 }
 

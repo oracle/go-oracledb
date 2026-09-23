@@ -43,6 +43,7 @@ import (
 	"database/sql"
 	sqldriver "database/sql/driver"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -56,44 +57,48 @@ func (f adtMetadataExecer) ExecContext(ctx context.Context, query string, args .
 	return f(ctx, query, args...)
 }
 
+func setObjectField(t *testing.T, object *datatype.Object, name string, value any) {
+	t.Helper()
+	field := object.Value.FieldByName(name)
+	if !field.IsValid() || !field.CanSet() {
+		t.Fatalf("%s is not a settable reflected object field", name)
+	}
+	if value == nil {
+		field.SetZero()
+		return
+	}
+	field.Set(reflect.ValueOf(value))
+}
+
+func objectField(t *testing.T, object datatype.Object, name string) any {
+	t.Helper()
+	field := object.Value.FieldByName(name)
+	if !field.IsValid() {
+		t.Fatalf("%s is not a reflected object field", name)
+	}
+	return field.Interface()
+}
+
 func TestObjectCollectionOperations(t *testing.T) {
 	typ := &datatype.ObjectType{Name: "NUMBERS", Collection: true, VArray: true, UpperBound: 2}
 	c, err := typ.NewCollection()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Append(int64(1)); err != nil {
+	if err := c.Set([]int64{1, 2}); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Append(int64(2)); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Append(int64(3)); err == nil {
-		t.Fatal("Append succeeded past VARRAY bound")
+	if err := c.Set([]int64{1, 2, 3}); err == nil {
+		t.Fatal("Set succeeded past VARRAY bound")
 	}
 	if n, err := c.Len(); err != nil || n != 2 {
 		t.Fatalf("Len() = %d, %v", n, err)
 	}
-	if got, err := c.Get(2); err != nil || got != int64(2) {
-		t.Fatalf("Get(2) = %v, %v", got, err)
-	}
-	if err := c.Set(2, int64(20)); err != nil {
+	if err := c.Set([]any{int64(1), int64(20)}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := c.Get(2); got != int64(20) {
-		t.Fatalf("Set did not persist: %v", got)
-	}
-	if first, _ := c.First(); first != 1 {
-		t.Fatalf("First() = %d", first)
-	}
-	if next, _ := c.Next(1); next != 2 {
-		t.Fatalf("Next(1) = %d", next)
-	}
-	if err := c.Trim(1); err != nil {
-		t.Fatal(err)
-	}
-	if n, _ := c.Len(); n != 1 {
-		t.Fatalf("Len after Trim = %d", n)
+	if got, err := c.Get(); err != nil || !reflect.DeepEqual(got, []any{int64(1), int64(20)}) {
+		t.Fatalf("Get() = %#v, %v; want [1 20]", got, err)
 	}
 }
 
@@ -152,11 +157,11 @@ func TestObjectCollectionNullBind(t *testing.T) {
 	if image != nil {
 		t.Fatalf("NULL collection encoded image = %x; want nil", image)
 	}
-	if err := c.Append(int64(1)); err != nil {
+	if err := c.Set([]any{int64(1)}); err != nil {
 		t.Fatal(err)
 	}
 	if c.IsNull() {
-		t.Fatal("Append did not restore non-NULL collection state")
+		t.Fatal("Set did not restore non-NULL collection state")
 	}
 }
 
@@ -227,13 +232,7 @@ func TestNestedTableInlineCollectionImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := collection.Append(int64(10)); err != nil {
-		t.Fatal(err)
-	}
-	if err := collection.Append(nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := collection.Append(int64(30)); err != nil {
+	if err := collection.Set([]any{int64(10), nil, int64(30)}); err != nil {
 		t.Fatal(err)
 	}
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
@@ -273,14 +272,12 @@ func TestObjectAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := o.Set("A", "x"); err != nil {
-		t.Fatal(err)
+	setObjectField(t, o, "A", "x")
+	if got := objectField(t, *o, "A"); got != "x" {
+		t.Fatalf("A = %v, want x", got)
 	}
-	if got, err := o.Get("A"); err != nil || got != "x" {
-		t.Fatalf("Get = %v, %v", got, err)
-	}
-	if err := o.Set("MISSING", "x"); err == nil {
-		t.Fatal("Set succeeded for an undeclared attribute")
+	if field := o.Value.FieldByName("MISSING"); field.IsValid() {
+		t.Fatal("dynamic object exposes an undeclared attribute")
 	}
 }
 
@@ -305,12 +302,8 @@ func TestObjectImageRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := object.Set("ID", int64(42)); err != nil {
-		t.Fatal(err)
-	}
-	if err := object.Set("NAME", "forty-two"); err != nil {
-		t.Fatal(err)
-	}
+	setObjectField(t, object, "ID", int64(42))
+	setObjectField(t, object, "NAME", "forty-two")
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
 	image, err := encodeObjectImage(object, factory)
 	if err != nil {
@@ -324,11 +317,11 @@ func TestObjectImageRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatalf("decoded value = %T, want datatype.Object", decoded)
 	}
-	if value, err := got.Get("ID"); err != nil || value != int64(42) {
-		t.Fatalf("ID = %v, %v; want 42, nil", value, err)
+	if value := objectField(t, got, "ID"); value != int64(42) {
+		t.Fatalf("ID = %v, want 42", value)
 	}
-	if value, err := got.Get("NAME"); err != nil || value != "forty-two" {
-		t.Fatalf("NAME = %v, %v; want forty-two, nil", value, err)
+	if value := objectField(t, got, "NAME"); value != "forty-two" {
+		t.Fatalf("NAME = %v, want forty-two", value)
 	}
 }
 
@@ -366,26 +359,20 @@ func TestCompositeObjectImageRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := child.Set("LABEL", "nested"); err != nil {
-		t.Fatal(err)
-	}
+	setObjectField(t, child, "LABEL", "nested")
 	collection, err := collectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := collection.Append(int64(7)); err != nil {
+	if err := collection.Set([]any{int64(7)}); err != nil {
 		t.Fatal(err)
 	}
 	parent, err := parentType.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := parent.Set("CHILD", child); err != nil {
-		t.Fatal(err)
-	}
-	if err := parent.Set("NUMBERS", collection); err != nil {
-		t.Fatal(err)
-	}
+	setObjectField(t, parent, "CHILD", child)
+	setObjectField(t, parent, "NUMBERS", collection)
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
 	image, err := encodeObjectImage(parent, factory)
 	if err != nil {
@@ -396,19 +383,21 @@ func TestCompositeObjectImageRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := decoded.(datatype.Object)
-	nested, ok := got.Attributes["CHILD"].(datatype.Object)
+	nestedValue := objectField(t, got, "CHILD")
+	nested, ok := nestedValue.(datatype.Object)
 	if !ok {
-		t.Fatalf("CHILD = %T, want datatype.Object", got.Attributes["CHILD"])
+		t.Fatalf("CHILD = %T, want datatype.Object", nestedValue)
 	}
-	if label, err := nested.Get("LABEL"); err != nil || label != "nested" {
-		t.Fatalf("CHILD.LABEL = %v, %v; want nested, nil", label, err)
+	if label := objectField(t, nested, "LABEL"); label != "nested" {
+		t.Fatalf("CHILD.LABEL = %v, want nested", label)
 	}
-	numbers, ok := got.Attributes["NUMBERS"].(datatype.ObjectCollection)
+	numbersValue := objectField(t, got, "NUMBERS")
+	numbers, ok := numbersValue.(datatype.ObjectCollection)
 	if !ok {
-		t.Fatalf("NUMBERS = %T, want ObjectCollection", got.Attributes["NUMBERS"])
+		t.Fatalf("NUMBERS = %T, want ObjectCollection", numbersValue)
 	}
-	if value, err := numbers.Get(1); err != nil || value != int64(7) {
-		t.Fatalf("NUMBERS[1] = %v, %v; want 7, nil", value, err)
+	if values, err := numbers.Get(); err != nil || len(values) != 1 || values[0] != int64(7) {
+		t.Fatalf("NUMBERS.Get() = %#v, %v; want [7]", values, err)
 	}
 }
 
@@ -435,12 +424,8 @@ func TestCompositeObjectImageNullMembers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := parent.Set("CHILD", child); err != nil {
-		t.Fatal(err)
-	}
-	if err := parent.Set("NUMBERS", collection); err != nil {
-		t.Fatal(err)
-	}
+	setObjectField(t, parent, "CHILD", child)
+	setObjectField(t, parent, "NUMBERS", collection)
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
 	image, err := encodeObjectImage(parent, factory)
 	if err != nil {
@@ -451,8 +436,10 @@ func TestCompositeObjectImageNullMembers(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := decoded.(datatype.Object)
-	if got.Attributes["CHILD"] != nil || got.Attributes["NUMBERS"] != nil {
-		t.Fatalf("NULL members decoded as %#v", got.Attributes)
+	childValue := objectField(t, got, "CHILD")
+	numbersValue := objectField(t, got, "NUMBERS")
+	if childValue != nil || numbersValue != nil {
+		t.Fatalf("NULL members decoded as CHILD=%#v, NUMBERS=%#v", childValue, numbersValue)
 	}
 }
 
@@ -465,17 +452,12 @@ func TestObjectCollectionImageRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Set("ID", int64(1)); err != nil {
-		t.Fatal(err)
-	}
+	setObjectField(t, first, "ID", int64(1))
 	collection, err := collectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := collection.Append(first); err != nil {
-		t.Fatal(err)
-	}
-	if err := collection.Append(nil); err != nil {
+	if err := collection.Set([]any{first, nil}); err != nil {
 		t.Fatal(err)
 	}
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
@@ -488,19 +470,20 @@ func TestObjectCollectionImageRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := decoded.(datatype.ObjectCollection)
-	value, err := got.Get(1)
+	values, err := got.Get()
 	if err != nil {
 		t.Fatal(err)
 	}
+	value := values[0]
 	object, ok := value.(datatype.Object)
 	if !ok {
 		t.Fatalf("element = %T, want datatype.Object", value)
 	}
-	if id, err := object.Get("ID"); err != nil || id != int64(1) {
-		t.Fatalf("element.ID = %v, %v; want 1, nil", id, err)
+	if id := objectField(t, object, "ID"); id != int64(1) {
+		t.Fatalf("element.ID = %v, want 1", id)
 	}
-	if value, err := got.Get(2); err != nil || value != nil {
-		t.Fatalf("element 2 = %v, %v; want nil, nil", value, err)
+	if len(values) != 2 || values[1] != nil {
+		t.Fatalf("element 2 = %#v, want nil", values)
 	}
 }
 
@@ -520,12 +503,8 @@ func TestPolymorphicObjectImageRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := object.Set("ID", int64(1)); err != nil {
-		t.Fatal(err)
-	}
-	if err := object.Set("EXTRA", "derived"); err != nil {
-		t.Fatal(err)
-	}
+	setObjectField(t, object, "ID", int64(1))
+	setObjectField(t, object, "EXTRA", "derived")
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
 	image, err := encodeObjectImage(object, factory)
 	if err != nil {
@@ -542,8 +521,8 @@ func TestPolymorphicObjectImageRoundTrip(t *testing.T) {
 	if got.ObjectType != subtype {
 		t.Fatalf("decoded type = %p, want subtype %p", got.ObjectType, subtype)
 	}
-	if value, err := got.Get("EXTRA"); err != nil || value != "derived" {
-		t.Fatalf("EXTRA = %v, %v; want derived, nil", value, err)
+	if value := objectField(t, got, "EXTRA"); value != "derived" {
+		t.Fatalf("EXTRA = %v, want derived", value)
 	}
 }
 

@@ -81,10 +81,8 @@ func TestDriver_NestedTableScalarPLSQL(t *testing.T) {
 	if _, err := datatype.NewObject(ctx, conn, typeName); err == nil {
 		t.Fatal("NewObject succeeded for a nested table")
 	}
-	for _, value := range []any{int64(10), nil, int64(30)} {
-		if err := in.Append(value); err != nil {
-			t.Fatalf("Append(%v): %v", value, err)
-		}
+	if err := in.Set([]any{int64(10), nil, int64(30)}); err != nil {
+		t.Fatalf("Set nested-table values: %v", err)
 	}
 
 	var out datatype.ObjectCollection
@@ -97,14 +95,18 @@ func TestDriver_NestedTableScalarPLSQL(t *testing.T) {
 	if length, err := out.Len(); err != nil || length != 3 {
 		t.Fatalf("nested-table length = %d, %v; want 3", length, err)
 	}
-	if got, err := out.Get(1); err != nil || got != int64(10) {
-		t.Fatalf("nested-table element 1 = %#v, %v; want 10", got, err)
+	values, err := out.Get()
+	if err != nil {
+		t.Fatalf("nested-table Get(): %v", err)
 	}
-	if got, err := out.Get(2); err != nil || got != nil {
-		t.Fatalf("nested-table element 2 = %#v, %v; want nil", got, err)
+	if got := values[0]; got != int64(10) {
+		t.Fatalf("nested-table element 1 = %#v, want 10", got)
 	}
-	if got, err := out.Get(3); err != nil || got != int64(30) {
-		t.Fatalf("nested-table element 3 = %#v, %v; want 30", got, err)
+	if got := values[1]; got != nil {
+		t.Fatalf("nested-table element 2 = %#v, want nil", got)
+	}
+	if got := values[2]; got != int64(30) {
+		t.Fatalf("nested-table element 3 = %#v, want 30", got)
 	}
 
 	nullIn, err := datatype.NewCollection(ctx, conn, typeName)

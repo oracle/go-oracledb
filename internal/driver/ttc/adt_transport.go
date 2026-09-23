@@ -2,6 +2,7 @@ package ttc
 
 import (
 	"database/sql/driver"
+	"reflect"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -82,6 +83,10 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 	if collection.IsNull() {
 		return nil, nil
 	}
+	values, err := collection.Get()
+	if err != nil {
+		return nil, err
+	}
 	if collection.ElementType == 0 && collection.CollectionOf == nil {
 		common.Odl.Error("ADT metadata error")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
@@ -101,8 +106,8 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 	data = appendPickleLength(data, len(prefix))
 	data = append(data, prefix...)
 	data = append(data, 0) // collection flags
-	data = appendPickleLength(data, len(collection.Object.Values))
-	for _, value := range collection.Object.Values {
+	data = appendPickleLength(data, len(values))
+	for _, value := range values {
 		if value == nil {
 			data = append(data, 255)
 			continue
@@ -146,7 +151,7 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 // descriptor; attribute values reuse the scalar codec registered for each
 // declared Oracle datatype.
 func encodeObjectImage(object *datatype.Object, factory codecFactory) (driverCommon.B1Array, error) {
-	if object == nil || object.ObjectType == nil || !object.ObjectType.IsObject() {
+	if object == nil || object.Closed || object.ObjectType == nil || !object.ObjectType.IsObject() {
 		common.Odl.Error("ADT object type error")
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
@@ -197,10 +202,14 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 			common.Odl.Error("ADT metadata error")
 			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
-		value, present := object.Attributes[name]
+		if !object.Value.IsValid() || object.Value.Kind() != reflect.Struct || index >= object.Value.NumField() {
+			common.Odl.Error("ADT object image error")
+			return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
+		}
+		value := object.Value.Field(index).Interface()
 		if isEmbeddedObject(attributeType) {
 			child, childOK := objectValue(value)
-			if !present || !childOK || child.IsNull() {
+			if !childOK || child.IsNull() {
 				if index == 0 && depth > 0 {
 					return append(data, 252, depth), nil
 				}
@@ -213,7 +222,7 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 			}
 			continue
 		}
-		if !present || value == nil {
+		if value == nil {
 			data = append(data, 255)
 			continue
 		}
@@ -343,6 +352,7 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 	if err != nil {
 		return nil, err
 	}
+	values := make([]any, 0, count)
 	var decoder *typeDecoder
 	if typ.CollectionOf == nil {
 		decoder, err = factory.getDecoder(typ.ElementType)
@@ -356,7 +366,7 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 			return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 		}
 		if data[pos] == 255 {
-			collection.Object.Values = append(collection.Object.Values, nil)
+			values = append(values, nil)
 			pos++
 			continue
 		}
@@ -369,7 +379,7 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 			if decodeErr != nil {
 				return nil, decodeErr
 			}
-			collection.Object.Values = append(collection.Object.Values, value)
+			values = append(values, value)
 			pos = end
 			continue
 		}
@@ -386,8 +396,11 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 		if err != nil {
 			return nil, err
 		}
-		collection.Object.Values = append(collection.Object.Values, value)
+		values = append(values, value)
 		pos += length
+	}
+	if err := collection.Set(values); err != nil {
+		return nil, err
 	}
 	return collection, nil
 }
@@ -453,7 +466,9 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 		}
 		if isEmbeddedObject(attributeType) {
 			if data[pos] == 253 {
-				object.Attributes[name] = nil
+				if err := setReflectedObjectField(object, index, nil); err != nil {
+					return nil, pos, err
+				}
 				pos++
 				continue
 			}
@@ -462,7 +477,9 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 					common.Odl.Error("ADT object image error")
 					return nil, pos, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 				}
-				object.Attributes[name] = nil
+				if err := setReflectedObjectField(object, index, nil); err != nil {
+					return nil, pos, err
+				}
 				pos += 2
 				continue
 			}
@@ -470,12 +487,16 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 			if childErr != nil {
 				return nil, pos, childErr
 			}
-			object.Attributes[name] = *child
+			if err := setReflectedObjectField(object, index, *child); err != nil {
+				return nil, pos, err
+			}
 			pos = next
 			continue
 		}
 		if data[pos] == 255 {
-			object.Attributes[name] = nil
+			if err := setReflectedObjectField(object, index, nil); err != nil {
+				return nil, pos, err
+			}
 			pos++
 			continue
 		}
@@ -488,7 +509,9 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 			if decodeErr != nil {
 				return nil, pos, decodeErr
 			}
-			object.Attributes[name] = value
+			if err := setReflectedObjectField(object, index, value); err != nil {
+				return nil, pos, err
+			}
 			pos = end
 			continue
 		}
@@ -509,10 +532,30 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 		if decodeErr != nil {
 			return nil, pos, decodeErr
 		}
-		object.Attributes[name] = value
+		if err := setReflectedObjectField(object, index, value); err != nil {
+			return nil, pos, err
+		}
 		pos = next + length
 	}
 	return object, pos, nil
+}
+
+func setReflectedObjectField(object *datatype.Object, index int, value any) error {
+	if object == nil || object.Closed || !object.Value.IsValid() || object.Value.Kind() != reflect.Struct || index < 0 || index >= object.Value.NumField() {
+		common.Odl.Error("ADT object image error")
+		return common.NewOracleError(oracleErrors.ADTEncodingError, nil)
+	}
+	field := object.Value.Field(index)
+	if !field.CanSet() {
+		common.Odl.Error("ADT object image error")
+		return common.NewOracleError(oracleErrors.ADTEncodingError, nil)
+	}
+	if value == nil {
+		field.SetZero()
+		return nil
+	}
+	field.Set(reflect.ValueOf(value))
+	return nil
 }
 
 func namedImageEnd(data driverCommon.B1Array, pos int) (int, error) {

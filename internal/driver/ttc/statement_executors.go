@@ -1593,7 +1593,12 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 				*collection = datatype.ObjectCollection{Object: &datatype.Object{ObjectType: namedType}, Null: true}
 			}
 			if object, ok := dest.(*datatype.Object); ok && namedType != nil {
-				*object = datatype.Object{ObjectType: namedType, Attributes: make(map[string]any), Null: true}
+				nullObject, objectErr := namedType.NewObject()
+				if objectErr != nil {
+					return objectErr
+				}
+				nullObject.SetNull()
+				*object = *nullObject
 			}
 			continue
 		}

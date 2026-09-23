@@ -50,9 +50,16 @@ import (
 
 var benchmarkADTResult any
 
-// These benchmarks compare the current map-backed Object representation with
-// a candidate runtime struct representation. The reflected type is created
-// once, as a production implementation would cache it by ADT metadata.
+// benchmarkMapObject preserves the former per-object map representation for
+// comparison after datatype.Object moved to reflected fields.
+type benchmarkMapObject struct {
+	typ        *datatype.ObjectType
+	attributes map[string]any
+}
+
+// These benchmarks compare the former map-backed representation with the
+// reflected-struct Object implementation. The reflected type is created once,
+// as a production implementation would cache it by ADT metadata.
 func BenchmarkADTObjectMapSet(b *testing.B) {
 	typ := benchmarkADTObjectType()
 	b.ReportAllocs()
@@ -104,7 +111,7 @@ func BenchmarkADTObjectMapEncode(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		image, err := encodeObjectImage(object, factory)
+		image, err := benchmarkEncodeMapObjectImage(object, factory)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -120,7 +127,7 @@ func BenchmarkADTObjectDynamicStructEncode(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	want, err := encodeObjectImage(mapObject, factory)
+	want, err := benchmarkEncodeMapObjectImage(mapObject, factory)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -149,14 +156,14 @@ func BenchmarkADTObjectMapDecode(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	image, err := encodeObjectImage(object, factory)
+	image, err := benchmarkEncodeMapObjectImage(object, factory)
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		decoded, err := decodeObjectImage(image, typ, factory)
+		decoded, err := benchmarkDecodeMapObjectImage(image, typ, factory)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -171,7 +178,7 @@ func BenchmarkADTObjectDynamicStructDecode(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	image, err := encodeObjectImage(object, factory)
+	image, err := benchmarkEncodeMapObjectImage(object, factory)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -218,24 +225,16 @@ func benchmarkADTDynamicType() reflect.Type {
 	})
 }
 
-func newBenchmarkMapObject(typ *datatype.ObjectType) (*datatype.Object, error) {
-	object, err := typ.NewObject()
-	if err != nil {
-		return nil, err
+func newBenchmarkMapObject(typ *datatype.ObjectType) (*benchmarkMapObject, error) {
+	if typ == nil || !typ.IsObject() {
+		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
-	if err = object.Set("ID", int64(42)); err != nil {
-		return nil, err
-	}
-	if err = object.Set("CUSTOMER_NAME", "Ada Lovelace"); err != nil {
-		return nil, err
-	}
-	if err = object.Set("STATUS", "APPROVED"); err != nil {
-		return nil, err
-	}
-	if err = object.Set("TOTAL_AMOUNT", int64(12500)); err != nil {
-		return nil, err
-	}
-	return object, nil
+	attributes := make(map[string]any, 4)
+	attributes["ID"] = int64(42)
+	attributes["CUSTOMER_NAME"] = "Ada Lovelace"
+	attributes["STATUS"] = "APPROVED"
+	attributes["TOTAL_AMOUNT"] = int64(12500)
+	return &benchmarkMapObject{typ: typ, attributes: attributes}, nil
 }
 
 func newBenchmarkDynamicValue(typ reflect.Type) reflect.Value {
@@ -245,6 +244,83 @@ func newBenchmarkDynamicValue(typ reflect.Type) reflect.Value {
 	value.Field(2).SetString("APPROVED")
 	value.Field(3).SetInt(12500)
 	return value
+}
+
+// benchmarkEncodeMapObjectImage models the former Attributes-map transport
+// path for a scalar object. It remains local to the benchmark; production
+// objects now use reflected fields.
+func benchmarkEncodeMapObjectImage(object *benchmarkMapObject, factory codecFactory) (driverCommon.B1Array, error) {
+	if object == nil || object.typ == nil || !object.typ.IsObject() || factory == nil {
+		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
+	}
+	data := []byte{0x84, 1, 254, 0, 0, 0, 0}
+	for _, name := range object.typ.AttributeNames() {
+		attributeType := object.typ.Attributes[name].ObjectType
+		if attributeType == nil || attributeType.ElementType == 0 {
+			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
+		}
+		fieldValue := object.attributes[name]
+		if fieldValue == nil {
+			data = append(data, 255)
+			continue
+		}
+		encoder, err := factory.getCollectionEncoder(attributeType.ElementType)
+		if err != nil {
+			encoder, err = factory.getEncoder(normalizeBindValue(fieldValue))
+			if err != nil {
+				return nil, err
+			}
+		}
+		encoded, err := encoder(fieldValue)
+		if err != nil {
+			return nil, err
+		}
+		data = appendPickleLength(data, len(encoded))
+		data = append(data, encoded...)
+	}
+	size := len(data)
+	data[3], data[4], data[5], data[6] = byte(size>>24), byte(size>>16), byte(size>>8), byte(size)
+	return driverCommon.B1Array(data), nil
+}
+
+func benchmarkDecodeMapObjectImage(data driverCommon.B1Array, typ *datatype.ObjectType, factory codecFactory) (*benchmarkMapObject, error) {
+	if typ == nil || !typ.IsObject() || factory == nil || len(data) < 3 || data[0]&0x80 == 0 {
+		return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
+	}
+	imageLength, pos, err := readPickleLength(data, 2)
+	if err != nil || imageLength != len(data) {
+		return nil, common.NewOracleError(oracleErrors.ADTEncodingError, err)
+	}
+	object := &benchmarkMapObject{typ: typ, attributes: make(map[string]any, len(typ.Attributes))}
+	for _, name := range typ.AttributeNames() {
+		attributeType := typ.Attributes[name].ObjectType
+		if attributeType == nil || attributeType.ElementType == 0 || pos >= len(data) {
+			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
+		}
+		if data[pos] == 255 {
+			object.attributes[name] = nil
+			pos++
+			continue
+		}
+		length, next, err := readPickleLength(data, pos)
+		if err != nil || length < 0 || next+length > len(data) {
+			return nil, common.NewOracleError(oracleErrors.ADTEncodingError, err)
+		}
+		decoder, err := factory.getDecoder(attributeType.ElementType)
+		if err != nil {
+			return nil, err
+		}
+		value, err := decoder.decodeToType(columnContext{DataType: attributeType.ElementType}, data[next:next+length])
+		if err != nil {
+			return nil, err
+		}
+		object.attributes[name] = value
+		pos = next + length
+	}
+	if pos != len(data) {
+		return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
+	}
+	return object, nil
 }
 
 // benchmarkEncodeDynamicObjectImage is a prototype direct dynamic-object

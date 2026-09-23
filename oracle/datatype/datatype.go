@@ -48,8 +48,10 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"io"
+	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -106,6 +108,8 @@ type ObjectType struct {
 	// to preserve type order and shape while decoding ADT metadata.
 	tdsType        *tdsType
 	subTypesByTOID map[string]*ObjectType
+	dynamicMu      sync.Mutex
+	dynamicType    reflect.Type
 }
 
 // tdsType is one type record in an Oracle type descriptor stream. Named type
@@ -146,10 +150,16 @@ type ObjectAttribute struct {
 type Object struct {
 	// ObjectType identifies the database type represented by this value.
 	*ObjectType
-	// Attributes holds attribute values keyed by database attribute name.
-	Attributes map[string]any
-	// Values holds collection elements when this object represents a collection.
-	Values []any
+	// Value holds the runtime-generated struct containing this object's
+	// attributes. Its fields are ordered by Oracle attribute declaration and
+	// use interface values so NULL attributes remain representable.
+	//
+	// It is embedded so reflection methods can be called directly on Object,
+	// for example object.FieldByName("ID").
+	reflect.Value
+	// values holds collection elements when this object represents a collection.
+	// Collection values are accessed through ObjectCollection.Set and Get.
+	values []any
 	// Null distinguishes a NULL object from an object whose attributes are all NULL.
 	Null bool
 	// Closed reports whether Close has been called for this value.
@@ -861,7 +871,11 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	if !t.IsObject() {
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
-	return &Object{ObjectType: t, Attributes: make(map[string]any)}, nil
+	dynamicType, err := t.dynamicObjectLayout()
+	if err != nil {
+		return nil, err
+	}
+	return &Object{ObjectType: t, Value: reflect.New(dynamicType).Elem()}, nil
 }
 
 // NewCollection creates an empty ObjectCollection value for t.
@@ -870,7 +884,7 @@ func (t *ObjectType) NewCollection() (ObjectCollection, error) {
 	if t == nil || t.Closed || !t.Collection {
 		return ObjectCollection{}, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
-	return ObjectCollection{Object: &Object{ObjectType: t, Attributes: make(map[string]any)}}, nil
+	return ObjectCollection{Object: &Object{ObjectType: t}}, nil
 }
 
 // Close marks o as closed. A closed object cannot be read or updated.
@@ -890,33 +904,48 @@ func (o *Object) Collection() ObjectCollection {
 	return ObjectCollection{}
 }
 
-// Get returns the value of the named object attribute.
-func (o *Object) Get(name string) (any, error) {
-	if o == nil || o.Closed || o.Null {
+// dynamicObjectLayout creates the per-type reflected struct layout once. Each
+// field remains interface{} because Oracle attributes may be NULL and NUMBER
+// values can have multiple Go representations depending on their metadata.
+func (t *ObjectType) dynamicObjectLayout() (reflect.Type, error) {
+	if t == nil {
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
-	v, ok := o.Attributes[name]
-	if !ok {
-		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
+	t.dynamicMu.Lock()
+	defer t.dynamicMu.Unlock()
+	if t.dynamicType != nil {
+		return t.dynamicType, nil
 	}
-	return v, nil
+
+	names := t.AttributeNames()
+	fields := make([]reflect.StructField, 0, len(names))
+	usedNames := make(map[string]struct{}, len(names))
+	for index, name := range names {
+		fieldName := dynamicFieldName(name, index, usedNames)
+		fields = append(fields, reflect.StructField{Name: fieldName, Type: reflect.TypeFor[any]()})
+	}
+	t.dynamicType = reflect.StructOf(fields)
+	return t.dynamicType, nil
 }
 
-// Set assigns value to the named object attribute.
-// It returns an error when o is closed or name is not an attribute of o's type.
-func (o *Object) Set(name string, value any) error {
-	if o == nil || o.Closed || o.ObjectType == nil {
-		return common.NewOracleError(oracleErrors.ADTValueError, nil)
+func dynamicFieldName(name string, index int, used map[string]struct{}) string {
+	var builder strings.Builder
+	for _, r := range name {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			builder.WriteRune(r)
+		} else {
+			builder.WriteByte('_')
+		}
 	}
-	if _, ok := o.ObjectType.Attributes[name]; !ok {
-		return common.NewOracleError(oracleErrors.ADTValueError, nil)
+	fieldName := builder.String()
+	if fieldName == "" || fieldName[0] < 'A' || fieldName[0] > 'Z' {
+		fieldName = "F_" + fieldName
 	}
-	if o.Attributes == nil {
-		o.Attributes = make(map[string]any)
+	if _, exists := used[fieldName]; exists {
+		fieldName += "_" + strconv.Itoa(index+1)
 	}
-	o.Null = false
-	o.Attributes[name] = value
-	return nil
+	used[fieldName] = struct{}{}
+	return fieldName
 }
 
 // SetNull marks o as a NULL object. NULL is distinct from an object whose
@@ -948,65 +977,48 @@ func (c ObjectCollection) Len() (int, error) {
 	if c.Object == nil || c.Closed {
 		return 0, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
-	return len(c.Values), nil
+	return len(c.values), nil
 }
 
-// Append adds v to the end of c. It returns an error when c is invalid or the
-// VARRAY upper bound would be exceeded.
-func (c *ObjectCollection) Append(v any) error {
-	if c.Object == nil || c.ObjectType == nil || !c.ObjectType.Collection {
+// Set replaces all collection values from a Go slice or array. It returns an
+// error when c is invalid, values is not a slice or array, or the supplied
+// values exceed the VARRAY upper bound.
+func (c *ObjectCollection) Set(values any) error {
+	if c == nil || c.Object == nil || c.Object.Closed || c.ObjectType == nil || !c.ObjectType.Collection {
 		return common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
-	if c.UpperBound > 0 && int64(len(c.Values)+1) > c.UpperBound {
+	items, err := collectionItems(values)
+	if err != nil {
+		return err
+	}
+	if c.UpperBound > 0 && int64(len(items)) > c.UpperBound {
 		return common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
+	c.values = append(c.values[:0], items...)
 	c.Null = false
 	c.Object.Null = false
-	c.Values = append(c.Values, v)
 	return nil
 }
 
-// Get returns the one-based element at index i.
-func (c ObjectCollection) Get(i int) (any, error) {
-	if i < 1 || i > len(c.Values) {
+func collectionItems(values any) ([]any, error) {
+	if values == nil {
+		return nil, nil
+	}
+	value := reflect.ValueOf(values)
+	if value.Kind() != reflect.Slice && value.Kind() != reflect.Array {
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
-	return c.Values[i-1], nil
+	items := make([]any, value.Len())
+	for index := range items {
+		items[index] = value.Index(index).Interface()
+	}
+	return items, nil
 }
 
-// Set replaces the one-based element at index i with v.
-func (c ObjectCollection) Set(i int, v any) error {
-	if i < 1 || i > len(c.Values) {
-		return common.NewOracleError(oracleErrors.ADTValueError, nil)
+// Get returns all collection values in collection order.
+func (c ObjectCollection) Get() ([]any, error) {
+	if c.Object == nil || c.Object.Closed || c.IsNull() {
+		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
-	c.Values[i-1] = v
-	return nil
-}
-
-// First returns the first one-based collection index, or zero for an empty collection.
-func (c ObjectCollection) First() (int, error) {
-	if len(c.Values) == 0 {
-		return 0, nil
-	}
-	return 1, nil
-}
-
-// Last returns the last one-based collection index, or zero for an empty collection.
-func (c ObjectCollection) Last() (int, error) { return len(c.Values), nil }
-
-// Next returns the one-based index following i, or zero when there is no next element.
-func (c ObjectCollection) Next(i int) (int, error) {
-	if i < 0 || i >= len(c.Values) {
-		return 0, nil
-	}
-	return i + 1, nil
-}
-
-// Trim removes n elements from the end of c.
-func (c ObjectCollection) Trim(n int) error {
-	if n < 0 || n > len(c.Values) {
-		return common.NewOracleError(oracleErrors.ADTValueError, nil)
-	}
-	c.Values = c.Values[:len(c.Values)-n]
-	return nil
+	return append([]any(nil), c.values...), nil
 }

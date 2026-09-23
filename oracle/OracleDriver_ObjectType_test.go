@@ -41,6 +41,7 @@ package oracle
 import (
 	"context"
 	"database/sql"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -48,6 +49,79 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
+
+func setObjectValue(t *testing.T, object *datatype.Object, name string, value any) {
+	t.Helper()
+	field := object.Value.FieldByName(name)
+	if !field.IsValid() || !field.CanSet() {
+		t.Fatalf("%s is not a settable reflected object field", name)
+	}
+	if value == nil {
+		field.SetZero()
+		return
+	}
+	field.Set(reflect.ValueOf(value))
+}
+
+func objectValue(t *testing.T, object datatype.Object, name string) any {
+	t.Helper()
+	field := object.Value.FieldByName(name)
+	if !field.IsValid() {
+		t.Fatalf("%s is not a reflected object field", name)
+	}
+	return field.Interface()
+}
+
+func TestDriver_ObjectTypeReflectionValue(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx := context.Background()
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire test connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	typeName := strings.ToUpper(createObjectName("object_reflection_value"))
+	if _, err = conn.ExecContext(ctx, "CREATE TYPE "+typeName+" AS OBJECT (ID NUMBER, NAME VARCHAR2(50), CREATED_AT TIMESTAMP(9))"); err != nil {
+		t.Fatalf("create object type: %v", err)
+	}
+	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
+
+	object, err := datatype.NewObject(ctx, conn, typeName)
+	if err != nil {
+		t.Fatalf("NewObject(%s): %v", typeName, err)
+	}
+
+	// Object attributes are set and read directly through the reflected value.
+	wantTime := time.Date(2026, 9, 22, 10, 30, 0, 123456789, time.UTC)
+	object.FieldByName("ID").Set(reflect.ValueOf(int64(42)))
+	object.FieldByName("NAME").Set(reflect.ValueOf("reflection"))
+	object.FieldByName("CREATED_AT").Set(reflect.ValueOf(wantTime))
+
+	var out datatype.Object
+	if _, err = conn.ExecContext(ctx, "BEGIN :1 := :2; END;", sql.Out{Dest: &out}, object); err != nil {
+		t.Fatalf("PL/SQL object IN/OUT: %v", err)
+	}
+	if got := out.FieldByName("ID").Interface(); got != int64(42) {
+		t.Fatalf("ID = %v, want 42", got)
+	}
+	if got := out.FieldByName("NAME").Interface(); got != "reflection" {
+		t.Fatalf("NAME = %v, want reflection", got)
+	}
+	gotTime, ok := out.FieldByName("CREATED_AT").Interface().(time.Time)
+	if !ok {
+		t.Fatalf("CREATED_AT = %T, want time.Time", out.FieldByName("CREATED_AT").Interface())
+	}
+	assertSameYMDHMSNanos(t, 0, "reflected object TIMESTAMP", gotTime, wantTime)
+}
 
 func TestDriver_ObjectTypeMetadata(t *testing.T) {
 	if TestingConfig == nil {
@@ -126,9 +200,7 @@ func TestDriver_ObjectTypeScalarPLSQL(t *testing.T) {
 	}
 	wantTime := time.Date(2025, 4, 5, 6, 7, 8, 123456789, time.UTC)
 	for name, value := range map[string]any{"ID": int64(42), "NAME": "answer", "CREATED_AT": wantTime} {
-		if err := in.Set(name, value); err != nil {
-			t.Fatalf("Set(%s): %v", name, err)
-		}
+		setObjectValue(t, in, name, value)
 	}
 	var out datatype.Object
 	if _, err = conn.ExecContext(ctx, "BEGIN :1 := :2; END;", sql.Out{Dest: &out}, in); err != nil {
@@ -137,15 +209,16 @@ func TestDriver_ObjectTypeScalarPLSQL(t *testing.T) {
 	if out.IsNull() {
 		t.Fatal("PL/SQL object IN/OUT returned NULL")
 	}
-	if got, err := out.Get("ID"); err != nil || got != int64(42) {
-		t.Fatalf("ID = %v, %v; want 42, nil", got, err)
+	if got := objectValue(t, out, "ID"); got != int64(42) {
+		t.Fatalf("ID = %v, want 42", got)
 	}
-	if got, err := out.Get("NAME"); err != nil || got != "answer" {
-		t.Fatalf("NAME = %v, %v; want answer, nil", got, err)
+	if got := objectValue(t, out, "NAME"); got != "answer" {
+		t.Fatalf("NAME = %v, want answer", got)
 	}
-	gotTime, ok := out.Attributes["CREATED_AT"].(time.Time)
+	createdAt := objectValue(t, out, "CREATED_AT")
+	gotTime, ok := createdAt.(time.Time)
 	if !ok {
-		t.Fatalf("CREATED_AT = %T, want time.Time", out.Attributes["CREATED_AT"])
+		t.Fatalf("CREATED_AT = %T, want time.Time", createdAt)
 	}
 	assertSameYMDHMSNanos(t, 0, "object TIMESTAMP", gotTime, wantTime)
 
@@ -205,39 +278,35 @@ func TestDriver_CompositeObjectPLSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := child.Set("LABEL", "nested"); err != nil {
-		t.Fatal(err)
-	}
+	setObjectValue(t, child, "LABEL", "nested")
 	numbers, err := collectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := numbers.Append(int64(7)); err != nil {
+	if err := numbers.Set([]any{int64(7)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := parent.Set("CHILD", child); err != nil {
-		t.Fatal(err)
-	}
-	if err := parent.Set("NUMBERS", numbers); err != nil {
-		t.Fatal(err)
-	}
+	setObjectValue(t, parent, "CHILD", child)
+	setObjectValue(t, parent, "NUMBERS", numbers)
 	var out datatype.Object
 	if _, err = conn.ExecContext(ctx, "BEGIN :1 := :2; END;", sql.Out{Dest: &out}, parent); err != nil {
 		t.Fatalf("PL/SQL composite object IN/OUT: %v", err)
 	}
-	nested, ok := out.Attributes["CHILD"].(datatype.Object)
+	nestedValue := objectValue(t, out, "CHILD")
+	nested, ok := nestedValue.(datatype.Object)
 	if !ok {
-		t.Fatalf("CHILD = %T, want datatype.Object", out.Attributes["CHILD"])
+		t.Fatalf("CHILD = %T, want datatype.Object", nestedValue)
 	}
-	if label, err := nested.Get("LABEL"); err != nil || label != "nested" {
-		t.Fatalf("CHILD.LABEL = %v, %v; want nested, nil", label, err)
+	if label := objectValue(t, nested, "LABEL"); label != "nested" {
+		t.Fatalf("CHILD.LABEL = %v, want nested", label)
 	}
-	gotNumbers, ok := out.Attributes["NUMBERS"].(datatype.ObjectCollection)
+	numbersValue := objectValue(t, out, "NUMBERS")
+	gotNumbers, ok := numbersValue.(datatype.ObjectCollection)
 	if !ok {
-		t.Fatalf("NUMBERS = %T, want ObjectCollection", out.Attributes["NUMBERS"])
+		t.Fatalf("NUMBERS = %T, want ObjectCollection", numbersValue)
 	}
-	if value, err := gotNumbers.Get(1); err != nil || value != int64(7) {
-		t.Fatalf("NUMBERS[1] = %v, %v; want 7, nil", value, err)
+	if values, err := gotNumbers.Get(); err != nil || len(values) != 1 || values[0] != int64(7) {
+		t.Fatalf("NUMBERS.Get() = %#v, %v; want [7]", values, err)
 	}
 }
 
@@ -281,32 +350,28 @@ func TestDriver_ObjectVARRAYPLSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := element.Set("ID", int64(1)); err != nil {
-		t.Fatal(err)
-	}
-	if err := in.Append(element); err != nil {
-		t.Fatal(err)
-	}
-	if err := in.Append(nil); err != nil {
+	setObjectValue(t, element, "ID", int64(1))
+	if err := in.Set([]any{element, nil}); err != nil {
 		t.Fatal(err)
 	}
 	var out datatype.ObjectCollection
 	if _, err = conn.ExecContext(ctx, "BEGIN :1 := :2; END;", sql.Out{Dest: &out}, in); err != nil {
 		t.Fatalf("PL/SQL object VARRAY IN/OUT: %v", err)
 	}
-	value, err := out.Get(1)
+	values, err := out.Get()
 	if err != nil {
 		t.Fatal(err)
 	}
+	value := values[0]
 	got, ok := value.(datatype.Object)
 	if !ok {
 		t.Fatalf("element = %T, want datatype.Object", value)
 	}
-	if id, err := got.Get("ID"); err != nil || id != int64(1) {
-		t.Fatalf("element.ID = %v, %v; want 1, nil", id, err)
+	if id := objectValue(t, got, "ID"); id != int64(1) {
+		t.Fatalf("element.ID = %v, want 1", id)
 	}
-	if value, err := out.Get(2); err != nil || value != nil {
-		t.Fatalf("element 2 = %v, %v; want nil, nil", value, err)
+	if len(values) != 2 || values[1] != nil {
+		t.Fatalf("element 2 = %#v, want nil", values)
 	}
 }
 

@@ -148,10 +148,8 @@ func TestDriver_VARRAY_InsertSelectPLSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCollection(%s): %v", typeName, err)
 	}
-	for _, value := range []int64{10, 20, 30} {
-		if err := in.Append(value); err != nil {
-			t.Fatalf("append VARRAY value %d: %v", value, err)
-		}
+	if err := in.Set([]int64{10, 20, 30}); err != nil {
+		t.Fatalf("set VARRAY values: %v", err)
 	}
 	if _, err = conn.ExecContext(ctx, "INSERT INTO "+tableName+" (id, values_col) VALUES (:1, :2)", int64(1), in); err != nil {
 		t.Fatalf("insert VARRAY: %v", err)
@@ -227,11 +225,12 @@ func assertNumberVARRAY(t *testing.T, collection datatype.ObjectCollection, want
 	if err != nil || gotLen != len(want) {
 		t.Fatalf("VARRAY length = %d, %v; want %d", gotLen, err, len(want))
 	}
+	gotValues, err := collection.Get()
+	if err != nil {
+		t.Fatalf("VARRAY Get(): %v", err)
+	}
 	for i, expected := range want {
-		got, err := collection.Get(i + 1)
-		if err != nil {
-			t.Fatalf("VARRAY element %d: %v", i+1, err)
-		}
+		got := gotValues[i]
 		if got != expected {
 			t.Fatalf("VARRAY element %d = %v (%T), want %d", i+1, got, got, expected)
 		}
@@ -293,24 +292,8 @@ func TestDriver_VARRAY_PublicAPIs(t *testing.T) {
 			if _, err := datatype.NewObject(ctx, conn, typeName); err == nil {
 				t.Fatal("NewObject succeeded for a VARRAY")
 			}
-			for _, value := range tc.values {
-				if err := collection.Append(value); err != nil {
-					t.Fatalf("Append(%#v): %v", value, err)
-				}
-			}
-			if first, _ := collection.First(); first != 1 {
-				t.Fatalf("First() = %d, want 1", first)
-			}
-			if last, _ := collection.Last(); last != len(tc.values) {
-				t.Fatalf("Last() = %d, want %d", last, len(tc.values))
-			}
-			if next, _ := collection.Next(1); len(tc.values) > 1 && next != 2 {
-				t.Fatalf("Next(1) = %d, want 2", next)
-			}
-			if len(tc.values) > 1 {
-				if err := collection.Set(1, tc.values[0]); err != nil {
-					t.Fatalf("Set(1): %v", err)
-				}
+			if err := collection.Set(tc.values); err != nil {
+				t.Fatalf("Set(%#v): %v", tc.values, err)
 			}
 
 			var out datatype.ObjectCollection
@@ -334,11 +317,12 @@ func assertVARRAYValues(t *testing.T, collection datatype.ObjectCollection, want
 	if err != nil || gotLen != len(want) {
 		t.Fatalf("VARRAY length = %d, %v; want %d", gotLen, err, len(want))
 	}
+	gotValues, err := collection.Get()
+	if err != nil {
+		t.Fatalf("VARRAY Get(): %v", err)
+	}
 	for i, expected := range want {
-		got, err := collection.Get(i + 1)
-		if err != nil {
-			t.Fatalf("VARRAY element %d: %v", i+1, err)
-		}
+		got := gotValues[i]
 		if !reflect.DeepEqual(got, expected) {
 			t.Fatalf("VARRAY element %d = %#v (%T), want %#v (%T)", i+1, got, got, expected, expected)
 		}
@@ -394,10 +378,8 @@ func TestDriver_VARRAY_OtherScalarTypes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewCollection(%s): %v", tc.name, err)
 			}
-			for _, value := range tc.values {
-				if err := collection.Append(value); err != nil {
-					t.Fatalf("Append(%#v): %v", value, err)
-				}
+			if err := collection.Set(tc.values); err != nil {
+				t.Fatalf("Set(%#v): %v", tc.values, err)
 			}
 			if got, err := collection.Len(); err != nil || got != len(tc.values) {
 				t.Fatalf("Len() = %d, %v; want %d", got, err, len(tc.values))
@@ -412,12 +394,12 @@ func TestDriver_VARRAY_OtherScalarTypes(t *testing.T) {
 				want = tc.want
 			}
 			if tc.check != nil {
+				gotValues, getErr := out.Get()
+				if getErr != nil {
+					t.Fatalf("VARRAY Get(): %v", getErr)
+				}
 				for i, expected := range want {
-					got, err := out.Get(i + 1)
-					if err != nil {
-						t.Fatalf("VARRAY element %d: %v", i+1, err)
-					}
-					tc.check(t, i, got, expected)
+					tc.check(t, i, gotValues[i], expected)
 				}
 			} else {
 				assertVARRAYValues(t, out, want...)
