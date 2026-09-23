@@ -51,6 +51,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -291,46 +292,68 @@ func TestTransportConnect(t *testing.T) {
 func TestIsDownHostError(t *testing.T) {
 	t.Parallel()
 
+	expiredCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
 	tests := []struct {
 		name string
+		ctx  context.Context
 		err  error
 		want bool
 	}{
 		{
 			name: "network unreachable",
+			ctx:  context.Background(),
 			err:  syscall.ENETUNREACH,
 			want: true,
 		},
 		{
 			name: "driver transport timeout",
+			ctx:  context.Background(),
 			err:  common.NewCtxTimeoutCauseError("TransportConnectTimeout", 1000, "test"),
 			want: true,
 		},
 		{
 			name: "network timeout",
+			ctx:  context.Background(),
 			err:  &net.OpError{Op: "dial", Err: timeoutTestError{}},
 			want: true,
 		},
 		{
 			name: "dns failure",
+			ctx:  context.Background(),
 			err:  &net.DNSError{Err: "no such host", Name: "missing.example.com"},
 			want: false,
 		},
 		{
 			name: "connection refused",
+			ctx:  context.Background(),
 			err:  &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED},
 			want: false,
 		},
 		{
 			name: "unrelated error",
+			ctx:  context.Background(),
 			err:  errors.New("authentication failed"),
+			want: false,
+		},
+		{
+			name: "caller deadline error",
+			ctx:  context.Background(),
+			err:  context.DeadlineExceeded,
+			want: false,
+		},
+		{
+			name: "caller deadline translated by transport",
+			ctx:  expiredCtx,
+			err:  common.NewOracleError(oracleErrors.CtxTimeout, nil, "CONNECT", "test", "test-id"),
 			want: false,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := isDownHostError(test.err); got != test.want {
+			if got := isDownHostError(test.ctx, test.err); got != test.want {
 				t.Fatalf("isDownHostError(%v) = %t, want %t", test.err, got, test.want)
 			}
 		})

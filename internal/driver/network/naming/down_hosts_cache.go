@@ -44,10 +44,10 @@ var sharedDownHostCache = common.NewSafeTTLCache[struct{}](
 	downHostCacheTTL,
 )
 
-// MarkDownHost records a host that could not be reached. The cache only
-// influences connection order; it never removes a host from the attempt list.
-func MarkDownHost(host string) {
-	if host != "" {
-		sharedDownHostCache.Put(host, struct{}{})
+// MarkDownHost records an unreachable address key. The cache only influences
+// connection order; it never removes an address from the attempt list.
+func MarkDownHost(key string) {
+	if key != "" {
+		sharedDownHostCache.Put(key, struct{}{})
 	}
 }

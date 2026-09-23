@@ -191,12 +191,12 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 		// Only transport connection failures can mean that an endpoint is down.
 		// Oracle Net, TLS, and authentication failures happen later and do not
 		// reach this point.
-		if isDownHostError(err) {
-			host := address.Hostname
-			if host == "" {
-				host = address.Host
+		if isDownHostError(ctx, err) {
+			key := address.ResolvedIP
+			if key == "" {
+				key = address.Host
 			}
-			naming.MarkDownHost(host)
+			naming.MarkDownHost(key)
 		}
 		return err
 	}
@@ -215,7 +215,15 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 // isDownHostError identifies transport failures that indicate a host or its
 // route is currently unavailable. A refusal is deliberately excluded: it
 // proves that the host responded, even when no listener is available there.
-func isDownHostError(err error) bool {
+func isDownHostError(ctx context.Context, err error) bool {
+	// The TCP adapter translates a caller deadline into an Oracle CtxTimeout
+	// error. Check both the context and the error before considering timeout
+	// errors below, so a caller giving up does not penalize a healthy endpoint.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) ||
+		errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
 	var dnsErr *net.DNSError
 	if errors.As(err, &dnsErr) {
 		return false
@@ -234,10 +242,6 @@ func isDownHostError(err error) bool {
 
 	var sqlErr oracleErrors.SQLError
 	if errors.As(err, &sqlErr) && sqlErr.ErrorCode() == string(oracleErrors.CtxTimeout) {
-		return true
-	}
-
-	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
 

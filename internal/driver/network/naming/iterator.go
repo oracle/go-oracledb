@@ -100,7 +100,6 @@ type ConnectionIterator struct {
 	currentDescIndex int
 	exhausted        bool
 	rng              *rand.Rand
-	downHostCache    *common.SafeTTLCache[struct{}]
 	// dnsErrors     []error  // TODO
 }
 
@@ -109,10 +108,6 @@ type ConnectionIterator struct {
 // DNS resolution happens during iterator creation - hostnames are resolved to IPs,
 // and each IP becomes a separate connection attempt.
 func NewConnectionIterator(ctx context.Context, rootNode *Node, connCtx *ConnectionContext) *ConnectionIterator {
-	return newConnectionIterator(ctx, rootNode, connCtx, sharedDownHostCache)
-}
-
-func newConnectionIterator(ctx context.Context, rootNode *Node, connCtx *ConnectionContext, downHostCache *common.SafeTTLCache[struct{}]) *ConnectionIterator {
 	iter := &ConnectionIterator{
 		rootNode:         rootNode,
 		context:          connCtx, // extracted properties context(different from the passed context)
@@ -120,7 +115,6 @@ func newConnectionIterator(ctx context.Context, rootNode *Node, connCtx *Connect
 		currentDescIndex: 0,
 		exhausted:        false,
 		rng:              rand.New(rand.NewSource(time.Now().UnixNano())),
-		downHostCache:    downHostCache,
 	}
 
 	iter.descAttempts = iter.buildDescriptionAttempts(ctx)
@@ -632,10 +626,11 @@ func (ci *ConnectionIterator) reorderDescriptionsByDownHostStatus(attempts []Des
 }
 
 func (ci *ConnectionIterator) isDownHost(address Address) bool {
-	if ci.downHostCache == nil {
-		return false
+	key := address.ResolvedIP
+	if key == "" {
+		key = address.Host
 	}
-	_, found := ci.downHostCache.Get(address.Host)
+	_, found := sharedDownHostCache.Get(key)
 	return found
 }
 

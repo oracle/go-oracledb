@@ -40,21 +40,28 @@ package naming
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"testing"
-	"time"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-func TestNewConnectionIterator_PrioritizesUncachedHosts(t *testing.T) {
-	t.Parallel()
+// markDownHostsForTest records unique keys in the process-wide cache and
+// removes them once the test completes.
+func markDownHostsForTest(t *testing.T, keys ...string) {
+	t.Helper()
+	for _, key := range keys {
+		MarkDownHost(key)
+	}
+	t.Cleanup(func() {
+		for _, key := range keys {
+			sharedDownHostCache.Remove(key)
+		}
+	})
+}
 
-	cache := common.NewSafeTTLCache[struct{}](4, time.Hour)
-	cache.Put("192.0.2.2", struct{}{})
-	cache.Put("192.0.2.4", struct{}{})
+func TestNewConnectionIterator_PrioritizesUncachedHosts(t *testing.T) {
+	markDownHostsForTest(t, "192.0.2.2", "192.0.2.4")
 
 	// Direct IP addresses keep this test local: no DNS lookup is required.
 	connectionContext := &ConnectionContext{
@@ -65,7 +72,7 @@ func TestNewConnectionIterator_PrioritizesUncachedHosts(t *testing.T) {
 			{Protocol: driverCommon.ProtocolTCP, Host: "192.0.2.4", Port: 1521},
 		},
 	}
-	iter := newConnectionIterator(context.Background(), nil, connectionContext, cache)
+	iter := NewConnectionIterator(context.Background(), nil, connectionContext)
 
 	var got []string
 	for iter.HasNext() {
@@ -77,31 +84,32 @@ func TestNewConnectionIterator_PrioritizesUncachedHosts(t *testing.T) {
 	}
 }
 
-func TestMarkDownHost_RecordsHost(t *testing.T) {
-	t.Parallel()
+func TestConnectionIterator_UsesResolvedIPForDownHostCache(t *testing.T) {
+	const (
+		host      = "scan.example.com"
+		downIP    = "198.51.100.10"
+		healthyIP = "198.51.100.11"
+	)
+	markDownHostsForTest(t, downIP)
 
-	// A unique key lets this test use the shared cache without affecting
-	// ordering assertions in other parallel tests.
-	host := fmt.Sprintf("down-host-cache-test-%d", time.Now().UnixNano())
-	MarkDownHost(host)
+	addresses := []Address{
+		{Host: host, ResolvedIP: downIP},
+		{Host: host, ResolvedIP: healthyIP},
+	}
+	(&ConnectionIterator{}).reorderAddressesByDownHostStatus(addresses)
 
-	if _, found := sharedDownHostCache.Get(host); !found {
-		t.Fatalf("host %q was not recorded in the shared down-host cache", host)
+	if got := addresses[0].ResolvedIP; got != healthyIP {
+		t.Fatalf("first resolved IP = %q, want %q", got, healthyIP)
 	}
 }
 
 func TestConnectionIterator_ReordersDescriptionsWithOnlyDownHosts(t *testing.T) {
-	t.Parallel()
-
-	cache := common.NewSafeTTLCache[struct{}](4, time.Hour)
-	for _, host := range []string{"down-1", "down-2", "down-3"} {
-		cache.Put(host, struct{}{})
-	}
-	iter := &ConnectionIterator{downHostCache: cache}
+	markDownHostsForTest(t, "198.51.100.21", "198.51.100.22", "198.51.100.23")
+	iter := &ConnectionIterator{}
 	attempts := []DescriptionAttempts{
-		{Addresses: []Address{{Host: "down-1"}, {Host: "down-2"}}},
-		{Addresses: []Address{{Host: "down-3"}, {Host: "healthy-1"}}},
-		{Addresses: []Address{{Host: "healthy-2"}}},
+		{Addresses: []Address{{Host: "down-1", ResolvedIP: "198.51.100.21"}, {Host: "down-2", ResolvedIP: "198.51.100.22"}}},
+		{Addresses: []Address{{Host: "down-3", ResolvedIP: "198.51.100.23"}, {Host: "healthy-1", ResolvedIP: "198.51.100.24"}}},
+		{Addresses: []Address{{Host: "healthy-2", ResolvedIP: "198.51.100.25"}}},
 	}
 
 	iter.reorderDescriptionsByDownHostStatus(attempts)
@@ -118,16 +126,12 @@ func TestConnectionIterator_ReordersDescriptionsWithOnlyDownHosts(t *testing.T) 
 }
 
 func TestConnectionIterator_ReappliesDownHostOrdering(t *testing.T) {
-	t.Parallel()
-
 	t.Run("retry cycle", func(t *testing.T) {
-		cache := common.NewSafeTTLCache[struct{}](2, time.Hour)
 		iter := &ConnectionIterator{
-			downHostCache: cache,
 			descAttempts: []DescriptionAttempts{{
 				Addresses: []Address{
-					{Protocol: driverCommon.ProtocolTCP, Host: "host-1", Port: 1521},
-					{Protocol: driverCommon.ProtocolTCP, Host: "host-2", Port: 1521},
+					{Protocol: driverCommon.ProtocolTCP, Host: "host-1", ResolvedIP: "198.51.100.31", Port: 1521},
+					{Protocol: driverCommon.ProtocolTCP, Host: "host-2", ResolvedIP: "198.51.100.32", Port: 1521},
 				},
 				RetryCount: 1,
 			}},
@@ -136,7 +140,7 @@ func TestConnectionIterator_ReappliesDownHostOrdering(t *testing.T) {
 		// The first cycle uses its initial order. Mark host-1 before retrying.
 		iter.Next()
 		iter.Next()
-		cache.Put("host-1", struct{}{})
+		markDownHostsForTest(t, "198.51.100.31")
 
 		if got := iter.Next().Address.Host; got != "host-2" {
 			t.Fatalf("first retry host = %q, want host-2", got)
@@ -144,14 +148,12 @@ func TestConnectionIterator_ReappliesDownHostOrdering(t *testing.T) {
 	})
 
 	t.Run("reset", func(t *testing.T) {
-		cache := common.NewSafeTTLCache[struct{}](2, time.Hour)
-		cache.Put("host-1", struct{}{})
+		markDownHostsForTest(t, "198.51.100.41")
 		iter := &ConnectionIterator{
-			downHostCache: cache,
 			descAttempts: []DescriptionAttempts{{
 				Addresses: []Address{
-					{Protocol: driverCommon.ProtocolTCP, Host: "host-1", Port: 1521},
-					{Protocol: driverCommon.ProtocolTCP, Host: "host-2", Port: 1521},
+					{Protocol: driverCommon.ProtocolTCP, Host: "host-1", ResolvedIP: "198.51.100.41", Port: 1521},
+					{Protocol: driverCommon.ProtocolTCP, Host: "host-2", ResolvedIP: "198.51.100.42", Port: 1521},
 				},
 			}},
 		}
