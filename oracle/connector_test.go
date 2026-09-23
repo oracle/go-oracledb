@@ -133,6 +133,20 @@ func assertNoTokenProviderRegistered(t *testing.T, providerRegistry common.Regis
 	}
 }
 
+// TestDriver_ConnectorDriver verifies OpenConnector links the connector to
+// the driver that created it.
+func TestDriver_ConnectorDriver(t *testing.T) {
+	t.Parallel()
+	drv := NewDriver()
+	connector, err := drv.openConnector("localhost:1521/service")
+	if err != nil {
+		t.Fatalf("openConnector returned error: %v", err)
+	}
+	if got := connector.Driver(); got != drv {
+		t.Fatalf("connector Driver returned %T, want %T", got, drv)
+	}
+}
+
 // TestConnectorRegisterProviderMakesProviderAvailableToConnectionFactory
 // verifies that a provider registered on a connector is passed to the
 // connection-instantiator factory used by a later Connect call.
