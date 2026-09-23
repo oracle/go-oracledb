@@ -570,6 +570,11 @@ func initMessagesEn() {
 	// Action:   Verify the database connection and the DBTIMEZONE value returned by the server.
 	// Comment:  Arg[0]: operation (query|retrieve|parse)
 	message.SetString(language.English, string(oracleErrors.ServerTimeZoneError), "Failed to %s server timezone")
+	// Document: No
+	// Cause:    The connection provided is not an Oracle connection
+	// Action:   Create a connection using the Oracle driver and try again
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidConnection), "the connection provided is not an Oracle connection")
 
 	// Document: No
 	// Cause:    Token-based authentication resolved an empty token.

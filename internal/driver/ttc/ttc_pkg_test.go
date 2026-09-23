@@ -48,6 +48,7 @@ import (
 	"math"
 	"os"
 	"regexp"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -296,7 +297,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIOallRPA_Unmarshal_AlterSessionDrop", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_AlterSessionDrop},
 	{Name: "TestTTIOallRPA_UnmarshalFrom_Fail_Truncated", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_UnmarshalFrom_Fail_Truncated},
 	{Name: "TestTTIOallRPA_UnmarshalFrom_FaultyBuffer", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_UnmarshalFrom_FaultyBuffer},
-	{Name: "TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues},
+	{Name: "TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues", Categories: "unitary", Exclusive: true, Fn: TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues},
 	{Name: "TestTTIOallRPA_UnmarshalDMLRows_FaultyBuffer", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_UnmarshalDMLRows_FaultyBuffer},
 	{Name: "TestTTIOallRPA_Unmarshal_TransactionContext", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_TransactionContext},
 	{Name: "TestTTIOallRPA_Unmarshal_TransactionContext_Fail_Bytes", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_TransactionContext_Fail_Bytes},
@@ -347,11 +348,11 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestGenerateKb", Categories: "unitary", Exclusive: false, Fn: TestGenerateKb},
 	{Name: "TestGenerateSpeedKey", Categories: "unitary", Exclusive: false, Fn: TestGenerateSpeedKey},
 	{Name: "TestEncryptPassword", Categories: "unitary", Exclusive: false, Fn: TestEncryptPassword},
-	{Name: "TestNewOAuth_Success", Categories: "unitary", Exclusive: false, Fn: TestNewOAuth_Success},
+	{Name: "TestNewOAuth_Success", Categories: "unitary", Exclusive: true, Fn: TestNewOAuth_Success},
 	{Name: "TestOAuth_setSessionFields", Categories: "unitary", Exclusive: true, Fn: TestOAuth_setSessionFields},
 	{Name: "TestOAuth_MarshalTo_Success", Categories: "unitary", Exclusive: false, Fn: TestOAuth_MarshalTo_Success},
 	{Name: "TestOAuth_MarshalTo_WithOSESSKEYRPA_Success", Categories: "unitary", Exclusive: false, Fn: TestOAuth_MarshalTo_WithOSESSKEYRPA_Success},
-	{Name: "TestOAuthMarshalTo_Fail", Categories: "unitary", Exclusive: false, Fn: TestOAuthMarshalTo_Fail},
+	{Name: "TestOAuthMarshalTo_Fail", Categories: "unitary", Exclusive: true, Fn: TestOAuthMarshalTo_Fail},
 	{Name: "TestOAuth_prepareForOAUTH", Categories: "unitary", Exclusive: false, Fn: TestOAuth_prepareForOAUTH},
 	{Name: "TestOAuth_initializeLogonModeForOAUTH", Categories: "unitary", Exclusive: false, Fn: TestOAuth_initializeLogonModeForOAUTH},
 	{Name: "TestOAuth_setPasswordKeyValsForOAUTH", Categories: "unitary", Exclusive: false, Fn: TestOAuth_setPasswordKeyValsForOAUTH},
@@ -359,14 +360,14 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal", Categories: "unitary", Exclusive: true, Fn: TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal},
 	{Name: "TestOAuth_setDriverIdentityKeyValsForOAUTH", Categories: "unitary", Exclusive: false, Fn: TestOAuth_setDriverIdentityKeyValsForOAUTH},
 	{Name: "TestOAuth_setAlterSessionKeyValsForOAUTH", Categories: "unitary", Exclusive: false, Fn: TestOAuth_setAlterSessionKeyValsForOAUTH},
-	{Name: "TestOAuth_validateKeySizeForOAUTH_Success", Categories: "unitary", Exclusive: false, Fn: TestOAuth_validateKeySizeForOAUTH_Success},
+	{Name: "TestOAuth_validateKeySizeForOAUTH_Success", Categories: "unitary", Exclusive: true, Fn: TestOAuth_validateKeySizeForOAUTH_Success},
 	{Name: "TestOAuth_validateKeySizeForOAUTH_Failure", Categories: "unitary", Exclusive: false, Fn: TestOAuth_validateKeySizeForOAUTH_Failure},
 	{Name: "TestOAuth_sanitizeInputCredential", Categories: "unitary", Exclusive: false, Fn: TestOAuth_sanitizeInputCredential},
-	{Name: "TestOAuth_validateO5VerifierType_Success", Categories: "unitary", Exclusive: false, Fn: TestOAuth_validateO5VerifierType_Success},
+	{Name: "TestOAuth_validateO5VerifierType_Success", Categories: "unitary", Exclusive: true, Fn: TestOAuth_validateO5VerifierType_Success},
 	{Name: "TestOAuth_setters", Categories: "unitary", Exclusive: false, Fn: TestOAuth_setters},
 	{Name: "TestOAuthRPA_NewOAuthRPA", Categories: "unitary", Exclusive: false, Fn: TestOAuthRPA_NewOAuthRPA},
-	{Name: "TestOAuthRPA_UnMarshalFrom_Golden", Categories: "unitary", Exclusive: false, Fn: TestOAuthRPA_UnMarshalFrom_Golden},
-	{Name: "TestOAuthRPAUnMarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestOAuthRPAUnMarshalFrom_Fail},
+	{Name: "TestOAuthRPA_UnMarshalFrom_Golden", Categories: "unitary", Exclusive: true, Fn: TestOAuthRPA_UnMarshalFrom_Golden},
+	{Name: "TestOAuthRPAUnMarshalFrom_Fail", Categories: "unitary", Exclusive: true, Fn: TestOAuthRPAUnMarshalFrom_Fail},
 	{Name: "TestOAuthRPA_UnMarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestOAuthRPA_UnMarshalFrom_Fail},
 	{Name: "TestOAuthRPA_UnMarshalFrom_Failure", Categories: "unitary", Exclusive: false, Fn: TestOAuthRPA_UnMarshalFrom_Failure},
 	{Name: "TestNewTTIoer14", Categories: "unitary", Exclusive: false, Fn: TestNewTTIoer14},
@@ -483,6 +484,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestOexfen_MarshalTo_Failures", Categories: "unitary", Exclusive: false, Fn: TestOexfen_MarshalTo_Failures},
 
 	{Name: "TestLobExecutor_GetChunkSize", Categories: "unitary", Exclusive: false, Fn: TestLobExecutor_GetChunkSize},
+	{Name: "TestLobDefinitionConstructors", Categories: "unitary", Exclusive: false, Fn: TestLobDefinitionConstructors},
 	{Name: "TestClobExecutor_GetChunkSizeErrors", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_GetChunkSizeErrors},
 	{Name: "TestClobExecutor_CreateTemporaryLob", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_CreateTemporaryLob},
 	{Name: "TestClobExecutor_CreateTemporaryLobErrors", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_CreateTemporaryLobErrors},
@@ -518,7 +520,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError},
 	{Name: "TestNormalizeBindValue_SQLNullTypes", Categories: "unitary", Exclusive: false, Fn: TestNormalizeBindValue_SQLNullTypes},
 	{Name: "TestUnmarshalCLRColumnDataRejectsInvalidLongChunkLengths", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalCLRColumnDataRejectsInvalidLongChunkLengths},
-	{Name: "TestNeedToSendOACs_CountChanged", Categories: "unitary", Exclusive: false, Fn: TestNeedToSendOACs_CountChanged},
+	{Name: "TestNeedToSendOACs_CountChanged", Categories: "unitary", Exclusive: true, Fn: TestNeedToSendOACs_CountChanged},
 
 	{Name: "TestAuthRPARejectsOversizedKeyValueListAllocations", Categories: "unitary", Exclusive: false, Fn: TestAuthRPARejectsOversizedKeyValueListAllocations},
 	{Name: "TestCodecFactory_getBindOac", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getBindOac},
@@ -532,7 +534,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestEncryptPasswordBufferTooSmall", Categories: "unitary", Exclusive: false, Fn: TestEncryptPasswordBufferTooSmall},
 	{Name: "TestGetConnectionMissingLocalizationService", Categories: "unitary", Exclusive: false, Fn: TestGetConnectionMissingLocalizationService},
 	{Name: "TestGetMaxLengthForOac_NoPreviousOACs", Categories: "unitary", Exclusive: false, Fn: TestGetMaxLengthForOac_NoPreviousOACs},
-	{Name: "TestGetMaxLengthForOac_PreservesPreviousLarger", Categories: "unitary", Exclusive: false, Fn: TestGetMaxLengthForOac_PreservesPreviousLarger},
+	{Name: "TestGetMaxLengthForOac_PreservesPreviousLarger", Categories: "unitary", Exclusive: true, Fn: TestGetMaxLengthForOac_PreservesPreviousLarger},
 	{Name: "TestGetMaxLengthForOac_UsesCurrentIfLarger", Categories: "unitary", Exclusive: false, Fn: TestGetMaxLengthForOac_UsesCurrentIfLarger},
 	{Name: "TestHandleRXDRow_AssignsDecodedValue", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_AssignsDecodedValue},
 	{Name: "TestHandleRXDRow_MoreDestsThanReturnedValues", Categories: "unitary", Exclusive: false, Fn: TestHandleRXDRow_MoreDestsThanReturnedValues},
@@ -1099,8 +1101,8 @@ func (m *mockOer) getError() error                { return m.err }
 func (m *mockOer) GetMsgCode() common.MessageType { return TTIOER }
 
 type mockNetworkSession struct {
-	cancelCalls     int
-	disconnectCalls int
+	cancelCalls     atomic.Int32 // needed by -race
+	disconnectCalls atomic.Int32 // needed by -race
 	disconnectErr   error
 	sleepDuration   time.Duration
 	cancelErr       error
@@ -1143,12 +1145,12 @@ func (m *mockNetworkSession) GetRemotePort() int {
 }
 
 func (m *mockNetworkSession) CancelOperation(ctx context.Context) error {
-	m.cancelCalls++
+	m.cancelCalls.Add(1)
 	return m.cancelErr
 }
 
 func (m *mockNetworkSession) Disconnect(ctx context.Context, flags int) error {
-	m.disconnectCalls++
+	m.disconnectCalls.Add(1)
 	time.Sleep(m.sleepDuration)
 	return m.disconnectErr
 }

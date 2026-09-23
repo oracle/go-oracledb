@@ -116,7 +116,7 @@ func (p testOAuthTokenProvider) Token(_ context.Context) (string, error) {
 //
 // The configured database user must be allowed to create profiles and users.
 func TestDriver_Authentication_TTIWRN(t *testing.T) {
-	t.Parallel()
+
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
@@ -190,6 +190,9 @@ func TestDriver_Authentication_TTIWRN(t *testing.T) {
 	warningConfig.Credentials.Password = password
 	warningConfig.Credentials.LogonMode = ""
 
+	// TODO : the following needs to be changed. That break '-race' option
+	//  for concurrent access to common.Odl. For now we set the test as exclusif but that
+	//  should be changed
 	var logOutput bytes.Buffer
 	previousLogger := common.Odl
 	common.Odl = slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelWarn}))

@@ -173,7 +173,7 @@ func TestDriver_ConfigurationWithCredentialsWithDsnNegative(t *testing.T) {
 
 // TestDriver_ConfigurationLogging dummy test to activate logging.
 func TestDriver_ConfigurationLogging(t *testing.T) {
-	t.Parallel()
+	// this must be exclusive as this is change the global reference to logger
 	loggingConfig := NewOracleLoggingConfig()
 	loggingConfig.Destination = "STDOUT"
 	loggingConfig.Level = "DEBUG"

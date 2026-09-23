@@ -274,7 +274,8 @@ func TestTransactionRollbackSuccess(t *testing.T) {
 // connection returns an already-in-transaction error.
 func TestCallBeginTxTwice(t *testing.T) {
 	t.Parallel()
-	mockNs := &mockNetworkSession{disconnectCalls: 0, disconnectErr: nil, sleepDuration: 0}
+	mockNs := &mockNetworkSession{disconnectErr: nil, sleepDuration: 0}
+	mockNs.disconnectCalls.Store(0)
 	messageRegistry := NewRegistry[common.MessageType]()
 	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()

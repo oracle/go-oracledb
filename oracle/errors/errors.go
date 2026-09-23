@@ -54,6 +54,7 @@ const (
 	InvalidSPFFunction                   ErrorCode = "OGD-00007"
 	InvalidConnectionParameter           ErrorCode = "OGD-00008"
 	ConflictingConnectionParameterSource ErrorCode = "OGD-00009"
+	InvalidConnection                    ErrorCode = "OGD-00010"
 
 	// Naming / Data Source Name parsing errors (driver-facing)
 	// Raised by driver/network/naming package for Data Source Name / descriptor parsing and validation.

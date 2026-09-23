@@ -53,12 +53,11 @@ func TestConnectionCloser_Close(t *testing.T) {
 	mockStr := &mockStreamer{}
 
 	mockNs := &mockNetworkSession{
-		disconnectCalls: 0,
-		disconnectErr:   nil,
-		sleepDuration:   0,
-		cancelErr:       nil,
+		disconnectErr: nil,
+		sleepDuration: 0,
+		cancelErr:     nil,
 	}
-
+	mockNs.disconnectCalls.Store(0)
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMessageFactory(mockFac)
 	shelf.RegisterMessageStreamer(mockStr)
@@ -106,12 +105,11 @@ func TestConnectionCloser_CloseWithTimeout(t *testing.T) {
 	}
 
 	mockNs := &mockNetworkSession{
-		disconnectCalls: 0,
-		disconnectErr:   nil,
-		sleepDuration:   0,
-		cancelErr:       nil,
+		disconnectErr: nil,
+		sleepDuration: 0,
+		cancelErr:     nil,
 	}
-
+	mockNs.disconnectCalls.Store(0)
 	mockNs.sleepDuration, _ = time.ParseDuration("60s")
 
 	shelf := newShelf[common.MessageType]()
@@ -148,7 +146,7 @@ func TestConnectionCloser_CloseWithTimeout(t *testing.T) {
 	if len(mockStr.pullTypes) != 2 || (mockStr.pullTypes[0] != TTIOER && mockStr.pullTypes[1] != TTISTA) {
 		t.Errorf("Pull called with wrong types: got %v want [TTIOER, TTISTA]", mockStr.pullTypes)
 	}
-	if mockNs.disconnectCalls == 0 {
+	if mockNs.disconnectCalls.Load() == 0 {
 		t.Errorf("Disconnect not called")
 	}
 

@@ -47,12 +47,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"strings"
 	"testing"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
@@ -1104,39 +1102,6 @@ func TestDisconnect(t *testing.T) {
 			t.Errorf("Disconnect should be called after send error")
 		}
 	})
-}
-
-func TestPrintPacket(t *testing.T) {
-	t.Parallel()
-	originalHandler := common.Opl.Handler()
-	defer func() { common.Opl = slog.New(originalHandler) }()
-
-	tests := []struct {
-		name     string
-		buf      []byte
-		offset   int
-		length   int
-		logLevel slog.Leveler
-	}{
-		{"Basic", []byte{0x01, 0x02, 0x03, 0x41, 0x42, 0x43}, 0, 6, slog.LevelInfo},
-		{"NonPrintable", []byte{0x01, 0x1F}, 0, 2, slog.LevelInfo},
-		{"Empty", []byte{}, 0, 0, slog.LevelInfo},
-		{"OffsetLength", []byte{0x01, 0x02, 0x03, 0x04}, 1, 2, slog.LevelInfo},
-		{"SingleByte", []byte{0x41}, 0, 1, slog.LevelInfo},
-		{"Remainder7", []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}, 0, 7, slog.LevelInfo},
-		{"Full8Bytes", []byte{0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48}, 0, 8, slog.LevelInfo},
-		{"AllNonPrintable", []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}, 0, 9, slog.LevelInfo},
-		{"LoggingDisabled", []byte{0x01, 0x02}, 0, 2, slog.LevelError},
-		{"OffsetExceedsLength", []byte{0x01, 0x02, 0x03}, 2, 1, slog.LevelInfo},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			common.Opl = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: tt.logLevel}))
-			PrintPacket(tt.buf, tt.offset, tt.length)
-			// No assertions needed as we're testing for coverage and no panics
-		})
-	}
 }
 
 // TestSendPacketError tests error cases in SendPacket

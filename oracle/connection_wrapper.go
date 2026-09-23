@@ -36,53 +36,45 @@
 ** SOFTWARE.
  */
 
-package ttc
+package oracle
 
 import (
-	"context"
-	"testing"
+	"database/sql"
 
-	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-func TestConnectionResetter_Reset(t *testing.T) {
-	t.Parallel()
-	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
-	}
-	mockStr := &mockStreamer{
-		pullMsg: &mockOer{err: nil},
-	}
+// connectionWrapper provides Oracle specific operations for a dedicated
+// database/sql connection.
+//
+// The wrapped connection must be a connection returned by this driver.
+type connectionWrapper struct {
+	connection *sql.Conn
+}
 
-	mockNs := &mockNetworkSession{
-		disconnectErr: nil,
-		sleepDuration: 0,
-		cancelErr:     nil,
-	}
-	mockNs.disconnectCalls.Store(0)
-	shelf := newShelf[common.MessageType]()
-	shelf.RegisterMessageFactory(mockFac)
-	shelf.RegisterMessageStreamer(mockStr)
-
-	sessionCtx := common.NewSessionContext()
-
-	connection := newTestConnection(shelf, sessionCtx, mockNs)
-
-	connection.PrepareContext(context.Background(), "SELECT * FROM DUAL")
-
-	if len(connection.shelf.GetStatements(false)) != 1 {
-		t.Errorf("list of statements should not be empty, got [%v]", connection.shelf.GetStatements(false))
-	}
-
-	sessionCtx.GetSessionProperties().SetProperty("pasta", "carbonara")
-
-	connection.ResetSession(context.Background())
-	if len(connection.shelf.GetStatements(false)) != 0 {
-		t.Errorf("list of statements should be empty, got [%v]", connection.shelf.GetStatements(false))
-	}
-
-	if v := sessionCtx.GetSessionProperties().GetProperty("pasta"); v != nil {
-		t.Errorf("session porperties should have been resetted")
-	}
-
+// NewConnectionWrapper validates and wraps a dedicated database/sql connection
+// for Oracle specific operations.
+//
+// Parameters:
+//   - connection: Dedicated database/sql connection to wrap.
+//
+// Returns:
+//   - *connectionWrapper: Wrapper for the supplied connection.
+//   - error: Error if the underlying driver connection type is not supported.
+func NewConnectionWrapper(connection *sql.Conn) (*connectionWrapper, error) {
+	var wrapper *connectionWrapper
+	err := connection.Raw(func(c any) error {
+		// Include here all functions/interfaces we want a connection to implement in
+		// order to be wrapped by this wrapper
+		type canBeWrapped interface {
+		}
+		_, ok := c.(canBeWrapped)
+		if !ok {
+			return common.NewOracleError(oracleErrors.InvalidConnection, nil)
+		}
+		wrapper = &connectionWrapper{connection: connection}
+		return nil
+	})
+	return wrapper, err
 }
