@@ -73,10 +73,19 @@ type Factory interface {
 // This function is used during registration to instantiate new message implementors.
 type MessageCreationFunc func() driverCommon.Message[driverCommon.MessageType]
 
+// capabilityConditionFunc selects whether a registered implementation can be
+// used for a set of negotiated capabilities.
+//
+// The capabilities parameter contains negotiated capability values keyed by
+// capability name. The return value is true when the implementation is
+// compatible with those capabilities.
+type capabilityConditionFunc func(map[string]driverCommon.Capability) bool
+
 // RegisteredItem represents a registered message or function implementor.
 type RegisteredItem struct {
 	makeFunc              MessageCreationFunc
 	minTTCProtocolVersion int8
+	capabilityCondition   capabilityConditionFunc
 }
 
 func (r *RegisteredItem) String() string {
@@ -125,7 +134,7 @@ func (r *Registry[K]) Register(key K,
 			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 	}
-	item := RegisteredItem{f, minTTCProtocolVersion}
+	item := RegisteredItem{f, minTTCProtocolVersion, nil}
 	// Check if a message has already been registered for that key, min and max version.
 	foundIndex := -1
 	for index, item := range r.entries[key] {
@@ -143,6 +152,63 @@ func (r *Registry[K]) Register(key K,
 	return nil
 }
 
+// RegisterWithCondition adds an implementation to the registry for a key and
+// minimum TTC protocol version, subject to a capability condition.
+//
+// Parameters:
+//   - key identifies the message or function registry entry.
+//   - minTTCProtocolVersion is the minimum TTC protocol version supported by f.
+//   - capabilityCondition determines whether f is compatible with negotiated
+//     capabilities. A nil condition makes f unconditional.
+//   - f creates the registered message implementation.
+//
+// Returns an error if key is invalid; otherwise, it returns nil.
+func (r *Registry[K]) RegisterWithCondition(key K,
+	minTTCProtocolVersion int8,
+	capabilityCondition capabilityConditionFunc,
+	f MessageCreationFunc) error {
+	if validator, ok := any(key).(interface{ isValid() bool }); ok {
+		if !validator.isValid() {
+			common.Odl.Warn("Invalid key", "key", key)
+			return common.NewOracleError(oracleErrors.InternalError, nil)
+		}
+	}
+	item := RegisteredItem{f, minTTCProtocolVersion, capabilityCondition}
+	// Check if a message has already been registered for that key, min and max version.
+	foundIndex := -1
+	for index, item := range r.entries[key] {
+		if item.minTTCProtocolVersion == minTTCProtocolVersion && isSameCapabilityCondition(capabilityCondition, item.capabilityCondition) {
+			foundIndex = index
+			break
+		}
+	}
+	// if no message was found append new one otherwise replace it with the new one.
+	if foundIndex == -1 {
+		r.entries[key] = append(r.entries[key], item)
+	} else {
+		r.entries[key][foundIndex] = item
+	}
+	return nil
+}
+
+// isSameCapabilityCondition reports whether two capability conditions refer
+// to the same condition, treating two nil conditions as equal.
+//
+// Parameters:
+//   - c1 is the first capability condition.
+//   - c2 is the second capability condition.
+//
+// Returns true when both conditions are nil or have the same function pointer;
+// otherwise, it returns false.
+func isSameCapabilityCondition(c1 capabilityConditionFunc, c2 capabilityConditionFunc) bool {
+	if c1 == nil || c2 == nil {
+		return c1 == nil && c2 == nil
+	}
+	c1Value := reflect.ValueOf(c1)
+	c2Value := reflect.ValueOf(c2)
+	return c1Value.Pointer() == c2Value.Pointer()
+}
+
 // getCandidates retrieves all registered candidates for a given message type.
 func (r *Registry[K]) getCandidates(key K) []RegisteredItem {
 	if candidates, ok := r.entries[key]; ok {
@@ -157,19 +223,34 @@ type SimpleFactory struct {
 	ttcVersion   int8
 	msgregistry  *Registry[driverCommon.MessageType]
 	funcregistry *Registry[functionRegistryKey]
+	capabilities map[string]driverCommon.Capability
 }
 
-// NewMessageFactory creates a new factory that only considers implementor versions, returning the highest available version.
+// NewMessageFactory creates a factory using the default registries and no
+// negotiated capabilities. It returns the highest protocol-compatible
+// implementation.
+//
+// Returns a message factory.
 func NewMessageFactory() Factory {
-	return NewMessageFactoryForProtocol(-1)
+	return NewMessageFactoryForProtocol(-1, nil)
 }
 
-// NewMessageFactoryForProtocol creates a new factory for a given TTC protocol version and default registries.
-func NewMessageFactoryForProtocol(protocolVersion int8) Factory {
+// NewMessageFactoryForProtocol creates a factory for a TTC protocol version,
+// using the default message and function registries.
+//
+// Parameters:
+//   - protocolVersion is the negotiated TTC protocol version. A value of -1
+//     allows every registered protocol version.
+//   - capabilities contains negotiated capability values used to filter
+//     conditional implementations. A nil map bypasses capability filtering.
+//
+// Returns a message factory.
+func NewMessageFactoryForProtocol(protocolVersion int8, capabilities map[string]driverCommon.Capability) Factory {
 	return &SimpleFactory{
 		ttcVersion:   protocolVersion,
 		msgregistry:  MessageRegistry,
 		funcregistry: FunctionRegistry,
+		capabilities: capabilities,
 	}
 }
 
@@ -188,7 +269,7 @@ func (f *SimpleFactory) GetMessage(msgType driverCommon.MessageType) (driverComm
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
-	bestCandidate := getBestImplementor(f.ttcVersion, candidates)
+	bestCandidate := getBestImplementor(f.ttcVersion, candidates, f.capabilities)
 	if bestCandidate != nil {
 		common.Odl.Debug("Message returned", "candidate", bestCandidate)
 		return bestCandidate.makeFunc(), nil
@@ -213,7 +294,7 @@ func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, 
 
 	}
 
-	bestCandidate := getBestImplementor(f.ttcVersion, candidates)
+	bestCandidate := getBestImplementor(f.ttcVersion, candidates, f.capabilities)
 	if bestCandidate != nil {
 		common.Odl.Debug("Function returned", "candidate", bestCandidate)
 		return bestCandidate.makeFunc(), nil
@@ -222,13 +303,25 @@ func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, 
 	return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 }
 
-// getBestImplementor finds the best candidate implementation based on the TTC protocol version.
-func getBestImplementor(protocolVersion int8, candidates []RegisteredItem) *RegisteredItem {
+// getBestImplementor selects the highest-version candidate compatible with the
+// TTC protocol version and negotiated capabilities.
+//
+// Parameters:
+//   - protocolVersion is the negotiated TTC protocol version. A value of -1
+//     allows every candidate version.
+//   - candidates contains registered implementations to consider.
+//   - capabilities contains negotiated capability values used by conditional
+//     candidates. A nil map bypasses capability filtering.
+//
+// Returns the selected registered implementation, or nil when no candidate is
+// compatible.
+func getBestImplementor(protocolVersion int8, candidates []RegisteredItem, capabilities map[string]driverCommon.Capability) *RegisteredItem {
 	var bestCandidate *RegisteredItem
 
 	for _, candidate := range candidates {
 		if (protocolVersion == -1 || (candidate.minTTCProtocolVersion <= protocolVersion)) &&
-			(bestCandidate == nil || candidate.minTTCProtocolVersion > bestCandidate.minTTCProtocolVersion) {
+			(bestCandidate == nil || candidate.minTTCProtocolVersion > bestCandidate.minTTCProtocolVersion) &&
+			(candidate.capabilityCondition == nil || capabilities == nil || candidate.capabilityCondition(capabilities)) {
 			bestCandidate = &candidate
 		}
 	}

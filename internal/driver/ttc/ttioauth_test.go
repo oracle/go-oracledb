@@ -53,8 +53,7 @@ import (
 
 // TestNewOAuth_Success tests the NewOAuth constructor.
 func TestNewOAuth_Success(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	oAuth := NewOAuth().(*oAuth)
 	if oAuth == nil {
 		t.Fatal("NewOAuth returned nil")
@@ -292,8 +291,7 @@ func TestOAuth_MarshalTo_WithOSESSKEYRPA_Success(t *testing.T) {
 }
 
 func TestOAuthMarshalTo_Fail(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	cases := []struct {
 		name      string
 		failByte  int
@@ -584,8 +582,7 @@ func TestOAuth_setAlterSessionKeyValsForOAUTH(t *testing.T) {
 
 // TestOAuth_validateKeySizeForOAUTH_Success tests successful key size validation.
 func TestOAuth_validateKeySizeForOAUTH_Success(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	cases := []struct {
 		name        string
 		encryptedSK []byte
@@ -685,8 +682,7 @@ func TestPasswordAuthenticatorValidatePasswordLength(t *testing.T) {
 
 // TestOAuth_validateO5VerifierType_Success tests successful verifier type validation.
 func TestOAuth_validateO5VerifierType_Success(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	validTypes := []int{ZtvtOrcl7, ZtvtMd5, ZtvtSmd5, ZtvtSh1, ZtvtSSH1, ZtvtSha512}
 
 	for _, vt := range validTypes {
@@ -774,8 +770,7 @@ func TestOAuthRPA_NewOAuthRPA(t *testing.T) {
 }
 
 func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	payload := makeOauthRPAPayload()
 	if len(payload) == 0 {
 		t.Fatal("golden oAuth RPA payload decode returned empty")
@@ -812,8 +807,7 @@ func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
 }
 
 func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	cases := []struct {
 		name         string
 		payload      []byte

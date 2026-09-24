@@ -226,8 +226,7 @@ func TestNeedToSendOACs_NoPreviousOACs(t *testing.T) {
 // bind position that has no previous OAC, it falls back to the current length
 // rather than panicking with an out-of-bounds access.
 func TestNeedToSendOACs_CountChanged(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	//t.Parallel()
+	t.Parallel()
 	shelf := newShelf[common.MessageType]()
 	registerTestCodecs(shelf, 20)
 
@@ -346,8 +345,7 @@ func TestGetMaxLengthForOac_NoPreviousOACs(t *testing.T) {
 // TestGetMaxLengthForOac_PreservesPreviousLarger verifies that when the previous OAC
 // declared a larger maxLength the larger value is preserved (monotonic non-decrease).
 func TestGetMaxLengthForOac_PreservesPreviousLarger(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	//t.Parallel()
+	t.Parallel()
 	shelf := newShelf[common.MessageType]()
 	registerTestCodecs(shelf, 20)
 

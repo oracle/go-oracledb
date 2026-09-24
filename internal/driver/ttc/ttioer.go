@@ -576,17 +576,3 @@ func CRC64UpdateChecksumWithBytes(cs uint64, b []byte) uint64 {
 	}
 	return cs
 }
-
-// RegisterOerWithCapability register OER messages that support end of call status on
-// message registry. Replaces the existing messages
-func RegisterOerWithCapability() {
-	err := MessageRegistry.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
-	if err != nil {
-		common.Odl.Debug("Failed to register message TTIOER version 2", "error", err)
-	}
-
-	err = MessageRegistry.Register(TTIOER, MinTTCProtocolVersion, newTTIoerWithEndOfCallStatusSupport)
-	if err != nil {
-		common.Odl.Debug("Failed to register message TTIOER version 1", "error", err)
-	}
-}

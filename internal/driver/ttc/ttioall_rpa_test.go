@@ -200,8 +200,7 @@ func TestTTIOallRPA_UnmarshalFrom_FaultyBuffer(t *testing.T) {
 // TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues verifies unsupported optional RPA sections fail when present.
 // Expectation: non-zero keyword-value count and registration-feedback length are rejected.
 func TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	payload := ttirpaPayloadFromDump(validTTIRPADropDump)
 	if len(payload) < 16 {
 		t.Skip("validTTIRPADropDump too small to modify unsupported RPA fields")

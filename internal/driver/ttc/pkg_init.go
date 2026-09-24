@@ -122,12 +122,30 @@ func init() {
 		common.Odl.Warn("Failed to register message tTIdty", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIOER, 14, newTTIoer14)
+	err = MessageRegistry.RegisterWithCondition(TTIOER, 14, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoer14)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIOER version 2", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIOER, MinTTCProtocolVersion, newTTIoer)
+	err = MessageRegistry.RegisterWithCondition(TTIOER, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoer)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIOER version 1", "error", err)
+	}
+
+	err = MessageRegistry.RegisterWithCondition(TTIOER, 14, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoer14WithEndOfCallStatusSupport)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIOER version 2", "error", err)
+	}
+
+	err = MessageRegistry.RegisterWithCondition(TTIOER, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoerWithEndOfCallStatusSupport)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIOER version 1", "error", err)
 	}
@@ -168,7 +186,17 @@ func init() {
 	}
 
 	// Register status functions
-	err = MessageRegistry.Register(TTISTA, -1, newTTISTA)
+	err = MessageRegistry.RegisterWithCondition(TTISTA, -1, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTISTA)
+	if err != nil {
+		common.Odl.Warn("Failed to register STA function", "error", err)
+	}
+
+	// Register status functions
+	err = MessageRegistry.RegisterWithCondition(TTISTA, -1, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTISTAWithEndOfCallStatusSupport)
 	if err != nil {
 		common.Odl.Warn("Failed to register STA function", "error", err)
 	}

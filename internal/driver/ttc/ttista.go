@@ -42,7 +42,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
@@ -95,17 +94,6 @@ func (sta *ttiSTA) UnMarshalFrom(ctx context.Context, engine driverCommon.Marsha
 	}
 
 	return nil
-}
-
-// RegisterSTAWithCapability register STA messages that support end of call status on
-// message registry. Replaces the existing messages
-func RegisterSTAWithCapability() {
-	err := MessageRegistry.Register(TTISTA, 1, newTTISTAWithEndOfCallStatusSupport)
-	if err != nil {
-		common.Odl.Debug("Failed to register STA function", "error", err)
-
-	}
-
 }
 
 // isBeingDrainned returns true if the connection should be dropped
