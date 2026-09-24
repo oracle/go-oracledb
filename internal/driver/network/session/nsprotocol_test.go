@@ -329,6 +329,12 @@ func TestIsDownHostError(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "dns timeout",
+			ctx:  context.Background(),
+			err:  &net.OpError{Op: "dial", Err: &net.DNSError{Err: "i/o timeout", Name: "missing.example.com", IsTimeout: true}},
+			want: false,
+		},
+		{
 			name: "connection refused",
 			ctx:  context.Background(),
 			err:  &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED},

@@ -247,28 +247,41 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 	common.Odl.Debug("dialing remote host")
 	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", address.String())
 	if err != nil {
-		opError := err.(*net.OpError)
-		if errors.Is(err, context.DeadlineExceeded) ||
-			opError.Timeout() {
-			reportedCause := context.Cause(dialCtxToBeUsed)
-			if sqlE, ok := reportedCause.(oracleErrors.SQLError); ok {
-				return sqlE
-			}
-			if te, ok := reportedCause.(common.CtxTimeoutCauseError); ok {
-				return te
-			}
-			// deal with a context case now as we always want an oracleErrors
-			return common.NewOracleError(oracleErrors.CtxTimeout, nil, "CONNECT",
-				address.String(), nt.atts.Connectionid)
-		}
-		if opError.Op == "dial" && errors.Is(opError.Err, syscall.ECONNREFUSED) {
-			return common.NewOracleError(oracleErrors.NoListenerAvailable, nil, address.String())
-		}
-		return err
+		return normalizeDialError(dialCtxToBeUsed, err, address, nt.atts.Connectionid)
 	}
 	nt.stream = conn
 	nt.connected = true
 	return nil
+}
+
+// normalizeDialError preserves DNS errors so callers can distinguish a failed
+// hostname lookup from a failed TCP connection to a resolved endpoint.
+func normalizeDialError(ctx context.Context, err error, address Address, connectionID string) error {
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return err
+	}
+
+	var opError *net.OpError
+	if !errors.As(err, &opError) {
+		return err
+	}
+	if errors.Is(err, context.DeadlineExceeded) || opError.Timeout() {
+		reportedCause := context.Cause(ctx)
+		if sqlE, ok := reportedCause.(oracleErrors.SQLError); ok {
+			return sqlE
+		}
+		if te, ok := reportedCause.(common.CtxTimeoutCauseError); ok {
+			return te
+		}
+		// deal with a context case now as we always want an oracleErrors
+		return common.NewOracleError(oracleErrors.CtxTimeout, nil, "CONNECT",
+			address.String(), connectionID)
+	}
+	if opError.Op == "dial" && errors.Is(opError.Err, syscall.ECONNREFUSED) {
+		return common.NewOracleError(oracleErrors.NoListenerAvailable, nil, address.String())
+	}
+	return err
 }
 
 // Connect establishes a network transport connection
