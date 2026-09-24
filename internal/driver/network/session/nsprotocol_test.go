@@ -289,6 +289,9 @@ func TestTransportConnect(t *testing.T) {
 	}
 }
 
+// TestIsDownHostError verifies that only transport failures that indicate an
+// unreachable endpoint are cached, while DNS failures, connection refusals,
+// and caller deadline expiry are excluded.
 func TestIsDownHostError(t *testing.T) {
 	t.Parallel()
 

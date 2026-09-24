@@ -60,6 +60,9 @@ func markDownHostsForTest(t *testing.T, keys ...string) {
 	})
 }
 
+// TestNewConnectionIterator_PrioritizesUncachedHosts verifies that new
+// iterators try healthy addresses before cached-down addresses, while
+// preserving the original order within each group.
 func TestNewConnectionIterator_PrioritizesUncachedHosts(t *testing.T) {
 	markDownHostsForTest(t, "192.0.2.2", "192.0.2.4")
 
@@ -84,6 +87,8 @@ func TestNewConnectionIterator_PrioritizesUncachedHosts(t *testing.T) {
 	}
 }
 
+// TestConnectionIterator_UsesResolvedIPForDownHostCache verifies that cache
+// status is shared by the resolved endpoint, rather than its hostname.
 func TestConnectionIterator_UsesResolvedIPForDownHostCache(t *testing.T) {
 	const (
 		host      = "scan.example.com"
@@ -103,6 +108,9 @@ func TestConnectionIterator_UsesResolvedIPForDownHostCache(t *testing.T) {
 	}
 }
 
+// TestConnectionIterator_ReordersDescriptionsWithOnlyDownHosts verifies that
+// only a description whose every address is cached down moves behind other
+// descriptions.
 func TestConnectionIterator_ReordersDescriptionsWithOnlyDownHosts(t *testing.T) {
 	markDownHostsForTest(t, "198.51.100.21", "198.51.100.22", "198.51.100.23")
 	iter := &ConnectionIterator{}
@@ -125,7 +133,10 @@ func TestConnectionIterator_ReordersDescriptionsWithOnlyDownHosts(t *testing.T) 
 	}
 }
 
+// TestConnectionIterator_ReappliesDownHostOrdering verifies that retry cycles
+// and Reset refresh ordering when cache state changes after iterator creation.
 func TestConnectionIterator_ReappliesDownHostOrdering(t *testing.T) {
+	// A retry cycle should use current cache state rather than its initial order.
 	t.Run("retry cycle", func(t *testing.T) {
 		iter := &ConnectionIterator{
 			descAttempts: []DescriptionAttempts{{
@@ -147,6 +158,7 @@ func TestConnectionIterator_ReappliesDownHostOrdering(t *testing.T) {
 		}
 	})
 
+	// Reset should move cached-down addresses behind healthy ones in a description.
 	t.Run("reset", func(t *testing.T) {
 		markDownHostsForTest(t, "198.51.100.41")
 		iter := &ConnectionIterator{
@@ -161,6 +173,38 @@ func TestConnectionIterator_ReappliesDownHostOrdering(t *testing.T) {
 		iter.Reset()
 		if got := iter.Next().Address.Host; got != "host-2" {
 			t.Fatalf("first host after reset = %q, want host-2", got)
+		}
+	})
+
+	// Reset should also move an entirely cached-down description behind a
+	// description that retains a healthy address.
+	t.Run("reset description list", func(t *testing.T) {
+		iter := &ConnectionIterator{
+			descAttempts: []DescriptionAttempts{
+				// Every address in this description becomes cached down.
+				{Addresses: []Address{
+					{Protocol: driverCommon.ProtocolTCP, Host: "down-host-1", ResolvedIP: "198.51.100.51", Port: 1521},
+					{Protocol: driverCommon.ProtocolTCP, Host: "down-host-2", ResolvedIP: "198.51.100.52", Port: 1521},
+				}},
+				// This description stays first because it still has one healthy address.
+				{Addresses: []Address{
+					{Protocol: driverCommon.ProtocolTCP, Host: "down-host-3", ResolvedIP: "198.51.100.53", Port: 1521},
+					{Protocol: driverCommon.ProtocolTCP, Host: "healthy-host", ResolvedIP: "198.51.100.54", Port: 1521},
+				}},
+			},
+		}
+
+		// Cache state changes after the iterator is built.
+		markDownHostsForTest(t, "198.51.100.51", "198.51.100.52", "198.51.100.53")
+		iter.Reset()
+
+		var got []string
+		for iter.HasNext() {
+			got = append(got, iter.Next().Address.Host)
+		}
+		want := []string{"healthy-host", "down-host-3", "down-host-1", "down-host-2"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("connection order after reset = %v, want %v", got, want)
 		}
 	})
 }

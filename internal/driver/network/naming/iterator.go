@@ -238,6 +238,7 @@ func (ci *ConnectionIterator) Reset() {
 		}
 		ci.reorderAddressesByDownHostStatus(ci.descAttempts[i].Addresses)
 	}
+	ci.reorderDescriptionsByDownHostStatus(ci.descAttempts)
 }
 
 // Remaining returns the number of remaining attempts
@@ -611,6 +612,10 @@ func (ci *ConnectionIterator) reorderAddressesByDownHostStatus(addresses []Addre
 	stablePartition(addresses, ci.isDownHost)
 }
 
+// reorderDescriptionsByDownHostStatus moves descriptions whose addresses are
+// all cached down, behind descriptions that still have a healthy address. It
+// preserves the existing order within both groups, so healthy addresses are not
+// deprioritized as a side effect.
 func (ci *ConnectionIterator) reorderDescriptionsByDownHostStatus(attempts []DescriptionAttempts) {
 	stablePartition(attempts, func(attempt DescriptionAttempts) bool {
 		if len(attempt.Addresses) == 0 {
@@ -625,6 +630,9 @@ func (ci *ConnectionIterator) reorderDescriptionsByDownHostStatus(attempts []Des
 	})
 }
 
+// isDownHost reports whether the endpoint represented by address is cached as
+// unreachable. It uses ResolvedIP, the endpoint actually dialed, so hostnames
+// resolving to the same IP share cache status. Host is used when unresolved.
 func (ci *ConnectionIterator) isDownHost(address Address) bool {
 	key := address.ResolvedIP
 	if key == "" {
