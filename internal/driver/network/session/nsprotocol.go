@@ -40,11 +40,16 @@ package session
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/zlib"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -60,7 +65,6 @@ type networkSession struct {
 	isBreak             bool
 	isReset             bool
 	breakPosted         bool
-	compressionEnabled  bool
 	endOfRequestSupport bool
 	supportsFastAuth    bool
 	redirectCount       int
@@ -79,6 +83,35 @@ type networkSession struct {
 	resetInProgress     bool
 }
 
+// cidSanitizer prevents OS-provided CID values from changing the naming structure.
+var cidSanitizer = strings.NewReplacer("(", "_", ")", "_", "=", "_")
+
+// sanitizeCIDValue returns a value that is safe to serialize in a naming node.
+func sanitizeCIDValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "unknown"
+	}
+	return cidSanitizer.Replace(v)
+}
+
+// buildCIDNode creates the Oracle Net client identifier nested under CONNECT_DATA.
+func buildCIDNode() naming.Node {
+	return naming.Node{
+		Name: "CID",
+		Children: []naming.Node{
+			{Name: "PROGRAM", Value: sanitizeCIDValue(common.ProgramName)},
+			{Name: "HOST", Value: sanitizeCIDValue(common.HostName)},
+			{Name: "USER", Value: sanitizeCIDValue(common.UserName)},
+		},
+	}
+}
+
+// cachedCIDNode is initialized once when this package is loaded from the
+// process metadata initialized by common. Connection attempts reuse this
+// immutable process-level CID node.
+var cachedCIDNode = buildCIDNode()
+
 const (
 	maxRedirectCount = 4
 	maxResendCount   = 4
@@ -87,15 +120,14 @@ const (
 // newNetworkSession creates a new networkSession instance
 func newNetworkSession() *networkSession {
 	return &networkSession{
-		connected:          false,
-		isBreak:            false,
-		isReset:            false,
-		breakPosted:        false,
-		compressionEnabled: false,
-		sndDatapkt:         &dataPacket{},
-		rcvDatapkt:         &dataPacket{},
-		controlPkt:         &controlPacket{},
-		byteOrder:          driverCommon.BIG_ENDIAN,
+		connected:   false,
+		isBreak:     false,
+		isReset:     false,
+		breakPosted: false,
+		sndDatapkt:  &dataPacket{},
+		rcvDatapkt:  &dataPacket{},
+		controlPkt:  &controlPacket{},
+		byteOrder:   driverCommon.BIG_ENDIAN,
 	}
 }
 
@@ -489,9 +521,10 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 	}
 	connectData, err := root.GetNode("DESCRIPTION/CONNECT_DATA")
 	if err != nil {
-		connectData = &naming.Node{Name: "CONNECT_DATA"}
-		root.Children = append(root.Children, *connectData)
+		root.Children = append(root.Children, naming.Node{Name: "CONNECT_DATA"})
+		connectData = &root.Children[len(root.Children)-1]
 	}
+	connectData.Children = append(connectData.Children, cachedCIDNode)
 	connIDNode := naming.Node{Name: "CONNECTION_ID", Value: ns.sAtts.nt.Connectionid}
 	connectData.Children = append(connectData.Children, connIDNode)
 	newConnectStr := root.ToString()
@@ -634,7 +667,57 @@ func (ns *networkSession) processPacket(buf []byte, hdr *header) (any, error) {
 		packet = &markerPacket{}
 	case NSPTCNL:
 		packet = ns.controlPkt
+	// NSPTDA is an Oracle Net DATA packet; its payload begins at NSPDADAT.
 	case NSPTDA:
+		if int(hdr.packetLength) < NSPDADAT {
+			return nil, common.NewOracleError(oracleErrors.InvalidNetworkContextExpectedLength, nil, "packet", "NSPTDA", hdr.packetLength, NSPDADAT)
+		}
+		flags := binary.BigEndian.Uint16(buf[NSPDAFLG:])
+		if ns.sAtts.networkCompressionEnabled && flags&NSPDAFCMP != 0 {
+			// NSPDAFCMP applies only to the payload; keep the wire header intact.
+			header := append([]byte(nil), buf[:NSPDADAT]...)
+			payload := buf[NSPDADAT:]
+			var r io.ReadCloser
+			var err error
+			PrintPacket(payload, 0, len(payload))
+			if ns.sAtts.firstRecvCompressedPacket {
+				// Oracle Net uses zlib Z_SYNC_FLUSH framing: the first packet has a
+				// zlib wrapper and later packets use raw DEFLATE.
+				r, err = zlib.NewReader(bytes.NewReader(payload))
+				ns.sAtts.firstRecvCompressedPacket = false
+			} else {
+				r = flate.NewReader(bytes.NewReader(payload))
+			}
+			if err != nil {
+				common.Odl.Error("failed to initialize network decompression", "algorithm", "zlib", "error", err, "payload-length", len(payload))
+				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, err, "zlib")
+			}
+			decompressed, err := io.ReadAll(r)
+			closeErr := r.Close()
+			syncFlush := bytes.HasSuffix(payload, []byte{0, 0, 0xff, 0xff})
+			// Oracle Net packets end a continuing zlib/DEFLATE stream with a
+			// SYNC_FLUSH marker, not a final stream marker. Go reports
+			// io.ErrUnexpectedEOF for that valid packet boundary. Any other
+			// unexpected EOF is a truncated packet.
+			if err != nil && (!errors.Is(err, io.ErrUnexpectedEOF) || !syncFlush) {
+				common.Odl.Error("failed to decompress network packet", "algorithm", "zlib", "error", err, "payload-length", len(payload), "sync-flush", syncFlush)
+				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, err, "zlib")
+			}
+			if closeErr != nil && (!errors.Is(closeErr, io.ErrUnexpectedEOF) || !syncFlush) {
+				common.Odl.Error("failed to close network decompressor", "algorithm", "zlib", "error", closeErr, "payload-length", len(payload), "sync-flush", syncFlush)
+				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, closeErr, "zlib")
+			}
+			buf = append(header, decompressed...)
+			// The payload size changed, so update the packet length and remove its compression flag
+			// before the normal data-packet unmarshal path reads the packet.
+			if ns.sAtts.largeSDU {
+				binary.BigEndian.PutUint32(buf[:4], uint32(len(buf)))
+			} else {
+				binary.BigEndian.PutUint16(buf[:2], uint16(len(buf)))
+			}
+			binary.BigEndian.PutUint16(buf[NSPDAFLG:], flags&^NSPDAFCMP)
+			hdr.unmarshal(buf, ns.sAtts, nil)
+		}
 		packet = ns.rcvDatapkt
 	default:
 		return nil, common.NewOracleError(oracleErrors.InvalidNetworkValue, nil, "packet type", hdr.typ)
@@ -664,6 +747,59 @@ func (ns *networkSession) SendPacket(ctx context.Context, buf []byte) error {
 	PrintPacket(buf, 0, len(buf))
 	if len(buf) < PACKET_HEADER_SIZE {
 		return common.NewOracleError(oracleErrors.InvalidNetworkExpectedLength, nil, "packet buffer", len(buf), PACKET_HEADER_SIZE)
+	}
+	if ns.sAtts.networkCompressionEnabled && len(buf) > ns.sAtts.networkCompressionThreshold && buf[4] == NSPTDA {
+		if len(buf) < NSPDADAT {
+			return common.NewOracleError(oracleErrors.InvalidNetworkContextExpectedLength, nil, "packet", "NSPTDA", len(buf), NSPDADAT)
+		}
+		// Only data-packet payloads above the negotiated threshold may be compressed.
+		header := append([]byte(nil), buf[:NSPDADAT]...)
+		payload := buf[NSPDADAT:]
+		var (
+			compressed bytes.Buffer
+			err        error
+		)
+		if ns.sAtts.firstSendCompressedPacket {
+			// Start the stream with zlib framing; later packets use raw DEFLATE.
+			zw, zErr := zlib.NewWriterLevel(&compressed, zlib.DefaultCompression)
+			if zErr != nil {
+				common.Odl.Error("failed to initialize network compression", "algorithm", "zlib", "error", zErr, "payload-length", len(payload))
+				return zErr
+			}
+			if _, err = zw.Write(payload); err == nil {
+				err = zw.Flush()
+			}
+		} else {
+			fw, fErr := flate.NewWriter(&compressed, flate.DefaultCompression)
+			if fErr != nil {
+				common.Odl.Error("failed to initialize network compression", "algorithm", "deflate", "error", fErr, "payload-length", len(payload))
+				return fErr
+			}
+			if _, err = fw.Write(payload); err == nil {
+				err = fw.Flush()
+			}
+		}
+
+		if err != nil {
+			common.Odl.Error("failed to compress network packet", "algorithm", "zlib", "error", err, "payload-length", len(payload))
+			return common.NewOracleError(oracleErrors.NetworkCompressionFailed, err, "zlib")
+		}
+		compressedBytes := compressed.Bytes()
+		if len(compressedBytes) < len(payload) {
+			// Use compression only if it makes the payload smaller.
+			if ns.sAtts.firstSendCompressedPacket {
+				ns.sAtts.firstSendCompressedPacket = false
+			}
+			buf = append(header, compressedBytes...)
+			// Mark the data flags as compressed, then publish the new length.
+			flags := binary.BigEndian.Uint16(buf[NSPDAFLG:])
+			binary.BigEndian.PutUint16(buf[NSPDAFLG:], flags|NSPDAFCMP)
+			if ns.sAtts.largeSDU {
+				binary.BigEndian.PutUint32(buf[:4], uint32(len(buf)))
+			} else {
+				binary.BigEndian.PutUint16(buf[:2], uint16(len(buf)))
+			}
+		}
 	}
 	return ns.ntAdapter.Send(ctx, buf)
 }

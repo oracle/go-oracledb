@@ -147,7 +147,7 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 	_initLoggingOnce.Do(func() {
 		// This is delayed until now because we cannot assume the start sequence of the application.
 		// Doing this in init() may end up defining flags after the CLI has been parsed.
-		common.InitLoggingWithConfig(oracleconfig.NewOracleLoggingConfig())
+		common.InitLoggingWithConfig(nil)
 	})
 
 	var confToUse *oracleconfig.OracleDriverConfig

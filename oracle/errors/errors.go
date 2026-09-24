@@ -54,6 +54,7 @@ const (
 	InvalidSPFFunction                   ErrorCode = "OGD-00007"
 	InvalidConnectionParameter           ErrorCode = "OGD-00008"
 	ConflictingConnectionParameterSource ErrorCode = "OGD-00009"
+	InvalidConnection                    ErrorCode = "OGD-00010"
 
 	// Naming / Data Source Name parsing errors (driver-facing)
 	// Raised by driver/network/naming package for Data Source Name / descriptor parsing and validation.
@@ -129,6 +130,10 @@ const (
 	NamingInputMissing                   ErrorCode = "OGD-00126"
 	NamingTokensMissing                  ErrorCode = "OGD-00127"
 	NamingUnexpectedClosingParenthesis   ErrorCode = "OGD-00128"
+	// NetworkCompressionFailed indicates that a network packet could not be compressed.
+	NetworkCompressionFailed ErrorCode = "OGD-00068"
+	// NetworkDecompressionFailed indicates that a compressed network packet could not be decompressed.
+	NetworkDecompressionFailed ErrorCode = "OGD-00069"
 
 	// Converter Errors
 	// Empty input Error

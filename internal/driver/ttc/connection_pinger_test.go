@@ -56,12 +56,11 @@ func TestConnectionPinger_Ping(t *testing.T) {
 	}
 
 	mockNs := &mockNetworkSession{
-		disconnectCalls: 0,
-		disconnectErr:   nil,
-		sleepDuration:   0,
-		cancelErr:       nil,
+		disconnectErr: nil,
+		sleepDuration: 0,
+		cancelErr:     nil,
 	}
-
+	mockNs.disconnectCalls.Store(0)
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMessageFactory(mockFac)
 	shelf.RegisterMessageStreamer(mockStr)
@@ -109,13 +108,12 @@ func TestConnectionPinger_IsValid(t *testing.T) {
 	}
 
 	mockNs := &mockNetworkSession{
-		disconnectCalls: 0,
-		disconnectErr:   nil,
-		sleepDuration:   0,
-		cancelErr:       nil,
-		inband:          false,
+		disconnectErr: nil,
+		sleepDuration: 0,
+		cancelErr:     nil,
+		inband:        false,
 	}
-
+	mockNs.disconnectCalls.Store(0)
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMessageFactory(mockFac)
 	shelf.RegisterMessageStreamer(mockStr)
@@ -139,13 +137,12 @@ func TestConnectionPinger_IsValidWithInband(t *testing.T) {
 	}
 
 	mockNs := &mockNetworkSession{
-		disconnectCalls: 0,
-		disconnectErr:   nil,
-		sleepDuration:   0,
-		cancelErr:       nil,
-		inband:          true,
+		disconnectErr: nil,
+		sleepDuration: 0,
+		cancelErr:     nil,
+		inband:        true,
 	}
-
+	mockNs.disconnectCalls.Store(0)
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMessageFactory(mockFac)
 	shelf.RegisterMessageStreamer(mockStr)

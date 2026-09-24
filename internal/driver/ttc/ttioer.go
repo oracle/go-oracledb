@@ -51,8 +51,6 @@ import (
 // tTIOerIface defines an interface for Oracle error data protocol unmarshalling and processing.
 type tTIOerIface interface {
 	driverCommon.Message[driverCommon.MessageType]
-	// init clears the previous OER state before decoding the next message.
-	init()
 	// getError gets the wrapped error sent back from the server.
 	// in some context. Oer can be received but that do not indicate an error situation.
 	// when that is the case, this method return nil.
@@ -148,18 +146,6 @@ func newTTIoerWithEndOfCallStatusSupport() driverCommon.Message[driverCommon.Mes
 // GetMsgCode returns the message type code for tTIoer.
 func (o *tTIoer) GetMsgCode() driverCommon.MessageType {
 	return TTIOER
-}
-
-// Init initializes or resets the tTIoer fields.
-func (o *tTIoer) init() {
-	o.retCode = 0
-	o.errorMsg = nil
-	o.oerepa = nil
-	o.startErrorOffset = 0
-	o.endErrorOffset = 0
-	o.batchErrorOffsetArray = nil
-	o.oerrcd2 = 0
-	o.oercn2 = 0
 }
 
 // UnMarshalFrom unmarshals the error data

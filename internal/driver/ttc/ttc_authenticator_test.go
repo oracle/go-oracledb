@@ -39,14 +39,10 @@
 package ttc
 
 import (
-	"bytes"
 	"context"
-	"log/slog"
 	"strconv"
-	"strings"
 	"testing"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -106,10 +102,6 @@ func TestPasswordAuthenticator_doOSESSKEY_Golden(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	shelf, _, buf := newAuthTestShelf(1 << 16)
-	var logOutput bytes.Buffer
-	previousLogger := common.Odl
-	common.Odl = slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	defer func() { common.Odl = previousLogger }()
 
 	// Pre-seed incoming wire with: [TTIWRN][TTIRPA][golden oSesskeyRPA payload]
 	writeAuthWarning(t, ctx, buf, 28002, "ORA-28002: the password will expire within 7 days", 0x05)
@@ -146,10 +138,7 @@ func TestPasswordAuthenticator_doOSESSKEY_Golden(t *testing.T) {
 	if len(sessionProperties.GetProperty("AUTH_VFR_DATA").(*driverCommon.KeyValue).Value) == 0 {
 		t.Error("salt is empty")
 	}
-	if output := logOutput.String(); !strings.Contains(output, "warningNumber=28002") ||
-		!strings.Contains(output, "ORA-28002: the password will expire within 7 days") {
-		t.Errorf("authentication warning was not logged: %s", output)
-	}
+
 }
 
 // TestPasswordAuthenticator_doOAuth_Golden

@@ -41,6 +41,7 @@ package session
 import (
 	"bytes"
 	"encoding/binary"
+	"strings"
 	"testing"
 
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -364,6 +365,24 @@ func TestAcceptPacketUnmarshal(t *testing.T) {
 	err = ap.unmarshal(buf[:NSPACFL1], sAtts, hdr)
 	if err == nil {
 		t.Errorf("Expected error for short accept packet")
+	}
+}
+
+func TestAcceptPacketUnmarshalUnsupportedCompressionScheme(t *testing.T) {
+	sAtts := &sessionAtts{version: 315}
+	buf := make([]byte, NSPACCFL+1)
+	binary.BigEndian.PutUint16(buf[NSPACVSN:], 315)
+	binary.BigEndian.PutUint32(buf[NSPACLSD:], 8192)
+	binary.BigEndian.PutUint32(buf[NSPACLTD:], 8192)
+	buf[NSPACCFL] = NSPACCFON | (1 << 2)
+
+	err := (&acceptPacket{}).unmarshal(buf, sAtts, &header{packetLength: uint32(len(buf)), typ: NSPTAC})
+	expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkValue)
+	if !strings.Contains(err.Error(), "network compression scheme") {
+		t.Fatalf("error does not identify the compression scheme: %v", err)
+	}
+	if sAtts.networkCompressionEnabled {
+		t.Fatal("compression was enabled for an unsupported server scheme")
 	}
 }
 

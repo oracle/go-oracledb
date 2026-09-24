@@ -56,9 +56,6 @@ type tTIimplres struct {
 	// Prefetched RXD messages are created from the active shelf factory so they
 	// always match the negotiated connection protocol version.
 	dcb *tTIdcb
-	// oer decodes the version-specific prefetch terminator selected when this
-	// implicit-result message is created.
-	oer tTIOerIface
 	// shelf and sessCtx initialize the rows returned for implicit cursors and
 	// nested REF CURSOR values decoded from prefetched RXD data.
 	shelf   *ttiShelf[driverCommon.MessageType]
@@ -69,29 +66,24 @@ type tTIimplres struct {
 	rows []*ttcRowsRefCursor
 }
 
-// newTTIimplres creates an implicit-result decoder for TTC versions 12-13.
+// newTTIimplres creates an implicit-result decoder for TTC versions 12-16.
 func newTTIimplres() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIimplres{dcb: newTTIdcb().(*tTIdcb), oer: newTTIoer().(tTIOerIface)}
-}
-
-// newTTIimplres14 creates an implicit-result decoder for TTC versions 14-16.
-func newTTIimplres14() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIimplres{dcb: newTTIdcb().(*tTIdcb), oer: newTTIoer14().(tTIOerIface)}
+	return &tTIimplres{dcb: newTTIdcb().(*tTIdcb)}
 }
 
 // newTTIimplres17 creates an implicit-result decoder for TTC versions 17-19.
 func newTTIimplres17() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIimplres{dcb: newTTIdcb17().(*tTIdcb), oer: newTTIoer14().(tTIOerIface)}
+	return &tTIimplres{dcb: newTTIdcb17().(*tTIdcb)}
 }
 
 // newTTIimplres20 creates an implicit-result decoder for TTC versions 20-23.
 func newTTIimplres20() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIimplres{dcb: newTTIdcb20().(*tTIdcb), oer: newTTIoer14().(tTIOerIface)}
+	return &tTIimplres{dcb: newTTIdcb20().(*tTIdcb)}
 }
 
 // newTTIimplres24 creates an implicit-result decoder for TTC version 24 and later.
 func newTTIimplres24() driverCommon.Message[driverCommon.MessageType] {
-	return &tTIimplres{dcb: newTTIdcb24().(*tTIdcb), oer: newTTIoer14().(tTIOerIface)}
+	return &tTIimplres{dcb: newTTIdcb24().(*tTIdcb)}
 }
 
 // GetMsgCode identifies this decoder as TTIIMPLRES.
@@ -138,9 +130,9 @@ Returns:
 
 Notes:
 
-  - The version-specific DCB and OER instances are initialized by the
-    TTIIMPLRES factory before this method is called. Prefetch RXD instances
-    are allocated from the active shelf factory for each incoming RXD message.
+  - The version-specific DCB instance is initialized by the TTIIMPLRES factory
+    before this method is called. Prefetch RXD and OER instances are allocated
+    from the active shelf factory for each incoming message.
 */
 func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	resultSetCount, err := mar.UnmarshalUB4(ctx)
@@ -162,7 +154,7 @@ func (p *tTIimplres) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshal
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
 		common.Odl.Debug("Decoded implicit result cursor descriptor", "cursorID", cursorID, "columns", len(columns), "prefetch", p.prefetch)
-		rows := newRefCursorRows(ctx, p.shelf, p.sessCtx, driverCommon.SB4(cursorID), columns)
+		rows := newRefCursorRows(p.shelf, p.sessCtx, driverCommon.SB4(cursorID), columns)
 		if p.prefetch {
 			if err = p.unmarshalPrefetch(ctx, mar, rows, columns); err != nil {
 				return err
@@ -255,11 +247,16 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 			state.handleRXDRow(rxd)
 			common.Odl.Debug("Decoded implicit result RXD", "cursorID", rows.cursorID, "row", state.rowCount-1, "columns", len(rxd.row), "totalRows", len(rows.rowData))
 		case TTIIMPLOER:
-			p.oer.init()
-			if err = p.oer.(driverCommon.UnMarshallable).UnMarshalFrom(ctx, mar); err != nil {
+			msg, err := p.shelf.GetMessageFactory().(Factory).GetMessage(TTIOER)
+			if err != nil {
+				common.Odl.Error("unmarshalPrefetch: GetMessage(TTIOER) failed", "error", err, "stage", "get-oer")
+				return common.NewOracleError(oracleErrors.CallbackFactoryError, err, "unmarshalPrefetch failed")
+			}
+			oer := msg.(tTIOerIface)
+			if err = oer.(driverCommon.UnMarshallable).UnMarshalFrom(ctx, mar); err != nil {
 				return err
 			}
-			oerErr := p.oer.getError()
+			oerErr := oer.getError()
 			common.Odl.Debug("Decoded implicit result OER", "cursorID", rows.cursorID, "error", oerErr, "rows", state.rowCount)
 			if oerErr != nil {
 				sqlErr, ok := oerErr.(oracleErrors.SQLError)

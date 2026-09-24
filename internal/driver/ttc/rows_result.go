@@ -127,8 +127,8 @@ type ttcRows struct {
 	closed        bool
 	closeErr      error
 	// beforeNext performs optional work, such as the first RefCursor fetch,
-	// before advancing through buffered rows.
-	beforeNext func() error
+	// before advancing through buffered rows. Next provides it a fresh context.
+	beforeNext func(context.Context) error
 	// columnDecoder optionally replaces the standard scalar decoder for rows
 	// containing protocol-specific values such as REF CURSOR columns.
 	columnDecoder func(int) (driver.Value, error)
@@ -155,7 +155,7 @@ type ttcRowsRefCursor struct {
 	// fetchOnce and fetchErr cache the one deferred fetch for a server cursor.
 	fetchOnce sync.Once
 	// fetch issues the TTC fetch operation when rows were not pre-fetched.
-	fetch    func() error
+	fetch    func(context.Context) error
 	fetchErr error
 }
 
@@ -199,7 +199,7 @@ func (r *ttcRows) Next(dest []driver.Value) error {
 		return io.EOF
 	}
 	if r.beforeNext != nil {
-		if err := r.beforeNext(); err != nil {
+		if err := r.beforeNext(context.Background()); err != nil {
 			return err
 		}
 	}
@@ -428,12 +428,13 @@ func (r *ttcRowsRefCursor) closeServerCursor() error {
 	return nil
 }
 
-// fetchRows invokes the deferred RefCursor fetch at most once.
-func (r *ttcRowsRefCursor) fetchRows() error {
+// fetchRows invokes the deferred RefCursor fetch at most once using ctx supplied
+// by Rows.Next.
+func (r *ttcRowsRefCursor) fetchRows(ctx context.Context) error {
 	if r.fetch != nil {
 		r.fetchOnce.Do(func() {
 			common.Odl.Debug("Fetching REF CURSOR rows", "cursorID", r.cursorID)
-			r.fetchErr = r.fetch()
+			r.fetchErr = r.fetch(ctx)
 		})
 		if r.fetchErr != nil {
 			common.Odl.Warn("REF CURSOR fetch failed", "cursorID", r.cursorID, "error", r.fetchErr)

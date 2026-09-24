@@ -65,42 +65,6 @@ func TestNewTTIoer(t *testing.T) {
 	}
 }
 
-// TestTTIoer_Init sets nonzero values, calls Init, and checks that all fields reset.
-func TestTTIoer_Init(t *testing.T) {
-	t.Parallel()
-	oer := newTTIoer().(*tTIoer)
-	oer.retCode = 1234
-	oer.errorMsg = []byte("stuff")
-	oer.oerepa = []byte("x")
-	oer.startErrorOffset = 22
-	oer.endErrorOffset = 33
-	oer.batchErrorOffsetArray = []int{99, 98}
-	oer.oerrcd2 = 77
-	oer.oercn2 = 88
-	oer.init()
-	if oer.retCode != 0 {
-		t.Errorf("Init should reset retCode to zero; got %d", oer.retCode)
-	}
-	if len(oer.errorMsg) != 0 {
-		t.Errorf("Init should reset errorMsg")
-	}
-	if oer.oerepa != nil {
-		t.Errorf("Init should reset oerepa to nil")
-	}
-	if oer.startErrorOffset != 0 {
-		t.Errorf("Init should reset startErrorOffset to 0")
-	}
-	if oer.endErrorOffset != 0 {
-		t.Errorf("Init should reset endErrorOffset to 0")
-	}
-	if oer.batchErrorOffsetArray != nil {
-		t.Errorf("Init should reset batchErrorOffsetArray to nil")
-	}
-	if oer.oerrcd2 != 0 || oer.oercn2 != 0 {
-		t.Errorf("Init should reset fields to zero; got oerrcd2=%d oercn2=%d", oer.oerrcd2, oer.oercn2)
-	}
-}
-
 // TestTTIoer_GetMsgCode ensures GetMsgCode returns TTIOER.
 func TestTTIoer_GetMsgCode(t *testing.T) {
 	t.Parallel()

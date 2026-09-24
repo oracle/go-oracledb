@@ -88,9 +88,6 @@ END;`, sql.Out{Dest: &rows})
 	if err != nil {
 		return err
 	}
-	if rows == nil {
-		return fmt.Errorf("REF CURSOR OUT bind returned no rows")
-	}
 	defer rows.Close()
 
 	fmt.Println("REF CURSOR OUT bind")
@@ -123,9 +120,6 @@ BEGIN
 END;`)
 	if err != nil {
 		return err
-	}
-	if rows == nil {
-		return fmt.Errorf("implicit cursor query returned no rows")
 	}
 	defer rows.Close()
 

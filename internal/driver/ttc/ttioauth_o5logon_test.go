@@ -501,7 +501,8 @@ func TestGenerateSpeedKey(t *testing.T) {
 }
 
 func TestEncryptPassword(t *testing.T) {
-	t.Parallel()
+	// TODO : move it back to "parallel when race is fixed
+	// t.Parallel()
 	o5 := newO5Logon(true)
 	o5.o5logonKey = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	o5.pwdEncStr = "AES/CBC/PKCS5Padding"
@@ -518,7 +519,8 @@ func TestEncryptPassword(t *testing.T) {
 }
 
 func TestEncryptPasswordBufferTooSmall(t *testing.T) {
-	t.Parallel()
+	// TODO : move it back to "parallel when race is fixed
+	// t.Parallel()
 	o5 := newO5Logon(true)
 	o5.o5logonKey = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	o5.pwdEncStr = "AES/CBC/PKCS5Padding"

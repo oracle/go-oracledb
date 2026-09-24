@@ -39,11 +39,14 @@
 package session
 
 import (
+	"bytes"
+	"compress/flate"
+	"compress/zlib"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"strings"
 	"testing"
@@ -184,7 +187,7 @@ func TestNewNetworkSession(t *testing.T) {
 	if ns.connected {
 		t.Errorf("New session should not be connected")
 	}
-	if ns.isBreak || ns.isReset || ns.breakPosted || ns.compressionEnabled {
+	if ns.isBreak || ns.isReset || ns.breakPosted {
 		t.Errorf("New session flags should be false")
 	}
 	if ns.sndDatapkt == nil || ns.rcvDatapkt == nil || ns.controlPkt == nil {
@@ -339,6 +342,40 @@ func TestConnectToOption(t *testing.T) {
 			t.Errorf("Expected prepare error, got %v", err)
 		}
 	})
+}
+
+// TestCIDNode verifies that buildCIDNode assembles the Oracle Net CID node
+// with sanitized PROGRAM, HOST, and USER values in the expected descriptor format.
+func TestCIDNode(t *testing.T) {
+	originalProgramName, originalHostName, originalUserName := common.ProgramName, common.HostName, common.UserName
+	t.Cleanup(func() {
+		common.ProgramName, common.HostName, common.UserName = originalProgramName, originalHostName, originalUserName
+	})
+	common.ProgramName = " program(name)=value "
+	common.HostName = " host(name)=value "
+	common.UserName = " user(name)=value "
+
+	cid := buildCIDNode()
+	if got, want := cid.ToString(), "(CID=(PROGRAM=program_name__value)(HOST=host_name__value)(USER=user_name__value))"; got != want {
+		t.Fatalf("CID: got %s, want %s", got, want)
+	}
+}
+
+// TestSanitizeCIDValue verifies trimming, empty-value handling, and replacement of
+// characters that would affect Oracle Net descriptor structure.
+func TestSanitizeCIDValue(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  string
+	}{
+		{value: "", want: "unknown"},
+		{value: " \t ", want: "unknown"},
+		{value: " (a=b) ", want: "_a_b_"},
+	} {
+		if got := sanitizeCIDValue(test.value); got != test.want {
+			t.Errorf("sanitizeCIDValue(%q): got %q, want %q", test.value, got, test.want)
+		}
+	}
 }
 
 // TestConnectSubtests groups subtests for ConnectToOption
@@ -1100,39 +1137,6 @@ func TestDisconnect(t *testing.T) {
 	})
 }
 
-func TestPrintPacket(t *testing.T) {
-	t.Parallel()
-	originalHandler := common.Opl.Handler()
-	defer func() { common.Opl = slog.New(originalHandler) }()
-
-	tests := []struct {
-		name     string
-		buf      []byte
-		offset   int
-		length   int
-		logLevel slog.Leveler
-	}{
-		{"Basic", []byte{0x01, 0x02, 0x03, 0x41, 0x42, 0x43}, 0, 6, slog.LevelInfo},
-		{"NonPrintable", []byte{0x01, 0x1F}, 0, 2, slog.LevelInfo},
-		{"Empty", []byte{}, 0, 0, slog.LevelInfo},
-		{"OffsetLength", []byte{0x01, 0x02, 0x03, 0x04}, 1, 2, slog.LevelInfo},
-		{"SingleByte", []byte{0x41}, 0, 1, slog.LevelInfo},
-		{"Remainder7", []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}, 0, 7, slog.LevelInfo},
-		{"Full8Bytes", []byte{0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48}, 0, 8, slog.LevelInfo},
-		{"AllNonPrintable", []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}, 0, 9, slog.LevelInfo},
-		{"LoggingDisabled", []byte{0x01, 0x02}, 0, 2, slog.LevelError},
-		{"OffsetExceedsLength", []byte{0x01, 0x02, 0x03}, 2, 1, slog.LevelInfo},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			common.Opl = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: tt.logLevel}))
-			PrintPacket(tt.buf, tt.offset, tt.length)
-			// No assertions needed as we're testing for coverage and no panics
-		})
-	}
-}
-
 // TestSendPacketError tests error cases in SendPacket
 func TestSendPacketError(t *testing.T) {
 	ns := newNetworkSession()
@@ -1143,6 +1147,7 @@ func TestSendPacketError(t *testing.T) {
 
 	// Cover debug print
 	t.Setenv("ORACLE_GO_DRIVER_DEBUG_PACKETS", "true")
+	ns.sAtts = &sessionAtts{}
 	ns.ntAdapter = &mockNTAdapter{}
 	_ = ns.SendPacket(context.Background(), make([]byte, 8)) // ignore error, cover print
 }
@@ -1313,6 +1318,303 @@ func TestProcessPacket(t *testing.T) {
 	_, err = ns.processPacket(buf, hdr)
 	if err != nil {
 		t.Errorf("Unexpected unmarshal error: %v", err)
+	}
+}
+
+// TestProcessPacketCompressedTCP verifies both compression formats used by TCP
+// data packets: zlib framing for the first packet and raw DEFLATE thereafter.
+func TestProcessPacketCompressed(t *testing.T) {
+	// Repeated text gives a payload that compresses reliably while remaining easy to compare.
+	original := bytes.Repeat([]byte("compressed TCP payload "), 100)
+	tests := []struct {
+		name     string
+		first    bool
+		largeSDU bool
+		write    func(*bytes.Buffer) error
+	}{
+		{
+			name:  "first packet uses zlib framing",
+			first: true,
+			write: func(compressed *bytes.Buffer) error {
+				w := zlib.NewWriter(compressed)
+				if _, err := w.Write(original); err != nil {
+					return err
+				}
+				return w.Flush()
+			},
+		},
+		{
+			name:  "later packet uses raw DEFLATE",
+			first: false,
+			write: func(compressed *bytes.Buffer) error {
+				w, err := flate.NewWriter(compressed, flate.DefaultCompression)
+				if err != nil {
+					return err
+				}
+				if _, err := w.Write(original); err != nil {
+					return err
+				}
+				return w.Flush()
+			},
+		},
+		{
+			name:     "large SDU packet uses a four-byte length",
+			first:    true,
+			largeSDU: true,
+			write: func(compressed *bytes.Buffer) error {
+				w := zlib.NewWriter(compressed)
+				if _, err := w.Write(original); err != nil {
+					return err
+				}
+				return w.Flush()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var compressed bytes.Buffer
+			if err := test.write(&compressed); err != nil {
+				t.Fatalf("compress payload: %v", err)
+			}
+
+			buf := make([]byte, NSPDADAT+compressed.Len())
+			if test.largeSDU {
+				binary.BigEndian.PutUint32(buf, uint32(len(buf)))
+			} else {
+				binary.BigEndian.PutUint16(buf, uint16(len(buf)))
+			}
+			buf[NSPHDTYP] = NSPTDA
+			binary.BigEndian.PutUint16(buf[NSPDAFLG:], NSPDAFCMP)
+			copy(buf[NSPDADAT:], compressed.Bytes())
+
+			ns := newNetworkSession()
+			ns.sAtts = &sessionAtts{
+				networkCompressionEnabled: true,
+				firstRecvCompressedPacket: test.first,
+				largeSDU:                  test.largeSDU,
+			}
+			hdr := &header{typ: NSPTDA, packetLength: uint32(len(buf))}
+
+			packet, err := ns.processPacket(buf, hdr)
+			if err != nil {
+				t.Fatalf("process compressed packet: %v", err)
+			}
+			if _, ok := packet.(*dataPacket); !ok {
+				t.Fatalf("packet type: got %T, want *dataPacket", packet)
+			}
+			if binary.BigEndian.Uint16(ns.rcvDatapkt.buf[NSPDAFLG:])&NSPDAFCMP != 0 {
+				t.Fatal("compression flag is still set after decompression")
+			}
+			if int(hdr.packetLength) != NSPDADAT+len(original) {
+				t.Fatalf("packet length: got %d, want %d", hdr.packetLength, NSPDADAT+len(original))
+			}
+			if test.largeSDU {
+				if got := binary.BigEndian.Uint32(ns.rcvDatapkt.buf[:4]); got != uint32(NSPDADAT+len(original)) {
+					t.Fatalf("large SDU packet length: got %d, want %d", got, NSPDADAT+len(original))
+				}
+			}
+			if !bytes.Equal(ns.rcvDatapkt.buf[NSPDADAT:], original) {
+				t.Fatal("decompressed payload differs from the original")
+			}
+		})
+	}
+}
+
+func TestProcessPacketCompressedError(t *testing.T) {
+	buf := make([]byte, NSPDADAT+1)
+	binary.BigEndian.PutUint16(buf, uint16(len(buf)))
+	buf[NSPHDTYP] = NSPTDA
+	binary.BigEndian.PutUint16(buf[NSPDAFLG:], NSPDAFCMP)
+	buf[NSPDADAT] = 0xff
+
+	ns := newNetworkSession()
+	ns.sAtts = &sessionAtts{networkCompressionEnabled: true, firstRecvCompressedPacket: true}
+	_, err := ns.processPacket(buf, &header{typ: NSPTDA, packetLength: uint32(len(buf))})
+	if err == nil {
+		t.Fatal("expected decompression error")
+	}
+	if got := err.(oracleErrors.SQLError).ErrorCode(); got != string(oracleErrors.NetworkDecompressionFailed) {
+		t.Fatalf("error code: got %s, want %s", got, oracleErrors.NetworkDecompressionFailed)
+	}
+}
+
+func TestProcessPacketTruncatedDataHeader(t *testing.T) {
+	ns := newNetworkSession()
+	buf := make([]byte, NSPDADAT-1)
+	_, err := ns.processPacket(buf, &header{typ: NSPTDA, packetLength: NSPDADAT - 1})
+	expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkContextExpectedLength)
+}
+
+func TestProcessPacketCompressedTruncated(t *testing.T) {
+	payload := bytes.Repeat([]byte("truncated compressed packet "), 20)
+	var compressed bytes.Buffer
+	w := zlib.NewWriter(&compressed)
+	if _, err := w.Write(payload); err != nil {
+		t.Fatalf("compress payload: %v", err)
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatalf("flush compressor: %v", err)
+	}
+
+	compressedBytes := compressed.Bytes()
+	buf := make([]byte, NSPDADAT+len(compressedBytes)-1)
+	binary.BigEndian.PutUint16(buf, uint16(len(buf)))
+	buf[NSPHDTYP] = NSPTDA
+	binary.BigEndian.PutUint16(buf[NSPDAFLG:], NSPDAFCMP)
+	copy(buf[NSPDADAT:], compressedBytes[:len(compressedBytes)-1])
+
+	ns := newNetworkSession()
+	ns.sAtts = &sessionAtts{networkCompressionEnabled: true, firstRecvCompressedPacket: true}
+	_, err := ns.processPacket(buf, &header{typ: NSPTDA, packetLength: uint32(len(buf))})
+	if err == nil {
+		t.Fatal("expected decompression error for truncated payload")
+	}
+	if got := err.(oracleErrors.SQLError).ErrorCode(); got != string(oracleErrors.NetworkDecompressionFailed) {
+		t.Fatalf("error code: got %s, want %s", got, oracleErrors.NetworkDecompressionFailed)
+	}
+}
+
+// TestSendPacketCompressed verifies the first zlib-framed packet, subsequent
+// raw-DEFLATE packets, and the fallback when compression does not reduce size.
+func TestSendPacketCompressed(t *testing.T) {
+	ns := newNetworkSession()
+	ns.sAtts = &sessionAtts{networkCompressionEnabled: true, networkCompressionThreshold: 1, firstSendCompressedPacket: true}
+	mock := &mockNTAdapter{}
+	ns.ntAdapter = mock
+
+	makeDataPacket := func(payload []byte) []byte {
+		buf := make([]byte, NSPDADAT+len(payload))
+		binary.BigEndian.PutUint16(buf, uint16(len(buf)))
+		buf[NSPHDTYP] = NSPTDA
+		copy(buf[NSPDADAT:], payload)
+		return buf
+	}
+	assertCompressed := func(t *testing.T, sent, original []byte, newReader func(io.Reader) (io.ReadCloser, error)) {
+		t.Helper()
+		if binary.BigEndian.Uint16(sent[NSPDAFLG:])&NSPDAFCMP == 0 {
+			t.Fatal("sent data packet is missing the compression flag")
+		}
+		if len(sent) >= len(original) {
+			t.Fatalf("compressed packet length: got %d, want less than %d", len(sent), len(original))
+		}
+		r, err := newReader(bytes.NewReader(sent[NSPDADAT:]))
+		if err != nil {
+			t.Fatalf("create decompressor: %v", err)
+		}
+		decompressed, err := io.ReadAll(r)
+		if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+			t.Fatalf("decompress payload: %v", err)
+		}
+		if err := r.Close(); err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+			t.Fatalf("close decompressor: %v", err)
+		}
+		if !bytes.Equal(decompressed, original[NSPDADAT:]) {
+			t.Fatal("decompressed payload differs from the original")
+		}
+	}
+
+	payload := bytes.Repeat([]byte("outgoing compressed payload "), 100)
+	first := makeDataPacket(payload)
+	if err := ns.SendPacket(context.Background(), first); err != nil {
+		t.Fatalf("send first compressed packet: %v", err)
+	}
+	assertCompressed(t, mock.sentData[0], first, func(r io.Reader) (io.ReadCloser, error) {
+		return zlib.NewReader(r)
+	})
+	if ns.sAtts.firstSendCompressedPacket {
+		t.Fatal("first compressed packet state was not updated")
+	}
+
+	second := makeDataPacket(payload)
+	if err := ns.SendPacket(context.Background(), second); err != nil {
+		t.Fatalf("send subsequent compressed packet: %v", err)
+	}
+	assertCompressed(t, mock.sentData[1], second, func(r io.Reader) (io.ReadCloser, error) {
+		return flate.NewReader(r), nil
+	})
+
+	// A payload above the threshold can still be sent unchanged when zlib framing
+	// would make it larger.
+	uncompressed := makeDataPacket([]byte("no"))
+	if err := ns.SendPacket(context.Background(), uncompressed); err != nil {
+		t.Fatalf("send incompressible packet: %v", err)
+	}
+	if !bytes.Equal(mock.sentData[2], uncompressed) {
+		t.Fatal("packet changed although compression did not reduce its size")
+	}
+}
+
+func TestSendPacketCompressedTruncatedDataHeader(t *testing.T) {
+	ns := newNetworkSession()
+	ns.sAtts = &sessionAtts{
+		networkCompressionEnabled:   true,
+		networkCompressionThreshold: 1,
+	}
+	ns.ntAdapter = &mockNTAdapter{}
+
+	// The packet has a complete Oracle Net header and is marked as DATA, but is
+	// too short to contain the DATA header that SendPacket reads for flags.
+	buf := make([]byte, PACKET_HEADER_SIZE)
+	buf[NSPHDTYP] = NSPTDA
+	err := ns.SendPacket(context.Background(), buf)
+	if err == nil {
+		t.Fatal("expected truncated DATA packet error")
+	}
+	expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkContextExpectedLength)
+}
+
+func TestSendPacketCompressedLargeSDU(t *testing.T) {
+	payload := bytes.Repeat([]byte("large SDU compressed payload "), 100)
+	buf := make([]byte, NSPDADAT+len(payload))
+	binary.BigEndian.PutUint32(buf, uint32(len(buf)))
+	buf[NSPHDTYP] = NSPTDA
+	copy(buf[NSPDADAT:], payload)
+
+	ns := newNetworkSession()
+	ns.sAtts = &sessionAtts{
+		networkCompressionEnabled:   true,
+		networkCompressionThreshold: 1,
+		firstSendCompressedPacket:   true,
+		largeSDU:                    true,
+	}
+	mock := &mockNTAdapter{}
+	ns.ntAdapter = mock
+
+	if err := ns.SendPacket(context.Background(), buf); err != nil {
+		t.Fatalf("send large SDU compressed packet: %v", err)
+	}
+	sent := mock.sentData[0]
+	if binary.BigEndian.Uint16(sent[NSPDAFLG:])&NSPDAFCMP == 0 {
+		t.Fatal("sent data packet is missing the compression flag")
+	}
+	if got, want := binary.BigEndian.Uint32(sent[:4]), uint32(len(sent)); got != want {
+		t.Fatalf("large SDU packet length: got %d, want %d", got, want)
+	}
+}
+
+// TestSendPacketCompressionThreshold verifies small data packets are sent
+// unchanged when they do not exceed the negotiated compression threshold.
+func TestSendPacketCompressionThreshold(t *testing.T) {
+	payload := []byte("small payload")
+	buf := make([]byte, NSPDADAT+len(payload))
+	binary.BigEndian.PutUint16(buf, uint16(len(buf)))
+	buf[NSPHDTYP] = NSPTDA
+	copy(buf[NSPDADAT:], payload)
+
+	ns := newNetworkSession()
+	ns.sAtts = &sessionAtts{networkCompressionEnabled: true, networkCompressionThreshold: len(buf)}
+	mock := &mockNTAdapter{}
+	ns.ntAdapter = mock
+
+	if err := ns.SendPacket(context.Background(), buf); err != nil {
+		t.Fatalf("send uncompressed packet: %v", err)
+	}
+	if len(mock.sentData) != 1 {
+		t.Fatalf("sent packet count: got %d, want 1", len(mock.sentData))
+	}
+	if !bytes.Equal(mock.sentData[0], buf) {
+		t.Fatal("packet changed despite not exceeding the compression threshold")
 	}
 }
 

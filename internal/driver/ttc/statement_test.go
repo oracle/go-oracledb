@@ -105,12 +105,11 @@ func TestConnection_cancelCurrentExecution(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ns := &mockNetworkSession{
-				disconnectCalls: 0,
-				disconnectErr:   nil,
-				sleepDuration:   0,
-				cancelErr:       tt.cancelErr,
+				disconnectErr: nil,
+				sleepDuration: 0,
+				cancelErr:     tt.cancelErr,
 			}
-
+			ns.disconnectCalls.Store(0)
 			conn := newTestConnection(shelf, nil, ns)
 
 			// Clean error message so that connection close succeeds
@@ -118,8 +117,8 @@ func TestConnection_cancelCurrentExecution(t *testing.T) {
 			ctx := context.Background()
 			err := conn.cancelCurrentExecution(ctx)
 
-			if ns.cancelCalls != 1 {
-				t.Errorf("Wrong number of calls to CancelOperations expected 1 but was %d", ns.cancelCalls)
+			if ns.cancelCalls.Load() != 1 {
+				t.Errorf("Wrong number of calls to CancelOperations expected 1 but was %d", ns.cancelCalls.Load())
 			}
 			if (err != nil) != tt.wantErr {
 				t.Errorf("cancelCurrentExecution() error = %v, wantErr %v", err, tt.wantErr)
