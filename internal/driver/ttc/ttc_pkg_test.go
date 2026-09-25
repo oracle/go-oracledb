@@ -91,6 +91,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConnectionCloser_Close", Categories: "unitary", Exclusive: false, Fn: TestConnectionCloser_Close},
 	{Name: "TestConnectionCloser_CloseWithTimeout", Categories: "unitary", Exclusive: false, Fn: TestConnectionCloser_CloseWithTimeout},
 	{Name: "TestEventServiceRegisterAndPost", Categories: "unitary", Exclusive: false, Fn: TestEventServiceRegisterAndPost},
+	{Name: "TestEventServicePostPreservesData", Categories: "unitary", Exclusive: false, Fn: TestEventServicePostPreservesData},
 	{Name: "TestAuthencationFactoryWithNilParameters", Categories: "unitary", Exclusive: false, Fn: TestAuthencationFactoryWithNilParameters},
 	{Name: "TestAuthencationFactoryBasic", Categories: "unitary", Exclusive: false, Fn: TestAuthencationFactoryBasic},
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken},
@@ -512,9 +513,72 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestCallBeginTxTwice", Categories: "unitary", Exclusive: false, Fn: TestCallBeginTxTwice},
 	{Name: "TestConnectionBeginUsesDefaultIsolationLevel", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginUsesDefaultIsolationLevel},
 	{Name: "TestConnectionBeginTxRejectsUnsupportedIsolationLevel", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxRejectsUnsupportedIsolationLevel},
-	{Name: "TestConnectionBeginTxUnregistersAfterSetupErrors", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxUnregistersAfterSetupErrors},
+	{Name: "TestConnectionBeginTxReturnsPushError", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxReturnsPushError},
+	{Name: "TestTransactionEndConsumesOTxEnRPA", Categories: "unitary", Exclusive: false, Fn: TestTransactionEndConsumesOTxEnRPA},
 	{Name: "TestTransactionOperationErrors", Categories: "unitary", Exclusive: false, Fn: TestTransactionOperationErrors},
 	{Name: "TestTransactionOperationRejectsStaleMessages", Categories: "unitary", Exclusive: false, Fn: TestTransactionOperationRejectsStaleMessages},
+	{Name: "TestTransactionOperationsRejectStaleTransactions", Categories: "unitary", Exclusive: false, Fn: TestTransactionOperationsRejectStaleTransactions},
+	{Name: "TestRunOTxEnSetupAndTransportFailures", Categories: "unitary", Exclusive: false, Fn: TestRunOTxEnSetupAndTransportFailures},
+	{Name: "TestRunOTxEnAdditionalResponsePaths", Categories: "unitary", Exclusive: false, Fn: TestRunOTxEnAdditionalResponsePaths},
+
+	{Name: "TestSessionlessTransactionEndUsesOTxEn", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionEndUsesOTxEn},
+	{Name: "TestSessionlessTransactionContextCancellationRollsBack", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionContextCancellationRollsBack},
+	{Name: "TestSessionlessTransactionSuspendStopsContextWatcher", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionSuspendStopsContextWatcher},
+	{Name: "TestSessionlessTransactionContextCancellationInvalidatesOnRollbackFailure", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionContextCancellationInvalidatesOnRollbackFailure},
+	{Name: "TestBeginSessionlessTx", Categories: "unitary", Exclusive: false, Fn: TestBeginSessionlessTx},
+	{Name: "TestResumeSessionlessTx", Categories: "unitary", Exclusive: false, Fn: TestResumeSessionlessTx},
+	{Name: "TestBeginSessionlessTxPushFailure", Categories: "unitary", Exclusive: false, Fn: TestBeginSessionlessTxPushFailure},
+	{Name: "TestBeginSessionlessTxDefersFlush", Categories: "unitary", Exclusive: false, Fn: TestBeginSessionlessTxDefersFlush},
+	{Name: "TestBeginSessionlessTxDefersPull", Categories: "unitary", Exclusive: false, Fn: TestBeginSessionlessTxDefersPull},
+	{Name: "TestBeginSessionlessTxDefersOER", Categories: "unitary", Exclusive: false, Fn: TestBeginSessionlessTxDefersOER},
+	{Name: "TestResumeSessionlessTxInvalidGlobalTransactionID", Categories: "unitary", Exclusive: false, Fn: TestResumeSessionlessTxInvalidGlobalTransactionID},
+	{Name: "TestResumeSessionlessTxPushFailure", Categories: "unitary", Exclusive: false, Fn: TestResumeSessionlessTxPushFailure},
+	{Name: "TestResumeSessionlessTxDefersFlush", Categories: "unitary", Exclusive: false, Fn: TestResumeSessionlessTxDefersFlush},
+	{Name: "TestResumeSessionlessTxDefersPull", Categories: "unitary", Exclusive: false, Fn: TestResumeSessionlessTxDefersPull},
+	{Name: "TestResumeSessionlessTxDefersOER", Categories: "unitary", Exclusive: false, Fn: TestResumeSessionlessTxDefersOER},
+	{Name: "TestSuspendSessionlessTx", Categories: "unitary", Exclusive: false, Fn: TestSuspendSessionlessTx},
+	{Name: "TestSuspendNonSessionlessTx", Categories: "unitary", Exclusive: false, Fn: TestSuspendNonSessionlessTx},
+	{Name: "TestSuspendSessionlessTxPushFailure", Categories: "unitary", Exclusive: false, Fn: TestSuspendSessionlessTxPushFailure},
+	{Name: "TestSuspendSessionlessTxFlushFailure", Categories: "unitary", Exclusive: false, Fn: TestSuspendSessionlessTxFlushFailure},
+	{Name: "TestSuspendSessionlessTxPullFailure", Categories: "unitary", Exclusive: false, Fn: TestSuspendSessionlessTxPullFailure},
+	{Name: "TestSuspendSessionlessTxOERFailure", Categories: "unitary", Exclusive: false, Fn: TestSuspendSessionlessTxOERFailure},
+	{Name: "TestSessionlessTransactionOperationErrors", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionOperationErrors},
+	{Name: "TestSuspendSessionlessTxErrorRegistration", Categories: "unitary", Exclusive: false, Fn: TestSuspendSessionlessTxErrorRegistration},
+	{Name: "TestSessionlessTransactionOperationsRejectStaleTransaction", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionOperationsRejectStaleTransaction},
+	{Name: "TestSessionlessTransactionRejectsReuseAfterEndingOperation", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionRejectsReuseAfterEndingOperation},
+	{Name: "TestSessionlessTransactionBeginResumeValidation", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionBeginResumeValidation},
+	{Name: "TestSessionlessTransactionXIDTruncation", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionXIDTruncation},
+	{Name: "TestSessionlessTransactionLifecycleNoOpPaths", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionLifecycleNoOpPaths},
+	{Name: "TestSuspendSessionlessTransactionCancellationCleanup", Categories: "unitary", Exclusive: false, Fn: TestSuspendSessionlessTransactionCancellationCleanup},
+	{Name: "TestSuspendSessionlessTransactionStateValidation", Categories: "unitary", Exclusive: false, Fn: TestSuspendSessionlessTransactionStateValidation},
+	{Name: "TestSessionlessTransactionMessageSetupFailures", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionMessageSetupFailures},
+	{Name: "TestSessionlessTransactionDetachResponsePaths", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionDetachResponsePaths},
+	{Name: "TestSessionlessServerSyncLifecycle", Categories: "unitary", Exclusive: false, Fn: TestSessionlessServerSyncLifecycle},
+	{Name: "TestSessionlessServerEndDoesNotEndClientTransaction", Categories: "unitary", Exclusive: false, Fn: TestSessionlessServerEndDoesNotEndClientTransaction},
+	{Name: "TestSessionlessClientSyncUpdatesTransactionState", Categories: "unitary", Exclusive: false, Fn: TestSessionlessClientSyncUpdatesTransactionState},
+	{Name: "TestSessionlessGlobalTransactionIDSyncRejectsMalformedPayload", Categories: "unitary", Exclusive: false, Fn: TestSessionlessGlobalTransactionIDSyncRejectsMalformedPayload},
+
+	{Name: "TestOTxEnFactoryRegistration", Categories: "unitary", Exclusive: false, Fn: TestOTxEnFactoryRegistration},
+	{Name: "TestOTxEnMarshalTo", Categories: "unitary", Exclusive: false, Fn: TestOTxEnMarshalTo},
+	{Name: "TestOTxEnMarshalToEmptyVariableData", Categories: "unitary", Exclusive: false, Fn: TestOTxEnMarshalToEmptyVariableData},
+	{Name: "TestOTxEnMarshalToErrors", Categories: "unitary", Exclusive: false, Fn: TestOTxEnMarshalToErrors},
+	{Name: "TestOTxEnConfigureOperations", Categories: "unitary", Exclusive: false, Fn: TestOTxEnConfigureOperations},
+	{Name: "TestOTxEnRPAFactoryRegistration", Categories: "unitary", Exclusive: false, Fn: TestOTxEnRPAFactoryRegistration},
+	{Name: "TestOTxEnRPAUnMarshalFrom", Categories: "unitary", Exclusive: false, Fn: TestOTxEnRPAUnMarshalFrom},
+	{Name: "TestOTxEnRPAUnMarshalFromFailure", Categories: "unitary", Exclusive: false, Fn: TestOTxEnRPAUnMarshalFromFailure},
+
+	{Name: "TestOTxSe_FactoryRegistration_MessageCodes", Categories: "unitary", Exclusive: false, Fn: TestOTxSe_FactoryRegistration_MessageCodes},
+	{Name: "TestOTxSe_MarshalTo_StartSessionless", Categories: "unitary", Exclusive: false, Fn: TestOTxSe_MarshalTo_StartSessionless},
+	{Name: "TestOTxSe_MarshalTo_Suspend", Categories: "unitary", Exclusive: false, Fn: TestOTxSe_MarshalTo_Suspend},
+	{Name: "TestOTxSeMarshalToErrors", Categories: "unitary", Exclusive: false, Fn: TestOTxSeMarshalToErrors},
+	{Name: "TestGenerateSessionlessGlobalTransactionID", Categories: "unitary", Exclusive: false, Fn: TestGenerateSessionlessGlobalTransactionID},
+	{Name: "TestValidateSessionlessGlobalTransactionID", Categories: "unitary", Exclusive: false, Fn: TestValidateSessionlessGlobalTransactionID},
+	{Name: "TestNewSessionlessGlobalTransactionIDSync", Categories: "unitary", Exclusive: false, Fn: TestNewSessionlessGlobalTransactionIDSync},
+	{Name: "TestOTxSeRPA_UnMarshalFrom_Success", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPA_UnMarshalFrom_Success},
+	{Name: "TestOTxSeRPA_UnMarshalFrom_EmptyContext", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPA_UnMarshalFrom_EmptyContext},
+	{Name: "TestOTxSeRPA_UnMarshalFrom_Failure", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPA_UnMarshalFrom_Failure},
+	{Name: "TestOTxSeRPA_UnMarshalFrom_FieldFailures", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPA_UnMarshalFrom_FieldFailures},
+	{Name: "TestOTxSeRPAFactoryRegistration", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPAFactoryRegistration},
 
 	{Name: "TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination},
 	{Name: "TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError},
@@ -526,6 +590,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestCodecFactory_getBindOac", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getBindOac},
 	{Name: "TestCodecFactory_getDefineOac", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getDefineOac},
 	{Name: "TestConnectionResetter_Reset", Categories: "unitary", Exclusive: false, Fn: TestConnectionResetter_Reset},
+	{Name: "TestConnectionValidator_RollsBackActiveTransaction", Categories: "unitary", Exclusive: false, Fn: TestConnectionValidator_RollsBackActiveTransaction},
+	{Name: "TestConnectionValidator_RollbackFailureInvalidatesConnection", Categories: "unitary", Exclusive: false, Fn: TestConnectionValidator_RollbackFailureInvalidatesConnection},
 	{Name: "TestConnection_ExecContext_LocalizesError", Categories: "unitary", Exclusive: false, Fn: TestConnection_ExecContext_LocalizesError},
 	{Name: "TestConnection_LocalizationStaysBoundToEachShelf", Categories: "unitary", Exclusive: false, Fn: TestConnection_LocalizationStaysBoundToEachShelf},
 	{Name: "TestConnection_ParseTimeZoneRejectsMalformedValues", Categories: "unitary", Exclusive: false, Fn: TestConnection_ParseTimeZoneRejectsMalformedValues},
@@ -1020,7 +1086,7 @@ func (m *wrappedMockStreamer) isValid(ctx context.Context) bool {
 	if msgIn == 0 {
 		return true
 	}
-	m.streamer.shelf.getEventService().post(streamerStaleEvent)
+	m.streamer.shelf.getEventService().post(streamerStaleEvent, nil)
 	return false
 }
 
@@ -1117,7 +1183,7 @@ func newTestConnection(
 		_isClosed: false,
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
-	_registerHandleConnectionShouldBeDropped(shelf, conn)
+	_registerHandleEndOfCallStatus(shelf, conn)
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	return conn
 }

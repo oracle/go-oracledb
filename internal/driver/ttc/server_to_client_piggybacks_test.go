@@ -106,7 +106,7 @@ func TestRegisterServerToClientPiggybacks(t *testing.T) {
 
 	_, err = messageStreamer.Pull(context.Background(), TTIPRO)
 	if err == nil {
-		t.Fatalf("Streamer should throw error, if SPF was correcly handled by callback, mock data buffer returns EOR")
+		t.Fatalf("Streamer should throw an error if SPF was correctly handled by the callback; the mock data buffer returns EOR")
 	}
 
 }
@@ -121,6 +121,8 @@ func TestHandleServerToClientPiggyback_ValidOCSSYNC(t *testing.T) {
 		shelf:      shelf,
 		sessionCtx: sessionCtx,
 	}
+	listener := &testEventListener{}
+	shelf.getEventService().register(listener, sessionPropertiesUpdateEvent)
 
 	mockMsg := newttiSPFOCSSync()
 	mockMsg.(*ttiSPFOCSSync).keyValueArr = &keywordValueArray{
@@ -140,6 +142,13 @@ func TestHandleServerToClientPiggyback_ValidOCSSYNC(t *testing.T) {
 	val := props.GetProperty(authNlsLxcCurrency)
 	if val == nil || val != "USD" {
 		t.Errorf("Expected property %s to be USD, got %v", authNlsLxcCurrency, val)
+	}
+	if len(listener.data) != 1 {
+		t.Fatalf("session property update events = %d, want 1", len(listener.data))
+	}
+	properties, ok := listener.data[0].(sessionPropertiesUpdateEventData)
+	if !ok || properties.sessionProperties().GetProperty(authNlsLxcCurrency) != "USD" {
+		t.Fatalf("event did not contain the current session property update: %v", listener.data[0])
 	}
 }
 

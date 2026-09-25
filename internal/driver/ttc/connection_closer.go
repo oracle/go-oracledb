@@ -89,7 +89,7 @@ func (c *connection) Close() error {
 
 	// Mark the connection as closed. This is done even if an error occurs.
 	c._isClosed = true
-	c.shelf.getEventService().post(connectionClosedEvent)
+	c.shelf.getEventService().post(connectionClosedEvent, nil)
 
 	// Check if closing connection returned error and return error to caller
 	if ttcCloseErr != nil {

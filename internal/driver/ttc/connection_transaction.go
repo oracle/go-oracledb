@@ -44,68 +44,227 @@ import (
 	"database/sql/driver"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/errors"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-const (
-	// Used as part of the ALTER SESSION to set isolation level to READ COMMITTED
-	_isolationLevelReadCommitted = "ALTER SESSION SET ISOLATION_LEVEL = READ COMMITTED"
-	// Used as part of the ALTER SESSION to set isolation level to SERIALIZABLE
-	_isolationLevelSerializable = "ALTER SESSION SET ISOLATION_LEVEL = SERIALIZABLE"
-	// Used as part of the SET TRANSACTION to set transaction READ ONLY
-	_transactionReadOnly = "SET TRANSACTION READ ONLY"
-)
-
-// Begin starts and returns a new transaction with isolation level read
-// committed.
+// Begin starts and returns a new transaction with read-committed isolation.
+//
+// Returns:
+//   - driver.Tx: Started transaction.
+//   - error: Error if the transaction cannot be started.
 func (c *connection) Begin() (driver.Tx, error) {
-	context := context.Background()
+	ctx := common.BackgroundContext
 	opts := driver.TxOptions{
 		Isolation: driver.IsolationLevel(sql.LevelReadCommitted),
 		ReadOnly:  false,
 	}
-	return c.BeginTx(context, opts)
+	return c.BeginTx(ctx, opts)
 }
 
 // BeginTx starts and returns a new transaction.
+//
+// Parameters:
+//   - ctx: Context used for the transaction start operation.
+//   - opts: Transaction isolation and read-only options.
+//
+// Returns:
+//   - driver.Tx: Started transaction.
+//   - error: Error if the transaction cannot be started.
 func (c *connection) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
 	common.Odl.Debug("Starting transaction")
 
 	if c.shelf.isInTransaction() {
-		return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.AlreadyInTransaction, nil, nil))
+		return nil, c.shelf.LocalizeError(common.NewOracleError(errors.AlreadyInTransaction, nil, nil))
 	}
 
-	var isolationLevelStmt string
-	// set isolation level
-	switch sql.IsolationLevel(opts.Isolation) {
-	case sql.LevelDefault, sql.LevelReadCommitted:
-		isolationLevelStmt = _isolationLevelReadCommitted
-	case sql.LevelSerializable:
-		isolationLevelStmt = _isolationLevelSerializable
-	default:
-		return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.IsolationLevelNotSupported, nil, nil))
+	if !isSupportedIsolationLevel(opts) {
+		return nil, common.NewOracleError(errors.IsolationLevelNotSupported, nil, nil)
 	}
 
 	tx := newTransaction(c, ctx)
 	c.shelf.registerTransaction(tx)
 
-	// Set transaction isolation level
-	if isolationLevelStmt != "" {
-		_, err := c.ExecContext(ctx, isolationLevelStmt, nil)
-		if err != nil {
-			c.shelf.unregisterTransaction()
-			return nil, common.NewOracleError(oracleErrors.ConfigureTransactionError, err, nil)
-		}
-	}
-
-	// set read only
-	if opts.ReadOnly {
-		_, err := c.ExecContext(ctx, _transactionReadOnly, nil)
-		if err != nil {
-			c.shelf.unregisterTransaction()
-			return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.ConfigureTransactionError, err, nil))
-		}
+	err := c.beginTransaction(ctx, tx, opts)
+	if err != nil {
+		c.shelf.unregisterTransaction()
+		return nil, err
 	}
 
 	return tx, nil
+}
+
+// isSupportedIsolationLevel reports whether opts uses an isolation level
+// supported by the driver.
+//
+// Parameters:
+//   - opts: Transaction options to validate.
+//
+// Returns:
+//   - bool: True when the isolation level is supported.
+func isSupportedIsolationLevel(opts driver.TxOptions) bool {
+	switch sql.IsolationLevel(opts.Isolation) {
+	case sql.LevelDefault, sql.LevelReadCommitted, sql.LevelSerializable:
+		return true
+	default:
+		return false
+	}
+}
+
+// beginTransaction queues an OTXSE transaction start operation.
+//
+// Parameters:
+//   - ctx: Context used for queuing the operation.
+//   - transaction: Transaction to start.
+//   - opts: Transaction isolation and read-only options.
+//
+// Returns:
+//   - error: Error if the OTXSE message cannot be created or queued.
+func (c *connection) beginTransaction(ctx context.Context, transaction oracleTx, opts driver.TxOptions) error {
+	// get streamer
+	stmr, _ := c.shelf.GetMessageStreamer().(MessageStreamerInterface)
+
+	// create message
+	msg, err := c.shelf.GetMessageFactory().GetMessageForFunction(TTIPFN, oTxSe)
+	if err != nil {
+		common.Odl.Warn("Error creating OTXSE message", "error", err)
+		return common.NewOracleError(oracleErrors.InternalError, err)
+	}
+
+	otxse, _ := msg.(*tTIOtxse)
+	// configure message for operation and transaction options
+	otxse.configureForStart(transaction, opts)
+
+	// push message, this is a piggyback message, it will be sent on the next
+	// round-trip
+	err = stmr.Push(ctx, msg)
+	if err != nil {
+		common.Odl.Warn("Error pushing OTXSE message", "error", err)
+		return common.NewOracleError(oracleErrors.StreamerWriteError, err)
+	}
+
+	return nil
+
+}
+
+// runOTxEn sends a transaction end operation and waits for its return state and
+// terminal status. OTXEN returns the transaction state in TTIRPA and completes
+// with TTIOER or TTISTA.
+//
+// Parameters:
+//   - ctx: Context used for the transaction-end operation.
+//   - operation: OTXEN state-change operation to execute.
+//   - transaction: Transaction whose state should be changed.
+//
+// Returns:
+//   - error: Error if the operation cannot be sent or the server reports a failure.
+func (c *connection) runOTxEn(ctx context.Context, operation txStateChangeOperation, transaction oracleTx) error {
+	common.Odl.Debug("Running OTXEN", "operation", operation)
+
+	// get the streamer
+	stmr, _ := c.shelf.GetMessageStreamer().(MessageStreamerInterface)
+
+	// create the transaction end message
+	msg, err := c.shelf.GetMessageFactory().GetMessageForFunction(TTIFUN, oTxEn)
+	if err != nil {
+		common.Odl.Warn("Error creating OTXEN message", "error", err)
+		return common.NewOracleError(oracleErrors.InternalError, err)
+	}
+
+	otxen, _ := msg.(*tTIOtxen)
+	// configure the message for the operation
+	switch operation {
+	case otxenCommit:
+		otxen.configureForCommit(transaction)
+	case otxenAbort:
+		otxen.configureForAbort(transaction)
+	default:
+		common.Odl.Warn("Unsupported OTXEN operation", "operation", operation)
+		return common.NewOracleError(oracleErrors.InternalError, nil)
+	}
+
+	// push and flush the message
+	if err := stmr.Push(ctx, msg); err != nil {
+		common.Odl.Warn("Error pushing OTXEN message", "error", err)
+		return common.NewOracleError(oracleErrors.StreamerWriteError, err)
+	}
+	if err := stmr.Flush(ctx); err != nil {
+		common.Odl.Warn("Error flushing OTXEN message", "error", err)
+		return common.NewOracleError(oracleErrors.StreamerWriteError, err)
+	}
+
+	// register message specific RPA
+	stmr.RegisterPreUnmarshallCallback(TTIRPA, func(*messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
+		return c.shelf.GetMessageFactory().GetMessageForFunction(TTIRPA, oTxEn)
+	})
+	defer stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
+
+	// handle the message result
+	for {
+		retMsg, err := stmr.Pull(ctx, TTIRPA, TTIOER, TTISTA)
+		if err != nil {
+			common.Odl.Warn("Error pulling OTXEN response", "error", err)
+			return common.NewOracleError(oracleErrors.StreamerReadError, err)
+		}
+
+		switch retMsg.GetMsgCode() {
+		case TTIRPA:
+			if rpa, ok := retMsg.(*ttiOTxEnRPA); ok {
+				common.Odl.Debug("OTXEN returned transaction state", "outState", rpa.GetOutState())
+			}
+		case TTIOER:
+			if err := retMsg.(tTIOerIface).getError(); err != nil {
+				return err
+			}
+			return nil
+		case TTISTA:
+			return nil
+		}
+	}
+}
+
+// unregisterTransactionOnError removes the local transaction registration when
+// the server no longer reports an active transaction. A sessionless
+// transaction is also removed when its end notification has been received,
+// even if the connection status still reports an active transaction.
+func (c *connection) unregisterTransactionOnError() {
+	if c._transactionState == inactive {
+		common.Odl.Debug("An error occurred while ending the transaction, but the server reported no active transaction, the transaction is unregistered")
+		c.shelf.unregisterTransaction()
+		return
+	}
+
+	if sessionlessTx, ok := c.shelf.getTransaction().(*sessionlessTransaction); ok &&
+		(sessionlessTx.transactionState == transactionStartedClient ||
+			sessionlessTx.transactionState == transactionEndedServer) {
+		common.Odl.Debug("An error occurred while ending the sessionless transaction, but the server transaction has either not started or has ended, the transaction is unregistered")
+		c.shelf.unregisterTransaction()
+	}
+}
+
+// convertTxOptionsToFlags converts standard transaction options to OTXSE flags.
+//
+// Note that otxseTransReadOnly, otxseTransSerializable and otxseTransReadWrite
+// cannot be combined. If opts.ReadOnly is set the isolation level will be
+// ignored.
+//
+// Parameters:
+//   - opts: Transaction isolation and read-only options.
+//
+// Returns:
+//   - driverCommon.UB4: OTXSE flags representing opts.
+func convertTxOptionsToFlags(opts driver.TxOptions) driverCommon.UB4 {
+	flags := otxseTransNew
+	if opts.ReadOnly {
+		flags |= otxseTransReadOnly
+		return flags
+	}
+	switch sql.IsolationLevel(opts.Isolation) {
+	case sql.LevelSerializable:
+		flags |= otxseTransSerializable
+	case sql.LevelReadCommitted, sql.LevelDefault:
+		flags |= otxseTransReadWrite
+	}
+	return flags
 }

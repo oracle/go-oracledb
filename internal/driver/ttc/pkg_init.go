@@ -321,6 +321,42 @@ func init() {
 		common.Odl.Warn("Failed to register Commit function", "error", err)
 	}
 
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxSe}, 18, newOTxSe18)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxSe", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxSe}, MinTTCProtocolVersion, newOTxSe)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxSe", "error", err)
+	}
+
+	// Register OTXEN transaction end and recovery functions.
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxEn}, 18, newOTxEn18)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxEn", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxEn}, MinTTCProtocolVersion, newOTxEn)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxEn", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oTxEn}, MinTTCProtocolVersion, newOTxEnRPA)
+	if err != nil {
+		common.Odl.Warn("Failed to register OTxEn function reply", "error", err)
+	}
+
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, 18, newOTxSePfn18)
+	if err != nil {
+		common.Odl.Warn("Failed to register piggyback function oTxSe", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, MinTTCProtocolVersion, newOTxSePfn)
+	if err != nil {
+		common.Odl.Warn("Failed to register piggyback function oTxSe", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oTxSe}, MinTTCProtocolVersion, newOTxSeRPA)
+	if err != nil {
+		common.Odl.Warn("Failed to register OTxSe function reply", "error", err)
+	}
+
 	// Initialize our type representation table
 	// _oSessionKeyInit initializes the typeAndRep mapping for data types.
 	// It sets up scalar and record types with their respective representations.
