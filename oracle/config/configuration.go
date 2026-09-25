@@ -69,6 +69,11 @@ type OracleDriverProperties struct {
 	//
 	// The default is 32 MiB.
 	DefaultLobPrefetchSize int `default:"33554432" validator:"validateZeroOrPositive"  help:"default prefetch size"`
+	// StatementCancelTimeout sets the maximum time, in milliseconds, allowed for the
+	// break/reset protocol used to cancel a statement.
+	//
+	// The default is 10 seconds (10000 milliseconds).
+	StatementCancelTimeout int `default:"10000" validator:"validateZeroOrPositive" help:"sets the statement cancellation timeout in milliseconds"`
 }
 
 func (config OracleDriverProperties) String() string {
@@ -81,6 +86,11 @@ func (config OracleDriverProperties) IsStrictNullValueHandling() bool {
 
 func (config OracleDriverProperties) GetDefaultLobPrefetchSize() int {
 	return config.DefaultLobPrefetchSize
+}
+
+// GetStatementCancelTimeout returns the statement cancellation timeout in milliseconds.
+func (config OracleDriverProperties) GetStatementCancelTimeout() int {
+	return config.StatementCancelTimeout
 }
 
 // OracleConnectionProperties contains Oracle Net connection properties used to

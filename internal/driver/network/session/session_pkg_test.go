@@ -113,6 +113,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestSkipNBytes", Categories: "unitary", Exclusive: false, Fn: TestSkipNBytes},
 	{Name: "TestIsInBreakReset", Categories: "unitary", Exclusive: false, Fn: TestIsInBreakReset},
 	{Name: "TestReadMultiPacket", Categories: "unitary", Exclusive: false, Fn: TestReadMultiPacket},
+	{Name: "TestReadMultiPacketReturnsReceiveErrorBeforeBreakPacket", Categories: "unitary", Exclusive: false, Fn: TestReadMultiPacketReturnsReceiveErrorBeforeBreakPacket},
 	{Name: "TestFlush", Categories: "unitary", Exclusive: false, Fn: TestFlush},
 	{Name: "TestSendReset", Categories: "unitary", Exclusive: false, Fn: TestSendReset},
 	{Name: "TestPrepareReadBufferWithData", Categories: "unitary", Exclusive: false, Fn: TestPrepareReadBufferWithData},

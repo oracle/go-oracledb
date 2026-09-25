@@ -355,6 +355,63 @@ func TestCancelOperation(t *testing.T) {
 	if ns.isBreak || ns.isReset {
 		t.Errorf("Expected isBreak and isReset to be false after reset, got %v %v", ns.isBreak, ns.isReset)
 	}
+
+	t.Run("ExistingBreakStateIsReset", func(t *testing.T) {
+		ns := newNetworkSession()
+		ns.connected = true
+		ns.isBreak = true
+		ns.sAtts = &sessionAtts{sdu: 8192}
+		mock := &mockNTAdapter{}
+		ns.ntAdapter = mock
+		ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sndDatapkt = &dataPacket{offset: NSPDADAT, buf: ns.sndBuf, bufLen: len(ns.sndBuf)}
+		if err := ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0); err != nil {
+			t.Fatalf("failed to initialize send packet: %v", err)
+		}
+		ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT, buf: ns.rcvBuf}
+
+		resetMarker := make([]byte, 11)
+		binary.BigEndian.PutUint16(resetMarker[0:2], 11)
+		resetMarker[4] = NSPTMK
+		resetMarker[8] = NSPMKTD1
+		resetMarker[10] = NIQRMARK
+		mock.receivedData = resetMarker
+
+		if err := ns.CancelOperation(context.Background()); err != nil {
+			t.Fatalf("CancelOperation returned error: %v", err)
+		}
+		if ns.isBreak || ns.isReset {
+			t.Fatalf("CancelOperation left break/reset flags set: isBreak=%v isReset=%v", ns.isBreak, ns.isReset)
+		}
+	})
+
+	t.Run("DisconnectedBreakStateIsAlreadyComplete", func(t *testing.T) {
+		ns := newNetworkSession()
+		ns.isBreak = true
+
+		if err := ns.CancelOperation(context.Background()); err != nil {
+			t.Fatalf("CancelOperation returned error: %v", err)
+		}
+	})
+}
+
+// TestReadMultiPacketReturnsReceiveErrorBeforeBreakPacket verifies that a
+// transport receive failure is not hidden by a stale break flag.
+func TestReadMultiPacketReturnsReceiveErrorBeforeBreakPacket(t *testing.T) {
+	t.Parallel()
+
+	ns := newNetworkSession()
+	ns.isBreak = true
+	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.ntAdapter = &mockNTAdapter{receiveErr: errors.New("receive failed")}
+	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT, buf: ns.rcvBuf}
+
+	err := ns.readMultiPacket(context.Background(), make([]byte, 1), 1)
+	if err == nil || err.Error() != "receive failed" {
+		t.Fatalf("readMultiPacket error = %v, want receive failure", err)
+	}
 }
 func TestIsInBreakReset(t *testing.T) {
 	t.Parallel()

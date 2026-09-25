@@ -814,10 +814,13 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCo
 		// map pull failure -> OGD-00053 RunQueryError("pull")
 		if err != nil {
 			common.Odl.Error("runQuery: Pull failed", "error", err, "stage", "pull")
-			if errors.Is(err, ctx.Err()) {
+			if ctx.Err() != nil {
 				// The context has been cancelled, cancel current execution and return
 				// error
 				msg, err = e.handleContextCancelled(ctx)
+				if err != nil {
+					return nil, -1, err
+				}
 			}
 			if err != nil {
 				// Return error
@@ -998,8 +1001,11 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 		msg, err := stmr.Pull(ctx, TTIOER, TTIRPA, TTIIOV, TTIRXD, TTIFOB)
 		// map pull failure -> OGD-00060 RunExecError("pull")
 		if err != nil {
-			if errors.Is(err, ctx.Err()) {
+			if ctx.Err() != nil {
 				msg, err = e.handleContextCancelled(ctx)
+				if err != nil {
+					return nil, -1, err
+				}
 			}
 			if err != nil {
 				// Return error
@@ -1060,17 +1066,47 @@ func (e *statementProcessor) handleContextCancelled(ctx context.Context) (driver
 	if ok && cancellationState != nil {
 		common.Odl.Debug("Context error received using break-reset protocol, allow after function to start")
 		// allow after func to start break-reset
-		cancellationCtx, started := cancellationState.requestBreakReset()
+		cancellationResult, started := cancellationState.requestBreakReset()
 		if !started {
 			return nil, ctx.Err()
 		}
-		defer cancellationCtx.CancelFunc()
+		defer cancellationResult.CancelFunc()
+		if cancellationResult.err != nil {
+			e.shelf.invalidateConnection()
+			return nil, cancellationError(ctx, cancellationResult.err)
+		}
 		common.Odl.Debug("Break-reset completed, fetch OER")
 		// The context has been cancelled, cancel current execution and return
 		// error
-		return e.shelf.GetMessageStreamer().Pull(cancellationCtx.Context, TTIOER)
+		msg, err := e.shelf.GetMessageStreamer().Pull(cancellationResult.Context, TTIOER)
+		if err != nil {
+			e.shelf.invalidateConnection()
+			return nil, cancellationError(ctx, err)
+		}
+		return msg, nil
 	}
 	return nil, ctx.Err()
+}
+
+// cancellationError preserves the caller's context error while retaining the
+// lower-level error that explains why break/reset or the cancellation response
+// could not be completed.
+//
+// Parameters:
+//   - ctx: the canceled statement context.
+//   - cause: the cancellation or protocol error encountered by the driver.
+//
+// Returns:
+//   - an error that matches the context cancellation and includes cause when
+//     available.
+func cancellationError(ctx context.Context, cause error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		if cause == nil {
+			return ctxErr
+		}
+		return errors.Join(ctxErr, cause)
+	}
+	return cause
 }
 
 // handleDCB refreshes the SELECT statement's result metadata and creates a

@@ -43,6 +43,8 @@ import "github.com/oracle/go-oracledb/v26/internal/common"
 type DriverProperties interface {
 	IsStrictNullValueHandling() bool
 	GetDefaultLobPrefetchSize() int
+	// GetStatementCancelTimeout returns the statement cancellation timeout in milliseconds.
+	GetStatementCancelTimeout() int
 }
 
 // Capability client/server capabilities

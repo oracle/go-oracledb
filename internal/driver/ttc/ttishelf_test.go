@@ -213,6 +213,7 @@ func TestTTIShelf_LocalizedStatementExecError(t *testing.T) {
 	mockStr := &mockStreamer{}
 
 	shelf := newShelf[driverCommon.MessageType]()
+	initializeTestDriverProperties(shelf)
 	shelf.RegisterLocalizationService(internalCommon.NewLocalizationService(language.French))
 	shelf.RegisterMessageStreamer(mockStr)
 

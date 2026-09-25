@@ -72,11 +72,11 @@ func (ns *networkSession) PrepareReadBuffer(ctx context.Context) error {
 // fillReadBuffer to populate the buffer with new data from the network.
 func (ns *networkSession) fillReadBuffer(ctx context.Context) error {
 	_, err := ns.recvPacket(ctx)
-	if ns.isBreak {
-		return common.NewOracleError(oracleErrors.BreakPacketReceived, nil)
-	}
 	if err != nil {
 		return err
+	}
+	if ns.isBreak {
+		return common.NewOracleError(oracleErrors.BreakPacketReceived, nil)
 	}
 	return nil
 
@@ -175,11 +175,11 @@ func (ns *networkSession) readMultiPacket(ctx context.Context, buf []byte, numBy
 		remaining := ns.rcvDatapkt.Remaining()
 		if remaining == 0 {
 			_, err := ns.recvPacket(ctx)
-			if ns.isBreak {
-				return common.NewOracleError(oracleErrors.BreakPacketReceived, nil)
-			}
 			if err != nil {
 				return err
+			}
+			if ns.isBreak {
+				return common.NewOracleError(oracleErrors.BreakPacketReceived, nil)
 			}
 			continue
 		}
@@ -367,13 +367,20 @@ func (ns *networkSession) SkipNBytes(ctx context.Context, n int) error {
 // Sends Break marker packet followed by reset and ignores all packets received
 // from the server until a reset packet is received.
 func (ns *networkSession) CancelOperation(ctx context.Context) error {
-	if ns.isBreak {
-		return nil
-	}
 	if !ns.connected {
+		// A disconnected session cannot complete a network reset. It is already
+		// unusable, so cancellation is complete from the caller's perspective.
+		if ns.isBreak {
+			return nil
+		}
 		ns.isBreak = true
 		ns.breakPosted = true
 		return nil
+	}
+	if ns.isBreak {
+		// A break flag means that the stream is already in the break/reset
+		// protocol. Complete the reset before reporting cancellation success.
+		return ns.Reset(ctx)
 	}
 
 	// Build and send break packet

@@ -89,6 +89,7 @@ func newConnection(
 	conn.registerEventListeners(conn.shelf.getEventService())
 	_registerHandleConnectionShouldBeDropped(shelf, conn)
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
+	shelf.registerConnectionInvalidation(conn.invalidate)
 	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
 		return nil, err
 	}
@@ -169,13 +170,26 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 // operation
 func (c *connection) cancelCurrentExecution(ctx context.Context) error {
 	if err := c.ns.CancelOperation(ctx); err != nil {
-		// If an error occurs during cancellation, mark the connection as invalid so that
-		// it will be dropped form the pool
-		c._isValid = false
+		// If break/reset fails, the TTC stream cannot be trusted. Mark the
+		// connection invalid and close the network session immediately so it
+		// cannot be returned to the pool with an incomplete cancellation protocol.
+		c.invalidate()
+		if disconnectErr := c.ns.Disconnect(context.Background(), driverCommon.NSFIMM); disconnectErr != nil {
+			err = errors.Join(err, disconnectErr)
+		}
 		e := common.NewOracleError(oracleErrors.CancelOperationError, err, nil)
 		return c.shelf.LocalizeError(e)
 	}
 	return nil
+}
+
+// invalidate marks the connection as unusable and notifies registered
+// listeners that it must not be returned to the pool.
+func (c *connection) invalidate() {
+	if c._isValid {
+		c._isValid = false
+		c.shelf.getEventService().post(connectionInvalidatedEvent)
+	}
 }
 
 // Handle invalidating connections when connectionStatusReceiver is received in
