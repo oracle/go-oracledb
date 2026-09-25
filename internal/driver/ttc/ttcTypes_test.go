@@ -39,6 +39,7 @@
 package ttc
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -376,6 +377,57 @@ func TestMarshalKeyValue(t *testing.T) {
 				if uint32(keyvalflagValue) != uint32(kv.Flag) {
 					t.Errorf("keyvalflag mismatch: got %d, want %d", keyvalflagValue, kv.Flag)
 				}
+			}
+		})
+	}
+}
+
+// TestMarshalKeyValuePairWithName verifies that a DTYKVE record is marshaled in
+// wire order: flag (UB4), key, text value, then binary value.
+func TestMarshalKeyValuePairWithName(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Native, 1024)
+
+	wantKey := common.StringToB1Array("ORCL_XS_AUTHZ_CONTEXT")
+	wantText := common.StringToB1Array("Hello, World!")
+	wantBinary := common.B1Array{0x00, 0x01, 0xff}
+	const wantFlag common.UB4 = 0x12345678
+
+	kve := newKeywordValuePairWithName(
+		string(wantKey), string(wantText), wantBinary, wantFlag,
+	)
+
+	if err := kve.MarshalTo(ctx, engine); err != nil {
+		t.Fatalf("MarshalTo failed: %v", err)
+	}
+
+	dataBuffer.currentReadPosition = 0
+
+	flag, err := engine.UnmarshalUB4(ctx)
+	if err != nil {
+		t.Fatalf("unmarshal flag: %v", err)
+	}
+	if flag != wantFlag {
+		t.Fatalf("flag = %#x, want %#x", flag, wantFlag)
+	}
+
+	for _, tt := range []struct {
+		name string
+		want common.B1Array
+	}{
+		{"key", wantKey},
+		{"text value", wantText},
+		{"binary value", wantBinary},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var got dynamicAllocatedArray
+			if err := got.UnMarshalFrom(ctx, engine); err != nil {
+				t.Fatalf("unmarshal %s: %v", tt.name, err)
+			}
+			if !bytes.Equal(got.value, tt.want) {
+				t.Fatalf("%s = %x, want %x", tt.name, got.value, tt.want)
 			}
 		})
 	}

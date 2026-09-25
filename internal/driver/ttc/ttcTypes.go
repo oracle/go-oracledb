@@ -439,3 +439,60 @@ func getKeyValueFromKeyword(nlsKeys [64]string, keyword keywordValuePair) (strin
 
 	return "", nil
 }
+
+// keywordValuePairWithName represents the TTI/TTC DTYKVE keyword/value pair with name.
+type keywordValuePairWithName struct {
+	// flag: UB4 flag
+	flag driverCommon.UB4
+	// key: DALC text key
+	key dynamicAllocatedArray
+	// textValue: DALC text value
+	textValue dynamicAllocatedArray
+	// binaryValue: DALC binary value
+	binaryValue dynamicAllocatedArray
+}
+
+// DTYKVE field limits. Callers validate these limits before constructing a
+// keywordValuePairWithName.
+const (
+	// maximum length of a key name
+	maxKPDKVEKeyLength = 128
+	// maximum length of a key value
+	maxKPDKVEValueLength = 64 * 1024
+)
+
+// newKeywordValuePairWithName creates a DTYKVE keyword/value pair with name.
+// key, textValue, and binaryValue are converted to byte arrays. The caller is
+// responsible for validating the DTYKVE field limits before calling this
+// function.
+func newKeywordValuePairWithName(
+	key string,
+	textValue string,
+	binaryValue driverCommon.B1Array,
+	flag driverCommon.UB4,
+) *keywordValuePairWithName {
+
+	return &keywordValuePairWithName{
+		flag:        flag,
+		key:         dynamicAllocatedArray{value: driverCommon.StringToB1Array(key)},
+		textValue:   dynamicAllocatedArray{value: driverCommon.StringToB1Array(textValue)},
+		binaryValue: dynamicAllocatedArray{value: append(driverCommon.B1Array(nil), binaryValue...)},
+	}
+}
+
+// MarshalTo writes one DTYKVE record.
+func (kve *keywordValuePairWithName) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
+	if err := engine.MarshalUB4(ctx, kve.flag); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.key.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.textValue.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.binaryValue.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	return nil
+}
