@@ -41,15 +41,36 @@ package ttc
 import (
 	"container/list"
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
+
+func TestIsRefCursorDestination(t *testing.T) {
+	t.Parallel()
+
+	var raw driver.Rows
+	if isRefCursorDestination(&raw) {
+		t.Fatal("*driver.Rows must not be accepted as a REF CURSOR OUT destination")
+	}
+	if !isRefCursorDestination(&datatype.Rows{}) {
+		t.Fatal("*datatype.Rows must be accepted as a REF CURSOR OUT destination")
+	}
+	if err := checkNamedValue(&driver.NamedValue{Value: sql.Out{Dest: &raw}}); err == nil {
+		t.Fatal("sql.Out{Dest: &driver.Rows} unexpectedly passed validation")
+	}
+	if err := checkNamedValue(&driver.NamedValue{Value: newTTCRows(nil)}); err != nil {
+		t.Fatalf("internal REF CURSOR rows: %v", err)
+	}
+}
 
 func init() {
 	message.SetString(language.French, string(oracleErrors.InternalError), "erreur interne factice.")

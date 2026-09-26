@@ -575,6 +575,13 @@ func DecodeBinaryColumn(_ columnContext, data driverCommon.B1Array) (driver.Valu
 	return []byte(data), nil
 }
 
+// DecodeRefCursorColumn returns the placeholder value used for REF CURSOR
+// column metadata. REF CURSOR values are populated separately from the RXD
+// cursor data, so this decoder does not consume the column payload.
+func DecodeRefCursorColumn(_ columnContext, _ driverCommon.B1Array) (driver.Value, error) {
+	return driver.Rows(nil), nil
+}
+
 func GetScanTypeForVarcharColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }
@@ -633,4 +640,10 @@ func GetScanTypeForCLOBColumn(_ columnContext) reflect.Type {
 
 func GetScanTypeForBLOBColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[[]byte]()
+}
+
+// GetScanTypeForRefCursorColumn reports driver.Rows as the scan type for a
+// REF CURSOR column.
+func GetScanTypeForRefCursorColumn(_ columnContext) reflect.Type {
+	return reflect.TypeFor[driver.Rows]()
 }

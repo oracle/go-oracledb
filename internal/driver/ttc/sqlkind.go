@@ -58,10 +58,11 @@ for driver routing decisions.
 type sqlKind int
 
 const (
-	select_ sqlKind = iota // SELECT statements (read-only queries)
-	dml                    // DML statements: INSERT/UPDATE/DELETE/MERGE
-	plsql                  // PL/SQL blocks and CALL statements
-	other                  // All other statements (e.g., DDL, ALTER SESSION, TRUNCATE, COMMIT)
+	select_   sqlKind = iota // SELECT statements (read-only queries)
+	dml                      // DML statements: INSERT/UPDATE/DELETE/MERGE
+	plsql                    // PL/SQL blocks and CALL statements
+	other                    // All other statements (e.g., DDL, ALTER SESSION, TRUNCATE, COMMIT)
+	refcursor                // internal query used to expose a REF CURSOR as *sql.Rows
 )
 
 // String returns the canonical, upper-case name of the sqlKind (e.g., "SELECT").
@@ -73,6 +74,8 @@ func (k sqlKind) String() string {
 		return "DML"
 	case plsql:
 		return "PLSQL"
+	case refcursor:
+		return "REFCURSOR"
 	default:
 		return "OTHER"
 	}

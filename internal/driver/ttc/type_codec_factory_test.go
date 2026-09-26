@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -330,6 +331,49 @@ func TestCodecFactory_getBindOac(t *testing.T) {
 	}
 }
 
+// TestCodecFactory_RefCursorRegistrations verifies that REF CURSOR metadata is
+// resolved through the named decoder and bind OAC constructors registered at
+// package initialization.
+func TestCodecFactory_RefCursorRegistrations(t *testing.T) {
+	t.Parallel()
+
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	decoder, err := factory.getDecoder(DtyCur)
+	if err != nil {
+		t.Fatalf("get REF CURSOR decoder: %v", err)
+	}
+	if got, want := decoder.getScanType(columnContext{}), reflect.TypeFor[driver.Rows](); got != want {
+		t.Fatalf("REF CURSOR scan type = %v, want %v", got, want)
+	}
+	value, err := decoder.decodeToType(columnContext{}, nil)
+	if err != nil {
+		t.Fatalf("decode REF CURSOR placeholder: %v", err)
+	}
+	if value != nil {
+		t.Fatalf("REF CURSOR placeholder = %v, want nil", value)
+	}
+
+	var rows datatype.Rows
+	normalized := normalizeBindValue(sql.Out{Dest: &rows})
+	if got, want := normalized.goType, reflect.TypeFor[datatype.Rows](); got != want {
+		t.Fatalf("normalized REF CURSOR bind type = %v, want %v", got, want)
+	}
+	oac, err := factory.getBindOac(normalized, 0)
+	if err != nil {
+		t.Fatalf("get REF CURSOR bind OAC: %v", err)
+	}
+	refCursorOac, ok := oac.(*tTIoac)
+	if !ok {
+		t.Fatalf("REF CURSOR OAC type = %T, want *tTIoac", oac)
+	}
+	if got, want := refCursorOac.dataType, common.UB1(DtyCur); got != want {
+		t.Fatalf("REF CURSOR OAC data type = %d, want %d", got, want)
+	}
+	if got, want := refCursorOac.maxLength, common.UB4(refCursorBindMaxLength); got != want {
+		t.Fatalf("REF CURSOR OAC max length = %d, want %d", got, want)
+	}
+}
+
 func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.January, 15, 10, 30, 0, 0, time.UTC)
@@ -438,6 +482,11 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "sql out unwraps invalid null string to nil",
 			input:     sql.Out{Dest: &sql.NullString{String: "out", Valid: false}, In: true},
+			wantIsNil: true,
+		},
+		{
+			name:      "typed nil pointer",
+			input:     (*int)(nil),
 			wantIsNil: true,
 		},
 	}

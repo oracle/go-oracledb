@@ -59,6 +59,27 @@ func Oall8Payload(lines []string) []byte {
 	return buf[11:]
 }
 
+// TestRefCursorRowsExecutor verifies that the internal refcursor statement
+// returns its supplied rows without starting a TTC round trip.
+func TestRefCursorRowsExecutor(t *testing.T) {
+	t.Parallel()
+
+	executor := newRefCursorRowsExecutor()
+	rows := newTTCRows(nil)
+	got, err := executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: rows}})
+	if err != nil {
+		t.Fatalf("QueryContext: %v", err)
+	}
+	if got != rows {
+		t.Fatalf("QueryContext rows = %p, want %p", got, rows)
+	}
+	for _, args := range [][]sqldriver.NamedValue{nil, {{Value: nil}}} {
+		if _, err = executor.QueryContext(context.Background(), nil, args); err == nil {
+			t.Fatalf("QueryContext(%v) unexpectedly succeeded", args)
+		}
+	}
+}
+
 // Faulty shelf using FaultyArrayBasedDataBuffer via createMarshaller to inject read/write failures.
 func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.MessageType], *MessageStreamer) {
 	mar := createMarshaller(buf, failOn, callN)
@@ -145,6 +166,28 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	shelf.RegisterMessageStreamer(streamer)
 
 	return shelf, streamer, buf
+}
+
+// TestRefCursorRows_NextUsesBackgroundContext verifies that the deferred REF
+// CURSOR fetch starts from Rows.Next with a live context rather than retaining
+// the parent statement-execution context.
+func TestRefCursorRows_NextUsesBackgroundContext(t *testing.T) {
+	t.Parallel()
+
+	shelf, _, _ := newExecTestShelf(1024)
+	streamer := &mockStreamer{pullMsg: &mockOer{}}
+	shelf.RegisterMessageStreamer(streamer)
+	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
+
+	if err := rows.Next(make([]sqldriver.Value, 1)); err == nil {
+		t.Fatal("deferred REF CURSOR fetch returned nil error without a result descriptor")
+	}
+	if !streamer.pushCalled {
+		t.Fatal("deferred REF CURSOR fetch did not start a round trip")
+	}
+	if streamer.pushCtx == nil || streamer.pushCtx.Err() != nil || streamer.pushCtx.Done() != nil {
+		t.Fatalf("REF CURSOR fetch context = %v, want live context.Background()", streamer.pushCtx)
+	}
 }
 
 func makeOall8RPAPayloadFromDump(dump []string) []byte {
