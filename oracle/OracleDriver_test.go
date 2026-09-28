@@ -97,6 +97,41 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 	}
 }
 
+// TestDriver_Functional_ConnectionWrapper verifies that a dedicated
+// database/sql connection opened by go-oracledb can be wrapped for Oracle
+// specific operations, and that wrapping a closed connection returns an error.
+func TestDriver_Functional_ConnectionWrapper(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatalf("failed to acquire dedicated connection: %v", err)
+	}
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("NewConnectionWrapper failed: %v", err)
+	}
+	if wrapper == nil {
+		t.Fatal("NewConnectionWrapper returned a nil wrapper")
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatalf("closing dedicated connection failed: %v", err)
+	}
+
+	if closedWrapper, err := NewConnectionWrapper(conn); err == nil || closedWrapper != nil {
+		t.Fatalf("NewConnectionWrapper on a closed connection returned (%v, %v), want an error and nil wrapper", closedWrapper, err)
+	}
+}
+
 // TestDriver_Functional_NetworkCompression verifies Oracle Net compression
 // through the public OracleDriverConfig.ConnectionProperties API.
 //

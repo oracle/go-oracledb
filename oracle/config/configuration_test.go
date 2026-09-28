@@ -38,43 +38,52 @@
 
 package config
 
-import (
-	"fmt"
-	"os"
-	"testing"
+import "testing"
 
-	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
-)
-
-func TestMain(m *testing.M) {
-	err := oracleTest.InitConfig()
+// TestQueryStringToMapTrimsValues verifies that the public query-string helper
+// trims whitespace around keys and values while preserving each pair.
+func TestQueryStringToMapTrimsValues(t *testing.T) {
+	got, err := QueryStringToMap(" key = value &other=two")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
-		os.Exit(1)
+		t.Fatalf("QueryStringToMap returned error: %v", err)
 	}
-	TestEnvironement = oracleTest.TestEnvironement
-	TestingConfig = oracleTest.TestingConfig
-	DefaultTestConfig = oracleTest.DefaultTestConfig
-	TestCategories = oracleTest.TestCategories
-	os.Exit(m.Run())
+	if got["key"] != "value" || got["other"] != "two" {
+		t.Fatalf("unexpected query map: %#v", got)
+	}
 }
 
-var testCases = []oracleTest.CategorizedTestCase{
-	{Name: "TestQueryStringToMapTrimsValues", Categories: "unitary", Exclusive: false, Fn: TestQueryStringToMapTrimsValues},
-	{Name: "TestQueryStringToMapRejectsMissingValue", Categories: "unitary", Exclusive: false, Fn: TestQueryStringToMapRejectsMissingValue},
-	{Name: "TestLoggingConfigPublicAPI", Categories: "unitary", Exclusive: false, Fn: TestLoggingConfigPublicAPI},
-	{Name: "TestDriverConfigValidateRejectsNegativeTimeout", Categories: "unitary", Exclusive: false, Fn: TestDriverConfigValidateRejectsNegativeTimeout},
+// TestQueryStringToMapRejectsMissingValue verifies that malformed query
+// parameters return an error instead of being silently accepted.
+func TestQueryStringToMapRejectsMissingValue(t *testing.T) {
+	if _, err := QueryStringToMap("key"); err == nil {
+		t.Fatal("QueryStringToMap accepted a key without a value")
+	}
 }
 
-func TestCategoryExecutor(t *testing.T) {
-	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
+// TestLoggingConfigPublicAPI verifies the documented default logging settings
+// and confirms that the configuration implements a non-empty Stringer value.
+func TestLoggingConfigPublicAPI(t *testing.T) {
+	config := NewOracleLoggingConfig()
+	if config.GetLevel() != "ERROR" {
+		t.Fatalf("default logging level = %q, want ERROR", config.GetLevel())
+	}
+	if config.GetDestination() != "NULL" {
+		t.Fatalf("default logging destination = %q, want NULL", config.GetDestination())
+	}
+	if config.GetIncludeSensitive() || config.GetTruncate() {
+		t.Fatal("sensitive logging and truncation should be disabled by default")
+	}
+	if rendered := config.String(); rendered == "" {
+		t.Fatal("logging configuration String() returned an empty value")
+	}
 }
 
-type Version = oracleTest.Version
-type TestConfig = oracleTest.TestConfig
-type TestingEnvironment = oracleTest.TestingEnvironment
-
-var DefaultTestConfig *TestConfig
-var TestEnvironement TestingEnvironment
-var TestingConfig *TestConfig
-var TestCategories oracleTest.TestCategoryList
+// TestDriverConfigValidateRejectsNegativeTimeout verifies that the configured
+// zero-or-positive validator rejects a negative Oracle Net connect timeout.
+func TestDriverConfigValidateRejectsNegativeTimeout(t *testing.T) {
+	config := NewOracleDriverConfig()
+	config.ConnectionProperties.ConnectTimeout = -1
+	if err := config.Validate(); err == nil {
+		t.Fatal("Validate accepted a negative connection timeout")
+	}
+}

@@ -267,6 +267,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestIssue_ColumnTypePrecisionScale", Categories: "functional", Exclusive: false, Fn: TestIssue_ColumnTypePrecisionScale},
 	{Name: "TestIssue_DecodeBinaryColumnType", Categories: "functional", Exclusive: false, Fn: TestIssue_DecodeBinaryColumnType},
 	{Name: "TestServerError", Categories: "functional", Exclusive: false, Fn: TestServerError},
+	{Name: "TestDriver_Functional_ConnectionWrapper", Categories: "functional", Exclusive: false, Fn: TestDriver_Functional_ConnectionWrapper},
 }
 
 func TestCategoryExecutor(t *testing.T) {
