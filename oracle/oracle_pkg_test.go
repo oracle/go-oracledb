@@ -151,6 +151,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_Insert_5000Rows_NumberColumn", Categories: "robustness", Exclusive: false, Fn: TestDriver_Insert_5000Rows_NumberColumn},
 	{Name: "TestDriver_Select_5000Rows_ComplexTypes", Categories: "robustness", Exclusive: false, Fn: TestDriver_Select_5000Rows_ComplexTypes},
 	{Name: "TestDriver_ConcurrentQueriesOnSharedDB", Categories: "robustness", Exclusive: false, Fn: TestDriver_ConcurrentQueriesOnSharedDB},
+	{Name: "TestDriver_ConnectionLifecycleStress", Categories: "stress", Exclusive: true, Fn: TestDriver_ConnectionLifecycleStress},
+	{Name: "TestDriver_ResourceRetentionMemoryLeakStress", Categories: "stress", Exclusive: true, Fn: TestDriver_ResourceRetentionMemoryLeakStress},
 	{Name: "TestQueryNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestQueryNonExistentTable_NegativeCase},
 	{Name: "TestPreparedStatementNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestPreparedStatementNonExistentTable_NegativeCase},
 	{Name: "TestSelectSpecificColumnsNonExistentTable_NegativeCase", Categories: "functional", Exclusive: false, Fn: TestSelectSpecificColumnsNonExistentTable_NegativeCase},
