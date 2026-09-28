@@ -75,6 +75,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestHandleAcceptRequiredANO", Categories: "unitary", Exclusive: false, Fn: TestHandleAcceptRequiredANO},
 	{Name: "TestAcceptPacketClampsOversizedValues", Categories: "unitary", Exclusive: false, Fn: TestAcceptPacketClampsOversizedValues},
 	{Name: "TestSessionAttsSetFromParsedDescriptionKeepsDefaultDNMatch", Categories: "unitary", Exclusive: false, Fn: TestSessionAttsSetFromParsedDescriptionKeepsDefaultDNMatch},
+	{Name: "TestGetRemoteEndpoint", Categories: "unitary", Exclusive: false, Fn: TestGetRemoteEndpoint},
 	{Name: "TestTransportConnect", Categories: "unitary", Exclusive: false, Fn: TestTransportConnect},
 	{Name: "TestIsDownHostError", Categories: "unitary", Exclusive: false, Fn: TestIsDownHostError},
 	{Name: "TestConnectToOption", Categories: "unitary", Exclusive: false, Fn: TestConnectToOption},

@@ -523,6 +523,22 @@ func TestParseExtendedParams_MultipleParams(t *testing.T) {
 	}
 }
 
+// TestParseExtendedParams_IgnoresEmptyParameters verifies that empty entries
+// created by repeated or trailing separators do not affect valid parameters.
+func TestParseExtendedParams_IgnoresEmptyParameters(t *testing.T) {
+	t.Parallel()
+	recognized, unrecognized, err := parseExtendedParams("connect_timeout=10&&  &custom=value&")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if recognized["CONNECT_TIMEOUT"] != "10" {
+		t.Errorf("expected CONNECT_TIMEOUT=10, got %q", recognized["CONNECT_TIMEOUT"])
+	}
+	if unrecognized["CUSTOM"] != "value" {
+		t.Errorf("expected CUSTOM=value, got %q", unrecognized["CUSTOM"])
+	}
+}
+
 // TestParseEzConnect_InvalidExtendedParams tests invalid parameter format in full ParseEzConnect
 func TestParseEzConnect_InvalidExtendedParams(t *testing.T) {
 	t.Parallel()
@@ -588,6 +604,21 @@ func TestParseHostList_EmptyHost(t *testing.T) {
 		t.Error("expected error for empty host string")
 	}
 	assertErrorCode(t, err, oracleErrors.NamingEzConnectError)
+}
+
+// TestParseHostList_ValidatesEveryPort verifies that an invalid port in an
+// earlier host is rejected before the rest of the list is accepted.
+func TestParseHostList_ValidatesEveryPort(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{"host1:abc,host2:1522", "host1:0,host2:1522", "host1:65536,host2:1522"} {
+		t.Run(input, func(t *testing.T) {
+			_, err := parseHostList(input)
+			if err == nil {
+				t.Fatalf("expected an error for %q", input)
+			}
+			assertErrorCode(t, err, oracleErrors.NamingEzConnectError)
+		})
+	}
 }
 
 // TestParseAddressGroups_MultipleGroups tests multiple groups
