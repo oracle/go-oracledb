@@ -47,6 +47,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestImplicitResultRowsNextResultSet switches between prefetched implicit result sets.
@@ -250,7 +251,7 @@ func TestTTIimplres_PrefetchCompletion(t *testing.T) {
 	if err := implres.UnMarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal prefetched implicit result: %v", err)
 	}
-	if len(implres.rows) != 1 || implres.rows[0].fetch != nil || implres.rows[0].numOfRows != 2 || string(implres.rows[0].rowData[0][0]) != "X" || string(implres.rows[0].rowData[1][0]) != "Y" {
+	if len(implres.rows) != 1 || !implres.rows[0].fetched || implres.rows[0].numOfRows != 2 || string(implres.rows[0].rowData[0][0]) != "X" || string(implres.rows[0].rowData[1][0]) != "Y" {
 		t.Fatalf("prefetched rows = %#v, want one fully fetched result containing X and Y", implres.rows)
 	}
 }
@@ -280,7 +281,7 @@ func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 	if err := (&tTIimplres{dcb: newTTIdcb().(*tTIdcb), shelf: shelf}).unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
 		t.Fatalf("unmarshal implicit-result BVC: %v", err)
 	}
-	if rows.numOfRows != 0 || rows.fetch != nil {
+	if rows.numOfRows != 0 || !rows.fetched {
 		t.Fatalf("rows after BVC prefetch = %#v", rows)
 	}
 }
@@ -291,7 +292,11 @@ func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
 	if !ok || implres.GetMsgCode() != TTIIMPLRES {
 		t.Fatalf("newTTIimplres() = %T with message code %v", implres, implres.GetMsgCode())
 	}
-	shelf := &ttiShelf[driverCommon.MessageType]{}
+	shelf := newShelf[driverCommon.MessageType]()
+	listener := &testEventListener{}
+	shelf.getEventService().register(listener, streamerStaleEvent)
+	conn := &connection{_isValid: true, shelf: shelf}
+	conn.registerEventListeners(shelf.getEventService())
 	sessCtx := &driverCommon.SessionContext{}
 	implres.configure(true)
 	var shelfUser ttiShelfUser = implres
@@ -307,8 +312,18 @@ func TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage(t *testing.T) {
 	if err := mar.MarshalUB1(ctx, 0); err != nil {
 		t.Fatalf("marshal unsupported prefetch message: %v", err)
 	}
-	if err := implres.unmarshalPrefetch(ctx, mar, newRefCursorResultRows(newTTCRows(nil), 0), nil); err == nil {
+	err := implres.unmarshalPrefetch(ctx, mar, newRefCursorResultRows(newTTCRows(nil), 0), nil)
+	if err == nil {
 		t.Fatal("unexpected prefetch message returned nil error")
+	}
+	if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.InternalError) {
+		t.Fatalf("unexpected prefetch message error = %v, want %s", err, oracleErrors.InternalError)
+	}
+	if len(listener.events) != 1 || listener.events[0] != streamerStaleEvent {
+		t.Fatalf("connection invalidation events = %v, want [%v]", listener.events, streamerStaleEvent)
+	}
+	if conn._isValid {
+		t.Fatal("connection remains valid after an unexpected implicit-result prefetch message")
 	}
 }
 

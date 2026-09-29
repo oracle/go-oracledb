@@ -265,12 +265,16 @@ func (p *tTIimplres) unmarshalPrefetch(ctx context.Context, mar driverCommon.Mar
 				}
 			}
 			rows.numOfRows = len(rows.rowData)
-			rows.fetch = nil
+			rows.executor = nil
+			rows.fetched = true
 			common.Odl.Debug("Completed implicit result prefetch", "cursorID", rows.cursorID, "rows", rows.numOfRows)
 			return nil
 		default:
-			common.Odl.Debug("Unexpected implicit result prefetch message", "cursorID", rows.cursorID, "messageType", code, "rows", state.rowCount)
-			return common.NewOracleError(oracleErrors.UnexpectedImplicitResultPrefetchMessage, nil, code)
+			common.Odl.Error("Unexpected implicit result prefetch message; invalidating connection", "cursorID", rows.cursorID, "messageType", code, "rows", state.rowCount)
+			if p.shelf != nil && p.shelf.getEventService() != nil {
+				p.shelf.getEventService().post(streamerStaleEvent)
+			}
+			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 	}
 }

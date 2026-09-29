@@ -183,13 +183,7 @@ const (
 	ADTValueError ErrorCode = "OGD-00166"
 	// ImplicitResultFactoriesNotConfigured indicates that an implicit-result
 	// decoder was used before its required row or DCB factory was configured.
-	ImplicitResultFactoriesNotConfigured ErrorCode = "OGD-00167"
-	// UnexpectedImplicitResultPrefetchMessage indicates that the server sent an
-	// unsupported TTC message while prefetched implicit-result rows were read.
-	UnexpectedImplicitResultPrefetchMessage ErrorCode = "OGD-00168"
-	// RefCursorFactoriesNotConfigured indicates that REF CURSOR decoding was
-	// attempted before its descriptor or rows factory was configured.
-	RefCursorFactoriesNotConfigured ErrorCode = "OGD-00169"
+
 	// ImplicitResultMessageCreationFailed indicates that the driver could not
 	// create the TTC message used to decode implicit results.
 	ImplicitResultMessageCreationFailed ErrorCode = "OGD-00170"

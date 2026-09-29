@@ -43,7 +43,6 @@ import (
 	"database/sql/driver"
 	"io"
 	"reflect"
-	"sync"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -126,9 +125,6 @@ type ttcRows struct {
 	numOfRows     int
 	closed        bool
 	closeErr      error
-	// beforeNext performs optional work, such as the first RefCursor fetch,
-	// before advancing through buffered rows. Next provides it a fresh context.
-	beforeNext func(context.Context) error
 	// columnDecoder optionally replaces the standard scalar decoder for rows
 	// containing protocol-specific values such as REF CURSOR columns.
 	columnDecoder func(int) (driver.Value, error)
@@ -152,11 +148,12 @@ type ttcRowsRefCursor struct {
 	refCursorData [][]*ttcRowsRefCursor
 	// cursorID identifies the server cursor represented by these rows.
 	cursorID driverCommon.SB4
-	// fetchOnce and fetchErr cache the one deferred fetch for a server cursor.
-	fetchOnce sync.Once
-	// fetch issues the TTC fetch operation when rows were not pre-fetched.
-	fetch    func(context.Context) error
-	fetchErr error
+	// executor performs the deferred fetch when datatype.Rows.GetRows exposes
+	// this cursor as standard database/sql rows.
+	executor *refCursorExecutor
+	// fetched reports whether this cursor's initial fetch has completed. It
+	// prevents GetRows from re-executing an already-consumed server cursor.
+	fetched bool
 }
 
 // ttcRowsRefCursorImplicitFetch exposes ordered implicit cursors as result sets.
@@ -192,16 +189,10 @@ func (r *ttcRows) Columns() []string {
 
 // Next implements driver.Rows.Next. It advances the cursorId and assigns each
 // column's raw []common.B1Array value as a type provided in dest. Row count is
-// computed once and cached to avoid repeated len() calls. It returns io.EOF
-// after Close so a closed cursor cannot perform a deferred fetch.
+// computed once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {
 	if r.closed {
 		return io.EOF
-	}
-	if r.beforeNext != nil {
-		if err := r.beforeNext(context.Background()); err != nil {
-			return err
-		}
 	}
 	decode := r.decodeColumnValue
 	if r.columnDecoder != nil {
@@ -428,20 +419,20 @@ func (r *ttcRowsRefCursor) closeServerCursor() error {
 	return nil
 }
 
-// fetchRows invokes the deferred RefCursor fetch at most once using ctx supplied
-// by Rows.Next.
-func (r *ttcRowsRefCursor) fetchRows(ctx context.Context) error {
-	if r.fetch != nil {
-		r.fetchOnce.Do(func() {
-			common.Odl.Debug("Fetching REF CURSOR rows", "cursorID", r.cursorID)
-			r.fetchErr = r.fetch(ctx)
-		})
-		if r.fetchErr != nil {
-			common.Odl.Warn("REF CURSOR fetch failed", "cursorID", r.cursorID, "error", r.fetchErr)
-			return r.fetchErr
-		}
-		common.Odl.Debug("REF CURSOR rows fetched", "cursorID", r.cursorID, "rows", r.numOfRows)
+// Fetch loads this REF CURSOR before it is exposed through database/sql.
+// The caller supplies the context used for the server round trip.
+func (r *ttcRowsRefCursor) Fetch(ctx context.Context) error {
+	if r.fetched || r.executor == nil {
+		return nil
 	}
+	common.Odl.Debug("Fetching REF CURSOR rows", "cursorID", r.cursorID)
+	if _, err := r.executor.QueryContext(ctx, &qualifiedSQLStatement{cursorId: r.cursorID}, nil); err != nil {
+		common.Odl.Warn("REF CURSOR fetch failed", "cursorID", r.cursorID, "error", err)
+		return err
+	}
+	r.executor = nil
+	r.fetched = true
+	common.Odl.Debug("REF CURSOR rows fetched", "cursorID", r.cursorID, "rows", r.numOfRows)
 	return nil
 }
 
@@ -477,11 +468,9 @@ func (r *ttcRowsRefCursor) closeRefCursors() error {
 	return closeErr
 }
 
-// newRefCursorResultRows wraps base rows with RefCursor state and installs the
-// hooks consumed by the single ttcRows Next and Close implementations.
+// newRefCursorResultRows wraps base rows with REF CURSOR decoding and cleanup.
 func newRefCursorResultRows(rows *ttcRows, cursorID driverCommon.SB4) *ttcRowsRefCursor {
 	result := &ttcRowsRefCursor{ttcRows: rows, cursorID: cursorID}
-	rows.beforeNext = result.fetchRows
 	rows.columnDecoder = result.decodeColumnValue
 	rows.cleanup = result.closeRefCursors
 	return result

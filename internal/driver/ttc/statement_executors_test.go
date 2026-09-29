@@ -60,6 +60,30 @@ func Oall8Payload(lines []string) []byte {
 	return buf[11:]
 }
 
+// TestRefCursorRowsExecutor verifies that the internal refcursor statement
+// returns its supplied rows without starting a TTC round trip.
+func TestRefCursorRowsExecutor(t *testing.T) {
+	t.Parallel()
+
+	executor := newRefCursorRowsExecutor()
+	rows := newTTCRows(nil)
+	got, err := executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: rows}})
+	if err != nil {
+		t.Fatalf("QueryContext: %v", err)
+	}
+	if got != rows {
+		t.Fatalf("QueryContext rows = %p, want %p", got, rows)
+	}
+	if _, err = executor.QueryContext(context.Background(), nil, nil); err == nil {
+		t.Fatal("QueryContext with no arguments unexpectedly succeeded")
+	} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.StatementParsingInvalidArgCount) {
+		t.Fatalf("no-argument error = %v, want %s", err, oracleErrors.StatementParsingInvalidArgCount)
+	}
+	if _, err = executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: nil}}); err == nil {
+		t.Fatal("QueryContext with nil rows unexpectedly succeeded")
+	}
+}
+
 // Faulty shelf using FaultyArrayBasedDataBuffer via createMarshaller to inject read/write failures.
 func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.MessageType], *MessageStreamer) {
 	mar := createMarshaller(buf, failOn, callN)
@@ -148,25 +172,31 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	return shelf, streamer, buf
 }
 
-// TestRefCursorRows_NextUsesBackgroundContext verifies that the deferred REF
-// CURSOR fetch starts from Rows.Next with a live context rather than retaining
-// the parent statement-execution context.
-func TestRefCursorRows_NextUsesBackgroundContext(t *testing.T) {
+// TestConnectionGetRowsUsesCallerContext verifies that the connection fetches
+// a REF CURSOR with the context supplied by connectionWrapper.GetRows.
+func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
 	t.Parallel()
 
 	shelf, _, _ := newExecTestShelf(1024)
 	streamer := &mockStreamer{pullMsg: &mockOer{}}
 	shelf.RegisterMessageStreamer(streamer)
 	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
+	conn := &connection{shelf: shelf}
 
-	if err := rows.Next(make([]sqldriver.Value, 1)); err == nil {
-		t.Fatal("deferred REF CURSOR fetch returned nil error without a result descriptor")
+	if err := conn.GetRows(context.Background(), rows); err != nil {
+		t.Fatalf("GetRows: %v", err)
 	}
 	if !streamer.pushCalled {
 		t.Fatal("deferred REF CURSOR fetch did not start a round trip")
 	}
 	if streamer.pushCtx == nil || streamer.pushCtx.Err() != nil || streamer.pushCtx.Done() != nil {
 		t.Fatalf("REF CURSOR fetch context = %v, want live context.Background()", streamer.pushCtx)
+	}
+	if err := conn.GetRows(context.Background(), rows); err != nil {
+		t.Fatalf("second GetRows: %v", err)
+	}
+	if streamer.pushedMsg.Len() != 1 {
+		t.Fatalf("REF CURSOR fetch round trips = %d, want 1", streamer.pushedMsg.Len())
 	}
 }
 

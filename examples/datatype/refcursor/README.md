@@ -2,8 +2,8 @@
 
 This example demonstrates both supported cursor-return patterns:
 
-- a REF CURSOR returned through a PL/SQL `sql.Out` bind and read with
-  `database/sql/driver.Rows`;
+- a REF CURSOR returned through a PL/SQL `sql.Out` bind using `datatype.Rows`,
+  then exposed as `*sql.Rows` with `GetRows`;
 - implicit result cursors returned through `DBMS_SQL.RETURN_RESULT`:
   `QueryContext` exposes the first cursor as `*sql.Rows`, and
   `NextResultSet` advances to any additional cursors.
@@ -39,16 +39,17 @@ Row: [22]
 ## How it works
 
 1. The PL/SQL block opens a server cursor for its OUT bind using `OPEN :1 FOR`.
-2. The Go program passes `sql.Out{Dest: &rows}`, where `rows` is a
-   `driver.Rows` value.
+2. The Go program acquires a dedicated `*sql.Conn` and passes
+   `sql.Out{Dest: &raw}`, where `raw` is a `datatype.Rows` value.
 3. After `ExecContext` completes, the driver assigns the returned server cursor
-   to `rows`.
-4. The program reads the cursor with `Columns` and `Next`, and closes it with
-   `Close` when finished. Closing the rows queues the server-cursor close for a
-   subsequent database round trip.
+   to `raw`.
+4. `oracle.NewConnectionWrapper(conn).GetRows(ctx, &raw)` fetches the cursor
+   and returns standard `*sql.Rows`.
+   The program reads it with `Columns`, `Next`, and `Scan`, then closes it when
+   finished.
 
-Use one `driver.Rows` destination for each REF CURSOR OUT bind. Always close
-each returned cursor, including cursors that are not fully consumed.
+Use one `datatype.Rows` destination for each REF CURSOR OUT bind. Always close
+each `*sql.Rows`, including cursors that are not fully consumed.
 
 ## Implicit result cursors
 

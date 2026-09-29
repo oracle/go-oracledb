@@ -41,15 +41,14 @@ package oracle
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
-	"io"
 	"strconv"
 	"testing"
+
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
-// TestDriver_RefCursorOut verifies the godror-compatible sql.Out API. The
-// returned driver.Rows owns a child server cursor and is fetched on its first
-// Next call.
+// TestDriver_RefCursorOut verifies that datatype.Cursor exposes a REF CURSOR OUT
+// bind as standard database/sql rows.
 func TestDriver_RefCursorOut(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -61,31 +60,116 @@ func TestDriver_RefCursorOut(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	var rows driver.Rows
-	_, err = db.ExecContext(context.Background(), `
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire dedicated connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("wrap dedicated connection: %v", err)
+	}
+
+	var raw datatype.Cursor
+	_, err = conn.ExecContext(ctx, `
 BEGIN
   OPEN :1 FOR SELECT 42 AS n, 'cursor' AS label FROM dual;
-END;`, sql.Out{Dest: &rows})
+END;`, sql.Out{Dest: &raw})
 	if err != nil {
 		t.Fatalf("open REF CURSOR: %v", err)
+	}
+	rows, err := wrapper.Fetch(ctx, &raw)
+	if err != nil {
+		t.Fatalf("get REF CURSOR rows: %v", err)
 	}
 	if rows == nil {
 		t.Fatal("REF CURSOR returned nil rows")
 	}
-	t.Cleanup(func() { _ = rows.Close() })
+	defer rows.Close()
 
-	values := make([]driver.Value, len(rows.Columns()))
-	if err = rows.Next(values); err != nil {
-		t.Fatalf("fetch REF CURSOR row: %v", err)
+	if !rows.Next() {
+		t.Fatalf("fetch REF CURSOR row: %v", rows.Err())
 	}
-	if got, ok := values[0].(int64); !ok || got != 42 {
-		t.Fatalf("REF CURSOR number = %#v (%T), want int64(42)", values[0], values[0])
+	var number int64
+	var label string
+	if err = rows.Scan(&number, &label); err != nil {
+		t.Fatalf("scan REF CURSOR row: %v", err)
 	}
-	if got, ok := values[1].(string); !ok || got != "cursor" {
-		t.Fatalf("REF CURSOR label = %#v (%T), want cursor", values[1], values[1])
+	if number != 42 || label != "cursor" {
+		t.Fatalf("REF CURSOR row = (%d, %q), want (42, cursor)", number, label)
 	}
-	if err = rows.Next(values); err != io.EOF {
-		t.Fatalf("REF CURSOR final Next = %v, want io.EOF", err)
+	if rows.Next() {
+		t.Fatal("REF CURSOR returned an unexpected second row")
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatalf("REF CURSOR rows: %v", err)
+	}
+}
+
+// TestDriver_RefCursorOutAsSQLRows verifies that datatype.Cursor fetches a REF
+// CURSOR through the supplied context and exposes it as standard *sql.Rows.
+func TestDriver_RefCursorOutAsSQLRows(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx := context.Background()
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire dedicated connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	stmt, err := conn.PrepareContext(ctx, `
+BEGIN
+  OPEN :1 FOR SELECT 42 AS n, 'cursor' AS label FROM dual;
+END;`)
+	if err != nil {
+		t.Fatalf("prepare REF CURSOR statement: %v", err)
+	}
+	t.Cleanup(func() { _ = stmt.Close() })
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("wrap dedicated connection: %v", err)
+	}
+
+	var raw datatype.Cursor
+	if _, err = stmt.ExecContext(ctx, sql.Out{Dest: &raw}); err != nil {
+		t.Fatalf("open REF CURSOR: %v", err)
+	}
+
+	rows, err := wrapper.Fetch(ctx, &raw)
+	if err != nil {
+		t.Fatalf("wrap REF CURSOR rows: %v", err)
+	}
+	if rows == nil {
+		t.Fatal("REF CURSOR returned nil rows")
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		t.Fatalf("fetch REF CURSOR row: %v", rows.Err())
+	}
+	var number int64
+	var label string
+	if err = rows.Scan(&number, &label); err != nil {
+		t.Fatalf("scan REF CURSOR row: %v", err)
+	}
+	if number != 42 || label != "cursor" {
+		t.Fatalf("REF CURSOR row = (%d, %q), want (42, cursor)", number, label)
+	}
+	if rows.Next() {
+		t.Fatal("REF CURSOR returned an unexpected second row")
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatalf("REF CURSOR rows: %v", err)
 	}
 }
 
@@ -101,8 +185,19 @@ func TestDriver_RefCursorMultipleOut(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	var first, second driver.Rows
-	_, err = db.ExecContext(context.Background(), `
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire dedicated connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("wrap dedicated connection: %v", err)
+	}
+
+	var first, second datatype.Cursor
+	_, err = conn.ExecContext(ctx, `
 BEGIN
   OPEN :1 FOR SELECT 11 AS n FROM dual;
   OPEN :2 FOR SELECT 22 AS n FROM dual;
@@ -110,24 +205,41 @@ END;`, sql.Out{Dest: &first}, sql.Out{Dest: &second})
 	if err != nil {
 		t.Fatalf("open multiple REF CURSORs: %v", err)
 	}
-	if first == nil || second == nil {
-		t.Fatal("multiple REF CURSOR bind returned nil rows")
-	}
-	t.Cleanup(func() { _ = first.Close(); _ = second.Close() })
-
-	for name, cursor := range map[string]struct {
-		rows driver.Rows
+	for _, cursor := range []struct {
+		name string
+		raw  *datatype.Cursor
 		want int64
-	}{"first": {first, 11}, "second": {second, 22}} {
-		values := make([]driver.Value, len(cursor.rows.Columns()))
-		if err := cursor.rows.Next(values); err != nil {
-			t.Fatalf("fetch %s REF CURSOR: %v", name, err)
+	}{{"first", &first, 11}, {"second", &second, 22}} {
+		rows, err := wrapper.Fetch(ctx, cursor.raw)
+		if err != nil {
+			t.Fatalf("get %s REF CURSOR rows: %v", cursor.name, err)
 		}
-		if got, ok := values[0].(int64); !ok || got != cursor.want {
-			t.Fatalf("%s REF CURSOR value = %#v (%T), want %d", name, values[0], values[0], cursor.want)
+		if rows == nil {
+			t.Fatalf("%s REF CURSOR returned nil rows", cursor.name)
 		}
-		if err := cursor.rows.Next(values); err != io.EOF {
-			t.Fatalf("%s REF CURSOR final Next = %v, want io.EOF", name, err)
+		if !rows.Next() {
+			_ = rows.Close()
+			t.Fatalf("fetch %s REF CURSOR: %v", cursor.name, rows.Err())
+		}
+		var got int64
+		if err = rows.Scan(&got); err != nil {
+			_ = rows.Close()
+			t.Fatalf("scan %s REF CURSOR: %v", cursor.name, err)
+		}
+		if got != cursor.want {
+			_ = rows.Close()
+			t.Fatalf("%s REF CURSOR value = %d, want %d", cursor.name, got, cursor.want)
+		}
+		if rows.Next() {
+			_ = rows.Close()
+			t.Fatalf("%s REF CURSOR returned an unexpected second row", cursor.name)
+		}
+		if err = rows.Err(); err != nil {
+			_ = rows.Close()
+			t.Fatalf("%s REF CURSOR rows: %v", cursor.name, err)
+		}
+		if err = rows.Close(); err != nil {
+			t.Fatalf("close %s REF CURSOR: %v", cursor.name, err)
 		}
 	}
 }
@@ -267,10 +379,17 @@ func TestDriver_RefCursorOutWithScalar(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire dedicated connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
 	var answer int64
 	var label string
-	var rows driver.Rows
-	_, err = db.ExecContext(context.Background(), `
+	var raw datatype.Cursor
+	_, err = conn.ExecContext(ctx, `
 BEGIN
   :1 := 42;
   :2 := 'scalar';
@@ -278,32 +397,44 @@ BEGIN
 END;`,
 		sql.Out{Dest: &answer},
 		sql.Out{Dest: &label},
-		sql.Out{Dest: &rows},
+		sql.Out{Dest: &raw},
 	)
 	if err != nil {
 		t.Fatalf("execute scalar and REF CURSOR OUT binds: %v", err)
 	}
-	if rows == nil {
-		t.Fatal("REF CURSOR returned nil rows")
-	}
-	t.Cleanup(func() { _ = rows.Close() })
 	if answer != 42 {
 		t.Fatalf("numeric scalar OUT value = %d, want 42", answer)
 	}
 	if label != "scalar" {
 		t.Fatalf("scalar OUT value = %q, want scalar", label)
 	}
-	values := make([]driver.Value, len(rows.Columns()))
-	if err := rows.Next(values); err != nil {
-		t.Fatalf("fetch REF CURSOR row: %v", err)
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("wrap dedicated connection: %v", err)
 	}
-	if got, ok := values[0].(int64); !ok || got != 7 {
-		t.Fatalf("REF CURSOR number = %#v (%T), want int64(7)", values[0], values[0])
+	rows, err := wrapper.Fetch(ctx, &raw)
+	if err != nil {
+		t.Fatalf("get REF CURSOR rows: %v", err)
 	}
-	if got, ok := values[1].(string); !ok || got != "cursor-row" {
-		t.Fatalf("REF CURSOR label = %#v (%T), want cursor-row", values[1], values[1])
+	if rows == nil {
+		t.Fatal("REF CURSOR returned nil rows")
 	}
-	if err := rows.Next(values); err != io.EOF {
-		t.Fatalf("REF CURSOR final Next = %v, want io.EOF", err)
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatalf("fetch REF CURSOR row: %v", rows.Err())
+	}
+	var number int64
+	var cursorLabel string
+	if err = rows.Scan(&number, &cursorLabel); err != nil {
+		t.Fatalf("scan REF CURSOR row: %v", err)
+	}
+	if number != 7 || cursorLabel != "cursor-row" {
+		t.Fatalf("REF CURSOR row = (%d, %q), want (7, cursor-row)", number, cursorLabel)
+	}
+	if rows.Next() {
+		t.Fatal("REF CURSOR returned an unexpected second row")
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatalf("REF CURSOR rows: %v", err)
 	}
 }

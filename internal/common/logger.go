@@ -136,6 +136,5 @@ func InitLoggingWithConfig(config LoggingConfig) {
 	if p == true && v == "true" && config.GetIncludeSensitive() {
 		Opl = slog.New(handler)
 	}
-	Opl = slog.New(handler)
 
 }

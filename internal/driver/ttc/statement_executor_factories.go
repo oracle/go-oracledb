@@ -66,6 +66,8 @@ func getQueryStatementExecutorFor(qQuery *qualifiedSQLStatement) QueryWithContex
 	case plsql:
 		common.Odl.Debug("getQueryStatementExecutor: requested implicit-result executor.")
 		return newStatementExecutorPlSql()
+	case refcursor:
+		return newRefCursorRowsExecutor()
 	default:
 		return &statementExecutorOperationNotSupported{kind: qQuery.kind}
 	}

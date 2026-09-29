@@ -40,7 +40,6 @@ package ttc
 
 import (
 	"container/list"
-	"database/sql/driver"
 	"reflect"
 	"strconv"
 	"time"
@@ -48,6 +47,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 const MinTTCProtocolVersion = 12 // 19.1
@@ -803,10 +803,6 @@ func init() {
 	if err := EncoderRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
 		common.Odl.Warn("Failed to register nil encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
-		common.Odl.Warn("Failed to register REF CURSOR rows encoder", "error", err)
-	}
-
 	// bool is version dependent
 	err = EncoderRegistry.Register(reflect.TypeOf(true), MinTTCProtocolVersion, converters.EncodeBooleanAsNumber)
 	if err != nil {
@@ -985,7 +981,7 @@ func init() {
 	if err := BindOacRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNull() }, maxLength: converters.MaxNullLength}); err != nil {
 		common.Odl.Warn("Failed to register nil bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf((*driver.Rows)(nil)).Elem(), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacRefCursor, maxLength: refCursorBindMaxLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[datatype.Cursor](), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacRefCursor, maxLength: refCursorBindMaxLength}); err != nil {
 		common.Odl.Warn("Failed to register REF CURSOR rows bind OAC", "error", err)
 	}
 	if err := BindOacRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacTime() }, maxLength: converters.MaxTimeStampLength}); err != nil {
@@ -1046,5 +1042,6 @@ func init() {
 	_sqlKindMap["set"] = other
 	_sqlKindMap["explain"] = other
 	_sqlKindMap["flashback"] = other
+	_sqlKindMap[datatype.RefCursorQuery] = refcursor
 
 }

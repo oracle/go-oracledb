@@ -97,6 +97,29 @@ type QueryWithContext interface {
 	QueryContext(ctx context.Context, query *qualifiedSQLStatement, args []driver.NamedValue) (driver.Rows, error)
 }
 
+// refCursorRowsExecutor returns an already-decoded REF CURSOR through the
+// normal statement query path. It does not perform a TTC network operation.
+type refCursorRowsExecutor struct{}
+
+// newRefCursorRowsExecutor constructs the no-round-trip executor used by
+// datatype.Rows.GetRows.
+func newRefCursorRowsExecutor() *refCursorRowsExecutor {
+	return &refCursorRowsExecutor{}
+}
+
+// QueryContext validates and returns the REF CURSOR supplied by
+// datatype.Rows.GetRows.
+func (*refCursorRowsExecutor) QueryContext(_ context.Context, _ *qualifiedSQLStatement, args []driver.NamedValue) (driver.Rows, error) {
+	if len(args) != 1 {
+		return nil, common.NewOracleError(oracleErrors.StatementParsingInvalidArgCount, nil, len(args), 1)
+	}
+	rows, ok := args[0].Value.(driver.Rows)
+	if !ok || rows == nil {
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+	}
+	return rows, nil
+}
+
 /*
 ExecWithContext executes a non-query SQL statement and returns a
 database/sql/driver.Result.
@@ -240,16 +263,16 @@ func newRefCursorExecutor(shelf *ttiShelf[driverCommon.MessageType], sessCtx *dr
 	}
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(sessCtx)
+	// REF CURSOR metadata arrives with its parent RXD. Reuse it when the
+	// deferred fetch creates its per-fetch query state.
+	exec.resultMetadata = selectResultMetadata{columns: exec.columns}
 	exec.rows = newRefCursorResultRows(newTTCRows(columns), cursorID)
 	exec.rows.SetShelf(shelf)
-	exec.rows.fetch = func(ctx context.Context) error {
-		_, err := exec.QueryContext(ctx, &qualifiedSQLStatement{cursorId: cursorID}, nil)
-		return err
-	}
+	exec.rows.executor = exec
 	return exec
 }
 
-// newRefCursorRows creates rows whose first Next triggers the server REF CURSOR fetch.
+// newRefCursorRows creates rows fetched by datatype.Rows.GetRows.
 func newRefCursorRows(shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
 	return newRefCursorExecutor(shelf, sessCtx, cursorID, columns).rows
 }
