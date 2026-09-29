@@ -133,9 +133,9 @@ func TestDecodeBooleanColumn(t *testing.T) {
 	}
 }
 
-// TestDecodeFloatingAndTemporalColumns verifies binary floating-point, DATE,
-// and TIMESTAMP wire values are decoded with their expected precision.
-func TestDecodeFloatingAndTemporalColumns(t *testing.T) {
+// TestDecodeFloatingPointColumns verifies binary floating-point wire values
+// are decoded with their expected values.
+func TestDecodeFloatingPointColumns(t *testing.T) {
 	binaryFloat, err := converters.EncodeBinaryFloat(float32(1.5))
 	if err != nil {
 		t.Fatalf("EncodeBinaryFloat returned error: %v", err)
@@ -160,36 +160,63 @@ func TestDecodeFloatingAndTemporalColumns(t *testing.T) {
 		t.Fatalf("binary double = %v, want 2.5", gotBinaryDouble)
 	}
 
+}
+
+// TestDecodeDateAndTimestampColumns verifies DATE and TIMESTAMP wire values
+// preserve the expected date, time, and fractional-second values.
+func TestDecodeDateAndTimestampColumns(t *testing.T) {
 	when := time.Date(2026, 5, 4, 12, 30, 45, 123000000, time.UTC)
 	dateWire, err := converters.EncodeDate(when)
 	if err != nil {
 		t.Fatalf("EncodeDate returned error: %v", err)
 	}
-	if got, err := DecodeDateColumn(ColumnContext{}, dateWire); err != nil || got.(time.Time).Year() != 2026 {
-		t.Fatalf("DecodeDateColumn = (%v, %v), want 2026 date", got, err)
+	gotDate, err := DecodeDateColumn(ColumnContext{}, dateWire)
+	if err != nil {
+		t.Fatalf("DecodeDateColumn returned error: %v", err)
 	}
+	wantDate := time.Date(when.Year(), when.Month(), when.Day(), when.Hour(), when.Minute(), when.Second(), 0, time.Local)
+	if gotDateTime, ok := gotDate.(time.Time); !ok || !gotDateTime.Equal(wantDate) {
+		t.Fatalf("DecodeDateColumn = (%v, %T), want %v", gotDate, gotDate, wantDate)
+	}
+
 	tsWire, err := converters.EncodeTimestamp(when)
 	if err != nil {
 		t.Fatalf("EncodeTimestamp returned error: %v", err)
 	}
-	if got, err := DecodeTimestampColumn(ColumnContext{}, tsWire); err != nil || got.(time.Time).Year() != 2026 {
-		t.Fatalf("DecodeTimestampColumn = (%v, %v), want 2026 timestamp", got, err)
+	wantTimestamp := time.Date(when.Year(), when.Month(), when.Day(), when.Hour(), when.Minute(), when.Second(), when.Nanosecond(), time.Local)
+	gotTimestamp, err := DecodeTimestampColumn(ColumnContext{}, tsWire)
+	if err != nil {
+		t.Fatalf("DecodeTimestampColumn returned error: %v", err)
 	}
+	if gotTime, ok := gotTimestamp.(time.Time); !ok || !gotTime.Equal(wantTimestamp) {
+		t.Fatalf("DecodeTimestampColumn = (%v, %T), want %v", gotTimestamp, gotTimestamp, wantTimestamp)
+	}
+
 	tstzWire, err := converters.EncodeTimestampWithTimeZone(when)
 	if err != nil {
 		t.Fatalf("EncodeTimestampWithTimeZone returned error: %v", err)
 	}
-	if got, err := DecodeTimestampWithTimeZoneColumn(ColumnContext{}, tstzWire); err != nil || got.(time.Time).IsZero() {
-		t.Fatalf("DecodeTimestampWithTimeZoneColumn = (%v, %v), want non-zero time", got, err)
+	gotTimestampWithZone, err := DecodeTimestampWithTimeZoneColumn(ColumnContext{}, tstzWire)
+	if err != nil {
+		t.Fatalf("DecodeTimestampWithTimeZoneColumn returned error: %v", err)
 	}
-	if got, err := DecodeTimestampWithLocalTimeZoneColumn(ColumnContext{}, tsWire); err != nil || got.(time.Time).IsZero() {
-		t.Fatalf("DecodeTimestampWithLocalTimeZoneColumn = (%v, %v), want non-zero time", got, err)
+	if gotTime, ok := gotTimestampWithZone.(time.Time); !ok || !gotTime.Equal(when) {
+		t.Fatalf("DecodeTimestampWithTimeZoneColumn = (%v, %T), want %v", gotTimestampWithZone, gotTimestampWithZone, when)
+	}
+
+	gotLocalTimestamp, err := DecodeTimestampWithLocalTimeZoneColumn(ColumnContext{}, tsWire)
+	if err != nil {
+		t.Fatalf("DecodeTimestampWithLocalTimeZoneColumn returned error: %v", err)
+	}
+	wantLocalTimestamp := when.In(time.Local)
+	if gotTime, ok := gotLocalTimestamp.(time.Time); !ok || !gotTime.Equal(wantLocalTimestamp) {
+		t.Fatalf("DecodeTimestampWithLocalTimeZoneColumn = (%v, %T), want %v", gotLocalTimestamp, gotLocalTimestamp, wantLocalTimestamp)
 	}
 }
 
-// TestDecodeIntervalAndLobColumns verifies interval values and LOB locator
-// data are decoded into the expected driver values.
-func TestDecodeIntervalAndLobColumns(t *testing.T) {
+// TestDecodeIntervalColumns verifies year-to-month and day-to-second interval
+// values are decoded into their canonical strings.
+func TestDecodeIntervalColumns(t *testing.T) {
 	iymWire, err := converters.EncodeIntervalYearToMonth("02-03")
 	if err != nil {
 		t.Fatalf("EncodeIntervalYearToMonth returned error: %v", err)
@@ -205,15 +232,16 @@ func TestDecodeIntervalAndLobColumns(t *testing.T) {
 	if got, err := DecodeIntervalDayToSecondColumn(ColumnContext{}, idsWire); err != nil || got != "02 03:04:05.006" {
 		t.Fatalf("DecodeIntervalDayToSecondColumn = (%v, %v), want canonical interval", got, err)
 	}
+}
 
+// TestDecodeLobColumns verifies UTF-8 and UTF-16 CLOB values and BLOB bytes
+// are decoded into the expected driver values.
+func TestDecodeLobColumns(t *testing.T) {
 	if got, err := DecodeClob(ColumnContext{LobContext: &LobColumnContext{}}, common.B1Array("text")); err != nil || got != "text" {
 		t.Fatalf("DecodeClob utf8 = (%v, %v), want text", got, err)
 	}
 	if got, err := DecodeClob(ColumnContext{LobContext: &LobColumnContext{CharsetID: al16Utf16CharSet}}, common.B1Array{0, 'O', 0, 'K'}); err != nil || got != "OK" {
 		t.Fatalf("DecodeClob utf16 = (%v, %v), want OK", got, err)
-	}
-	if got, err := DecodeJson(ColumnContext{}, common.B1Array(`{"ok":true}`)); err != nil || got != `{"ok":true}` {
-		t.Fatalf("DecodeJson = (%v, %v), want JSON string", got, err)
 	}
 	blob := common.B1Array{1, 2, 3}
 	gotBlob, err := DecodeBlob(ColumnContext{}, blob)
@@ -222,6 +250,14 @@ func TestDecodeIntervalAndLobColumns(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotBlob, blob) {
 		t.Fatalf("DecodeBlob = %v, want %v", gotBlob, blob)
+	}
+}
+
+// TestDecodeJsonColumn verifies a JSON wire value is returned as its JSON
+// string.
+func TestDecodeJsonColumn(t *testing.T) {
+	if got, err := DecodeJson(ColumnContext{}, common.B1Array(`{"ok":true}`)); err != nil || got != `{"ok":true}` {
+		t.Fatalf("DecodeJson = (%v, %v), want JSON string", got, err)
 	}
 }
 

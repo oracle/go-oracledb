@@ -43,6 +43,7 @@ import (
 	"context"
 	sqldriver "database/sql/driver"
 	"errors"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -60,53 +61,59 @@ import (
 // - statementProcessor resolves encoders/OAC makers through shelf.GetCodecFactory()
 // - tests that construct statementProcessor directly must provide that wiring explicitly
 func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion int8) {
+	var encoderRegistry = newCodecRegistry[reflect.Type, encoderFunc]()
+	maps.Copy(encoderRegistry.entries, EncoderRegistry.entries)
+	var decoderRegistry = newCodecRegistry[DtyType, *typeDecoder]()
+	maps.Copy(decoderRegistry.entries, DecoderRegistry.entries)
+	var bindOacRegistry = newCodecRegistry[reflect.Type, bindOacType]()
+	maps.Copy(bindOacRegistry.entries, BindOacRegistry.entries)
 	// Register encoders used by prepareBindsAndOAC tests.
 	// (Registration uses "version 2" which is <= any supported protocol version in tests.)
-	_ = EncoderRegistry.Register(reflect.TypeOf(int64(0)), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeOf(int64(0)), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeInt(v.(int64))
 	})
-	_ = EncoderRegistry.Register(reflect.TypeOf(""), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeOf(""), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeVarchar(v.(string))
 	})
-	_ = EncoderRegistry.Register(reflect.TypeOf([]byte(nil)), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeOf([]byte(nil)), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return common.B1Array(v.([]byte)), nil
 	})
-	_ = EncoderRegistry.Register(reflect.TypeOf(true), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeOf(true), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeBoolean(v.(bool))
 	})
-	_ = EncoderRegistry.Register(reflect.TypeOf(time.Time{}), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeOf(time.Time{}), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeTimestampWithTimeZone(v.(time.Time))
 	})
-	_ = EncoderRegistry.Register(reflect.TypeOf(nil), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeOf(nil), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeNull(v)
 	})
 
 	// Register bind OAC makers used by prepareBindsAndOAC tests.
-	_ = BindOacRegistry.Register(reflect.TypeOf(int64(0)), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeOf(int64(0)), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyNum, maxLength)
 		},
 		maxLength: converters.MaxNumberLength,
 	})
-	_ = BindOacRegistry.Register(reflect.TypeOf(""), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeOf(""), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyVCS, maxLength)
 		},
 		maxLength: 32768,
 	})
-	_ = BindOacRegistry.Register(reflect.TypeOf([]byte(nil)), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeOf([]byte(nil)), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyVbi, maxLength)
 		},
 		maxLength: 32767,
 	})
-	_ = BindOacRegistry.Register(reflect.TypeOf(true), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeOf(true), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyBol, maxLength)
 		},
 		maxLength: converters.MaxBoolLength,
 	})
-	_ = BindOacRegistry.Register(reflect.TypeOf(time.Time{}), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeOf(time.Time{}), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyStz, maxLength)
 		},
@@ -115,14 +122,21 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 
 	// Decoders are not exercised by statement_executors_2_test directly today, but the task
 	// explicitly requests registering them. Add minimal decoders to keep registry complete.
-	_ = DecoderRegistry.Register(DtyVCS, 2, newTypeDecoder(func(_ columnContext, data common.B1Array) (sqldriver.Value, error) {
+	_ = decoderRegistry.Register(DtyVCS, 2, newTypeDecoder(func(_ columnContext, data common.B1Array) (sqldriver.Value, error) {
 		return string(data), nil
 	}, nil))
-	_ = DecoderRegistry.Register(DtyBin, 2, newTypeDecoder(func(_ columnContext, data common.B1Array) (sqldriver.Value, error) {
+	_ = decoderRegistry.Register(DtyBin, 2, newTypeDecoder(func(_ columnContext, data common.B1Array) (sqldriver.Value, error) {
 		return []byte(data), nil
 	}, nil))
 
-	shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(ttcProtocolVersion))
+	factory := &CodecFactoryImpl{
+		ttcVersion: ttcProtocolVersion,
+		encoders:   encoderRegistry,
+		decoders:   decoderRegistry,
+		bindOacs:   bindOacRegistry,
+		defineOacs: DefineOacRegistry,
+	}
+	shelf.RegisterCodecFactory(factory)
 }
 
 // ------------------------------

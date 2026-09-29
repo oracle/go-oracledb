@@ -61,7 +61,7 @@ func TestDriver_PreparedInsertReuse(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	ctx := context.Background()
-	table := createObjectName("t_gorm_batch_insert")
+	table := createObjectName("t_gorm_prepared_insert")
 	if err := createTable(ctx, db, table, map[string]string{
 		"id":   "NUMBER PRIMARY KEY",
 		"name": "VARCHAR2(100)",
@@ -77,21 +77,21 @@ func TestDriver_PreparedInsertReuse(t *testing.T) {
 
 	stmt, err := db.PrepareContext(ctx, "INSERT INTO "+table+" (id, name, age) VALUES (:1, :2, :3)")
 	if err != nil {
-		t.Fatalf("prepare batch insert failed: %v", err)
+		t.Fatalf("prepare insert failed: %v", err)
 	}
 	t.Cleanup(func() { _ = stmt.Close() })
 
 	for i := 1; i <= 6; i++ {
-		res, err := stmt.ExecContext(ctx, int64(i), fmt.Sprintf("create_in_batches_%d", i), int64(20+i))
+		res, err := stmt.ExecContext(ctx, int64(i), fmt.Sprintf("prepared_insert_%d", i), int64(20+i))
 		if err != nil {
-			t.Fatalf("batch insert row %d failed: %v", i, err)
+			t.Fatalf("prepared insert row %d failed: %v", i, err)
 		}
 		rows, err := res.RowsAffected()
 		if err != nil {
-			t.Fatalf("batch insert row %d rows affected: %v", i, err)
+			t.Fatalf("prepared insert row %d rows affected: %v", i, err)
 		}
 		if rows != 1 {
-			t.Fatalf("batch insert row %d affected %d rows, want 1", i, rows)
+			t.Fatalf("prepared insert row %d affected %d rows, want 1", i, rows)
 		}
 	}
 
@@ -112,9 +112,9 @@ func TestDriver_PreparedInsertReuse(t *testing.T) {
 	}
 }
 
-// TestDriver_BatchUpdateSliceEquivalent verifies repeated prepared updates
-// and expects every seeded row to have the updated age.
-func TestDriver_BatchUpdateSliceEquivalent(t *testing.T) {
+// TestDriver_PreparedUpdateReuse verifies one prepared UPDATE can be executed
+// repeatedly and updates every seeded row.
+func TestDriver_PreparedUpdateReuse(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -127,7 +127,7 @@ func TestDriver_BatchUpdateSliceEquivalent(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	ctx := context.Background()
-	table := createObjectName("t_gorm_batch_update")
+	table := createObjectName("t_gorm_prepared_update")
 	if err := createTable(ctx, db, table, map[string]string{
 		"id":   "NUMBER PRIMARY KEY",
 		"name": "VARCHAR2(100)",
@@ -144,7 +144,7 @@ func TestDriver_BatchUpdateSliceEquivalent(t *testing.T) {
 	for i := 1; i <= 5; i++ {
 		if _, err := db.ExecContext(ctx,
 			"INSERT INTO "+table+" (id, name, age) VALUES (:1, :2, :3)",
-			int64(i), fmt.Sprintf("batch%d", i), int64(i),
+			int64(i), fmt.Sprintf("prepared%d", i), int64(i),
 		); err != nil {
 			t.Fatalf("seed row %d failed: %v", i, err)
 		}
@@ -152,21 +152,21 @@ func TestDriver_BatchUpdateSliceEquivalent(t *testing.T) {
 
 	updateStmt, err := db.PrepareContext(ctx, "UPDATE "+table+" SET age = :1 WHERE id = :2")
 	if err != nil {
-		t.Fatalf("prepare batch update failed: %v", err)
+		t.Fatalf("prepare update failed: %v", err)
 	}
 	t.Cleanup(func() { _ = updateStmt.Close() })
 
 	for i := 1; i <= 5; i++ {
 		res, err := updateStmt.ExecContext(ctx, int64(99), int64(i))
 		if err != nil {
-			t.Fatalf("batch update row %d failed: %v", i, err)
+			t.Fatalf("prepared update row %d failed: %v", i, err)
 		}
 		rows, err := res.RowsAffected()
 		if err != nil {
-			t.Fatalf("batch update row %d rows affected: %v", i, err)
+			t.Fatalf("prepared update row %d rows affected: %v", i, err)
 		}
 		if rows != 1 {
-			t.Fatalf("batch update row %d affected %d rows, want 1", i, rows)
+			t.Fatalf("prepared update row %d affected %d rows, want 1", i, rows)
 		}
 	}
 
@@ -179,9 +179,9 @@ func TestDriver_BatchUpdateSliceEquivalent(t *testing.T) {
 	}
 }
 
-// TestDriver_MixedSaveBatchEquivalent verifies updating existing rows and
-// inserting a new row, expecting three rows with the final age value.
-func TestDriver_MixedSaveBatchEquivalent(t *testing.T) {
+// TestDriver_UpdateExistingRowsAndInsertNewRow verifies two existing rows are
+// updated and one new row is inserted.
+func TestDriver_UpdateExistingRowsAndInsertNewRow(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -194,7 +194,7 @@ func TestDriver_MixedSaveBatchEquivalent(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	ctx := context.Background()
-	table := createObjectName("t_gorm_mixed_save")
+	table := createObjectName("t_gorm_mixed_update_insert")
 	if err := createTable(ctx, db, table, map[string]string{
 		"id":   "NUMBER PRIMARY KEY",
 		"name": "VARCHAR2(100)",
@@ -222,14 +222,14 @@ func TestDriver_MixedSaveBatchEquivalent(t *testing.T) {
 			"UPDATE "+table+" SET age = :1 WHERE id = :2",
 			int64(99), int64(i),
 		); err != nil {
-			t.Fatalf("mixed save update row %d failed: %v", i, err)
+			t.Fatalf("update existing row %d failed: %v", i, err)
 		}
 	}
 	if _, err := db.ExecContext(ctx,
 		"INSERT INTO "+table+" (id, name, age) VALUES (:1, :2, :3)",
 		int64(3), "new_user", int64(99),
 	); err != nil {
-		t.Fatalf("mixed save insert failed: %v", err)
+		t.Fatalf("insert new row failed: %v", err)
 	}
 
 	var count int64
@@ -241,9 +241,9 @@ func TestDriver_MixedSaveBatchEquivalent(t *testing.T) {
 	}
 }
 
-// TestDriver_JSONCreateInBatchesAndBulkUpdateEquivalent verifies JSON batch
-// inserts followed by a bulk JSON_TRANSFORM update of all inserted rows.
-func TestDriver_JSONCreateInBatchesAndBulkUpdateEquivalent(t *testing.T) {
+// TestDriver_JSONPreparedInsertAndUpdate verifies repeated prepared JSON
+// inserts followed by an update of all inserted rows.
+func TestDriver_JSONPreparedInsertAndUpdate(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -259,7 +259,7 @@ func TestDriver_JSONCreateInBatchesAndBulkUpdateEquivalent(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	ctx := context.Background()
-	table := createObjectName("t_gorm_json_batch")
+	table := createObjectName("t_gorm_json_prepared")
 	if err := createTable(ctx, db, table, map[string]string{
 		"record_id": "NUMBER PRIMARY KEY",
 		"doc":       "JSON",
@@ -274,22 +274,22 @@ func TestDriver_JSONCreateInBatchesAndBulkUpdateEquivalent(t *testing.T) {
 
 	insertStmt, err := db.PrepareContext(ctx, "INSERT INTO "+table+" (record_id, doc) VALUES (:1, :2)")
 	if err != nil {
-		t.Fatalf("prepare JSON batch insert failed: %v", err)
+		t.Fatalf("prepare JSON insert failed: %v", err)
 	}
 	t.Cleanup(func() { _ = insertStmt.Close() })
 
 	ids := make([]any, 0, 50)
-	t.Run("insert batch", func(t *testing.T) {
+	t.Run("insert rows", func(t *testing.T) {
 		for i := 1; i <= 50; i++ {
 			id := int64(i)
 			if _, err := insertStmt.ExecContext(ctx, id, fmt.Sprintf(`{"a":%d}`, i)); err != nil {
-				t.Fatalf("JSON batch insert row %d failed: %v", i, err)
+				t.Fatalf("JSON insert row %d failed: %v", i, err)
 			}
 			ids = append(ids, id)
 		}
 	})
 
-	t.Run("bulk update", func(t *testing.T) {
+	t.Run("update rows", func(t *testing.T) {
 		placeholders := make([]string, 0, len(ids))
 		args := make([]any, 0, len(ids)+1)
 		args = append(args, "x")
@@ -305,14 +305,14 @@ func TestDriver_JSONCreateInBatchesAndBulkUpdateEquivalent(t *testing.T) {
 		)
 		res, err := db.ExecContext(ctx, updateSQL, args...)
 		if err != nil {
-			t.Fatalf("JSON bulk update failed: %v", err)
+			t.Fatalf("JSON update failed: %v", err)
 		}
 		rows, err := res.RowsAffected()
 		if err != nil {
-			t.Fatalf("JSON bulk update rows affected: %v", err)
+			t.Fatalf("JSON update rows affected: %v", err)
 		}
 		if rows != 50 {
-			t.Fatalf("JSON bulk update affected %d rows, want 50", rows)
+			t.Fatalf("JSON update affected %d rows, want 50", rows)
 		}
 	})
 
@@ -330,9 +330,9 @@ func TestDriver_JSONCreateInBatchesAndBulkUpdateEquivalent(t *testing.T) {
 	})
 }
 
-// TestDriver_StringVarrayEquivalent skips string VARRAY coverage because
+// TestDriver_StringVarray skips string VARRAY coverage because
 // go-oracledb does not yet support collection result decoding.
-func TestDriver_StringVarrayEquivalent(t *testing.T) {
+func TestDriver_StringVarray(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
@@ -367,9 +367,9 @@ func TestDriver_StringVarrayEquivalent(t *testing.T) {
 
 }
 
-// TestDriver_VarrayOfObjectEquivalent skips object VARRAY coverage because
+// TestDriver_VarrayOfObject skips object VARRAY coverage because
 // go-oracledb does not yet support collection result decoding.
-func TestDriver_VarrayOfObjectEquivalent(t *testing.T) {
+func TestDriver_VarrayOfObject(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")

@@ -170,6 +170,9 @@ func (ci *ConnectionIterator) Next() *ConnectionOption {
 					ci.roundRobin(desc.Addresses)
 				}
 			}
+			// A host may have failed during the previous cycle. Keep it as a
+			// fallback, but try hosts not in the down-host cache first.
+			ci.reorderAddressesByDownHostStatus(desc.Addresses)
 
 			// Continue to try first address of new cycle
 			continue
@@ -233,7 +236,9 @@ func (ci *ConnectionIterator) Reset() {
 			ci.descAttempts[i].Description.IsLoadBalanceEnabled() {
 			ci.shuffleAddresses(ci.descAttempts[i].Addresses)
 		}
+		ci.reorderAddressesByDownHostStatus(ci.descAttempts[i].Addresses)
 	}
+	ci.reorderDescriptionsByDownHostStatus(ci.descAttempts)
 }
 
 // Remaining returns the number of remaining attempts
@@ -328,6 +333,7 @@ func (ci *ConnectionIterator) buildFromDescriptionList(ctx context.Context, dl *
 			attempts = append(attempts, *descAttempt)
 		}
 	}
+	ci.reorderDescriptionsByDownHostStatus(attempts)
 
 	return attempts
 }
@@ -368,6 +374,7 @@ func (ci *ConnectionIterator) buildFromDescription(ctx context.Context, desc *De
 		// Only keep first address (already shuffled if load_balance=YES)
 		resolvedAddresses = resolvedAddresses[:1]
 	}
+	ci.reorderAddressesByDownHostStatus(resolvedAddresses)
 
 	// Extract CONNECT_DATA node once
 	connectDataNode := ci.extractConnectDataNode(descNode)
@@ -410,6 +417,7 @@ func (ci *ConnectionIterator) buildFromAddresses(ctx context.Context, addresses 
 	if len(resolvedAddresses) == 0 {
 		return []DescriptionAttempts{}
 	}
+	ci.reorderAddressesByDownHostStatus(resolvedAddresses)
 
 	return []DescriptionAttempts{
 		{
@@ -596,4 +604,63 @@ func (ci *ConnectionIterator) roundRobin(addresses []Address) {
 	first := addresses[0]
 	copy(addresses[0:], addresses[1:])
 	addresses[len(addresses)-1] = first
+}
+
+// reorderAddressesByDownHostStatus puts recently unreachable hosts at the end
+// of an attempt cycle. Cached hosts are retained as fallbacks.
+func (ci *ConnectionIterator) reorderAddressesByDownHostStatus(addresses []Address) {
+	stablePartition(addresses, ci.isDownHost)
+}
+
+// reorderDescriptionsByDownHostStatus moves descriptions whose addresses are
+// all cached down, behind descriptions that still have a healthy address. It
+// preserves the existing order within both groups, so healthy addresses are not
+// deprioritized as a side effect.
+func (ci *ConnectionIterator) reorderDescriptionsByDownHostStatus(attempts []DescriptionAttempts) {
+	stablePartition(attempts, func(attempt DescriptionAttempts) bool {
+		if len(attempt.Addresses) == 0 {
+			return false
+		}
+		for _, address := range attempt.Addresses {
+			if !ci.isDownHost(address) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+// isDownHost reports whether the endpoint represented by address is cached as
+// unreachable. It uses ResolvedIP, the endpoint actually dialed, so hostnames
+// resolving to the same IP share cache status. Host is used when unresolved.
+func (ci *ConnectionIterator) isDownHost(address Address) bool {
+	key := address.ResolvedIP
+	if key == "" {
+		key = address.Host
+	}
+	_, found := sharedDownHostCache.Get(key)
+	return found
+}
+
+// stablePartition preserves the order chosen by load balancing while moving
+// items that match isLast to the end of the slice.
+func stablePartition[T any](items []T, isLast func(T) bool) {
+	if len(items) < 2 {
+		return
+	}
+
+	ordered := make([]T, 0, len(items))
+	last := make([]bool, len(items))
+	for i, item := range items {
+		last[i] = isLast(item)
+		if !last[i] {
+			ordered = append(ordered, item)
+		}
+	}
+	for i, item := range items {
+		if last[i] {
+			ordered = append(ordered, item)
+		}
+	}
+	copy(items, ordered)
 }

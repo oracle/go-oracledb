@@ -40,10 +40,6 @@ package ttc
 
 import (
 	"container/list"
-	"fmt"
-	"os"
-	"os/user"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"time"
@@ -84,28 +80,11 @@ func _initEnvironmentStaticInformation() {
 	// To be consistent with other drivers like JDBC-thin that add their version:
 	currentDriverName = driverCommon.StringToB1Array(driverNameDefault + " : " + common.DriverVersion)
 
-	if u, err := user.Current(); err == nil {
-		currentUserName = driverCommon.StringToB1Array(u.Username)
-	} else {
-		common.Odl.Info(fmt.Sprintf("using default as user name"))
-		currentUserName = driverCommon.StringToB1Array("unknown")
-	}
-
-	if e, err := os.Executable(); err == nil {
-		currentProcessPath = driverCommon.StringToB1Array(filepath.Base(e))
-	} else {
-		common.Odl.Info(fmt.Sprintf("using default as process path"))
-		currentProcessPath = driverCommon.StringToB1Array("unknown")
-	}
-	var currentProcessId driverCommon.B1Array
-	currentProcessId = driverCommon.StringToB1Array(strconv.Itoa(os.Getpid()))
-	var currentMachineName driverCommon.B1Array
-	if h, err := os.Hostname(); err == nil {
-		currentMachineName = driverCommon.StringToB1Array(h)
-	} else {
-		common.Odl.Info(fmt.Sprintf("using default as machine name"))
-		currentMachineName = driverCommon.StringToB1Array("oraclegoclient")
-	}
+	// Reuse the process metadata captured once by common to avoid repeated OS calls.
+	currentUserName = driverCommon.StringToB1Array(common.UserName)
+	currentProcessPath = driverCommon.StringToB1Array(common.ProgramName)
+	currentProcessId := driverCommon.StringToB1Array(common.ProcessID)
+	currentMachineName := driverCommon.StringToB1Array(common.HostName)
 	currentDriverInternalName = driverCommon.StringToB1Array(driverInternalName)
 
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authTerminal), Value: currentTerminal})
@@ -143,12 +122,30 @@ func init() {
 		common.Odl.Warn("Failed to register message tTIdty", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIOER, 14, newTTIoer14)
+	err = MessageRegistry.RegisterWithCondition(TTIOER, 14, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoer14)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIOER version 2", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIOER, MinTTCProtocolVersion, newTTIoer)
+	err = MessageRegistry.RegisterWithCondition(TTIOER, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoer)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIOER version 1", "error", err)
+	}
+
+	err = MessageRegistry.RegisterWithCondition(TTIOER, 14, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoer14WithEndOfCallStatusSupport)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIOER version 2", "error", err)
+	}
+
+	err = MessageRegistry.RegisterWithCondition(TTIOER, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoerWithEndOfCallStatusSupport)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIOER version 1", "error", err)
 	}
@@ -189,7 +186,17 @@ func init() {
 	}
 
 	// Register status functions
-	err = MessageRegistry.Register(TTISTA, -1, newTTISTA)
+	err = MessageRegistry.RegisterWithCondition(TTISTA, -1, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTISTA)
+	if err != nil {
+		common.Odl.Warn("Failed to register STA function", "error", err)
+	}
+
+	// Register status functions
+	err = MessageRegistry.RegisterWithCondition(TTISTA, -1, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTISTAWithEndOfCallStatusSupport)
 	if err != nil {
 		common.Odl.Warn("Failed to register STA function", "error", err)
 	}

@@ -83,13 +83,13 @@ func TestDriver_Select_BinaryDouble_SpecialValues(t *testing.T) {
 		}
 	})
 
-	insertAll := "INSERT ALL\n" +
+	multitableInsert := "INSERT ALL\n" +
 		"INTO " + table + " (id, bin_dbl) VALUES (1, BINARY_DOUBLE_INFINITY)\n" +
 		"INTO " + table + " (id, bin_dbl) VALUES (2, -BINARY_DOUBLE_INFINITY)\n" +
 		"INTO " + table + " (id, bin_dbl) VALUES (3, BINARY_DOUBLE_NAN)\n" +
 		"SELECT 1 FROM DUAL"
-	if _, err := db.ExecContext(ctx, insertAll); err != nil {
-		t.Fatalf("batch insert failed: %v", err)
+	if _, err := db.ExecContext(ctx, multitableInsert); err != nil {
+		t.Fatalf("multitable insert failed: %v", err)
 	}
 
 	rows, err := db.QueryContext(ctx, "SELECT id, bin_dbl FROM "+table+" ORDER BY id")

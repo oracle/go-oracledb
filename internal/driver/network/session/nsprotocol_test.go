@@ -49,8 +49,11 @@ import (
 	"io"
 	"net"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
@@ -73,6 +76,12 @@ type mockNTAdapter struct {
 	receiveCalls  int
 	lastAddress   transport.Address
 }
+
+type timeoutTestError struct{}
+
+func (timeoutTestError) Error() string   { return "timeout" }
+func (timeoutTestError) Timeout() bool   { return true }
+func (timeoutTestError) Temporary() bool { return true }
 
 func TestHandleAcceptRequiredANO(t *testing.T) {
 	ns := newNetworkSession()
@@ -282,6 +291,86 @@ func TestTransportConnect(t *testing.T) {
 	}
 }
 
+// TestIsDownHostError verifies that only transport failures that indicate an
+// unreachable endpoint are cached, while DNS failures, connection refusals,
+// and caller deadline expiry are excluded.
+func TestIsDownHostError(t *testing.T) {
+	t.Parallel()
+
+	expiredCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	tests := []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want bool
+	}{
+		{
+			name: "network unreachable",
+			ctx:  context.Background(),
+			err:  syscall.ENETUNREACH,
+			want: true,
+		},
+		{
+			name: "driver transport timeout",
+			ctx:  context.Background(),
+			err:  common.NewCtxTimeoutCauseError("TransportConnectTimeout", 1000, "test"),
+			want: true,
+		},
+		{
+			name: "network timeout",
+			ctx:  context.Background(),
+			err:  &net.OpError{Op: "dial", Err: timeoutTestError{}},
+			want: true,
+		},
+		{
+			name: "dns failure",
+			ctx:  context.Background(),
+			err:  &net.DNSError{Err: "no such host", Name: "missing.example.com"},
+			want: false,
+		},
+		{
+			name: "dns timeout",
+			ctx:  context.Background(),
+			err:  &net.OpError{Op: "dial", Err: &net.DNSError{Err: "i/o timeout", Name: "missing.example.com", IsTimeout: true}},
+			want: false,
+		},
+		{
+			name: "connection refused",
+			ctx:  context.Background(),
+			err:  &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED},
+			want: false,
+		},
+		{
+			name: "unrelated error",
+			ctx:  context.Background(),
+			err:  errors.New("authentication failed"),
+			want: false,
+		},
+		{
+			name: "caller deadline error",
+			ctx:  context.Background(),
+			err:  context.DeadlineExceeded,
+			want: false,
+		},
+		{
+			name: "caller deadline translated by transport",
+			ctx:  expiredCtx,
+			err:  common.NewOracleError(oracleErrors.CtxTimeout, nil, "CONNECT", "test", "test-id"),
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isDownHostError(test.ctx, test.err); got != test.want {
+				t.Fatalf("isDownHostError(%v) = %t, want %t", test.err, got, test.want)
+			}
+		})
+	}
+}
+
 // TestConnectToOption tests the ConnectToOption function
 func TestConnectToOption(t *testing.T) {
 	t.Parallel()
@@ -343,6 +432,40 @@ func TestConnectToOption(t *testing.T) {
 			t.Errorf("Expected prepare error, got %v", err)
 		}
 	})
+}
+
+// TestCIDNode verifies that buildCIDNode assembles the Oracle Net CID node
+// with sanitized PROGRAM, HOST, and USER values in the expected descriptor format.
+func TestCIDNode(t *testing.T) {
+	originalProgramName, originalHostName, originalUserName := common.ProgramName, common.HostName, common.UserName
+	t.Cleanup(func() {
+		common.ProgramName, common.HostName, common.UserName = originalProgramName, originalHostName, originalUserName
+	})
+	common.ProgramName = " program(name)=value "
+	common.HostName = " host(name)=value "
+	common.UserName = " user(name)=value "
+
+	cid := buildCIDNode()
+	if got, want := cid.ToString(), "(CID=(PROGRAM=program_name__value)(HOST=host_name__value)(USER=user_name__value))"; got != want {
+		t.Fatalf("CID: got %s, want %s", got, want)
+	}
+}
+
+// TestSanitizeCIDValue verifies trimming, empty-value handling, and replacement of
+// characters that would affect Oracle Net descriptor structure.
+func TestSanitizeCIDValue(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  string
+	}{
+		{value: "", want: "unknown"},
+		{value: " \t ", want: "unknown"},
+		{value: " (a=b) ", want: "_a_b_"},
+	} {
+		if got := sanitizeCIDValue(test.value); got != test.want {
+			t.Errorf("sanitizeCIDValue(%q): got %q, want %q", test.value, got, test.want)
+		}
+	}
 }
 
 // TestConnectSubtests groups subtests for ConnectToOption

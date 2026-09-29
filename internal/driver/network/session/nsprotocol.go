@@ -49,6 +49,8 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -81,6 +83,35 @@ type networkSession struct {
 	pendingPacket       []byte // to store pushed back packet from CheckinbandNotification
 	resetInProgress     bool
 }
+
+// cidSanitizer prevents OS-provided CID values from changing the naming structure.
+var cidSanitizer = strings.NewReplacer("(", "_", ")", "_", "=", "_")
+
+// sanitizeCIDValue returns a value that is safe to serialize in a naming node.
+func sanitizeCIDValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "unknown"
+	}
+	return cidSanitizer.Replace(v)
+}
+
+// buildCIDNode creates the Oracle Net client identifier nested under CONNECT_DATA.
+func buildCIDNode() naming.Node {
+	return naming.Node{
+		Name: "CID",
+		Children: []naming.Node{
+			{Name: "PROGRAM", Value: sanitizeCIDValue(common.ProgramName)},
+			{Name: "HOST", Value: sanitizeCIDValue(common.HostName)},
+			{Name: "USER", Value: sanitizeCIDValue(common.UserName)},
+		},
+	}
+}
+
+// cachedCIDNode is initialized once when this package is loaded from the
+// process metadata initialized by common. Connection attempts reuse this
+// immutable process-level CID node.
+var cachedCIDNode = buildCIDNode()
 
 const (
 	maxRedirectCount = 4
@@ -157,6 +188,16 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 	}
 	err := ns.ntAdapter.Connect(ctx, address)
 	if err != nil {
+		// Only transport connection failures can mean that an endpoint is down.
+		// Oracle Net, TLS, and authentication failures happen later and do not
+		// reach this point.
+		if isDownHostError(ctx, err) {
+			key := address.ResolvedIP
+			if key == "" {
+				key = address.Host
+			}
+			naming.MarkDownHost(key)
+		}
 		return err
 	}
 	//initializes sndDatapkt with SDU size
@@ -170,6 +211,44 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 	ns.rcvDatapkt = &dataPacket{}
 	return nil
 }
+
+// isDownHostError identifies transport failures that indicate a host or its
+// route is currently unavailable. A refusal is deliberately excluded: it
+// proves that the host responded, even when no listener is available there.
+func isDownHostError(ctx context.Context, err error) bool {
+	// The TCP adapter translates a caller deadline into an Oracle CtxTimeout
+	// error. Check both the context and the error before considering timeout
+	// errors below, so a caller giving up does not penalize a healthy endpoint.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) ||
+		errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return false
+	}
+
+	if errors.Is(err, syscall.EHOSTDOWN) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) {
+		return true
+	}
+
+	var timeoutCause common.CtxTimeoutCauseError
+	if errors.As(err, &timeoutCause) {
+		return true
+	}
+
+	var sqlErr oracleErrors.SQLError
+	if errors.As(err, &sqlErr) && sqlErr.ErrorCode() == string(oracleErrors.CtxTimeout) {
+		return true
+	}
+
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
 func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) error {
 	if ns.sAtts.version < TNS_VERSION_MINIMUM {
 		err := ns.Disconnect(ctx, 0)
@@ -491,9 +570,10 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 	}
 	connectData, err := root.GetNode("DESCRIPTION/CONNECT_DATA")
 	if err != nil {
-		connectData = &naming.Node{Name: "CONNECT_DATA"}
-		root.Children = append(root.Children, *connectData)
+		root.Children = append(root.Children, naming.Node{Name: "CONNECT_DATA"})
+		connectData = &root.Children[len(root.Children)-1]
 	}
+	connectData.Children = append(connectData.Children, cachedCIDNode)
 	connIDNode := naming.Node{Name: "CONNECTION_ID", Value: ns.sAtts.nt.Connectionid}
 	connectData.Children = append(connectData.Children, connIDNode)
 	newConnectStr := root.ToString()

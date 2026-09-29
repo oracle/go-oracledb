@@ -156,6 +156,7 @@ func TestConnectorRegisterProviderMakesProviderAvailableToConnectionFactory(t *t
 	provider := struct{ name string }{name: "registered-provider"}
 	ns := &mockConnectorNetworkSession{}
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfig(t),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
@@ -201,6 +202,7 @@ func TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails(t *testi
 	t.Parallel()
 	ns := &mockConnectorNetworkSession{}
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfig(t),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
@@ -240,6 +242,7 @@ func TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails(t *test
 	t.Parallel()
 	ns := &mockConnectorNetworkSession{}
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfig(t),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
@@ -273,6 +276,7 @@ func TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess(t *testing.T) {
 	t.Parallel()
 	ns := &mockConnectorNetworkSession{}
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfig(t),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
@@ -304,6 +308,7 @@ func TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess(t *test
 	ns := &mockConnectorNetworkSession{}
 	attempts := 0
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfigWithConnectString(t, "(DESCRIPTION=(FAILOVER=ON)(LOAD_BALANCE=OFF)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=127.0.0.1)(PORT=1521))(ADDRESS=(PROTOCOL=TCP)(HOST=127.0.0.2)(PORT=1522)))(CONNECT_DATA=(SERVICE_NAME=test)))"),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {

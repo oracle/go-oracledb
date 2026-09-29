@@ -118,13 +118,6 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 
 	_createAndRegisterCodecFactory(shelf, int8(negotiatedTTCVersion))
 
-	// 8. Re-register messages with negotiated capabilities
-	if shelf.GetCapabilities()[kpccapCtbTtc1Eocs].IsSet {
-		RegisterOerWithCapability()
-		RegisterSTAWithCapability()
-		common.Odl.Debug("Replaced OER messages by messages with EOCS support")
-	}
-
 	common.Odl.Debug("connectionNegotiator: Negotiation complete", "SessionContext", sessCtx, "Shelf", shelf)
 	return sessCtx, shelf, nil
 }
@@ -265,7 +258,7 @@ func _createAndRegisterMessageStreamer(
 // _createAndRegisterMessageFactory creates a new message factory and registers it to the shelf.
 func _createAndRegisterMessageFactory(
 	shelf *ttiShelf[driverCommon.MessageType], version int8) driverCommon.Factory {
-	msgfactory := NewMessageFactoryForProtocol(version)
+	msgfactory := NewMessageFactoryForProtocol(version, shelf.GetCapabilities())
 	shelf.RegisterMessageFactory(msgfactory)
 	common.Odl.Debug("connectionNegotiator: MessageFactory created and registered")
 	return msgfactory

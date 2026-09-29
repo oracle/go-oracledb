@@ -411,3 +411,186 @@ func TestFactoryGetMessageFromFunction(t *testing.T) {
 		})
 	}
 }
+
+// TestRegisterWithConditionWithUnconditionalCandidate verifies that a
+// capability-conditioned candidate can coexist with an unconditional one at
+// the same protocol version without panicking or replacing the unconditional
+// entry.
+func TestRegisterWithConditionWithUnconditionalCandidate(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRegistry[common.MessageType]()
+	condition := func(capabilities map[string]common.Capability) bool {
+		return capabilities["enabled"].IsSet
+	}
+
+	if err := reg.Register(TTIPRO, 1, newTestDummyMessage1); err != nil {
+		t.Fatalf("unexpected error registering unconditional candidate: %v", err)
+	}
+	if err := reg.RegisterWithCondition(TTIPRO, 1, condition, newTestDummyMessage2); err != nil {
+		t.Fatalf("unexpected error registering conditional candidate: %v", err)
+	}
+
+	candidates := reg.getCandidates(TTIPRO)
+	if len(candidates) != 2 {
+		t.Fatalf("got %d candidates, want 2", len(candidates))
+	}
+	if candidates[0].capabilityCondition != nil {
+		t.Error("unconditional candidate unexpectedly has a capability condition")
+	}
+	if candidates[1].capabilityCondition == nil {
+		t.Error("conditional candidate has no capability condition")
+	}
+}
+
+// TestRegisterWithConditionReplacesMatchingCondition verifies that registering
+// an implementation with the same key, protocol version, and condition
+// replaces only that candidate while preserving other conditions.
+func TestRegisterWithConditionReplacesMatchingCondition(t *testing.T) {
+	t.Parallel()
+
+	reg := NewRegistry[common.MessageType]()
+	condition := func(map[string]common.Capability) bool { return true }
+	otherCondition := func(map[string]common.Capability) bool { return false }
+
+	if err := reg.RegisterWithCondition(TTIPRO, 1, condition, newTestDummyMessage1); err != nil {
+		t.Fatalf("unexpected error registering first candidate: %v", err)
+	}
+	if err := reg.RegisterWithCondition(TTIPRO, 1, otherCondition, newTestDummyMessage2); err != nil {
+		t.Fatalf("unexpected error registering second candidate: %v", err)
+	}
+	if err := reg.RegisterWithCondition(TTIPRO, 1, condition, newTestDummyMessage3); err != nil {
+		t.Fatalf("unexpected error replacing candidate: %v", err)
+	}
+
+	candidates := reg.getCandidates(TTIPRO)
+	if len(candidates) != 2 {
+		t.Fatalf("got %d candidates, want 2", len(candidates))
+	}
+
+	conditionCandidate := -1
+	for index, candidate := range candidates {
+		if isSameCapabilityCondition(candidate.capabilityCondition, condition) {
+			conditionCandidate = index
+			break
+		}
+	}
+	if conditionCandidate == -1 {
+		t.Fatal("replaced condition was not retained")
+	}
+	if got := candidates[conditionCandidate].makeFunc().(*testDummyMessage).greetings; got != dummy3.greetings {
+		t.Errorf("matching condition was not replaced: got %q, want %q", got, dummy3.greetings)
+	}
+}
+
+// TestFactorySelectsCapabilitySpecificMessages verifies protocol-version and
+// EOCS capability selection for TTIOER and TTISTA messages, including missing
+// and nil capability maps.
+func TestFactorySelectsCapabilitySpecificMessages(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name            string
+		messageType     common.MessageType
+		protocolVersion int8
+		capabilities    map[string]common.Capability
+		wantEOCS        bool
+		wantVersion14   bool
+	}
+
+	capabilities := func(isSet bool) map[string]common.Capability {
+		return map[string]common.Capability{
+			kpccapCtbTtc1Eocs: {Value: 1, IsSet: isSet},
+		}
+	}
+
+	cases := []testCase{
+		{
+			name:            "OER protocol 14 without EOCS",
+			messageType:     TTIOER,
+			protocolVersion: 14,
+			capabilities:    capabilities(false),
+			wantVersion14:   true,
+		},
+		{
+			name:            "OER protocol 14 with EOCS",
+			messageType:     TTIOER,
+			protocolVersion: 14,
+			capabilities:    capabilities(true),
+			wantEOCS:        true,
+			wantVersion14:   true,
+		},
+		{
+			name:            "OER protocol 12 with EOCS",
+			messageType:     TTIOER,
+			protocolVersion: MinTTCProtocolVersion,
+			capabilities:    capabilities(true),
+			wantEOCS:        true,
+		},
+		{
+			name:            "OER protocol 14 with missing capability",
+			messageType:     TTIOER,
+			protocolVersion: 14,
+			capabilities:    map[string]common.Capability{},
+			wantVersion14:   true,
+		},
+		{
+			name:            "OER protocol 14 before capabilities are negotiated",
+			messageType:     TTIOER,
+			protocolVersion: 14,
+			wantVersion14:   true,
+		},
+		{
+			name:            "STA without EOCS",
+			messageType:     TTISTA,
+			protocolVersion: 14,
+			capabilities:    capabilities(false),
+		},
+		{
+			name:            "STA with EOCS",
+			messageType:     TTISTA,
+			protocolVersion: 14,
+			capabilities:    capabilities(true),
+			wantEOCS:        true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			factory := NewMessageFactoryForProtocol(tc.protocolVersion, tc.capabilities)
+			msg, err := factory.GetMessage(tc.messageType)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			switch tc.messageType {
+			case TTIOER:
+				if tc.wantVersion14 {
+					if _, ok := msg.(*tTIoer14); !ok {
+						t.Fatalf("got %T, want *tTIoer14", msg)
+					}
+				} else if _, ok := msg.(*tTIoer); !ok {
+					t.Fatalf("got %T, want *tTIoer", msg)
+				}
+				var supportsEOCS bool
+				switch oer := msg.(type) {
+				case *tTIoer:
+					supportsEOCS = oer._supportsEndOfCallStatus
+				case *tTIoer14:
+					supportsEOCS = oer._supportsEndOfCallStatus
+				}
+				if supportsEOCS != tc.wantEOCS {
+					t.Errorf("supports EOCS = %v, want %v", supportsEOCS, tc.wantEOCS)
+				}
+			case TTISTA:
+				sta, ok := msg.(*ttiSTA)
+				if !ok {
+					t.Fatalf("got %T, want *ttiSTA", msg)
+				}
+				if sta._supportsEndOfCallStatus != tc.wantEOCS {
+					t.Errorf("supports EOCS = %v, want %v", sta._supportsEndOfCallStatus, tc.wantEOCS)
+				}
+			}
+		})
+	}
+}
