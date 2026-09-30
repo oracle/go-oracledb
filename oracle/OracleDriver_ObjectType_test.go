@@ -123,6 +123,69 @@ func TestDriver_ObjectTypeReflectionValue(t *testing.T) {
 	assertSameYMDHMSNanos(t, 0, "reflected object TIMESTAMP", gotTime, wantTime)
 }
 
+// TestDriver_ObjectTypeTableColumn verifies that an object can be bound into a
+// relational table column and decoded back from a SELECT on the same physical
+// connection that owns its ADT metadata.
+func TestDriver_ObjectTypeTableColumn(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx := context.Background()
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire test connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	typeName := strings.ToUpper(createObjectName("object_table_column"))
+	tableName := strings.ToUpper(createObjectName("object_table"))
+	if _, err = conn.ExecContext(ctx, "CREATE TYPE "+typeName+" AS OBJECT (ID NUMBER, NAME VARCHAR2(50), CREATED_AT TIMESTAMP(9))"); err != nil {
+		t.Fatalf("create object type: %v", err)
+	}
+	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
+	if _, err = conn.ExecContext(ctx, "CREATE TABLE "+tableName+" (ROW_ID NUMBER PRIMARY KEY, OBJECT_COL "+typeName+")"); err != nil {
+		t.Fatalf("create object table: %v", err)
+	}
+	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TABLE "+tableName) })
+
+	in, err := datatype.NewObject(ctx, conn, typeName)
+	if err != nil {
+		t.Fatalf("NewObject(%s): %v", typeName, err)
+	}
+	wantTime := time.Date(2026, 9, 30, 11, 12, 13, 987654321, time.UTC)
+	setObjectValue(t, in, "ID", int64(42))
+	setObjectValue(t, in, "NAME", "stored object")
+	setObjectValue(t, in, "CREATED_AT", wantTime)
+	if _, err = conn.ExecContext(ctx, "INSERT INTO "+tableName+" (ROW_ID, OBJECT_COL) VALUES (:1, :2)", int64(1), in); err != nil {
+		t.Fatalf("insert object table row: %v", err)
+	}
+
+	var out datatype.Object
+	if err = conn.QueryRowContext(ctx, "SELECT OBJECT_COL FROM "+tableName+" WHERE ROW_ID = :1", int64(1)).Scan(&out); err != nil {
+		t.Fatalf("select object table row: %v", err)
+	}
+	if out.IsNull() {
+		t.Fatal("selected object is NULL")
+	}
+	if got := objectValue(t, out, "ID"); got != int64(42) {
+		t.Fatalf("ID = %v, want 42", got)
+	}
+	if got := objectValue(t, out, "NAME"); got != "stored object" {
+		t.Fatalf("NAME = %v, want stored object", got)
+	}
+	gotTime, ok := objectValue(t, out, "CREATED_AT").(time.Time)
+	if !ok {
+		t.Fatalf("CREATED_AT = %T, want time.Time", objectValue(t, out, "CREATED_AT"))
+	}
+	assertSameYMDHMSNanos(t, 0, "object table TIMESTAMP", gotTime, wantTime)
+}
+
 func TestDriver_ObjectTypeMetadata(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")

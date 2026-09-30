@@ -193,8 +193,8 @@ func TestNewCollectionBindsUnusedMetadataAsRefCursors(t *testing.T) {
 			if !ok {
 				t.Fatalf("bind %d = %T, want sql.Out", index+1, args[index])
 			}
-			if _, ok := out.Dest.(*sqldriver.Rows); !ok {
-				t.Fatalf("bind %d destination = %T, want *driver.Rows", index+1, out.Dest)
+			if _, ok := out.Dest.(*datatype.Cursor); !ok {
+				t.Fatalf("bind %d destination = %T, want *datatype.Cursor", index+1, out.Dest)
 			}
 		}
 		return nil, sentinel
@@ -253,6 +253,43 @@ func TestNestedTableInlineCollectionImage(t *testing.T) {
 	}
 	if length, err := got.Len(); err != nil || length != 3 {
 		t.Fatalf("nested table length = %d, %v; want 3", length, err)
+	}
+}
+
+func TestAssociativeCollectionImageRoundTrip(t *testing.T) {
+	typ := &datatype.ObjectType{Collection: true, Associative: true, ElementType: common.DtyNum, TypeVersion: 1}
+	collection, err := typ.NewCollection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int32]any{-2: int64(10), 3: nil, 9: int64(30)}
+	if err := collection.SetIndexed(want); err != nil {
+		t.Fatal(err)
+	}
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	image, err := encodeCollectionImage(collection, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// JDBC sets KOPI20_CF_INDX (0x10) and places a UB4 PLS_INTEGER key
+	// immediately before each collection element.
+	if len(image) < 17 || image[11] != collectionIndexesFlag || !reflect.DeepEqual([]byte(image[13:17]), []byte{0xFF, 0xFF, 0xFF, 0xFE}) {
+		t.Fatalf("associative collection image header = % X", []byte(image))
+	}
+	decoded, err := decodeCollectionImage(image, typ, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := decoded.(datatype.ObjectCollection)
+	if !ok {
+		t.Fatalf("decoded value = %T, want ObjectCollection", decoded)
+	}
+	indexed, err := got.GetIndexed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(indexed, want) {
+		t.Fatalf("indexed values = %#v, want %#v", indexed, want)
 	}
 }
 

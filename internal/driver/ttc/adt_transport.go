@@ -10,6 +10,11 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
+const (
+	collectionIndexesFlag  = 0x10
+	collectionNoLengthFlag = 0x08
+)
+
 func newTTIOacNamedType(typ *datatype.ObjectType, maxLength driverCommon.UB4) (*tTIoac, error) {
 	if typ == nil || len(typ.TOID) != 16 {
 		common.Odl.Error("ADT metadata error")
@@ -87,6 +92,14 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 	if err != nil {
 		return nil, err
 	}
+	var indexes []int32
+	if collection.Associative {
+		indexes, err = collection.Indexes()
+		if err != nil || len(indexes) != len(values) {
+			common.Odl.Error("ADT collection image error")
+			return nil, common.NewOracleError(oracleErrors.ADTEncodingError, err)
+		}
+	}
 	if collection.ElementType == 0 && collection.CollectionOf == nil {
 		common.Odl.Error("ADT metadata error")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
@@ -105,9 +118,16 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 	data := []byte{0x88, 1, 254, 0, 0, 0, 0}
 	data = appendPickleLength(data, len(prefix))
 	data = append(data, prefix...)
-	data = append(data, 0) // collection flags
+	collectionFlags := byte(0)
+	if collection.Associative {
+		collectionFlags |= collectionIndexesFlag
+	}
+	data = append(data, collectionFlags)
 	data = appendPickleLength(data, len(values))
-	for _, value := range values {
+	for position, value := range values {
+		if collection.Associative {
+			data = appendCollectionIndex(data, indexes[position])
+		}
 		if value == nil {
 			data = append(data, 255)
 			continue
@@ -144,6 +164,11 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 	size := len(data)
 	data[3], data[4], data[5], data[6] = byte(size>>24), byte(size>>16), byte(size>>8), byte(size)
 	return driverCommon.B1Array(data), nil
+}
+
+func appendCollectionIndex(data []byte, index int32) []byte {
+	value := uint32(index)
+	return append(data, byte(value>>24), byte(value>>16), byte(value>>8), byte(value))
 }
 
 // encodeObjectImage emits an inline 8.1 image for an object with scalar
@@ -288,8 +313,6 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 		pickleCollectionFlag   = 0x08
 		pickleDegenerateFlag   = 0x10
 		pickleInlineCollection = 0x01
-		collectionIndexesFlag  = 0x10
-		collectionNoLengthFlag = 0x08
 	)
 	if typ == nil || !typ.Collection || len(data) < 3 || data[0]&pickle81ImageFlag == 0 {
 		common.Odl.Error("ADT collection image error")
@@ -338,7 +361,8 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 		return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 	}
 	collectionFlags := data[pos]
-	if collectionFlags&(collectionIndexesFlag|collectionNoLengthFlag) != 0 {
+	indexed := collectionFlags&collectionIndexesFlag != 0
+	if collectionFlags&collectionNoLengthFlag != 0 || indexed != typ.Associative {
 		common.Odl.Error("ADT collection image error")
 		return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 	}
@@ -353,6 +377,7 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 		return nil, err
 	}
 	values := make([]any, 0, count)
+	indexes := make([]int32, 0, count)
 	var decoder *typeDecoder
 	if typ.CollectionOf == nil {
 		decoder, err = factory.getDecoder(typ.ElementType)
@@ -361,6 +386,14 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 		}
 	}
 	for i := 0; i < count; i++ {
+		if indexed {
+			index, next, indexErr := readCollectionIndex(data, pos)
+			if indexErr != nil {
+				return nil, indexErr
+			}
+			indexes = append(indexes, index)
+			pos = next
+		}
 		if pos >= len(data) {
 			common.Odl.Error("ADT collection image error")
 			return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
@@ -399,10 +432,31 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 		values = append(values, value)
 		pos += length
 	}
-	if err := collection.Set(values); err != nil {
+	if indexed {
+		indexedValues := make(map[int32]any, len(values))
+		for position, index := range indexes {
+			if _, exists := indexedValues[index]; exists {
+				common.Odl.Error("ADT collection image error")
+				return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
+			}
+			indexedValues[index] = values[position]
+		}
+		if err := collection.SetIndexed(indexedValues); err != nil {
+			return nil, err
+		}
+	} else if err := collection.Set(values); err != nil {
 		return nil, err
 	}
 	return collection, nil
+}
+
+func readCollectionIndex(data driverCommon.B1Array, pos int) (int32, int, error) {
+	if pos < 0 || pos+4 > len(data) {
+		common.Odl.Error("ADT collection image error")
+		return 0, pos, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
+	}
+	value := uint32(data[pos])<<24 | uint32(data[pos+1])<<16 | uint32(data[pos+2])<<8 | uint32(data[pos+3])
+	return int32(value), pos + 4, nil
 }
 
 // decodeObjectImage decodes an inline 8.1 object image. Scalar attributes use

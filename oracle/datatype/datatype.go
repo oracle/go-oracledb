@@ -49,6 +49,7 @@ import (
 	"database/sql/driver"
 	"io"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -95,6 +96,9 @@ type ObjectType struct {
 	// VArray reports whether this collection is a VARRAY rather than another
 	// collection kind.
 	VArray bool
+	// Associative reports whether this collection is a PL/SQL INDEX BY
+	// PLS_INTEGER table.
+	Associative bool
 	// UpperBound is the maximum number of elements allowed in a VARRAY.
 	UpperBound int64
 	// ElementType and ElementSize describe scalar collection elements.
@@ -122,13 +126,14 @@ type tdsType struct {
 	scale       int8
 	fsPrecision uint8
 
-	collection bool
-	varray     bool
-	upperBound int64
-	element    *tdsType
-	attributes []*tdsType
-	deferred   *tdsPatch
-	source     []byte
+	collection  bool
+	varray      bool
+	associative bool
+	upperBound  int64
+	element     *tdsType
+	attributes  []*tdsType
+	deferred    *tdsPatch
+	source      []byte
 }
 
 type tdsPatch struct {
@@ -160,6 +165,8 @@ type Object struct {
 	// values holds collection elements when this object represents a collection.
 	// Collection values are accessed through ObjectCollection.Set and Get.
 	values []any
+	// indexes holds the PLS_INTEGER key for each associative-array value.
+	indexes []int32
 	// Null distinguishes a NULL object from an object whose attributes are all NULL.
 	Null bool
 	// Closed reports whether Close has been called for this value.
@@ -222,7 +229,7 @@ func loadObjectType(ctx context.Context, ex Execer, typeName string, cache map[s
 	var toid, tds []byte
 	var version int64
 	var instantiable, superOwner, superName string
-	var attributes, subtypes driver.Rows
+	var attributes, subtypes Cursor
 	_, err := ex.ExecContext(ctx, `BEGIN
   :1 := SYS.DBMS_PICKLER.GET_TYPE_SHAPE(:2, :3, :4, :5, :6, :7, :8, :9, :10);
 END;`,
@@ -230,9 +237,19 @@ END;`,
 		sql.Out{Dest: &toid}, sql.Out{Dest: &version}, sql.Out{Dest: &tds},
 		sql.Out{Dest: &instantiable}, sql.Out{Dest: &superOwner}, sql.Out{Dest: &superName},
 		sql.Out{Dest: &attributes}, sql.Out{Dest: &subtypes})
-	defer closeRows(attributes)
-	defer closeRows(subtypes)
 	if err != nil {
+		common.Odl.Error("ADT metadata error")
+		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
+	}
+	attributeRows := attributes.DriverRows()
+	subtypeRows := subtypes.DriverRows()
+	defer closeRows(attributeRows)
+	defer closeRows(subtypeRows)
+	if err := fetchMetadataCursor(ctx, ex, &attributes); err != nil {
+		common.Odl.Error("ADT metadata error")
+		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
+	}
+	if err := fetchMetadataCursor(ctx, ex, &subtypes); err != nil {
 		common.Odl.Error("ADT metadata error")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
 	}
@@ -254,15 +271,41 @@ END;`,
 	if err := parseTDS(typ); err != nil {
 		return nil, err
 	}
-	if err := populateObjectAttributes(ctx, ex, typ, attributes, cache); err != nil {
+	if err := populateObjectAttributes(ctx, ex, typ, attributeRows, cache); err != nil {
 		common.Odl.Error("ADT metadata error")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
 	}
-	if err := populateObjectSubtypes(ctx, ex, typ, subtypes, cache); err != nil {
+	if err := populateObjectSubtypes(ctx, ex, typ, subtypeRows, cache); err != nil {
 		common.Odl.Error("ADT metadata error")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
 	}
 	return typ, nil
+}
+
+// fetchMetadataCursor performs the deferred server fetch required by the REF
+// CURSOR architecture when metadata is loaded through a dedicated sql.Conn.
+// Non-sql.Conn Execers are used by metadata unit tests, whose supplied rows
+// are already ready to consume.
+func fetchMetadataCursor(ctx context.Context, ex Execer, cursor *Cursor) error {
+	rows := cursor.DriverRows()
+	if rows == nil {
+		return nil
+	}
+	raw, ok := ex.(interface {
+		Raw(func(any) error) error
+	})
+	if !ok {
+		return nil
+	}
+	return raw.Raw(func(conn any) error {
+		fetcher, ok := conn.(interface {
+			GetRows(context.Context, driver.Rows) error
+		})
+		if !ok {
+			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
+		}
+		return fetcher.GetRows(ctx, rows)
+	})
 }
 
 func closeRows(rows driver.Rows) {
@@ -366,7 +409,11 @@ func populateObjectAttributes(ctx context.Context, ex Execer, typ *ObjectType, r
 			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
 		name, ok := adtMetadataString(values[1])
-		if !ok || name == "" {
+		// Oracle JDBC stores the cursor value directly, including a NULL/empty
+		// attribute name. Keep that behavior: the TDS sequence determines the
+		// wire position, while dynamicFieldName supplies a usable Go field name
+		// for an empty database name.
+		if !ok {
 			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
 		sequence, ok := adtMetadataInt(values[2])
@@ -435,6 +482,7 @@ func newObjectTypeFromTDSType(node *tdsType, schema, name, packageName string, o
 	if node.collection {
 		typ.Collection = true
 		typ.VArray = node.varray
+		typ.Associative = node.associative
 		typ.UpperBound = node.upperBound
 		if node.element != nil {
 			typ.ElementType = node.element.dtyType
@@ -711,7 +759,9 @@ func parseTDSRecord(r *tdsReader, opcode byte) (*tdsType, error) {
 			return nil, err
 		}
 		userCode, err := r.readByte()
-		if err != nil || (userCode != 2 && userCode != 3) {
+		// Oracle uses user code 1 for a PL/SQL INDEX BY PLS_INTEGER table,
+		// 2 for a nested table, and 3 for a VARRAY.
+		if err != nil || (userCode != 1 && userCode != 2 && userCode != 3) {
 			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
 		if elementOffset < 0 || elementOffset >= len(r.data) {
@@ -726,7 +776,9 @@ func parseTDSRecord(r *tdsReader, opcode byte) (*tdsType, error) {
 		if err != nil {
 			return nil, err
 		}
-		node.collection, node.varray = true, userCode == 3
+		node.collection = true
+		node.varray = userCode == 3
+		node.associative = userCode == 1
 		node.upperBound, node.element = int64(upperBound), element
 	case tdsUPTOpcode:
 		offset, err := r.readUB4()
@@ -796,6 +848,7 @@ func applyTDSType(root *tdsType, typ *ObjectType) {
 	collection := root.attributes[0]
 	typ.Collection = true
 	typ.VArray = collection.varray
+	typ.Associative = collection.associative
 	typ.UpperBound = collection.upperBound
 	typ.ElementType = collection.element.dtyType
 	typ.ElementSize = collection.element.size
@@ -995,6 +1048,37 @@ func (c *ObjectCollection) Set(values any) error {
 		return common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
 	c.values = append(c.values[:0], items...)
+	if c.Associative {
+		c.indexes = make([]int32, len(items))
+		for index := range c.indexes {
+			c.indexes[index] = int32(index + 1)
+		}
+	} else {
+		c.indexes = nil
+	}
+	c.Null = false
+	c.Object.Null = false
+	return nil
+}
+
+// SetIndexed replaces the values in an associative collection. Keys are
+// PL/SQL PLS_INTEGER indexes and are encoded in ascending key order.
+// It returns an error if c is not an associative collection.
+func (c *ObjectCollection) SetIndexed(values map[int32]any) error {
+	if c == nil || c.Object == nil || c.Object.Closed || c.ObjectType == nil || !c.ObjectType.Collection || !c.Associative {
+		return common.NewOracleError(oracleErrors.ADTValueError, nil)
+	}
+	indexes := make([]int32, 0, len(values))
+	for index := range values {
+		indexes = append(indexes, index)
+	}
+	sort.Slice(indexes, func(left, right int) bool { return indexes[left] < indexes[right] })
+	items := make([]any, len(indexes))
+	for position, index := range indexes {
+		items[position] = values[index]
+	}
+	c.values = items
+	c.indexes = indexes
 	c.Null = false
 	c.Object.Null = false
 	return nil
@@ -1021,4 +1105,28 @@ func (c ObjectCollection) Get() ([]any, error) {
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
 	return append([]any(nil), c.values...), nil
+}
+
+// GetIndexed returns all values in an associative collection keyed by their
+// PL/SQL PLS_INTEGER index. It returns an error for non-associative,
+// invalid, and NULL collections.
+func (c ObjectCollection) GetIndexed() (map[int32]any, error) {
+	if c.Object == nil || c.Object.Closed || c.IsNull() || !c.Associative || len(c.indexes) != len(c.values) {
+		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
+	}
+	values := make(map[int32]any, len(c.values))
+	for position, index := range c.indexes {
+		values[index] = c.values[position]
+	}
+	return values, nil
+}
+
+// Indexes returns the PLS_INTEGER indexes of an associative collection in
+// collection order. It returns an error for non-associative, invalid, or NULL
+// collections.
+func (c ObjectCollection) Indexes() ([]int32, error) {
+	if c.Object == nil || c.Object.Closed || c.IsNull() || !c.Associative || len(c.indexes) != len(c.values) {
+		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
+	}
+	return append([]int32(nil), c.indexes...), nil
 }

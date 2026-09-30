@@ -63,11 +63,11 @@ END;`); err != nil {
 		name      string
 		typeName  string
 		procedure string
-		values    any
-		want      []any
+		values    map[int32]any
+		want      map[int32]any
 	}{
-		{name: "number", typeName: "NUMBER_BY_INDEX", procedure: "ECHO_NUMBERS", values: []int64{10, 20, 30}, want: []any{int64(10), int64(20), int64(30)}},
-		{name: "varchar2", typeName: "VARCHAR_BY_INDEX", procedure: "ECHO_VARCHARS", values: []string{"one", "two", "three"}, want: []any{"one", "two", "three"}},
+		{name: "number", typeName: "NUMBER_BY_INDEX", procedure: "ECHO_NUMBERS", values: map[int32]any{-2: int64(10), 3: int64(20), 9: int64(30)}, want: map[int32]any{-2: int64(10), 3: int64(20), 9: int64(30)}},
+		{name: "varchar2", typeName: "VARCHAR_BY_INDEX", procedure: "ECHO_VARCHARS", values: map[int32]any{-2: "one", 3: "two", 9: "three"}, want: map[int32]any{-2: "one", 3: "two", 9: "three"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -76,20 +76,20 @@ END;`); err != nil {
 			if err != nil {
 				t.Fatalf("NewCollection(%s): %v", typeName, err)
 			}
-			if in.VArray || !in.ObjectType.Collection {
-				t.Fatalf("associative-array descriptor: Collection=%v VArray=%v", in.ObjectType.Collection, in.VArray)
+			if !in.Associative || in.VArray || !in.ObjectType.Collection {
+				t.Fatalf("associative-array descriptor: Collection=%v VArray=%v Associative=%v", in.ObjectType.Collection, in.VArray, in.Associative)
 			}
-			if err = in.Set(tc.values); err != nil {
-				t.Fatalf("Set associative-array values: %v", err)
+			if err = in.SetIndexed(tc.values); err != nil {
+				t.Fatalf("SetIndexed associative-array values: %v", err)
 			}
 
 			var out datatype.ObjectCollection
 			if _, err = conn.ExecContext(ctx, "BEGIN "+packageName+"."+tc.procedure+"(:1, :2); END;", in, sql.Out{Dest: &out}); err != nil {
 				t.Fatalf("PL/SQL associative-array IN/OUT: %v", err)
 			}
-			values, err := out.Get()
+			values, err := out.GetIndexed()
 			if err != nil {
-				t.Fatalf("Get associative-array values: %v", err)
+				t.Fatalf("GetIndexed associative-array values: %v", err)
 			}
 			if !reflect.DeepEqual(values, tc.want) {
 				t.Fatalf("associative-array values = %#v, want %#v", values, tc.want)

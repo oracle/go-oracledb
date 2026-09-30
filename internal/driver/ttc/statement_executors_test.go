@@ -180,7 +180,7 @@ func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
 	shelf, _, _ := newExecTestShelf(1024)
 	streamer := &mockStreamer{pullMsg: &mockOer{}}
 	shelf.RegisterMessageStreamer(streamer)
-	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
+	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: typeCommon.DtyVCS}})
 	conn := &connection{shelf: shelf}
 
 	if err := conn.GetRows(context.Background(), rows); err != nil {

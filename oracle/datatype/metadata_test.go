@@ -118,6 +118,20 @@ func TestParseTDSNestedTable(t *testing.T) {
 	}
 }
 
+func TestParseTDSAssociativeCollection(t *testing.T) {
+	tds := []byte{
+		0, 0, 0, 31, 38, 1, 0, 0, 0, 1, 0, 41, 0, 0, 0, 0, 0, 0,
+		28, 0, 0, 0, 29, 0, 0, 0, 0, 1, 42, 7, 0, 12, 0, 0, 0,
+	}
+	typ := &ObjectType{TDS: tds}
+	if err := parseTDS(typ); err != nil {
+		t.Fatal(err)
+	}
+	if !typ.Collection || !typ.Associative || typ.VArray || typ.ElementType == 0 || typ.ElementSize != 12 {
+		t.Fatalf("unexpected associative collection metadata: %#v", typ)
+	}
+}
+
 func TestParseTDSObjectWithEmbeddedObject(t *testing.T) {
 	tds := []byte{
 		0, 0, 0, 27, 38, 1, 0, 0, 0, 2, 0, 41, 0, 0, 0, 0, 0, 0,
@@ -181,7 +195,9 @@ func TestNewObjectPopulatesAttributesFromMetadataCursor(t *testing.T) {
 		*args[2].(sql.Out).Dest.(*[]byte) = make([]byte, 16)
 		*args[3].(sql.Out).Dest.(*int64) = 1
 		*args[4].(sql.Out).Dest.(*[]byte) = tds
-		*args[8].(sql.Out).Dest.(*driver.Rows) = attributes
+		if err := args[8].(sql.Out).Dest.(*Cursor).Scan(attributes); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}), "APP.PERSON_T")
 	if err != nil {
@@ -207,6 +223,36 @@ func TestNewObjectPopulatesAttributesFromMetadataCursor(t *testing.T) {
 	id.Set(reflect.ValueOf(int64(1)))
 	if missing := object.Value.FieldByName("MISSING"); missing.IsValid() {
 		t.Fatal("dynamic object exposes an attribute absent from metadata")
+	}
+}
+
+func TestNewObjectAcceptsEmptyAttributeNameFromMetadataCursor(t *testing.T) {
+	tds := []byte{
+		0, 0, 0, 25, 38, 1, 0, 0, 0, 1, 0, 41, 0, 0, 0, 0, 0, 0,
+		6, 38, 0, 42, // NUMBER(38, 0)
+	}
+	attributes := &metadataRows{values: [][]driver.Value{
+		{int64(1), nil, int64(1), "APP", "NUMBER", nil, nil, "YES", nil, nil},
+	}}
+	object, err := NewObject(context.Background(), metadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
+		*args[0].(sql.Out).Dest.(*int64) = 0
+		*args[1].(sql.Out).Dest.(*string) = "APP.EMPTY_NAME_T"
+		*args[2].(sql.Out).Dest.(*[]byte) = make([]byte, 16)
+		*args[3].(sql.Out).Dest.(*int64) = 1
+		*args[4].(sql.Out).Dest.(*[]byte) = tds
+		if err := args[8].(sql.Out).Dest.(*Cursor).Scan(attributes); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}), "APP.EMPTY_NAME_T")
+	if err != nil {
+		t.Fatalf("NewObject with empty metadata name: %v", err)
+	}
+	if _, ok := object.Attributes[""]; !ok {
+		t.Fatalf("empty attribute name was not retained: %#v", object.Attributes)
+	}
+	if field := object.FieldByName("F_"); !field.IsValid() || !field.CanSet() {
+		t.Fatal("empty attribute name did not produce a settable generated field")
 	}
 }
 

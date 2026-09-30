@@ -276,7 +276,7 @@ func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 		t.Fatalf("marshal successful implicit-result OER: %v", err)
 	}
 
-	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: DtyChr}}), 0)
+	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: common.DtyChr}}), 0)
 	shelf := newImplicitResultPrefetchShelf()
 	if err := (&tTIimplres{dcb: newTTIdcb().(*tTIdcb), shelf: shelf}).unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
 		t.Fatalf("unmarshal implicit-result BVC: %v", err)

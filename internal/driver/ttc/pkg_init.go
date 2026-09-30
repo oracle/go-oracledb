@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"container/list"
+	"database/sql/driver"
 	"reflect"
 	"strconv"
 	"time"
