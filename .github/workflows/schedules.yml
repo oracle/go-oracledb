@@ -44,7 +44,7 @@ jobs:
           - rdbms: base-database-service-26ai-rac
     timeout-minutes: 30
     env:
-      - TEST_CATEGORY: ${{ case(github.event.inputs.test_category == '', 'sanity', github.event.inputs.test_category) }}
+      TEST_CATEGORY: ${{ case(github.event.inputs.test_category == '', 'functional', github.event.inputs.test_category) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1r
       - uses: ./.github/actions/setup-go-env
