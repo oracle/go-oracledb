@@ -345,7 +345,6 @@ func TestFactoryGetMessageFromFunction(t *testing.T) {
 				reg := NewRegistry[functionRegistryKey]()
 				reg.Register(functionRegistryKey{messageType: 1, functionType: 123}, 1, newTestFunction1)
 				reg.Register(functionRegistryKey{messageType: 1, functionType: 123}, 3, newTestFunction2)
-				FunctionRegistry = reg
 				return _createTestFactory(2, nil, reg)
 			},
 		},

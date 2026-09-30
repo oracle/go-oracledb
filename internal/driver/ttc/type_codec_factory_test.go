@@ -521,21 +521,17 @@ func TestCodecFactory_getDefineOac(t *testing.T) {
 
 func TestCodecFactory_RegisterEncoderGeneric(t *testing.T) {
 	t.Parallel()
-	orig := EncoderRegistry
-	EncoderRegistry = newCodecRegistry[reflect.Type, encoderFunc]()
-	defer func() {
-		EncoderRegistry = orig
-	}()
+	registry := newCodecRegistry[reflect.Type, encoderFunc]()
 
 	encodeString := func(driver.Value) (common.B1Array, error) {
 		return common.B1Array{0x1}, nil
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf(""), 2, encodeString); err != nil {
+	if err := registry.Register(reflect.TypeOf(""), 2, encodeString); err != nil {
 		t.Fatalf("RegisterEncoder returned unexpected error: %v", err)
 	}
 
-	candidates := EncoderRegistry.getCandidates(reflect.TypeOf(""))
+	candidates := registry.getCandidates(reflect.TypeOf(""))
 	if len(candidates) != 1 {
 		t.Fatalf("expected 1 candidate, got %d", len(candidates))
 	}
