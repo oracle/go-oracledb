@@ -233,6 +233,18 @@ func TestGetRemoteEndpoint(t *testing.T) {
 			wantAddress: "",
 			wantPort:    0,
 		},
+		{
+			name:        "NilRemoteAddress",
+			adapter:     &remoteAddrNTAdapter{},
+			wantAddress: "",
+			wantPort:    0,
+		},
+		{
+			name:        "NonTCPRemoteAddress",
+			adapter:     &remoteAddrNTAdapter{remoteAddr: &net.UnixAddr{Name: "oracle", Net: "unix"}},
+			wantAddress: "",
+			wantPort:    0,
+		},
 	}
 
 	for _, tt := range tests {
@@ -255,6 +267,20 @@ func TestTransportConnect(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
 	ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, sdu: 8192}
+
+	proxyAddress := transport.Address{
+		Address: naming.Address{
+			Protocol: driverCommon.ProtocolTCP,
+			Host:     "localhost",
+			Port:     9999,
+		},
+		HTTPSProxy: "proxy.example.com",
+	}
+	if err := ns.transportConnect(context.Background(), proxyAddress); err == nil {
+		t.Fatal("expected HTTPS proxy to be rejected for TCP")
+	} else {
+		expectOracleErrorCode(t, err, oracleErrors.UnsupportedFeature)
+	}
 
 	// Test TCP connection attempt (will fail without real server)
 	address := transport.Address{

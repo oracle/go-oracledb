@@ -72,6 +72,7 @@ var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNormalizeDialError_PreservesDNSTimeout", Categories: "unitary", Exclusive: false, Fn: TestNormalizeDialError_PreservesDNSTimeout},
+	{Name: "TestNTTCPTransportSendReceiveRoundTrip", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportSendReceiveRoundTrip},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_HappyPath", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_HappyPath},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_NilBlock", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_NilBlock},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_WrongBlockType", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_WrongBlockType},
