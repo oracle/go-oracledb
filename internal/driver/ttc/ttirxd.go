@@ -70,7 +70,7 @@ type tTIrxd struct {
 	bvcFound bool
 
 	// Outgoing bind payload for TTIRXD when marshalling bind values (Phase 1: single row binds).
-	bindRow        []driverCommon.B1Array
+	bindRow        []bindValue
 	columnContexts []columnContext
 	lobColContext  []*lobColumnContext
 
@@ -155,7 +155,7 @@ Parameters:
        Each element should contain the wire-format bytes for that column (nil indicates SQL NULL).
 */
 
-func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array) {
+func (rxd *tTIrxd) setBindValues(row []bindValue) {
 	rxd.bindRow = row
 }
 
@@ -173,21 +173,8 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 	}
 	bindCount := len(rxd.bindRow)
 	for i := 0; i < bindCount; i++ {
-		val := rxd.bindRow[i]
-		if val == nil {
-			// Write CLR null indicator
-			if err := engine.MarshalUB1(ctx, driverCommon.UB1(0)); err != nil {
-				common.Odl.Error("tTIrxd.MarshalTo: failed to write null length indicator",
-					"error", err, "stage", "null-indicator", "index", i)
-				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-			}
-			continue
-		}
-		// Write as CLR (short or long form depending on size)
-		if err := engine.MarshalCLR(ctx, val, 0, len(val)); err != nil {
-			common.Odl.Error("tTIrxd.MarshalTo: failed to write CLR",
-				"error", err, "stage", "clr", "index", i)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+		if err := rxd.bindRow[i].marshal(ctx, engine, rxd.GetMsgCode(), i); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -339,6 +326,11 @@ Errors:
 */
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
 	switch dtyType {
+	case DtyVec:
+		if err := rxd._unmarshalVectorColumn(ctx, mar, col); err != nil {
+			return err
+		}
+		rxd.lobColContext = append(rxd.lobColContext, nil)
 	case DtyClob:
 		if err := rxd._unmarshalClobColumn(ctx, mar, col); err != nil {
 			return err
