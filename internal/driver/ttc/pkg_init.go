@@ -684,6 +684,7 @@ func init() {
 	typeRepresentationTable.addTypeRepToTable(DtyImplRes, DtyImplRes, int16(RepRUnv))
 	typeRepresentationTable.addTypeRepToTable(DtyOer, DtyOer, int16(RepRUnv))
 	typeRepresentationTable.addTypeRepToTable(DtyKpdxft, DtyKpdxft, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(DtyKve, DtyKve, int16(RepRUnv))
 
 	// 20c
 	typeRepresentationTable.addTypeRepToTable(DtyShrdKeySync, DtyShrdKeySync, int16(RepRUnv))
