@@ -67,8 +67,7 @@ func NewConnectionWrapper(connection *sql.Conn) (*connectionWrapper, error) {
 	err := connection.Raw(func(c any) error {
 		// Include here all functions/interfaces we want a connection to implement in
 		// order to be wrapped by this wrapper
-		type canBeWrapped interface {
-		}
+		type canBeWrapped any
 		_, ok := c.(canBeWrapped)
 		if !ok {
 			return common.NewOracleError(oracleErrors.InvalidConnection, nil)

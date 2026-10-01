@@ -217,14 +217,6 @@ func assertLobDefinition(t *testing.T, def *lobDefinition, exp lobDefinitionExpe
 	}
 }
 
-func intPtr(v int) *int { return &v }
-
-func ub2Ptr(v common.UB2) *common.UB2 { return &v }
-
-func ub8Ptr(v common.UB8) *common.UB8 { return &v }
-
-func boolPtr(v bool) *bool { return &v }
-
 type lobRpaSuccessCase struct {
 	name    string
 	payload []string
@@ -275,13 +267,13 @@ func TestTTILobRpa_UnMarshalFrom_Success(t *testing.T) {
 				}
 			},
 			expect: lobDefinitionExpectations{
-				sourceLocatorLen:      intPtr(114),
+				sourceLocatorLen:      new(114),
 				sourceLocator:         append([]byte(nil), expectedReadSourceLocator...),
-				destinationLocatorLen: intPtr(0),
-				charsetID:             ub2Ptr(common.UB2(0)),
-				sendLobAmt:            boolPtr(true),
-				lobAmt:                ub8Ptr(common.UB8(4495)),
-				lobNull:               boolPtr(false),
+				destinationLocatorLen: new(0),
+				charsetID:             new(common.UB2(0)),
+				sendLobAmt:            new(true),
+				lobAmt:                new(common.UB8(4495)),
+				lobNull:               new(false),
 			},
 		},
 		{
@@ -298,12 +290,12 @@ func TestTTILobRpa_UnMarshalFrom_Success(t *testing.T) {
 				}
 			},
 			expect: lobDefinitionExpectations{
-				sourceLocatorLen: intPtr(40),
+				sourceLocatorLen: new(40),
 				sourceLocator:    append([]byte(nil), expectedCreateSourceLocator...),
-				charsetID:        ub2Ptr(common.UB2(873)),
-				sendLobAmt:       boolPtr(true),
-				lobAmt:           ub8Ptr(common.UB8(96)),
-				lobNull:          boolPtr(true),
+				charsetID:        new(common.UB2(873)),
+				sendLobAmt:       new(true),
+				lobAmt:           new(common.UB8(96)),
+				lobNull:          new(true),
 			},
 		},
 		{
@@ -320,12 +312,12 @@ func TestTTILobRpa_UnMarshalFrom_Success(t *testing.T) {
 				}
 			},
 			expect: lobDefinitionExpectations{
-				sourceLocatorLen: intPtr(40),
+				sourceLocatorLen: new(40),
 				sourceLocator:    append([]byte(nil), expectedPageSizeSourceLocator...),
-				charsetID:        ub2Ptr(common.UB2(0)),
-				sendLobAmt:       boolPtr(true),
-				lobAmt:           ub8Ptr(common.UB8(8132)),
-				lobNull:          boolPtr(false),
+				charsetID:        new(common.UB2(0)),
+				sendLobAmt:       new(true),
+				lobAmt:           new(common.UB8(8132)),
+				lobNull:          new(false),
 			},
 		},
 		{
@@ -342,18 +334,17 @@ func TestTTILobRpa_UnMarshalFrom_Success(t *testing.T) {
 				}
 			},
 			expect: lobDefinitionExpectations{
-				sourceLocatorLen: intPtr(40),
+				sourceLocatorLen: new(40),
 				sourceLocator:    append([]byte(nil), expectedWriteSourceLocator...),
-				charsetID:        ub2Ptr(common.UB2(0)),
-				sendLobAmt:       boolPtr(true),
-				lobAmt:           ub8Ptr(common.UB8(4500)),
-				lobNull:          boolPtr(false),
+				charsetID:        new(common.UB2(0)),
+				sendLobAmt:       new(true),
+				lobAmt:           new(common.UB8(4500)),
+				lobNull:          new(false),
 			},
 		},
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			runLobRpaSuccessCase(t, tc)
@@ -503,7 +494,6 @@ func TestTTILobRpa_UnMarshalFrom_Failure(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			runLobRpaFailureCase(t, tc)

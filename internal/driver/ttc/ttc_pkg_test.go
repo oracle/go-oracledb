@@ -658,7 +658,7 @@ func (array *ArrayBasedDataBuffer) WriteByteWithContext(ctx context.Context, val
 
 // WriteBytesWithContext writes the entire content of a byte array.
 func (array *ArrayBasedDataBuffer) WriteBytesWithContext(ctx context.Context, source []byte) error {
-	for i := 0; i < len(source); i++ {
+	for i := range source {
 		err := array.WriteByteWithContext(ctx, source[i])
 		if err != nil {
 			return err
@@ -794,7 +794,7 @@ func ByteArrayCompare(a []byte, b []byte) error {
 		err = errors.New(fmt.Sprintf("array size mismatch [%d] </> [%d]", len(a), len(b)))
 	}
 	var stop = int(math.Min(float64(len(a)), float64(len(b))))
-	for i := 0; i < stop; i++ {
+	for i := range stop {
 		if a[i] != b[i] {
 			err = errors.Join(err, errors.New(fmt.Sprintf("array content mismatch at idx [%d] : [%d] </> [%d]", i, a[i], b[i])))
 			break

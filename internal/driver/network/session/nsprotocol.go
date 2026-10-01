@@ -73,7 +73,7 @@ type networkSession struct {
 	sAtts               *sessionAtts
 	ntAdapter           transport.NTAdapter
 	cData               []byte
-	cDataNVPair         interface{}
+	cDataNVPair         any
 	sndDatapkt          *dataPacket
 	rcvDatapkt          *dataPacket
 	controlPkt          *controlPacket

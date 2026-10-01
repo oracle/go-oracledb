@@ -734,52 +734,52 @@ func init() {
 
 	// ========================= TYPE CODEC Registry =========================
 	// Register default encoders.
-	if err := EncoderRegistry.Register(reflect.TypeOf(""), MinTTCProtocolVersion, converters.EncodeVarchar); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[string](), MinTTCProtocolVersion, converters.EncodeVarchar); err != nil {
 		common.Odl.Warn("Failed to register string encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int16(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[int16](), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
 		common.Odl.Warn("Failed to register int16 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int32(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[int32](), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
 		common.Odl.Warn("Failed to register int32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[int](), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
 		common.Odl.Warn("Failed to register int encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int64(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[int64](), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
 		common.Odl.Warn("Failed to register int64 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int8(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[int8](), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
 		common.Odl.Warn("Failed to register int8 encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint8(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[uint8](), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
 		common.Odl.Warn("Failed to register uint8 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint16(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[uint16](), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
 		common.Odl.Warn("Failed to register uint16 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint32(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[uint32](), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
 		common.Odl.Warn("Failed to register uint32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[uint](), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
 		common.Odl.Warn("Failed to register uint encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint64(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[uint64](), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
 		common.Odl.Warn("Failed to register uint64 encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf(float32(0)), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[float32](), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
 		common.Odl.Warn("Failed to register float32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(float64(0)), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[float64](), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
 		common.Odl.Warn("Failed to register float64 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, converters.EncodeTimestampWithTimeZone); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[time.Time](), MinTTCProtocolVersion, converters.EncodeTimestampWithTimeZone); err != nil {
 		common.Odl.Warn("Failed to register time.Time encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, converters.EncodeBinary); err != nil {
+	if err := EncoderRegistry.Register(reflect.TypeFor[[]byte](), MinTTCProtocolVersion, converters.EncodeBinary); err != nil {
 		common.Odl.Warn("Failed to register []byte encoder", "error", err)
 	}
 
@@ -788,11 +788,11 @@ func init() {
 	}
 
 	// bool is version dependent
-	err = EncoderRegistry.Register(reflect.TypeOf(true), MinTTCProtocolVersion, converters.EncodeBooleanAsNumber)
+	err = EncoderRegistry.Register(reflect.TypeFor[bool](), MinTTCProtocolVersion, converters.EncodeBooleanAsNumber)
 	if err != nil {
 		common.Odl.Warn("Failed to register string bool (v<=17) encoder", "error", err)
 	}
-	err = EncoderRegistry.Register(reflect.TypeOf(true), 18, converters.EncodeBoolean)
+	err = EncoderRegistry.Register(reflect.TypeFor[bool](), 18, converters.EncodeBoolean)
 	if err != nil {
 		common.Odl.Warn("Failed to register string bool (v>=18) encoder", "error", err)
 	}
@@ -907,63 +907,63 @@ func init() {
 	}
 
 	// Register default bind OACs.
-	if err := BindOacRegistry.Register(reflect.TypeOf(""), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacString, maxLength: converters.MaxVarcharLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[string](), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacString, maxLength: converters.MaxVarcharLength}); err != nil {
 		common.Odl.Warn("Failed to register string bind OAC", "error", err)
 	}
 
-	if err := BindOacRegistry.Register(reflect.TypeOf(int8(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[int8](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register int8 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(int16(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[int16](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register int16 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(int32(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[int32](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register int32 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(int(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[int](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register int bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(int64(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[int64](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register int64 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(uint8(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[uint8](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register uint8 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(uint16(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[uint16](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register uint16 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(uint32(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[uint32](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register uint32 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(uint(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[uint](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register uint bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(uint64(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[uint64](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength}); err != nil {
 		common.Odl.Warn("Failed to register uint64 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(float32(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength, scale: driverCommon.SB1(NumberScaleFloatSentinel)}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[float32](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength, scale: driverCommon.SB1(NumberScaleFloatSentinel)}); err != nil {
 		common.Odl.Warn("Failed to register float32 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(float64(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength, scale: driverCommon.SB1(NumberScaleFloatSentinel)}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[float64](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength, scale: driverCommon.SB1(NumberScaleFloatSentinel)}); err != nil {
 		common.Odl.Warn("Failed to register float64 bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBytes, maxLength: 32767}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[[]byte](), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBytes, maxLength: 32767}); err != nil {
 		common.Odl.Warn("Failed to register []byte bind OAC", "error", err)
 	}
 
 	if err := BindOacRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNull() }, maxLength: converters.MaxNullLength}); err != nil {
 		common.Odl.Warn("Failed to register nil bind OAC", "error", err)
 	}
-	if err := BindOacRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacTime() }, maxLength: converters.MaxTimeStampLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[time.Time](), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacTime() }, maxLength: converters.MaxTimeStampLength}); err != nil {
 		common.Odl.Warn("Failed to register time.Time bind OAC", "error", err)
 	}
 
 	// Bool is version-dependent
-	if err := BindOacRegistry.Register(reflect.TypeOf(true), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBoolV17, maxLength: converters.MaxBoolLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[bool](), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBoolV17, maxLength: converters.MaxBoolLength}); err != nil {
 		common.Odl.Warn("Failed to register bool (v<=17) bind OAC", "error", err)
 	}
 
-	if err := BindOacRegistry.Register(reflect.TypeOf(true), 18, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacBool() }, maxLength: converters.MaxBoolLength}); err != nil {
+	if err := BindOacRegistry.Register(reflect.TypeFor[bool](), 18, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacBool() }, maxLength: converters.MaxBoolLength}); err != nil {
 		common.Odl.Warn("Failed to register bool (v>=18) bind OAC", "error", err)
 	}
 

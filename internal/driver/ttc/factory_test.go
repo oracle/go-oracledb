@@ -121,16 +121,16 @@ func TestFactoryRegistries(t *testing.T) {
 	t.Parallel()
 	type regCase struct {
 		name    string
-		setup   func() interface{}
-		key     interface{}
+		setup   func() any
+		key     any
 		minVer  int8
 		factory MessageCreationFunc
-		extra   func(reg interface{}, t *testing.T)
+		extra   func(reg any, t *testing.T)
 	}
 	cases := []regCase{
 		{
 			name: "MessageRegistry valid meddageType",
-			setup: func() interface{} {
+			setup: func() any {
 				return NewRegistry[common.MessageType]()
 			},
 			key:     TTIPRO,
@@ -139,7 +139,7 @@ func TestFactoryRegistries(t *testing.T) {
 		},
 		{
 			name: "FunctionRegistry",
-			setup: func() interface{} {
+			setup: func() any {
 				return NewRegistry[functionRegistryKey]()
 			},
 			key:     functionRegistryKey{messageType: common.MessageType(1), functionType: common.FunctionType(123)},
@@ -148,7 +148,7 @@ func TestFactoryRegistries(t *testing.T) {
 		},
 		{
 			name: "PiggyBackFunctionRegistry",
-			setup: func() interface{} {
+			setup: func() any {
 				return NewRegistry[functionRegistryKey]()
 			},
 			key:     functionRegistryKey{messageType: common.MessageType(1), functionType: common.FunctionType(201)},
@@ -157,7 +157,7 @@ func TestFactoryRegistries(t *testing.T) {
 		},
 		{
 			name: "OneWayFunctionRegistry",
-			setup: func() interface{} {
+			setup: func() any {
 				return NewRegistry[functionRegistryKey]()
 			},
 			key:     functionRegistryKey{messageType: common.MessageType(1), functionType: common.FunctionType(202)},
@@ -166,7 +166,7 @@ func TestFactoryRegistries(t *testing.T) {
 		},
 		{
 			name: "FunctionResponseRegistry",
-			setup: func() interface{} {
+			setup: func() any {
 				return NewRegistry[functionRegistryKey]()
 			},
 			key:     functionRegistryKey{messageType: common.MessageType(1), functionType: common.FunctionType(21)},

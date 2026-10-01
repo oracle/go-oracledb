@@ -184,10 +184,7 @@ func (ns *networkSession) readMultiPacket(ctx context.Context, buf []byte, numBy
 			continue
 		}
 
-		bytesToRead := numBytes - bytesRead
-		if bytesToRead > remaining {
-			bytesToRead = remaining
-		}
+		bytesToRead := min(numBytes-bytesRead, remaining)
 		data, err := ns.rcvDatapkt.Read(bytesToRead)
 		if err != nil {
 			return common.NewOracleError(oracleErrors.NetworkDataReadFailed, err)

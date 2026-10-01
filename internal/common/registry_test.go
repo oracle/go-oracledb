@@ -70,7 +70,7 @@ func TestProviderRegistryGetProviderReturnsFirstMatch(t *testing.T) {
 	registry.Register(first)
 	registry.Register(second)
 
-	gotProvider, err := registry.Get(reflect.TypeOf((*namedProvider)(nil)).Elem())
+	gotProvider, err := registry.Get(reflect.TypeFor[namedProvider]())
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
@@ -87,12 +87,12 @@ func TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded(t *tes
 	t.Parallel()
 
 	registry := NewSafeRegistry[oracleProviders.Provider]()
-	for i := 0; i < maxItems; i++ {
+	for i := range maxItems {
 		registry.Register(mockProviderRegistryProvider{name: string(rune('a' + i))})
 	}
 	registry.Register(mockProviderRegistryProvider{name: "overflow"})
 
-	gotProvider, err := registry.Get(reflect.TypeOf((*namedProvider)(nil)).Elem())
+	gotProvider, err := registry.Get(reflect.TypeFor[namedProvider]())
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestProviderRegistryGetProviderReturnsRequestedInterface(t *testing.T) {
 	original := mockProviderRegistryProvider{name: "original"}
 	registry.Register(original)
 
-	gotProvider, err := registry.Get(reflect.TypeOf((*namedProvider)(nil)).Elem())
+	gotProvider, err := registry.Get(reflect.TypeFor[namedProvider]())
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestProviderRegistryGetProviderReturnsErrorWhenUninitialized(t *testing.T) 
 
 	registry := NewSafeRegistry[oracleProviders.Provider]()
 
-	provider, _ := registry.Get(reflect.TypeOf((*namedProvider)(nil)).Elem())
+	provider, _ := registry.Get(reflect.TypeFor[namedProvider]())
 	if provider != nil {
 		t.Fatal("expected Get to return no item for empty registry")
 	}
@@ -143,7 +143,7 @@ func TestProviderRegistrySupportsConcreteGenericType(t *testing.T) {
 	want := mockProviderRegistryProvider{name: "generic"}
 	registry.Register(want)
 
-	got, err := registry.Get(reflect.TypeOf(want))
+	got, err := registry.Get(reflect.TypeFor[mockProviderRegistryProvider]())
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestRegistryGetSkipsNilItems(t *testing.T) {
 	registry.Register(nil)
 	registry.Register(mockProviderRegistryProvider{name: "registered"})
 
-	got, err := registry.Get(reflect.TypeOf(mockProviderRegistryProvider{}))
+	got, err := registry.Get(reflect.TypeFor[mockProviderRegistryProvider]())
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}

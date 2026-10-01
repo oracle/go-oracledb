@@ -127,7 +127,7 @@ func newConnectorTestConfigWithConnectString(t *testing.T, connectString string)
 func assertNoTokenProviderRegistered(t *testing.T, providerRegistry common.Registry[oracleProviders.Provider]) {
 	t.Helper()
 
-	provider, _ := providerRegistry.Get(reflect.TypeOf((*oracleProviders.TokenAuthenticationProvider)(nil)).Elem())
+	provider, _ := providerRegistry.Get(reflect.TypeFor[oracleProviders.TokenAuthenticationProvider]())
 	if provider != nil {
 		t.Fatalf("expected empty provider registry, got token provider %T", provider)
 	}
@@ -148,7 +148,7 @@ func TestConnectorRegisterProviderMakesProviderAvailableToConnectionFactory(t *t
 			return ns, nil
 		},
 		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
-			registered, err := providerRegistry.Get(reflect.TypeOf(provider))
+			registered, err := providerRegistry.Get(reflect.TypeFor[struct{ name string }]())
 			if err != nil {
 				return nil, err
 			}

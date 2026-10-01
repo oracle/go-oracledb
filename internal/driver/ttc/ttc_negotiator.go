@@ -102,10 +102,7 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	// Determine negotiated TTC version (minimum of client and server)
 	clientVersion := dty.GetClientTTCVersion()
 	serverVersion := shelf.GetCapabilities()[kpccapCtTtcFldVsn].Value
-	negotiatedTTCVersion := serverVersion
-	if clientVersion < serverVersion {
-		negotiatedTTCVersion = clientVersion
-	}
+	negotiatedTTCVersion := min(clientVersion, serverVersion)
 	common.Odl.Debug("Negotiated TTC version", "client version", clientVersion, "server version", serverVersion, "negotiated version", negotiatedTTCVersion)
 
 	// set timezone version number in session context

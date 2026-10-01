@@ -254,7 +254,7 @@ func checkNamedValue(nv *driver.NamedValue) error {
 
 		destInfo := reflect.ValueOf(out.Dest)
 		// Destination must be a pointer so the driver can write back the value.
-		if destInfo.Kind() != reflect.Ptr {
+		if destInfo.Kind() != reflect.Pointer {
 			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("non pointer"))
 		}
 
@@ -265,7 +265,7 @@ func checkNamedValue(nv *driver.NamedValue) error {
 
 		pointedValue := reflect.Indirect(destInfo)
 		// Pointer-to-pointer is not supported; only pointer-to-value is allowed.
-		if pointedValue.Kind() == reflect.Ptr {
+		if pointedValue.Kind() == reflect.Pointer {
 			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("double pointer"))
 		}
 

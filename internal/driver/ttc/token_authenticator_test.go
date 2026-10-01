@@ -300,7 +300,7 @@ func TestProviderRegistryReturnsFirstRegisteredTokenProvider(t *testing.T) {
 		mockTokenAuthenticationProvider{token: "first-token"},
 		mockTokenAuthenticationProvider{token: "second-token"},
 	)
-	gotProvider, err := registry.Get(reflect.TypeOf((*oracleProviders.TokenAuthenticationProvider)(nil)).Elem())
+	gotProvider, err := registry.Get(reflect.TypeFor[oracleProviders.TokenAuthenticationProvider]())
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestProviderRegistryReturnsNilWhenTokenProviderMissing(t *testing.T) {
 		struct{}{},
 		struct{}{},
 	)
-	provider, err := registry.Get(reflect.TypeOf((*oracleProviders.TokenAuthenticationProvider)(nil)).Elem())
+	provider, err := registry.Get(reflect.TypeFor[oracleProviders.TokenAuthenticationProvider]())
 	if err != nil {
 		t.Fatalf("expected nil error when token provider is missing, got %v", err)
 	}

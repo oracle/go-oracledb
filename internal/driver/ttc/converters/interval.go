@@ -531,9 +531,9 @@ func EncodeIntervalDayToSecond(v driver.Value) (driverCommon.B1Array, error) {
 	secToken := tparts[2]
 	secWhole := secToken
 	fracToken := ""
-	if dot := strings.IndexByte(secToken, _canonicalFracSep); dot != -1 {
-		secWhole = secToken[:dot]
-		fracToken = secToken[dot+1:]
+	if before, after, ok := strings.Cut(secToken, "."); ok {
+		secWhole = before
+		fracToken = after
 	}
 	ssPart64, err := strconv.ParseInt(secWhole, 10, 64)
 	if err != nil {

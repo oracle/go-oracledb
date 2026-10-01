@@ -417,7 +417,7 @@ func TestParsePlaceholders_Uint16IndexesDoNotWrapAfter255(t *testing.T) {
 func bindListStatement(n int) string {
 	var b strings.Builder
 	b.WriteString("begin p(")
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if i > 0 {
 			b.WriteString(",")
 		}

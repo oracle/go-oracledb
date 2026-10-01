@@ -251,7 +251,7 @@ func newKeywordValueArray(pairCount driverCommon.UB4) (*keywordValueArray, error
 //  2. Marshals a dynamicAllocatedArray containing the binary value
 //  3. Marshals the keyword (UB2)
 func (keywordValueList keywordValueArray) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
-	for i := 0; i < len(keywordValueList); i++ {
+	for i := range keywordValueList {
 		err := keywordValueList[i].textValue.MarshalTo(ctx, engine)
 		if err != nil {
 			return _wrapError(err, "marshal keyword/value")
@@ -278,7 +278,7 @@ func (keywordValueList keywordValueArray) UnMarshalFrom(ctx context.Context, eng
 			"pairs", len(keywordValueList), "limit", maxKeywordValueArrayPairs)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "keyword/value")
 	}
-	for i := 0; i < len(keywordValueList); i++ {
+	for i := range keywordValueList {
 		var textValue dynamicAllocatedArray
 		err := textValue.UnMarshalFrom(ctx, engine)
 		if err != nil {

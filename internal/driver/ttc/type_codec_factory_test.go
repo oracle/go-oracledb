@@ -100,8 +100,8 @@ func TestCodecFactory_getEncoder(t *testing.T) {
 			protocol: 3,
 			value:    int64(0),
 			setup: func(reg *codecRegistry[reflect.Type, encoderFunc]) {
-				reg.Register(reflect.TypeOf(int64(0)), 1, dummyEncoderA)
-				reg.Register(reflect.TypeOf(int64(0)), 3, dummyEncoderB)
+				reg.Register(reflect.TypeFor[int64](), 1, dummyEncoderA)
+				reg.Register(reflect.TypeFor[int64](), 3, dummyEncoderB)
 			},
 			wantValue: common.B1Array{1, 2, 3},
 		},
@@ -110,7 +110,7 @@ func TestCodecFactory_getEncoder(t *testing.T) {
 			protocol: 1,
 			value:    int64(0),
 			setup: func(reg *codecRegistry[reflect.Type, encoderFunc]) {
-				reg.Register(reflect.TypeOf(int64(0)), 2, dummyEncoderB)
+				reg.Register(reflect.TypeFor[int64](), 2, dummyEncoderB)
 			},
 			expectError: true,
 			errCode:     oracleErrors.InternalError,
@@ -280,8 +280,8 @@ func TestCodecFactory_getBindOac(t *testing.T) {
 			bindValue: int64(0),
 			maxLength: 32,
 			setup: func(reg *codecRegistry[reflect.Type, bindOacType]) {
-				reg.Register(reflect.TypeOf(int64(0)), 1, dummyBindOacA)
-				reg.Register(reflect.TypeOf(int64(0)), 3, dummyBindOacB)
+				reg.Register(reflect.TypeFor[int64](), 1, dummyBindOacA)
+				reg.Register(reflect.TypeFor[int64](), 3, dummyBindOacB)
 			},
 			wantDataType: common.UB1(DtyChr),
 		},
@@ -344,7 +344,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "null string valid",
 			input:     sql.NullString{String: "abc", Valid: true},
-			wantType:  reflect.TypeOf(""),
+			wantType:  reflect.TypeFor[string](),
 			wantValue: "abc",
 		},
 		{
@@ -355,7 +355,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "null int64 valid",
 			input:     sql.NullInt64{Int64: 42, Valid: true},
-			wantType:  reflect.TypeOf(int64(0)),
+			wantType:  reflect.TypeFor[int64](),
 			wantValue: int64(42),
 		},
 		{
@@ -366,7 +366,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "null int32 valid",
 			input:     sql.NullInt32{Int32: 32, Valid: true},
-			wantType:  reflect.TypeOf(int32(0)),
+			wantType:  reflect.TypeFor[int32](),
 			wantValue: int32(32),
 		},
 		{
@@ -377,7 +377,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "null int16 valid",
 			input:     sql.NullInt16{Int16: 16, Valid: true},
-			wantType:  reflect.TypeOf(int16(0)),
+			wantType:  reflect.TypeFor[int16](),
 			wantValue: int16(16),
 		},
 		{
@@ -388,7 +388,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "null byte valid",
 			input:     sql.NullByte{Byte: 7, Valid: true},
-			wantType:  reflect.TypeOf(byte(0)),
+			wantType:  reflect.TypeFor[byte](),
 			wantValue: byte(7),
 		},
 		{
@@ -399,7 +399,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "null float64 valid",
 			input:     sql.NullFloat64{Float64: 12.5, Valid: true},
-			wantType:  reflect.TypeOf(float64(0)),
+			wantType:  reflect.TypeFor[float64](),
 			wantValue: 12.5,
 		},
 		{
@@ -410,7 +410,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "null bool valid",
 			input:     sql.NullBool{Bool: true, Valid: true},
-			wantType:  reflect.TypeOf(true),
+			wantType:  reflect.TypeFor[bool](),
 			wantValue: true,
 		},
 		{
@@ -421,7 +421,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "null time valid",
 			input:     sql.NullTime{Time: now, Valid: true},
-			wantType:  reflect.TypeOf(time.Time{}),
+			wantType:  reflect.TypeFor[time.Time](),
 			wantValue: now,
 		},
 		{
@@ -432,7 +432,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "sql out unwraps null string",
 			input:     sql.Out{Dest: &sql.NullString{String: "out", Valid: true}, In: true},
-			wantType:  reflect.TypeOf(""),
+			wantType:  reflect.TypeFor[string](),
 			wantValue: "out",
 		},
 		{
@@ -527,11 +527,11 @@ func TestCodecFactory_RegisterEncoderGeneric(t *testing.T) {
 		return common.B1Array{0x1}, nil
 	}
 
-	if err := registry.Register(reflect.TypeOf(""), 2, encodeString); err != nil {
+	if err := registry.Register(reflect.TypeFor[string](), 2, encodeString); err != nil {
 		t.Fatalf("RegisterEncoder returned unexpected error: %v", err)
 	}
 
-	candidates := registry.getCandidates(reflect.TypeOf(""))
+	candidates := registry.getCandidates(reflect.TypeFor[string]())
 	if len(candidates) != 1 {
 		t.Fatalf("expected 1 candidate, got %d", len(candidates))
 	}

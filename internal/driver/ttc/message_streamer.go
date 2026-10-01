@@ -43,6 +43,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -165,12 +166,7 @@ func (ms *MessageStreamer) Push(ctx context.Context, msg driverCommon.Message[dr
 
 // _isExpectedType checks if a given type is part of the type array
 func _isExpectedType(ts []driverCommon.MessageType, t driverCommon.MessageType) bool {
-	for _, v := range ts {
-		if v == t {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ts, t)
 }
 
 // Pull implementation. See Streamer interface

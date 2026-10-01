@@ -378,7 +378,7 @@ func makeOSesskeyRPAInvalidCountPayload(countType, value string) []byte {
 	if countType == "VGEN" {
 		// Find AUTH_PBKDF2_VGEN_COUNT and replace value
 		idx := 0
-		for i := 0; i < len(buf); i++ {
+		for i := range buf {
 			if i+22 < len(buf) && string(buf[i:i+22]) == "AUTH_PBKDF2_VGEN_COUNT" {
 				// Skip key, then value length, then replace value
 				idx = i + 22 + 3
@@ -390,7 +390,7 @@ func makeOSesskeyRPAInvalidCountPayload(countType, value string) []byte {
 		}
 	} else if countType == "SDER" {
 		idx := 0
-		for i := 0; i < len(buf); i++ {
+		for i := range buf {
 			if i+22 < len(buf) && string(buf[i:i+22]) == "AUTH_PBKDF2_SDER_COUNT" {
 				idx = i + 22 + 3
 				break

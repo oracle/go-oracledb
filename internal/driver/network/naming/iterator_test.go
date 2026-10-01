@@ -977,7 +977,7 @@ func TestConnectionIterator_LoadBalance_DescriptionList(t *testing.T) {
 
 	// Test multiple iterations to see randomization
 	orderCounts := make(map[string]int)
-	for run := 0; run < 20; run++ {
+	for range 20 {
 		iter := NewConnectionIterator(context.Background(), root, ctx)
 		option := iter.Next()
 		orderCounts[option.ConnectData.ServiceName]++
@@ -1004,7 +1004,7 @@ func TestConnectionIterator_LoadBalance_Description(t *testing.T) {
 
 	// Test multiple iterations to see randomization
 	firstHosts := make(map[string]int)
-	for run := 0; run < 30; run++ {
+	for range 30 {
 		iter := NewConnectionIterator(context.Background(), root, ctx)
 		option := iter.Next()
 		firstHosts[option.Address.Host]++
@@ -1081,7 +1081,7 @@ func TestConnectionIterator_LoadBalance_Off(t *testing.T) {
 
 	// Test multiple iterations - should always get same order
 	firstHosts := make(map[string]int)
-	for run := 0; run < 10; run++ {
+	for range 10 {
 		iter := NewConnectionIterator(context.Background(), root, ctx)
 		option := iter.Next()
 		firstHosts[option.Address.Host]++
@@ -1210,7 +1210,7 @@ func TestConnectionIterator_LoadBalance_And_Failover_Disabled(t *testing.T) {
 	}
 
 	// Run multiple times to ensure consistency
-	for run := 0; run < 5; run++ {
+	for run := range 5 {
 		iter := NewConnectionIterator(context.Background(), root, ctx)
 
 		// Should have only 1 option (first description, first address)
@@ -2015,7 +2015,7 @@ func TestConnectionIterator_MultipleResets(t *testing.T) {
 	iter := NewConnectionIterator(context.Background(), nil, ctx)
 
 	// Reset multiple times
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if !iter.HasNext() {
 			t.Errorf("Reset %d: Expected HasNext to be true", i)
 		}
@@ -2061,7 +2061,7 @@ func TestConnectionIterator_ExhaustionBehavior(t *testing.T) {
 	}
 
 	// Multiple Next() calls after exhaustion should all return nil
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if iter.Next() != nil {
 			t.Errorf("Call %d: Expected Next() to return nil after exhaustion", i)
 		}
@@ -2102,7 +2102,7 @@ func TestConnectionIterator_ManyDescriptions(t *testing.T) {
 	// Build a large DESCRIPTION_LIST
 	var builder string
 	builder = "(DESCRIPTION_LIST="
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		builder += "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=host" + string(rune('0'+i%10)) + ")(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=svc)))"
 	}
 	builder += ")"
@@ -2139,7 +2139,7 @@ func TestConnectionIterator_ManyAddresses(t *testing.T) {
 	// Build an ADDRESS_LIST with many addresses
 	var builder string
 	builder = "(DESCRIPTION=(ADDRESS_LIST="
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		builder += "(ADDRESS=(PROTOCOL=TCP)(HOST=host" + string(rune('0'+i%10)) + ")(PORT=1521))"
 	}
 	builder += ")(CONNECT_DATA=(SERVICE_NAME=test)))"

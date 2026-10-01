@@ -159,7 +159,7 @@ func TestTypeRep_UnMarshalFrom_TooManyTypeRepresentations(t *testing.T) {
 	t.Parallel()
 	tr := newTypeRep()
 	payload := make([]byte, 0, int(_maxReceivedReps+1)*4+2)
-	for i := int16(0); i < _maxReceivedReps+1; i++ {
+	for range _maxReceivedReps + 1 {
 		payload = append(payload, 0x00, 0x01) // start of a type block
 		payload = append(payload, 0x00, 0x00) // end of the current type block
 	}

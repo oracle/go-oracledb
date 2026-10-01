@@ -531,10 +531,7 @@ func (m *MarshalEngine) MarshalCLR(ctx context.Context, value driverCommon.B1Arr
 
 		for nbBytesWritten < totalLength {
 			bytesLeft := totalLength - nbBytesWritten
-			length := bytesLeft
-			if length > _checkSize {
-				length = _checkSize
-			}
+			length := min(bytesLeft, _checkSize)
 
 			if err := m.MarshalSB4(ctx, driverCommon.SB4(length)); err != nil {
 				return _wrapError(err, "CLR")

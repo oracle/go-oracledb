@@ -493,7 +493,7 @@ func (config OracleCredentials) String() string {
 	return toString(&config)
 }
 
-func toString(item interface{}) string {
+func toString(item any) string {
 	var sb strings.Builder
 	sb.WriteString("{")
 	e := reflect.ValueOf(item).Elem()
@@ -1013,8 +1013,8 @@ func (config *OracleDriverConfig) AssignFromMap(items map[string]string) error {
 //   - the error if parsing has failed
 func QueryStringToMap(s string) (map[string]string, error) {
 	result := make(map[string]string)
-	queryParts := strings.Split(s, "&")
-	for _, part := range queryParts {
+	queryParts := strings.SplitSeq(s, "&")
+	for part := range queryParts {
 		keyValuePair := strings.SplitN(part, "=", 2)
 		if len(keyValuePair) != 2 {
 			return nil, common.NewOracleError(oracleErrors.NamingParseFailed, fmt.Errorf("error parsing connection property [%s]", part))
@@ -1122,7 +1122,7 @@ func validateZeroOrPositive(value reflect.Value, valueName string) (any, error) 
 	}
 }
 
-var _languageTagType = reflect.TypeOf(language.Tag{})
+var _languageTagType = reflect.TypeFor[language.Tag]()
 
 // validateLanguage parses a string to a valid language name
 // the value is parse using language.Parse() method.
