@@ -97,18 +97,19 @@ type oracleConnector = connector
 
 // NewOracleConnector returns a new OracleConnector using the provided ParsedConfig.
 // This is the main entry point for database/sql to acquire an Oracle database Connector.
-func buildOracleConnector(driver driver.Driver, cfg *naming.ParsedConfig, drvConfig *oracleconfig.OracleDriverConfig) driver.Connector {
+func buildOracleConnector(driverInstance driver.Driver, cfg *naming.ParsedConfig, drvConfig *oracleconfig.OracleDriverConfig) driver.Connector {
 	// this should never return an error, both functions are being set to not nil values
-	connector, _ := newOracleConnector(cfg, drvConfig, session.ConnectToOptionWithConnectionID, drv.GetConnectionInstantiator)
+	connector, _ := newOracleConnector(driverInstance, cfg, drvConfig, session.ConnectToOptionWithConnectionID, drv.GetConnectionInstantiator)
 	return connector
 }
 
 // newOracleConnector private creator of OracleConnector for testing, returns an error if one of the functions is nil
-func newOracleConnector(cfg *naming.ParsedConfig, drvConfig *oracleconfig.OracleDriverConfig, connCreator ConnCreator, connInstantiatorFactory ConnInstantiatorFactory) (driver.Connector, error) {
+func newOracleConnector(driverInstance driver.Driver, cfg *naming.ParsedConfig, drvConfig *oracleconfig.OracleDriverConfig, connCreator ConnCreator, connInstantiatorFactory ConnInstantiatorFactory) (driver.Connector, error) {
 	if connCreator == nil || connInstantiatorFactory == nil {
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	return &connector{
+		driver:                  driverInstance,
 		config:                  cfg,
 		connectorConfig:         drvConfig,
 		connCreator:             connCreator,
