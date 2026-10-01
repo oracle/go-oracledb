@@ -61,6 +61,18 @@ func TestErrorUnknownCode(t *testing.T) {
 	}
 }
 
+// TestNotCurrentTransactionMessage verifies that a stale transaction handle is
+// described separately from a connection with no active transaction.
+func TestNotCurrentTransactionMessage(t *testing.T) {
+	t.Parallel()
+	ms := NewLocalizationService(language.AmericanEnglish)
+	err := ms.LocalizeError(NewOracleError(oracleErrors.NotCurrentTransaction, nil, nil)).(oracleErrors.SQLError)
+	want := fmt.Sprintf("%s - transaction is not the current transaction", oracleErrors.NotCurrentTransaction)
+	if err.Error() != want {
+		t.Fatalf("unexpected error message %q, want %q", err.Error(), want)
+	}
+}
+
 // tests basic 3113 error message format
 func TestErrorBasic3113(t *testing.T) {
 	t.Parallel()

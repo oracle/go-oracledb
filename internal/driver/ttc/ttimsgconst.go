@@ -208,10 +208,13 @@ const (
 	/* back to what it was for the logon call */
 	owewnivc = 0x04 // null values not used in an
 	oerwcper = 0x20 // Pkg/proc created with - /* Where; set by parse */
-	// TtiEocEct : elapsed call time follows
-	TtiEocEct = 0x08
-	// TtiEocfDropWhenReturned indicates this connection is affected by a planned-down
-	TtiEocfDropWhenReturned common.UB4 = 0x00000800
+
+	ttiEocFRo               common.UB4 = 0x00000001 // ttiEocFRo: transaction is read only as of last call
+	ttiEocCur               common.UB4 = 0x00000002 // ttiEocCur: currently in a txn
+	ttiEocDon               common.UB4 = 0x00000004 // ttiEocDon: commit/rollback done
+	ttiEocEct               common.UB4 = 0x00000008 // TtiEocEct: elapsed call time follows
+	ttiEocTTi               common.UB4 = 0x00000400 // ttiEocTTi:  Transaction intention
+	ttiEocfDropWhenReturned common.UB4 = 0x00000800 // TtiEocfDropWhenReturned indicates this connection is affected by a planned-down
 
 	// Piggyback/session property key for elastic pool LDR flag
 	al8kwPdbElasticPoolLdrStr = "AL8KW_PDB_ELASTIC_POOL_LDR"

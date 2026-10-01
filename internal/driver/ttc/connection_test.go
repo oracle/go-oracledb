@@ -56,6 +56,8 @@ func init() {
 	message.SetString(language.French, string(oracleErrors.StatementExecutionFailed), "echec factice de preparation de %s: %s.")
 }
 
+// TestConnection_ParseTimeZoneRejectsMalformedValues verifies valid timezone
+// offsets are accepted and malformed offsets return an error.
 func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -100,6 +102,8 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 	}
 }
 
+// TestNewConnectionReturnsServerTimezoneError verifies that connection setup
+// reports a server timezone initialization failure.
 func TestNewConnectionReturnsServerTimezoneError(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
@@ -125,6 +129,8 @@ func TestNewConnectionReturnsServerTimezoneError(t *testing.T) {
 	}
 }
 
+// TestConnection_ExecContext_LocalizesError verifies that ExecContext returns
+// errors localized to the connection's language.
 func TestConnection_ExecContext_LocalizesError(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
@@ -150,6 +156,8 @@ func TestConnection_ExecContext_LocalizesError(t *testing.T) {
 	}
 }
 
+// TestConnection_QueryContext_LocalizesError verifies that QueryContext returns
+// errors localized to the connection's language.
 func TestConnection_QueryContext_LocalizesError(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
@@ -175,6 +183,8 @@ func TestConnection_QueryContext_LocalizesError(t *testing.T) {
 	}
 }
 
+// TestConnection_LocalizationStaysBoundToEachShelf verifies that localization
+// services remain isolated between connection shelves.
 func TestConnection_LocalizationStaysBoundToEachShelf(t *testing.T) {
 	t.Parallel()
 	newConn := func(lang language.Tag) *connection {
@@ -214,6 +224,8 @@ func TestConnection_LocalizationStaysBoundToEachShelf(t *testing.T) {
 	}
 }
 
+// TestConnection_InvalidateOnOEROrSTA verifies that OER and STA status messages
+// invalidate a connection when the server requests it.
 func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
@@ -278,10 +290,61 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 			if !ok {
 				t.Fatal("Message should implement connectionStatusReceiver")
 			}
-			if connection._isValid != !connectionStatus.isBeingDrainned() {
-				t.Fatalf("isValid should be %t, but was %t", !connectionStatus.isBeingDrainned(), connection._isValid)
+			if connection._isValid != !connectionStatus.isBeingDrained() {
+				t.Fatalf("isValid should be %t, but was %t", !connectionStatus.isBeingDrained(), connection._isValid)
 			}
 		})
+	}
+}
+
+// TestConnection_EndOfCallStatusUpdatesTransactionState verifies that the
+// transaction state is changed only when reported by the server.
+func TestConnection_EndOfCallStatusUpdatesTransactionState(t *testing.T) {
+	t.Parallel()
+
+	connection := &connection{_isValid: true, shelf: newShelf[driverCommon.MessageType]()}
+	inactiveMessage := &tTIoer{
+		_supportsEndOfCallStatus: true,
+		eocStatus:                &endOfCallStatus{},
+	}
+	if _, err := connection._handleEndOfCallStatus(inactiveMessage, nil); err != nil {
+		t.Fatalf("inactive end-of-call status failed: %v", err)
+	}
+	if connection._transactionState != inactive {
+		t.Fatalf("transaction state = %v, want inactive", connection._transactionState)
+	}
+
+	activeMessage := &tTIoer{
+		_supportsEndOfCallStatus: true,
+		eocStatus: &endOfCallStatus{
+			endOfCallStatusFlags: ttiEocCur,
+		},
+	}
+	if _, err := connection._handleEndOfCallStatus(activeMessage, nil); err != nil {
+		t.Fatalf("active end-of-call status failed: %v", err)
+	}
+	if connection._transactionState != active {
+		t.Fatalf("transaction state = %v, want active", connection._transactionState)
+	}
+
+	transaction := newTransaction(connection, context.Background())
+	connection.shelf.registerTransaction(transaction)
+	if transaction.transactionState != transactionStartedClient {
+		t.Fatalf("standard transaction state = %v, want client started", transaction.transactionState)
+	}
+	if _, err := connection._handleEndOfCallStatus(activeMessage, nil); err != nil {
+		t.Fatalf("active end-of-call status for standard transaction failed: %v", err)
+	}
+	if transaction.transactionState != transactionStartedServer {
+		t.Fatalf("standard transaction state = %v, want server started", transaction.transactionState)
+	}
+
+	transaction.transactionState = transactionEndedClient
+	if _, err := connection._handleEndOfCallStatus(inactiveMessage, nil); err != nil {
+		t.Fatalf("inactive end-of-call status for standard transaction failed: %v", err)
+	}
+	if transaction.transactionState != transactionEndedServer {
+		t.Fatalf("standard transaction state = %v, want server ended", transaction.transactionState)
 	}
 }
 
@@ -439,6 +502,7 @@ func (m *connInvalidationMsg) GetMsgCode() driverCommon.MessageType { return m.m
 func (m *connInvalidationMsg) UnMarshalFrom(_ context.Context, _ driverCommon.Marshaller) error {
 	return nil
 }
-func (m *connInvalidationMsg) isBeingDrainned() bool {
+func (m *connInvalidationMsg) isBeingDrained() bool {
 	return m.connectionShouldBeDropped
 }
+func (m *connInvalidationMsg) transactionState() endOfCallStatusTransactionState { return unknown }

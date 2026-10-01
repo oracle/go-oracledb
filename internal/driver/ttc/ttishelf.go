@@ -61,6 +61,14 @@ type ttiShelfUser interface {
 // by triggering the break/reset protocol
 type StmtCancellationFunction func(ctx context.Context) error
 
+// StatementMapItem stores a weak reference to an opened statement and records
+// whether the statement was created while a transaction was active on the
+// connection.
+type StatementMapItem struct {
+	stmt                 weak.Pointer[Statement]
+	belongsToTransaction bool
+}
+
 // ttiShelf wraps common.Shelf with TTC-specific registries.
 // In addition to the base Shelf, it maintains a codecFactory that selects
 // encoders/decoders/OAC makers for the negotiated TTC protocol version.
@@ -68,8 +76,8 @@ type ttiShelf[T any] struct {
 	*common.Shelf[T]
 	codecFactory             codecFactory
 	_providerRegistry        internalCommon.Registry[providers.Provider]
-	_statements              map[*Statement]weak.Pointer[Statement]
-	_currentTransaction      *transaction
+	_statements              map[*Statement]StatementMapItem
+	_currentTransaction      oracleTx
 	_cancelExecutionFunction StmtCancellationFunction
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
@@ -84,7 +92,7 @@ func newShelf[T any]() *ttiShelf[T] {
 	return &ttiShelf[T]{
 		Shelf:              base,
 		codecFactory:       nil,
-		_statements:        make(map[*Statement]weak.Pointer[Statement]),
+		_statements:        make(map[*Statement]StatementMapItem),
 		_eventService:      newEventService(),
 		_validatorRegistry: internalCommon.NewRegistry[stateValidator](),
 	}
@@ -118,62 +126,99 @@ func (s *ttiShelf[T]) getProviderRegistry() internalCommon.Registry[providers.Pr
 	return s._providerRegistry
 }
 
-// GetStatements gets all opened statements
+// GetStatements gets all opened statements.
 //
-//	 parameters:
-//	   - drain : if true, open statement list is also drained out of the shelf
-//		returns a slice of statements
+// Parameters:
+//   - drain: if true, the open statement list is also drained from the shelf.
+//
+// Returns:
+//   - a slice containing all statements that are still alive.
 func (s *ttiShelf[T]) GetStatements(drain bool) []*Statement {
-	ss := make([]*Statement, len(s._statements))
-	var i = 0
-	for v := range maps.Values(s._statements) {
-		if v.Value() != nil {
-			ss[i] = v.Value()
-			i++
+	ss := make([]*Statement, 0, len(s._statements))
+	for item := range maps.Values(s._statements) {
+		if statement := item.stmt.Value(); statement != nil {
+			ss = append(ss, statement)
 		}
 	}
 	if drain {
 		clear(s._statements)
 	}
-	return ss[:i]
+	return ss
 }
 
-// AddStatement adds a statement to this shelf
-// parameter:
+// GetTransactionStatements gets all statements created while a transaction
+// was active on the connection.
 //
-//	statement the statement to be added
+// Parameters:
+//   - drain: if true, transaction-owned statements are also removed from the
+//     shelf. Statements that do not belong to a transaction remain registered.
+//
+// Returns:
+//   - a slice containing all matching statements that are still alive.
+func (s *ttiShelf[T]) GetTransactionStatements(drain bool) []*Statement {
+	ss := make([]*Statement, 0, len(s._statements))
+	for statement, item := range s._statements {
+		if !item.belongsToTransaction {
+			continue
+		}
+		if stmt := item.stmt.Value(); stmt != nil {
+			ss = append(ss, stmt)
+		}
+		if drain {
+			delete(s._statements, statement)
+		}
+	}
+	return ss
+}
+
+// AddStatement adds a statement to this shelf. The statement is marked as
+// transaction-owned when a transaction is active on the connection at the
+// time it is registered.
+//
+// Parameters:
+//   - statement: the statement to be added.
 func (s *ttiShelf[T]) AddStatement(statement *Statement) {
-	s._statements[statement] = weak.Make(statement)
+	s._statements[statement] = StatementMapItem{
+		stmt:                 weak.Make(statement),
+		belongsToTransaction: s.isInTransaction(),
+	}
 }
 
-// RemoveStatement removes a statement from this shelf
-// parameter:
+// RemoveStatement removes a statement from this shelf.
 //
-//	statement the statement to be removed
+// Parameters:
+//   - statement: the statement to be removed.
 func (s *ttiShelf[T]) RemoveStatement(statement *Statement) {
 	delete(s._statements, statement)
 }
 
-// isInTransaction returns true if a transaction is in progress, otherwise false
+// isInTransaction reports whether a transaction is in progress.
+//
+// Returns:
+//   - bool: True if a transaction is registered; otherwise false.
 func (s *ttiShelf[T]) isInTransaction() bool {
 	return (s._currentTransaction != nil)
 }
 
-// registerTransaction registeres the current transaction
+// registerTransaction registers the current transaction.
 //
 // Parameters:
-//   - t: the transaction
-func (s *ttiShelf[T]) registerTransaction(t *transaction) {
+//   - t: Transaction to register.
+func (s *ttiShelf[T]) registerTransaction(t oracleTx) {
 	s._currentTransaction = t
 }
 
-// unregisterTransaction unregisters the current transaction
+// unregisterTransaction unregisters the current transaction.
 func (s *ttiShelf[T]) unregisterTransaction() {
+	internalCommon.Odl.Debug("Transaction unregistered")
 	s._currentTransaction = nil
 }
 
-// getTransaction returns the current transaction
-func (s *ttiShelf[T]) getTransaction() *transaction {
+// getTransaction returns the current transaction.
+//
+// Returns:
+//   - oracleTx: Current transaction, or nil if none is registered.
+func (s *ttiShelf[T]) getTransaction() oracleTx {
 	return s._currentTransaction
 }
 

@@ -60,7 +60,7 @@ func (c *connection) Close() error {
 	common.Odl.Debug("Closing connection")
 	// Create a context with timeout, this context will prevent this action from
 	// blocking indefinitely
-	ctx, cancel := context.WithTimeout(context.Background(), _connCloseTimeout)
+	ctx, cancel := context.WithTimeout(common.BackgroundContext, _connCloseTimeout)
 	defer cancel()
 
 	common.Odl.Debug("Closing statements")
@@ -89,7 +89,7 @@ func (c *connection) Close() error {
 
 	// Mark the connection as closed. This is done even if an error occurs.
 	c._isClosed = true
-	c.shelf.getEventService().post(connectionClosedEvent)
+	c.shelf.getEventService().post(connectionClosedEvent, nil)
 
 	// Check if closing connection returned error and return error to caller
 	if ttcCloseErr != nil {

@@ -337,3 +337,44 @@ func TestTTIShelf_StatementDrain(t *testing.T) {
 		t.Fatalf("statements in the shelf should not have been drained")
 	}
 }
+
+// TestTTIShelf_TransactionStatements verifies that statement ownership is
+// captured when a statement is registered and that draining transaction-owned
+// statements leaves other statements on the shelf.
+func TestTTIShelf_TransactionStatements(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[driverCommon.MessageType]()
+	sessCtx := driverCommon.NewSessionContext()
+
+	nonTransactionStatement, err := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")
+	if err != nil {
+		t.Fatalf("failed to create non-transaction statement: %v", err)
+	}
+
+	shelf.registerTransaction(newTransaction(&connection{shelf: shelf}, context.Background()))
+	transactionStatement, err := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")
+	if err != nil {
+		t.Fatalf("failed to create transaction statement: %v", err)
+	}
+
+	transactionStatements := shelf.GetTransactionStatements(false)
+	if len(transactionStatements) != 1 || transactionStatements[0] != transactionStatement {
+		t.Fatalf("expected only the transaction statement, got %v", transactionStatements)
+	}
+
+	allStatements := shelf.GetStatements(false)
+	if len(allStatements) != 2 {
+		t.Fatalf("expected two statements, got %v", allStatements)
+	}
+
+	drainedStatements := shelf.GetTransactionStatements(true)
+	if len(drainedStatements) != 1 || drainedStatements[0] != transactionStatement {
+		t.Fatalf("expected the transaction statement to be drained, got %v", drainedStatements)
+	}
+
+	remainingStatements := shelf.GetStatements(false)
+	if len(remainingStatements) != 1 || remainingStatements[0] != nonTransactionStatement {
+		t.Fatalf("expected the non-transaction statement to remain, got %v", remainingStatements)
+	}
+}

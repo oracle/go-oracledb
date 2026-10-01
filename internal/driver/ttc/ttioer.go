@@ -104,6 +104,10 @@ type tTIoer struct {
 	eocStatus *endOfCallStatus
 }
 
+// String returns a human-readable representation of the TTIOER message.
+//
+// Returns:
+//   - string: Formatted TTIOER state.
 func (e tTIoer) String() string {
 	return fmt.Sprintf("TTIoer {endToEndECIDSequenceNumber: [%v], callNumber: [%v], retCode: [%v], oerrcd2: [%v], errorMsg: [%v]}",
 		e.endToEndECIDSequenceNumber,
@@ -119,13 +123,35 @@ type endOfCallStatus struct {
 	elapsedTime driverCommon.UB8
 	// connectionShouldBeDropped indicates this connection is affected by a
 	// planned-down
-	connectionShouldBeDropped bool
+	endOfCallStatusFlags driverCommon.UB4
 }
 
+// String returns a human-readable representation of end-of-call status.
+//
+// Returns:
+//   - string: Formatted end-of-call status.
 func (e *endOfCallStatus) String() string {
 	return fmt.Sprintf("endOfCallStatus {elapsedTime: [%v], connectionShouldBeDropped: [%v]}",
 		e.elapsedTime,
-		e.connectionShouldBeDropped)
+		e.connectionShouldBeDropped())
+}
+
+// connectionShouldBeDropped reports whether the end-of-call status requests
+// that the connection be removed from the pool.
+//
+// Returns:
+//   - bool: True when the planned-down flag is set.
+func (e *endOfCallStatus) connectionShouldBeDropped() bool {
+	return e.endOfCallStatusFlags&ttiEocfDropWhenReturned != 0
+}
+
+// inTransaction reports whether the end-of-call status indicates an active
+// transaction on the server.
+//
+// Returns:
+//   - bool: True if the server reports an active transaction.
+func (e *endOfCallStatus) inTransaction() bool {
+	return e.endOfCallStatusFlags&ttiEocCur != 0
 }
 
 // newTTIoer creates a new instance of tTIoer.
@@ -479,18 +505,27 @@ func (o *tTIoer) _unmarshalWarning(ctx context.Context, mar driverCommon.Marshal
 	return nil
 }
 
+// unmarshalEndOfCallStatus decodes the end-of-call status flags and elapsed
+// time from a TTC response.
+//
+// Parameters:
+//   - ctx: Context used during deserialization.
+//   - mar: Marshaller supplying the encoded status.
+//
+// Returns:
+//   - *endOfCallStatus: Decoded end-of-call status.
+//   - error: Error if the status cannot be deserialized.
 func unmarshalEndOfCallStatus(ctx context.Context, mar driverCommon.Marshaller) (*endOfCallStatus, error) {
-	var ucaeocs driverCommon.UB4
 	var err error
-	retVal := &endOfCallStatus{connectionShouldBeDropped: false, elapsedTime: 0}
-	if ucaeocs, err = mar.UnmarshalUB4(ctx); err != nil {
+	retVal := &endOfCallStatus{elapsedTime: 0}
+	if retVal.endOfCallStatusFlags, err = mar.UnmarshalUB4(ctx); err != nil {
 		common.Odl.Error("unmarshalEndOfCallStatus: ucaeocs unmarshal failed",
 			"error", err,
 		)
 		return nil, common.NewOracleError(oracleErrors.FailUnmarshal, err, "EndOfCallStatus")
 	}
 
-	if (ucaeocs & TtiEocEct) != 0 {
+	if (retVal.endOfCallStatusFlags & ttiEocEct) != 0 {
 		var elapsedTime driverCommon.UB8
 		if elapsedTime, err = mar.UnmarshalUB8(ctx); err != nil {
 			common.Odl.Error("unmarshalEndOfCallStatus: elapsedTime unmarshal failed",
@@ -502,24 +537,44 @@ func unmarshalEndOfCallStatus(ctx context.Context, mar driverCommon.Marshaller) 
 		common.Odl.Debug("tTIoer.UnMarshalFrom: EOCS ", "Elapsed time", elapsedTime)
 	}
 
-	// server sends this bit to indicate that connection is affected by planned down
-	if (ucaeocs & TtiEocfDropWhenReturned) != 0 {
-		common.Odl.Debug("TTIoer.UnMarshalFrom: EOCS got in-band planned down bit, mark connection for close")
-		retVal.connectionShouldBeDropped = true
-		// TODO: set connection to be closed when returned to pool
-	}
 	return retVal, nil
 }
 
-// SetEocsCap sets End Of Call Status capability
+// setSupportsEndOfCallStatus enables or disables end-of-call status support.
+//
+// Parameters:
+//   - supportsEndOfCallStatus: Whether end-of-call status is supported.
+//
+// Returns:
+//   - None. The capability is updated in place.
 func (o *tTIoer) setSupportsEndOfCallStatus(supportsEndOfCallStatus bool) {
 	o._supportsEndOfCallStatus = supportsEndOfCallStatus
 }
 
-// isBeingDrainned returns true if the connection should be dropped
+// isBeingDrained returns true if the connection should be dropped
 // due to a planned-down, otherwise false
-func (o *tTIoer) isBeingDrainned() bool {
-	return o._supportsEndOfCallStatus && o.eocStatus != nil && o.eocStatus.connectionShouldBeDropped
+//
+// Returns:
+//   - bool: Whether the connection should be dropped.
+func (o *tTIoer) isBeingDrained() bool {
+	return o._supportsEndOfCallStatus && o.eocStatus != nil && o.eocStatus.connectionShouldBeDropped()
+}
+
+// transactionState returns the End-of-Call transaction status reported by the
+// server.
+//
+// Returns:
+//   - endOfCallStatusTransactionState: the status reported by the server, or
+//     unknown when no status was reported
+func (o *tTIoer) transactionState() endOfCallStatusTransactionState {
+	if o.eocStatus == nil {
+		return unknown
+	}
+	if o.eocStatus.inTransaction() {
+		return active
+	} else {
+		return inactive
+	}
 }
 
 // getError return nil if the tTIoer does not represent an error, otherwise and

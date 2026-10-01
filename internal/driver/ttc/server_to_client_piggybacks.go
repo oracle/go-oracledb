@@ -46,6 +46,10 @@ import (
 
 // registerServerToClientPiggybacks registers server to client piggyback messages
 // callback functions
+//
+// Parameters:
+//   - shelf: TTC shelf whose message streamer receives the callback.
+//   - sessionContext: Session context updated by the callback.
 func registerServerToClientPiggybacks(shelf *ttiShelf[driverCommon.MessageType], sessionContext *driverCommon.SessionContext) {
 	messageStreamer := shelf.GetMessageStreamer().(MessageStreamerInterface)
 	sessionUpdater := &serverToClientPiggybackUpdater{
@@ -62,7 +66,15 @@ type serverToClientPiggybackUpdater struct {
 	sessionCtx *driverCommon.SessionContext
 }
 
-// handleServerToClientPiggyback handles server to client piggyback messages.
+// handleServerToClientPiggyback handles server-to-client piggyback messages.
+//
+// Parameters:
+//   - msg: Piggyback message to process.
+//   - e: Error returned while unmarshalling the message.
+//
+// Returns:
+//   - bool: Whether the message should remain in the queue.
+//   - error: Error if the message is not a supported server-to-client function.
 func (sessionUpdater serverToClientPiggybackUpdater) handleServerToClientPiggyback(msg driverCommon.Message[driverCommon.MessageType], e error) (bool, error) {
 	function, ok := msg.(driverCommon.Function)
 	if !ok {
@@ -78,7 +90,16 @@ func (sessionUpdater serverToClientPiggybackUpdater) handleServerToClientPiggyba
 
 }
 
-// updateSessionProperties handles OCSSYNC message. Updates session properties.
+// updateSessionProperties handles an OCSSYNC message and updates session
+// properties.
+//
+// Parameters:
+//   - msg: OCSSYNC message containing session properties.
+//   - e: Error returned while unmarshalling the message.
+//
+// Returns:
+//   - bool: False because the message should not remain in the queue.
+//   - error: The unmarshalling error, if any.
 func (sessionUpdater serverToClientPiggybackUpdater) updateSessionProperties(msg driverCommon.Message[driverCommon.MessageType], e error) (bool, error) {
 	if e != nil {
 		return false, e
@@ -86,7 +107,9 @@ func (sessionUpdater serverToClientPiggybackUpdater) updateSessionProperties(msg
 
 	ttiSPFOCSSync, _ := msg.(*ttiSPFOCSSync)
 
-	sessionUpdater.sessionCtx.UpdateSessionProperties(ttiSPFOCSSync.getKeyValueArr())
+	properties := ttiSPFOCSSync.getKeyValueArr()
+	sessionUpdater.sessionCtx.UpdateSessionProperties(properties)
+	sessionUpdater.shelf.getEventService().post(sessionPropertiesUpdateEvent, propertiesEventData{properties: properties})
 
 	return false, nil
 }
