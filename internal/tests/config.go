@@ -40,9 +40,11 @@ package tests
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Version stores a database version as three numeric parts.
@@ -86,6 +88,7 @@ type TestConfig struct {
 	ConfigName      string  `json:"config_name"`
 	DatabaseVersion Version `json:"database_version"`
 	Enabled         bool
+	Stress          *StressConfig `json:"stress,omitempty"`
 
 	Driver struct {
 		Name string
@@ -119,6 +122,87 @@ type TestConfig struct {
 	}
 }
 
+// StressConfig is optional so existing database configurations remain valid.
+type StressConfig struct {
+	ResourceRetention   *ResourceRetentionConfig   `json:"resource_retention,omitempty"`
+	ConnectionLifecycle *ConnectionLifecycleConfig `json:"connection_lifecycle,omitempty"`
+}
+
+// ConnectionLifecycleConfig describes one manual direct-connection stress run.
+// Each worker performs the same number of complete connect/query/close cycles.
+type ConnectionLifecycleConfig struct {
+	Workers         int    `json:"workers"`
+	CyclesPerWorker int    `json:"cycles_per_worker"`
+	Timeout         string `json:"timeout"`
+}
+
+func (c ConnectionLifecycleConfig) Validate() error {
+	if c.Workers <= 0 {
+		return fmt.Errorf("workers must be positive")
+	}
+	if c.CyclesPerWorker <= 0 {
+		return fmt.Errorf("cycles_per_worker must be positive")
+	}
+	if c.Workers > math.MaxInt/c.CyclesPerWorker {
+		return fmt.Errorf("workers multiplied by cycles_per_worker overflows int")
+	}
+	if duration, err := time.ParseDuration(c.Timeout); err != nil || duration <= 0 {
+		return fmt.Errorf("timeout must be a positive Go duration, got %q", c.Timeout)
+	}
+	return nil
+}
+
+// ResourceRetentionConfig describes one manual concurrent SELECT workload.
+// Workload fields are required when this section is supplied. Omitting the
+// optional memory target leaves the current Go-runtime setting unchanged.
+// A supplied target is soft, not a hard process-memory cap.
+type ResourceRetentionConfig struct {
+	Workers            int    `json:"workers"`
+	TotalOperations    int    `json:"total_operations"`
+	MaxOpenConnections int    `json:"max_open_connections"`
+	Timeout            string `json:"timeout"`
+	MemoryLimitMiB     *int64 `json:"memory_limit_mib,omitempty"`
+}
+
+func (c ResourceRetentionConfig) Validate() error {
+	if c.Workers <= 0 {
+		return fmt.Errorf("workers must be positive")
+	}
+	if c.TotalOperations < c.Workers {
+		return fmt.Errorf("total_operations must be at least workers")
+	}
+	if c.MaxOpenConnections <= 0 || c.MaxOpenConnections > c.Workers {
+		return fmt.Errorf("max_open_connections must be positive and no greater than workers")
+	}
+	if duration, err := time.ParseDuration(c.Timeout); err != nil || duration <= 0 {
+		return fmt.Errorf("timeout must be a positive Go duration, got %q", c.Timeout)
+	}
+	if c.MemoryLimitMiB != nil && (*c.MemoryLimitMiB <= 0 || *c.MemoryLimitMiB > math.MaxInt64/(1<<20)) {
+		return fmt.Errorf("memory_limit_mib must be positive and fit in int64 bytes")
+	}
+	return nil
+}
+
+func (c *StressConfig) clone() *StressConfig {
+	if c == nil {
+		return nil
+	}
+	copy := *c
+	if c.ResourceRetention != nil {
+		retention := *c.ResourceRetention
+		if retention.MemoryLimitMiB != nil {
+			limit := *retention.MemoryLimitMiB
+			retention.MemoryLimitMiB = &limit
+		}
+		copy.ResourceRetention = &retention
+	}
+	if c.ConnectionLifecycle != nil {
+		lifecycle := *c.ConnectionLifecycle
+		copy.ConnectionLifecycle = &lifecycle
+	}
+	return &copy
+}
+
 func assignStringIfNeeded(dst *string, src string) {
 	if len(strings.TrimSpace(src)) > 0 {
 		*dst = src
@@ -147,11 +231,26 @@ func (t *TestConfig) Clone() *TestConfig {
 	newOne.Credentials.LogonMode = t.Credentials.LogonMode
 
 	newOne.Security = t.Security
+	newOne.Stress = t.Stress.clone()
 
 	return newOne
 }
 
 func (t *TestConfig) MergeWith(from *TestConfig) {
+	// Merge stress workloads independently so overriding one profile does not
+	// silently discard another. Clone to avoid aliasing source configuration.
+	if from.Stress != nil && (from.Stress.ResourceRetention != nil || from.Stress.ConnectionLifecycle != nil) {
+		copied := from.Stress.clone()
+		if t.Stress == nil {
+			t.Stress = &StressConfig{}
+		}
+		if copied.ResourceRetention != nil {
+			t.Stress.ResourceRetention = copied.ResourceRetention
+		}
+		if copied.ConnectionLifecycle != nil {
+			t.Stress.ConnectionLifecycle = copied.ConnectionLifecycle
+		}
+	}
 	assignStringIfNeeded(&(t.Driver.Name), from.Driver.Name)
 
 	assignStringIfNeeded(&(t.Database.ServiceName), from.Database.ServiceName)
@@ -280,6 +379,18 @@ func NewTestingEnvironment(fileName string) (TestingEnvironment, error) {
 	decoder := json.NewDecoder(f)
 	if err := decoder.Decode(&driverConfigs); err != nil {
 		return TestingEnvironment{}, fmt.Errorf("unable to read configuration %s: %w", fileName, err)
+	}
+	for _, config := range driverConfigs {
+		if config.Stress != nil && config.Stress.ResourceRetention != nil {
+			if err := config.Stress.ResourceRetention.Validate(); err != nil {
+				return TestingEnvironment{}, fmt.Errorf("configuration %q stress.resource_retention: %w", config.ConfigName, err)
+			}
+		}
+		if config.Stress != nil && config.Stress.ConnectionLifecycle != nil {
+			if err := config.Stress.ConnectionLifecycle.Validate(); err != nil {
+				return TestingEnvironment{}, fmt.Errorf("configuration %q stress.connection_lifecycle: %w", config.ConfigName, err)
+			}
+		}
 	}
 
 	return TestingEnvironment{driverConfigs: driverConfigs}, nil
