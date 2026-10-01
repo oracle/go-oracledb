@@ -178,6 +178,9 @@ const (
 	InvalidIdentifier ErrorCode = "OGD-00162"
 	// NetworkInternalError indicates an unexpected network-driver state.
 	NetworkInternalError ErrorCode = "OGD-00163"
+	// ImplicitResultMessageCreationFailed indicates that the driver could not
+	// create the TTC message used to decode implicit results.
+	ImplicitResultMessageCreationFailed ErrorCode = "OGD-00169"
 
 	// Driver Internal Error
 	InternalError ErrorCode = "OGD-00062"

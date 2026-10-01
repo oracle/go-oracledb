@@ -56,6 +56,7 @@ func initMessagesFr() {
 	message.SetString(language.French, string(oracleErrors.InsufficientPrivilege), "privilèges insuffisants")
 	message.SetString(language.French, string(oracleErrors.InvalidTableName), "nom de table invalide")
 	message.SetString(language.French, string(oracleErrors.InvalidIdentifier), "identifiant SQL invalide")
+	message.SetString(language.French, string(oracleErrors.ImplicitResultMessageCreationFailed), "échec de création du message de résultat implicite")
 	message.SetString(language.French, string(oracleErrors.MissingReadPrivilege), "privilège READ manquant")
 	message.SetString(language.French, string(oracleErrors.MissingLocalizationService), "service de localisation manquant sur la shelf")
 }

@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -53,9 +54,65 @@ func dummyEncoderA(driver.Value) (common.B1Array, error) { return nil, nil }
 
 func dummyEncoderB(driver.Value) (common.B1Array, error) { return common.B1Array{1, 2, 3}, nil }
 
-var dummyDecoderA = newTypeDecoder(func(columnContext, common.B1Array) (driver.Value, error) { return "A", nil }, nil)
+var dummyDecoderA = newTypeDecoder(func(columnContext, any) (driver.Value, error) { return "A", nil }, nil)
 
-var dummyDecoderB = newTypeDecoder(func(columnContext, common.B1Array) (driver.Value, error) { return "B", nil }, nil)
+var dummyDecoderB = newTypeDecoder(func(columnContext, any) (driver.Value, error) { return "B", nil }, nil)
+
+// TestIsNullRXDValue verifies the unified RXD NULL representations used by
+// scalar and REF CURSOR column decoding.
+func TestIsNullRXDValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value any
+		want  bool
+	}{
+		{name: "absent value", value: nil, want: true},
+		{name: "nil scalar payload", value: common.B1Array(nil), want: true},
+		{name: "empty scalar payload", value: common.B1Array{}, want: true},
+		{name: "scalar payload", value: common.B1Array{1}, want: false},
+		{name: "protocol value", value: newTTCRows(nil), want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isNullRXDValue(test.value); got != test.want {
+				t.Fatalf("isNullRXDValue(%#v) = %t, want %t", test.value, got, test.want)
+			}
+		})
+	}
+}
+
+// TestTypeDecoder_NullRXDValueSkipsDecoder verifies that decoder wrappers
+// return nil without invoking datatype-specific decoding for SQL NULL.
+func TestTypeDecoder_NullRXDValueSkipsDecoder(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	decoder := newTypeDecoder(func(_ columnContext, value any) (driver.Value, error) {
+		calls++
+		return value, nil
+	}, nil)
+
+	for _, value := range []any{nil, common.B1Array(nil), common.B1Array{}} {
+		got, err := decoder.decodeToType(columnContext{}, value)
+		if err != nil || got != nil {
+			t.Fatalf("decode NULL value = (%#v, %v), want (nil, nil)", got, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("decoder calls for NULL values = %d, want 0", calls)
+	}
+
+	got, err := decoder.decodeToType(columnContext{}, common.B1Array{1})
+	if err != nil || !reflect.DeepEqual(got, common.B1Array{1}) {
+		t.Fatalf("decode non-NULL value = (%#v, %v), want (%#v, nil)", got, err, common.B1Array{1})
+	}
+	if calls != 1 {
+		t.Fatalf("decoder calls for non-NULL value = %d, want 1", calls)
+	}
+}
 
 var dummyBindOacA = bindOacType{
 	bindOacFunc: func(common.UB4) common.Marshallable {
@@ -246,7 +303,10 @@ func TestCodecFactory_getDecoder(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			got, err := decoder.decodeToType(columnContext{}, nil)
+			// Decoder wrappers reserve nil for SQL NULL. Use a non-NULL wire value
+			// here so this test exercises registry-version selection rather than
+			// common NULL handling.
+			got, err := decoder.decodeToType(columnContext{}, common.B1Array{1})
 			if err != nil {
 				t.Fatalf("unexpected decode error: %v", err)
 			}
@@ -327,6 +387,49 @@ func TestCodecFactory_getBindOac(t *testing.T) {
 				t.Fatalf("expected dataType %d, got %d", tc.wantDataType, got.dataType)
 			}
 		})
+	}
+}
+
+// TestCodecFactory_RefCursorRegistrations verifies that REF CURSOR metadata is
+// resolved through the named decoder and bind OAC constructors registered at
+// package initialization.
+func TestCodecFactory_RefCursorRegistrations(t *testing.T) {
+	t.Parallel()
+
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	decoder, err := factory.getDecoder(DtyCur)
+	if err != nil {
+		t.Fatalf("get REF CURSOR decoder: %v", err)
+	}
+	if got, want := decoder.getScanType(columnContext{}), reflect.TypeFor[driver.Rows](); got != want {
+		t.Fatalf("REF CURSOR scan type = %v, want %v", got, want)
+	}
+	value, err := decoder.decodeToType(columnContext{}, nil)
+	if err != nil {
+		t.Fatalf("decode REF CURSOR placeholder: %v", err)
+	}
+	if value != nil {
+		t.Fatalf("REF CURSOR placeholder = %v, want nil", value)
+	}
+
+	var rows datatype.Cursor
+	normalized := normalizeBindValue(sql.Out{Dest: &rows})
+	if got, want := normalized.goType, reflect.TypeFor[datatype.Cursor](); got != want {
+		t.Fatalf("normalized REF CURSOR bind type = %v, want %v", got, want)
+	}
+	oac, err := factory.getBindOac(normalized, 0)
+	if err != nil {
+		t.Fatalf("get REF CURSOR bind OAC: %v", err)
+	}
+	refCursorOac, ok := oac.(*tTIoac)
+	if !ok {
+		t.Fatalf("REF CURSOR OAC type = %T, want *tTIoac", oac)
+	}
+	if got, want := refCursorOac.dataType, common.UB1(DtyCur); got != want {
+		t.Fatalf("REF CURSOR OAC data type = %d, want %d", got, want)
+	}
+	if got, want := refCursorOac.maxLength, common.UB4(refCursorBindMaxLength); got != want {
+		t.Fatalf("REF CURSOR OAC max length = %d, want %d", got, want)
 	}
 }
 
@@ -438,6 +541,11 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 		{
 			name:      "sql out unwraps invalid null string to nil",
 			input:     sql.Out{Dest: &sql.NullString{String: "out", Valid: false}, In: true},
+			wantIsNil: true,
+		},
+		{
+			name:      "typed nil pointer",
+			input:     (*int)(nil),
 			wantIsNil: true,
 		},
 	}

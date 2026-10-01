@@ -56,6 +56,21 @@ func TestGetQueryStatementExecutor_ReturnsSelect(t *testing.T) {
 	}
 }
 
+// TestGetQueryStatementExecutor_ReturnsRefCursor verifies that the internal
+// refcursor query is routed to the no-round-trip rows executor.
+func TestGetQueryStatementExecutor_ReturnsRefCursor(t *testing.T) {
+	t.Parallel()
+
+	q, err := newQualifiedSQLStatement("refcursor")
+	if err != nil {
+		t.Fatalf("newQualifiedSQLStatement: %v", err)
+	}
+	executor := getQueryStatementExecutorFor(q)
+	if _, ok := executor.(*refCursorRowsExecutor); !ok {
+		t.Fatalf("getQueryStatementExecutorFor(refcursor) returned %T, want *refCursorRowsExecutor", executor)
+	}
+}
+
 // verifies SQL classification maps to the correct executor type (DML/PLSQL/Others).
 // Expectation: each provided SQL yields an executor of the expected concrete type.
 func TestGetExecStatementExecutor_Mapping(t *testing.T) {

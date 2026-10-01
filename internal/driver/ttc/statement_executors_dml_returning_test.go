@@ -58,6 +58,7 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 // ---------------------------------------------------------------------------
@@ -419,13 +420,43 @@ func TestHandleRXDRow_AssignsDecodedValue(t *testing.T) {
 
 	// Build a fake tTIrxd carrying the wire bytes for "hello".
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{common.B1Array("hello")}
+	rxd.row = []any{common.B1Array("hello")}
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error: %v", err)
 	}
 	if dest != "hello" {
 		t.Errorf("dest: got %q, want %q", dest, "hello")
+	}
+}
+
+// TestHandleRXDRow_NullRefCursorClearsReusedDestination verifies that a NULL
+// REF CURSOR OUT value clears a destination that previously held a cursor.
+func TestHandleRXDRow_NullRefCursorClearsReusedDestination(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[common.MessageType]()
+	registerTestCodecs(shelf, 20)
+	var dest datatype.Cursor
+	if err := dest.Scan(newTTCRows(nil)); err != nil {
+		t.Fatalf("seed cursor destination: %v", err)
+	}
+
+	exec := &statementExecutorDML{
+		statementExecutorExec: statementExecutorExec{
+			statementProcessor: statementProcessor{shelf: shelf},
+		},
+	}
+	exec.outDestPtrs = []any{&dest}
+	exec.outColumnContexts = []columnContext{{Index: 0, DataType: DtyCur}}
+
+	rxd := newTTIrxd().(*tTIrxd)
+	rxd.row = []any{nil}
+	if err := exec.handleRXDRow(rxd); err != nil {
+		t.Fatalf("handleRXDRow returned error for NULL REF CURSOR: %v", err)
+	}
+	if dest.DriverRows() != nil {
+		t.Fatal("NULL REF CURSOR left the previously returned cursor in the reused destination")
 	}
 }
 
@@ -448,7 +479,7 @@ func TestHandleRXDRow_NilDestinationSkipped(t *testing.T) {
 	}
 
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{common.B1Array("ignored")}
+	rxd.row = []any{common.B1Array("ignored")}
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error for nil destination: %v", err)
@@ -479,7 +510,7 @@ func TestHandleRXDRow_MoreDestsThanReturnedValues(t *testing.T) {
 
 	// Server only returned one value.
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{common.B1Array("value1")} // only 1 element
+	rxd.row = []any{common.B1Array("value1")} // only 1 element
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error: %v", err)
@@ -514,7 +545,7 @@ func TestHandleRXDRow_NilWireValue_SkipsAssignment(t *testing.T) {
 
 	// Nil wire payload – decoder returns nil → assignment skipped.
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{nil}
+	rxd.row = []any{nil}
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error for nil wire value: %v", err)
@@ -546,7 +577,7 @@ func TestHandleRXDRow_RawBytes_AssignedToByteSlice(t *testing.T) {
 
 	payload := common.B1Array{0xDE, 0xAD, 0xBE, 0xEF}
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{payload}
+	rxd.row = []any{payload}
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error: %v", err)

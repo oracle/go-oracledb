@@ -74,13 +74,6 @@ func newTTIoer14WithEndOfCallStatusSupport() driverCommon.Message[driverCommon.M
 	}
 }
 
-// Init resets the tTIoer14 and its embedded tTIoer fields to their zero values.
-func (t *tTIoer14) init() {
-	t.tTIoer.init()
-	t.sqlCommandType = 0
-	t.checksum = 0
-}
-
 // UnMarshalFrom reads and processes error attributes from the network buffer.
 // It returns the current cursorId ID and an error if unmarshalling fails.
 func (t *tTIoer14) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {

@@ -180,6 +180,27 @@ func TestError3113InvalidLanguage(t *testing.T) {
 	}
 }
 
+// TestImplicitResultMessageErrorIsLocalized verifies the remaining implicit
+// result message-creation error has an English translation.
+func TestImplicitResultMessageErrorIsLocalized(t *testing.T) {
+	t.Parallel()
+	ms := NewLocalizationService(language.English)
+	tests := []struct {
+		code oracleErrors.ErrorCode
+		args []interface{}
+		want string
+	}{
+		{oracleErrors.ImplicitResultMessageCreationFailed, nil, "failed to create implicit result message"},
+	}
+	for _, test := range tests {
+		err := ms.LocalizeError(NewOracleError(test.code, nil, test.args...)).(oracleErrors.SQLError)
+		want := fmt.Sprintf("%s - %s", test.code, test.want)
+		if err.Error() != want {
+			t.Errorf("%s message = %q, want %q", test.code, err.Error(), want)
+		}
+	}
+}
+
 // TestNewOERMessageError tests that errors created using NewOERMessageError
 // implement the oracleErrors.SQLError interface and return then correct values for each
 // function in the interface

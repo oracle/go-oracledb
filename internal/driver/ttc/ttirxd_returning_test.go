@@ -135,6 +135,20 @@ func newDMLReturningRXD(numberOfReturningPositions int) *tTIrxd {
 // Tests
 // ---------------------------------------------------------------------------
 
+// assertRXDReturningValue verifies the byte value retained in the polymorphic
+// RXD row buffer. REF CURSOR support stores all RXD values as any, while scalar
+// RETURNING values retain their TTC B1Array representation.
+func assertRXDReturningValue(t *testing.T, value any, want []byte) {
+	t.Helper()
+	got, ok := value.(common.B1Array)
+	if !ok {
+		t.Fatalf("RETURNING value type = %T, want common.B1Array", value)
+	}
+	if !reflect.DeepEqual([]byte(got), want) {
+		t.Errorf("RETURNING value = %v, want %v", got, want)
+	}
+}
+
 // TestTTIrxd_UnMarshalFrom_Returning_SinglePosition_SingleRow verifies that
 // UnMarshalFrom with numberOfReturningPositions=1 correctly reads a single
 // returned row for that position.
@@ -153,9 +167,7 @@ func TestTTIrxd_UnMarshalFrom_Returning_SinglePosition_SingleRow(t *testing.T) {
 	if len(rxd.row) != 1 {
 		t.Fatalf("row length: got %d, want 1", len(rxd.row))
 	}
-	if !reflect.DeepEqual([]byte(rxd.row[0]), data) {
-		t.Errorf("row[0]: got %v, want %v", rxd.row[0], data)
-	}
+	assertRXDReturningValue(t, rxd.row[0], data)
 }
 
 // TestTTIrxd_UnMarshalFrom_Returning_TwoPositions_SingleRowEach verifies that
@@ -176,12 +188,8 @@ func TestTTIrxd_UnMarshalFrom_Returning_TwoPositions_SingleRowEach(t *testing.T)
 	if len(rxd.row) != 2 {
 		t.Fatalf("row length: got %d, want 2", len(rxd.row))
 	}
-	if !reflect.DeepEqual([]byte(rxd.row[0]), data0) {
-		t.Errorf("row[0]: got %v, want %v", rxd.row[0], data0)
-	}
-	if !reflect.DeepEqual([]byte(rxd.row[1]), data1) {
-		t.Errorf("row[1]: got %v, want %v", rxd.row[1], data1)
-	}
+	assertRXDReturningValue(t, rxd.row[0], data0)
+	assertRXDReturningValue(t, rxd.row[1], data1)
 }
 
 // TestTTIrxd_UnMarshalFrom_Returning_ZeroRowsForPosition verifies that when a
@@ -225,8 +233,8 @@ func TestTTIrxd_UnMarshalFrom_Returning_NullValue(t *testing.T) {
 	if len(rxd.row) != 1 {
 		t.Fatalf("row length: got %d, want 1", len(rxd.row))
 	}
-	if rxd.row[0] != nil {
-		t.Errorf("row[0] should be nil (SQL NULL), got %v", rxd.row[0])
+	if !isNullRXDValue(rxd.row[0]) {
+		t.Errorf("row[0] should be SQL NULL, got %v", rxd.row[0])
 	}
 }
 
@@ -252,9 +260,7 @@ func TestTTIrxd_UnMarshalFrom_Returning_MultipleRows(t *testing.T) {
 		t.Fatalf("row length: got %d, want 1", len(rxd.row))
 	}
 	// The second (last) iteration overwrites the first – verify the last value won.
-	if !reflect.DeepEqual([]byte(rxd.row[0]), last) {
-		t.Errorf("row[0]: got %v, want last value %v", rxd.row[0], last)
-	}
+	assertRXDReturningValue(t, rxd.row[0], last)
 }
 
 // TestTTIrxd_UnMarshalFrom_Returning_RowCountReadError verifies that an error is
@@ -354,14 +360,12 @@ func TestTTIrxd_UnMarshalFrom_Returning_ThreePositionsMixed(t *testing.T) {
 	if len(rxd.row) != 3 {
 		t.Fatalf("row length: got %d, want 3", len(rxd.row))
 	}
-	if !reflect.DeepEqual([]byte(rxd.row[0]), data0) {
-		t.Errorf("row[0]: got %v, want %v", rxd.row[0], data0)
+	assertRXDReturningValue(t, rxd.row[0], data0)
+	if !isNullRXDValue(rxd.row[1]) {
+		t.Errorf("row[1] should be SQL NULL (zero rows), got %v", rxd.row[1])
 	}
-	if rxd.row[1] != nil {
-		t.Errorf("row[1] should be nil (zero rows), got %v", rxd.row[1])
-	}
-	if rxd.row[2] != nil {
-		t.Errorf("row[2] should be nil (NULL value), got %v", rxd.row[2])
+	if !isNullRXDValue(rxd.row[2]) {
+		t.Errorf("row[2] should be SQL NULL, got %v", rxd.row[2])
 	}
 }
 
@@ -382,9 +386,11 @@ func TestTTIrxd_SetNumberofReturningArgs_SwitchesMode(t *testing.T) {
 	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
 		t.Fatalf("RETURNING mode must not require numberOfColumns; got error: %v", err)
 	}
-	if len(rxd.row) != 1 || !reflect.DeepEqual([]byte(rxd.row[0]), data) {
+	if len(rxd.row) != 1 {
 		t.Errorf("unexpected row data: got %v, want %v", rxd.row, data)
+		return
 	}
+	assertRXDReturningValue(t, rxd.row[0], data)
 }
 
 // TestTTIrxd_MarshalTo_LargeCLR verifies that MarshalTo correctly writes a large

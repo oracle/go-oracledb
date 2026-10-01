@@ -36,67 +36,43 @@
 ** SOFTWARE.
  */
 
-package oracle
+// Package datatype contains public Oracle-specific datatype helpers.
+package datatype
 
 import (
-	"context"
-	"database/sql"
 	"database/sql/driver"
-
-	"github.com/oracle/go-oracledb/v26/internal/common"
-	"github.com/oracle/go-oracledb/v26/oracle/datatype"
-	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// connectionWrapper provides Oracle specific operations for a dedicated
-// database/sql connection.
-//
-// The wrapped connection must be a connection returned by this driver.
-type connectionWrapper struct {
-	connection *sql.Conn
+// RefCursorQuery is the private statement text used to expose an already
+// fetched REF CURSOR through database/sql. Applications should use GetRows
+// rather than invoking it directly.
+const RefCursorQuery = "refcursor"
+
+// Cursor is an Oracle REF CURSOR OUT-bind value. Use
+// oracle.NewConnectionWrapper(conn).GetRows to expose it as *sql.Rows.
+type Cursor struct {
+	rows driver.Rows
 }
 
-// canBeWrapped lists the Oracle-specific operations required from the physical
-// driver connection before it can be exposed through connectionWrapper.
-type canBeWrapped interface {
-	GetRows(context.Context, driver.Rows) error
+// setDriverRows records the driver cursor decoded for this OUT bind.
+func (r *Cursor) setDriverRows(rows driver.Rows) {
+	r.rows = rows
 }
 
-// NewConnectionWrapper validates and wraps a dedicated database/sql connection
-// for Oracle specific operations.
-//
-// Parameters:
-//   - connection: Dedicated database/sql connection to wrap.
-//
-// Returns:
-//   - *connectionWrapper: Wrapper for the supplied connection.
-//   - error: Error if the underlying driver connection type is not supported.
-func NewConnectionWrapper(connection *sql.Conn) (*connectionWrapper, error) {
-	var wrapper *connectionWrapper
-	err := connection.Raw(func(c any) error {
-		_, ok := c.(canBeWrapped)
-		if !ok {
-			return common.NewOracleError(oracleErrors.InvalidConnection, nil)
-		}
-		wrapper = &connectionWrapper{connection: connection}
+// DriverRows returns the decoded driver cursor held by this OUT bind. It is
+// intended for connection-wrapper integration; applications should use
+// connectionWrapper.GetRows to obtain standard database/sql rows.
+func (r *Cursor) DriverRows() driver.Rows {
+	return r.rows
+}
+
+// Scan implements sql.Scanner for REF CURSOR OUT-bind assignment. The TTC
+// driver supplies an already-open driver.Rows value; NULL clears the cursor.
+func (r *Cursor) Scan(src any) error {
+	if src == nil {
+		r.rows = nil
 		return nil
-	})
-	return wrapper, err
-}
-
-// Fetch fetches raw on this wrapper's dedicated connection and exposes it as
-// standard database/sql rows. The wrapper must represent the same connection
-// that received the REF CURSOR OUT bind.
-func (w *connectionWrapper) Fetch(ctx context.Context, raw *datatype.Cursor) (*sql.Rows, error) {
-	rows := raw.DriverRows()
-	if rows == nil {
-		return nil, nil
 	}
-	if err := w.connection.Raw(func(c any) error {
-		fetcher, _ := c.(canBeWrapped)
-		return fetcher.GetRows(ctx, rows)
-	}); err != nil {
-		return nil, err
-	}
-	return w.connection.QueryContext(ctx, datatype.RefCursorQuery, rows)
+	r.setDriverRows(src.(driver.Rows))
+	return nil
 }

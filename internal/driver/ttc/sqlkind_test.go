@@ -41,6 +41,8 @@ package ttc
 import (
 	"strings"
 	"testing"
+
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 type kindExpect struct {
@@ -61,6 +63,7 @@ func TestClassifySQL_AllKinds(t *testing.T) {
 		{in: "call my_proc()", expect: plsql},
 		{in: "begin null; end;", expect: plsql},
 		{in: "declare x number; begin null; end;", expect: plsql},
+		{in: datatype.RefCursorQuery, expect: refcursor},
 		{in: "alter session set nls_language='AMERICAN'", expect: other},
 		{in: "truncate table t", expect: other},
 	}
@@ -115,6 +118,7 @@ func TestSqlKind_String_All(t *testing.T) {
 		{dml, "DML"},
 		{plsql, "PLSQL"},
 		{other, "OTHER"},
+		{refcursor, "REFCURSOR"},
 	}
 	for i, tc := range cases {
 		if got := tc.k.String(); got != tc.want {

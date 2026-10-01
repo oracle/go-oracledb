@@ -59,6 +59,30 @@ func Oall8Payload(lines []string) []byte {
 	return buf[11:]
 }
 
+// TestRefCursorRowsExecutor verifies that the internal refcursor statement
+// returns its supplied rows without starting a TTC round trip.
+func TestRefCursorRowsExecutor(t *testing.T) {
+	t.Parallel()
+
+	executor := newRefCursorRowsExecutor()
+	rows := newTTCRows(nil)
+	got, err := executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: rows}})
+	if err != nil {
+		t.Fatalf("QueryContext: %v", err)
+	}
+	if got != rows {
+		t.Fatalf("QueryContext rows = %p, want %p", got, rows)
+	}
+	if _, err = executor.QueryContext(context.Background(), nil, nil); err == nil {
+		t.Fatal("QueryContext with no arguments unexpectedly succeeded")
+	} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.StatementParsingInvalidArgCount) {
+		t.Fatalf("no-argument error = %v, want %s", err, oracleErrors.StatementParsingInvalidArgCount)
+	}
+	if _, err = executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: nil}}); err == nil {
+		t.Fatal("QueryContext with nil rows unexpectedly succeeded")
+	}
+}
+
 // Faulty shelf using FaultyArrayBasedDataBuffer via createMarshaller to inject read/write failures.
 func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.MessageType], *MessageStreamer) {
 	mar := createMarshaller(buf, failOn, callN)
@@ -75,6 +99,8 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 
 	msgReg := NewRegistry[common.MessageType]()
 	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	_ = msgReg.Register(TTIRXD, 0, newTTIrxd)
@@ -120,12 +146,17 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, NewOall18)
 	// OALL8 response
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
+	// OCCA queues a server cursor close after REF CURSOR rows are consumed.
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIPFN, functionType: occa}, -1, newOcca)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIPFN, functionType: occa}, 18, newOcca18)
 
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, newOexfen)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 
 	msgReg := NewRegistry[common.MessageType]()
 	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	_ = msgReg.Register(TTIRXD, 0, newTTIrxd)
@@ -147,6 +178,76 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	return shelf, streamer, buf
 }
 
+type refCursorFetchContextKey struct{}
+
+// TestConnectionGetRowsUsesCallerContext verifies that a deferred REF CURSOR
+// fetch installs the normal break/reset cancellation state for its own round
+// trip.
+func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
+	t.Parallel()
+
+	shelf, _, _ := newExecTestShelf(1024)
+	streamer := &mockStreamer{pullMsg: &mockOer{}}
+	shelf.RegisterMessageStreamer(streamer)
+	rows := newRefCursorRows(shelf, common.NewSessionContext(), 41, []columnContext{{DataType: DtyVCS}})
+	conn := &connection{shelf: shelf}
+	callerCtx := context.WithValue(context.Background(), refCursorFetchContextKey{}, "caller")
+
+	if err := conn.GetRows(callerCtx, rows); err != nil {
+		t.Fatalf("GetRows: %v", err)
+	}
+	if !streamer.pushCalled {
+		t.Fatal("deferred REF CURSOR fetch did not start a round trip")
+	}
+	if streamer.pushCtx == nil {
+		t.Fatal("REF CURSOR fetch did not receive a context")
+	}
+	if _, ok := streamer.pushCtx.Value(statementCancellationContextKey{}).(*statementCancellationState); !ok {
+		t.Fatal("REF CURSOR fetch did not use the statement cancellation context")
+	}
+	if got := streamer.pushCtx.Value(refCursorFetchContextKey{}); got != "caller" {
+		t.Fatalf("REF CURSOR fetch lost caller context value: got %v", got)
+	}
+	if err := conn.GetRows(context.Background(), rows); err != nil {
+		t.Fatalf("second GetRows: %v", err)
+	}
+	if streamer.pushedMsg.Len() != 1 {
+		t.Fatalf("REF CURSOR fetch round trips = %d, want 1", streamer.pushedMsg.Len())
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if shelf.hasRefCursor(rows) {
+		t.Fatal("closed REF CURSOR remained owned by shelf")
+	}
+}
+
+// TestConnectionGetRowsRejectsCursorFromAnotherShelf verifies that a REF
+// CURSOR cannot be fetched through a connection other than the one that
+// received its cursor object, even when both sessions use the same cursor ID.
+func TestConnectionGetRowsRejectsCursorFromAnotherShelf(t *testing.T) {
+	t.Parallel()
+
+	ownerShelf := newShelf[common.MessageType]()
+	rows := newRefCursorResultRows(newTTCRows(nil), 41)
+	rows.SetShelf(ownerShelf)
+	ownerShelf.addRefCursor(rows)
+
+	connectionShelf := newShelf[common.MessageType]()
+	localCursorWithSameID := newRefCursorResultRows(newTTCRows(nil), 41)
+	localCursorWithSameID.SetShelf(connectionShelf)
+	connectionShelf.addRefCursor(localCursorWithSameID)
+	conn := &connection{shelf: connectionShelf}
+	err := conn.GetRows(context.Background(), rows)
+	if err == nil {
+		t.Fatal("GetRows using another connection returned nil error")
+	}
+	sqlErr, ok := err.(oracleErrors.SQLError)
+	if !ok || sqlErr.ErrorCode() != string(oracleErrors.InternalError) {
+		t.Fatalf("GetRows error = %v, want %s", err, oracleErrors.InternalError)
+	}
+}
+
 func makeOall8RPAPayloadFromDump(dump []string) []byte {
 	buf, _ := ExtractBytesFromDump(dump)
 	if len(buf) <= 11 {
@@ -162,6 +263,17 @@ func makeOall8RPAPayloadFromDump(dump []string) []byte {
 type testStringScanner struct {
 	value string
 	valid bool
+}
+
+type nilScanner struct {
+	called bool
+	value  any
+}
+
+func (s *nilScanner) Scan(src any) error {
+	s.called = true
+	s.value = src
+	return nil
 }
 
 func (s *testStringScanner) Scan(src any) error {
@@ -180,7 +292,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil),
 	); err != nil {
@@ -205,7 +317,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	}
 
 	rxd := &tTIrxd{
-		row: []common.B1Array{
+		row: []any{
 			common.B1Array("ignored-wire-value"),
 		},
 	}
@@ -221,13 +333,39 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	}
 }
 
+// TestStatementExecutorExec_HandleRXDRow_ClearsRefCursorScanner verifies that
+// a NULL REF CURSOR is delivered to its Scanner so it can clear an existing
+// destination value.
+func TestStatementExecutorExec_HandleRXDRow_ClearsRefCursorScanner(t *testing.T) {
+	t.Parallel()
+
+	dest := &nilScanner{value: "previous cursor"}
+	shelf := newShelf[common.MessageType]()
+	registerTestCodecs(shelf, 20)
+	exec := &statementExecutorExec{
+		statementProcessor: statementProcessor{shelf: shelf},
+		outDestPtrs:        []any{dest},
+		outColumnContexts:  []columnContext{{DataType: DtyCur}},
+	}
+	rxd := &tTIrxd{
+		row: []any{nil},
+	}
+
+	if err := exec.handleRXDRow(rxd); err != nil {
+		t.Fatalf("handleRXDRow returned error: %v", err)
+	}
+	if !dest.called || dest.value != nil {
+		t.Fatalf("scanner = %#v, want Scan(nil)", dest)
+	}
+}
+
 func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T) {
 	t.Parallel()
 	decoderRegistry := newCodecRegistry[DtyType, *typeDecoder]()
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil),
 	); err != nil {
@@ -252,7 +390,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 	}
 
 	rxd := &tTIrxd{
-		row: []common.B1Array{
+		row: []any{
 			common.B1Array("ignored-wire-value"),
 		},
 	}

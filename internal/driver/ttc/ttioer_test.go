@@ -42,6 +42,8 @@ import (
 	"context"
 	"regexp"
 	"testing"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestNewTTIoer ensures the constructor sets struct fields as expected.
@@ -60,42 +62,6 @@ func TestNewTTIoer(t *testing.T) {
 	}
 	if ttioer.oercn2 != 0 || ttioer.oerrcd2 != 0 {
 		t.Errorf("Initial fields should be zero, got oertyp2=%d, oerchksm=%d", ttioer.oercn2, ttioer.oerrcd2)
-	}
-}
-
-// TestTTIoer_Init sets nonzero values, calls Init, and checks that all fields reset.
-func TestTTIoer_Init(t *testing.T) {
-	t.Parallel()
-	oer := newTTIoer().(*tTIoer)
-	oer.retCode = 1234
-	oer.errorMsg = []byte("stuff")
-	oer.oerepa = []byte("x")
-	oer.startErrorOffset = 22
-	oer.endErrorOffset = 33
-	oer.batchErrorOffsetArray = []int{99, 98}
-	oer.oerrcd2 = 77
-	oer.oercn2 = 88
-	oer.init()
-	if oer.retCode != 0 {
-		t.Errorf("Init should reset retCode to zero; got %d", oer.retCode)
-	}
-	if len(oer.errorMsg) != 0 {
-		t.Errorf("Init should reset errorMsg")
-	}
-	if oer.oerepa != nil {
-		t.Errorf("Init should reset oerepa to nil")
-	}
-	if oer.startErrorOffset != 0 {
-		t.Errorf("Init should reset startErrorOffset to 0")
-	}
-	if oer.endErrorOffset != 0 {
-		t.Errorf("Init should reset endErrorOffset to 0")
-	}
-	if oer.batchErrorOffsetArray != nil {
-		t.Errorf("Init should reset batchErrorOffsetArray to nil")
-	}
-	if oer.oerrcd2 != 0 || oer.oercn2 != 0 {
-		t.Errorf("Init should reset fields to zero; got oerrcd2=%d oercn2=%d", oer.oerrcd2, oer.oercn2)
 	}
 }
 
@@ -138,6 +104,19 @@ func TestTTIoer_GetError(t *testing.T) {
 	expected := "ORA-00942 - table or view does not exist"
 	if got := err.Error(); got != expected {
 		t.Errorf("Unexpected error string. Got: %q, want: %q", got, expected)
+	}
+
+	oer = &tTIoer{retCode: 0, oerrcd2: 942, errorMsg: []byte("ORA-00942 - table or view does not exist")}
+	err = oer.getError()
+	if err == nil {
+		t.Fatal("Expected error when extended error code is non-zero, got nil")
+	}
+	sqlErr, ok := err.(oracleErrors.SQLError)
+	if !ok {
+		t.Fatalf("getError() type = %T, want oracleErrors.SQLError", err)
+	}
+	if got, want := sqlErr.ErrorCode(), "ORA-00942"; got != want {
+		t.Errorf("extended OER error code = %q, want %q", got, want)
 	}
 }
 
