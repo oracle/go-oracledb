@@ -66,6 +66,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConfiguration_AssignFromMapUnknownKey", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapUnknownKey},
 	{Name: "TestConfiguration_AssignFromMap", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMap},
 	{Name: "TestConfiguration_AssignFromMapValidatedIntString", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapValidatedIntString},
+	{Name: "TestConfiguration_DefaultStatementCancelTimeout", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_DefaultStatementCancelTimeout},
+	{Name: "TestConfiguration_AssignFromMapStatementCancelTimeout", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapStatementCancelTimeout},
 	{Name: "TestConfiguration_AssignFromEnv", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnv},
 	{Name: "TestConfiguration_AssignFromEnvValidatedIntString", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnvValidatedIntString},
 	{Name: "TestConfiguration_AssignFromEmptyFlags", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEmptyFlags},

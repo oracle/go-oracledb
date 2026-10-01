@@ -61,6 +61,10 @@ type ttiShelfUser interface {
 // by triggering the break/reset protocol
 type StmtCancellationFunction func(ctx context.Context) error
 
+// connectionInvalidationFunction marks the connection as unusable after a
+// cancellation leaves the TTC stream in an uncertain state.
+type connectionInvalidationFunction func()
+
 // ttiShelf wraps common.Shelf with TTC-specific registries.
 // In addition to the base Shelf, it maintains a codecFactory that selects
 // encoders/decoders/OAC makers for the negotiated TTC protocol version.
@@ -71,6 +75,7 @@ type ttiShelf[T any] struct {
 	_statements              map[*Statement]weak.Pointer[Statement]
 	_currentTransaction      *transaction
 	_cancelExecutionFunction StmtCancellationFunction
+	_invalidateConnection    connectionInvalidationFunction
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
 	_validatorRegistry       internalCommon.Registry[stateValidator]
@@ -78,7 +83,9 @@ type ttiShelf[T any] struct {
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
 // TTC-specific registries (codecs and OAC makers) are initialized to nil and
-// can be populated via RegisterCodecs and RegisterOacs.
+// can be populated via RegisterCodecs and RegisterOacs. The shelf starts with
+// the default driver properties; connection setup replaces them with the
+// configured properties before the connection is returned to the caller.
 func newShelf[T any]() *ttiShelf[T] {
 	base := common.NewShelf[T]()
 	return &ttiShelf[T]{
@@ -188,6 +195,23 @@ func (s *ttiShelf[T]) registerCancelExecution(cancelExecutionFunction StmtCancel
 
 func (s *ttiShelf[T]) cancelExecution(ctx context.Context) error {
 	return s._cancelExecutionFunction(ctx)
+}
+
+// registerConnectionInvalidation registers the callback used to discard a
+// connection whose protocol state cannot be trusted after cancellation.
+//
+// Parameters:
+//   - invalidate: callback that marks the owning connection as invalid.
+func (s *ttiShelf[T]) registerConnectionInvalidation(invalidate connectionInvalidationFunction) {
+	s._invalidateConnection = invalidate
+}
+
+// invalidateConnection marks the owning connection as unusable when the
+// cancellation protocol does not complete cleanly.
+func (s *ttiShelf[T]) invalidateConnection() {
+	if s._invalidateConnection != nil {
+		s._invalidateConnection()
+	}
 }
 
 func (s *ttiShelf[T]) registerServerTimeZoneOffset(serverTimeZoneOffset int16) {

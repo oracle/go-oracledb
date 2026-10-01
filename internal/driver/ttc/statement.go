@@ -49,20 +49,17 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-const (
-	// The timeout for statement cancellation
-	cancelTimeout = time.Second * 10
-)
-
 // statementCancellationContextKey stores per-execution cancellation state on a
 // statement context without colliding with caller-provided context values.
 type statementCancellationContextKey struct{}
 
 // statementCancellationResult carries the timeout-bounded context created by
-// the cancellation after-function and the matching cancel function.
+// the cancellation after-function, the matching cancel function, and the
+// result of the break/reset operation.
 type statementCancellationResult struct {
 	context.Context
 	context.CancelFunc
+	err error
 }
 
 // statementCancellationState coordinates one statement execution's cancellation
@@ -373,6 +370,7 @@ func (s *Statement) Query(args []driver.Value) (driver.Rows, error) {
 func (s *Statement) createSubContextWithCancelAfterfunction(ctx context.Context) (context.Context, context.CancelFunc, func()) {
 	cancellationState := newStatementCancellationState()
 	subContext := context.WithValue(ctx, statementCancellationContextKey{}, cancellationState)
+	cancelTimeout := s.cancellationTimeout()
 
 	common.Odl.Debug("Creating cancellable sub context")
 	subContext, cancelSubContext := context.WithCancel(subContext)
@@ -395,7 +393,11 @@ func (s *Statement) createSubContextWithCancelAfterfunction(ctx context.Context)
 		}
 		common.Odl.Debug("Break-reset completed")
 		// Allow statement execution to continue
-		cancellationState.completed <- statementCancellationResult{ctx, cancel}
+		cancellationState.completed <- statementCancellationResult{
+			Context:    ctx,
+			CancelFunc: cancel,
+			err:        err,
+		}
 	})
 	var cleanupOnce sync.Once
 	cleanup := func() {
@@ -409,4 +411,13 @@ func (s *Statement) createSubContextWithCancelAfterfunction(ctx context.Context)
 	}
 	// return the subcontext, its cancel function, and after-function cleanup
 	return subContext, cancelSubContext, cleanup
+}
+
+// cancellationTimeout returns the configured timeout for statement
+// break/reset cancellation.
+//
+// Returns:
+//   - the statement cancellation timeout.
+func (s *Statement) cancellationTimeout() time.Duration {
+	return time.Duration(s.shelf.GetConnectionProperties().GetStatementCancelTimeout()) * time.Millisecond
 }

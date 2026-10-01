@@ -47,6 +47,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	drvierCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
 )
@@ -69,6 +70,58 @@ func (f queryContextFunc) QueryContext(ctx context.Context, query *qualifiedSQLS
 	return f(ctx, query, args)
 }
 
+// TestStatementCancellationTimeout verifies that statement cancellation uses
+// the configured millisecond value, including the configuration default.
+func TestStatementCancellationTimeout(t *testing.T) {
+	t.Parallel()
+	defaultProperties := oracleconfig.NewOracleDriverConfig().DriverProperties
+
+	tests := []struct {
+		name       string
+		properties *oracleconfig.OracleDriverProperties
+		want       time.Duration
+	}{
+		{
+			name:       "configuration default",
+			properties: &defaultProperties,
+			want:       10 * time.Second,
+		},
+		{
+			name: "configured milliseconds",
+			properties: &oracleconfig.OracleDriverProperties{
+				StatementCancelTimeout: 2500,
+			},
+			want: 2500 * time.Millisecond,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shelf := newShelf[drvierCommon.MessageType]()
+			if tt.properties != nil {
+				shelf.UpdateConnectionProperties(tt.properties)
+			}
+			stmt := &Statement{shelf: shelf}
+
+			if got := stmt.cancellationTimeout(); got != tt.want {
+				t.Fatalf("cancellationTimeout() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+// newStatementCancellationShelf creates a TTC shelf with the standard driver
+// properties so cancellation tests exercise the same configuration path as a
+// production connection.
+//
+// Returns:
+//   - a TTC shelf initialized with the configured statement cancellation timeout.
+func newStatementCancellationShelf() *ttiShelf[drvierCommon.MessageType] {
+	shelf := newShelf[drvierCommon.MessageType]()
+	initializeTestDriverProperties(shelf)
+	return shelf
+}
+
 // Tests cancelCurrentExecution
 // Checks that ns.CancelOperation has been called and that possible errors have
 // been treated correctly
@@ -78,7 +131,7 @@ func TestConnection_cancelCurrentExecution(t *testing.T) {
 		returnMsg: NewOall18(),
 	}
 	mockStr := &mockStreamer{}
-	shelf := newShelf[drvierCommon.MessageType]()
+	shelf := newStatementCancellationShelf()
 	shelf.RegisterMessageStreamer(mockStr)
 	shelf.RegisterMessageFactory(mockFac)
 
@@ -142,7 +195,47 @@ func TestConnection_cancelCurrentExecution(t *testing.T) {
 			if conn._isValid != !tt.wantInvalid {
 				t.Errorf("_isValid = %v, want %v", conn._isValid, !tt.wantInvalid)
 			}
+			if tt.wantInvalid {
+				if got := ns.disconnectCalls.Load(); got != 1 {
+					t.Errorf("Disconnect calls = %d, want 1", got)
+				}
+				if got := ns.disconnectFlags.Load(); got != int32(drvierCommon.NSFIMM) {
+					t.Errorf("Disconnect flags = %#x, want %#x", got, drvierCommon.NSFIMM)
+				}
+			} else if got := ns.disconnectCalls.Load(); got != 0 {
+				t.Errorf("Disconnect calls = %d, want 0", got)
+			}
 		})
+	}
+}
+
+// TestConnection_cancelCurrentExecutionClosesAfterBreakResetTimeout verifies
+// that a failed break/reset, including a timeout, invalidates the connection
+// and immediately closes its network session before returning an error.
+func TestConnection_cancelCurrentExecutionClosesAfterBreakResetTimeout(t *testing.T) {
+	t.Parallel()
+
+	shelf := newStatementCancellationShelf()
+	shelf.RegisterMessageStreamer(&mockStreamer{})
+	networkErr := context.DeadlineExceeded
+	ns := &mockNetworkSession{cancelErr: networkErr}
+	conn := newTestConnection(shelf, nil, ns)
+
+	err := conn.cancelCurrentExecution(context.Background())
+	if err == nil {
+		t.Fatal("cancelCurrentExecution returned nil, want an error")
+	}
+	if !errors.Is(err, networkErr) {
+		t.Fatalf("cancelCurrentExecution error = %v, want cause %v", err, networkErr)
+	}
+	if conn.IsValid() {
+		t.Fatal("connection remained valid after break/reset timeout")
+	}
+	if got := ns.disconnectCalls.Load(); got != 1 {
+		t.Fatalf("Disconnect calls = %d, want 1", got)
+	}
+	if got := ns.disconnectFlags.Load(); got != int32(drvierCommon.NSFIMM) {
+		t.Fatalf("Disconnect flags = %#x, want %#x", got, drvierCommon.NSFIMM)
 	}
 }
 
@@ -150,7 +243,7 @@ func TestConnection_cancelCurrentExecution(t *testing.T) {
 // releases a fired cancellation callback when execution exits early.
 func TestStatementCancellationCleanupReleasesStartedAfterFunc(t *testing.T) {
 	t.Parallel()
-	shelf := newShelf[drvierCommon.MessageType]()
+	shelf := newStatementCancellationShelf()
 	cancelCalled := make(chan struct{}, 1)
 	shelf.registerCancelExecution(func(context.Context) error {
 		cancelCalled <- struct{}{}
@@ -187,7 +280,7 @@ func TestStatementCancellationCleanupReleasesStartedAfterFunc(t *testing.T) {
 func TestStatementHandleContextCancelledRunsBreakReset(t *testing.T) {
 	t.Parallel()
 	mockStr := &mockStreamer{pullMsg: &mockOer{}}
-	shelf := newShelf[drvierCommon.MessageType]()
+	shelf := newStatementCancellationShelf()
 	shelf.RegisterMessageStreamer(mockStr)
 	cancelCalled := make(chan struct{}, 1)
 	shelf.registerCancelExecution(func(context.Context) error {
@@ -218,11 +311,131 @@ func TestStatementHandleContextCancelledRunsBreakReset(t *testing.T) {
 	}
 }
 
+// TestStatementHandleContextCancelledPropagatesBreakResetError verifies that a
+// failed break/reset is returned to the caller and does not trigger a second
+// read from an uncertain TTC stream.
+func TestStatementHandleContextCancelledPropagatesBreakResetError(t *testing.T) {
+	t.Parallel()
+
+	shelf := newStatementCancellationShelf()
+	shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{}})
+	breakResetErr := errors.New("break/reset failed")
+	shelf.registerCancelExecution(func(context.Context) error {
+		return breakResetErr
+	})
+	invalidated := false
+	shelf.registerConnectionInvalidation(func() {
+		invalidated = true
+	})
+
+	stmt := &Statement{shelf: shelf}
+	parentCtx, cancelParent := context.WithCancel(context.Background())
+	subCtx, _, cleanup := stmt.createSubContextWithCancelAfterfunction(parentCtx)
+	defer cleanup()
+	cancelParent()
+
+	msg, err := (&statementProcessor{shelf: shelf}).handleContextCancelled(subCtx)
+	if msg != nil {
+		t.Fatalf("handleContextCancelled returned message %v after break/reset failure", msg)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("handleContextCancelled error = %v, want context.Canceled", err)
+	}
+	if !errors.Is(err, breakResetErr) {
+		t.Fatalf("handleContextCancelled error = %v, want break/reset cause", err)
+	}
+	if !invalidated {
+		t.Fatal("expected connection invalidation after break/reset failure")
+	}
+}
+
+// TestStatementHandleContextCancelledInvalidatesAfterResponseReadFailure
+// verifies that a failure while reading the cancellation response invalidates
+// the connection and preserves the original cancellation error.
+func TestStatementHandleContextCancelledInvalidatesAfterResponseReadFailure(t *testing.T) {
+	t.Parallel()
+
+	responseErr := common.NewOracleError(oracleErrors.BreakPacketReceived, nil)
+	mockStr := &mockStreamer{pullErr: responseErr}
+	shelf := newStatementCancellationShelf()
+	shelf.RegisterMessageStreamer(mockStr)
+	shelf.registerCancelExecution(func(context.Context) error {
+		return nil
+	})
+	invalidated := false
+	shelf.registerConnectionInvalidation(func() {
+		invalidated = true
+	})
+
+	stmt := &Statement{shelf: shelf}
+	parentCtx, cancelParent := context.WithCancel(context.Background())
+	subCtx, _, cleanup := stmt.createSubContextWithCancelAfterfunction(parentCtx)
+	defer cleanup()
+	cancelParent()
+
+	msg, err := (&statementProcessor{shelf: shelf}).handleContextCancelled(subCtx)
+	if msg != nil {
+		t.Fatalf("handleContextCancelled returned message %v after response read failure", msg)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("handleContextCancelled error = %v, want context.Canceled", err)
+	}
+	if !errors.Is(err, responseErr) {
+		t.Fatalf("handleContextCancelled error = %v, want response read cause", err)
+	}
+	if !invalidated {
+		t.Fatal("expected connection invalidation after response read failure")
+	}
+	if !mockStr.pullCalled {
+		t.Fatal("expected cancellation response pull")
+	}
+}
+
+// TestStatementExecutorExecRunExecHandlesBreakErrorAfterCancellation verifies
+// that a break/protocol error observed after context cancellation is not
+// wrapped as a generic RunExecError.
+func TestStatementExecutorExecRunExecHandlesBreakErrorAfterCancellation(t *testing.T) {
+	t.Parallel()
+
+	responseErr := common.NewOracleError(oracleErrors.BreakPacketReceived, nil)
+	mockStr := &mockStreamer{pullErr: responseErr}
+	shelf := newStatementCancellationShelf()
+	shelf.RegisterMessageStreamer(mockStr)
+	shelf.registerCancelExecution(func(context.Context) error {
+		return nil
+	})
+	invalidated := false
+	shelf.registerConnectionInvalidation(func() {
+		invalidated = true
+	})
+
+	stmt := &Statement{shelf: shelf}
+	parentCtx, cancelParent := context.WithCancel(context.Background())
+	subCtx, _, cleanup := stmt.createSubContextWithCancelAfterfunction(parentCtx)
+	defer cleanup()
+	cancelParent()
+
+	exec := &statementExecutorExec{
+		statementProcessor: statementProcessor{shelf: shelf},
+	}
+	_, _, err := exec.runExec(subCtx, NewOall18())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("runExec error = %v, want context.Canceled", err)
+	}
+	var sqlErr oracleErrors.SQLError
+	if errors.As(err, &sqlErr) && sqlErr.ErrorCode() == string(oracleErrors.RunExecError) {
+		t.Fatalf("runExec returned generic RunExecError: %v", err)
+	}
+	if !invalidated {
+		t.Fatal("expected connection invalidation after cancellation response failure")
+	}
+}
+
 // TestStatementExecContextTransactionCancellationBeforeSetup verifies a
 // transaction cancellation cannot race an uninitialized statement cancel func.
 func TestStatementExecContextTransactionCancellationBeforeSetup(t *testing.T) {
 	t.Parallel()
-	shelf := newShelf[drvierCommon.MessageType]()
+	shelf := newStatementCancellationShelf()
 	shelf.RegisterMessageStreamer(&mockStreamer{})
 	txCtx, cancelTx := context.WithCancel(context.Background())
 	cancelTx()
@@ -260,6 +473,7 @@ func TestStatementQueryContextLocalization(t *testing.T) {
 	mockStr := &mockStreamer{}
 
 	shelf := newShelf[drvierCommon.MessageType]()
+	initializeTestDriverProperties(shelf)
 	shelf.RegisterLocalizationService(common.NewLocalizationService(language.French))
 	shelf.RegisterMessageStreamer(mockStr)
 

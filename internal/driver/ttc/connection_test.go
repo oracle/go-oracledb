@@ -103,6 +103,7 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 func TestNewConnectionReturnsServerTimezoneError(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
+	initializeTestDriverProperties(shelf)
 	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
 	shelf.RegisterMessageStreamer(&mockStreamer{
 		pullMsg: &mockOer{err: common.NewOERMessageError("ORA-12345", "timezone query failed")},

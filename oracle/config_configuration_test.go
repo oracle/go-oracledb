@@ -131,6 +131,34 @@ func TestConfiguration_AssignFromMapValidatedIntString(t *testing.T) {
 	}
 }
 
+// TestConfiguration_DefaultStatementCancelTimeout verifies that the statement
+// cancellation timeout defaults to 10000 milliseconds.
+func TestConfiguration_DefaultStatementCancelTimeout(t *testing.T) {
+	t.Parallel()
+
+	conf := NewOracleDriverConfig()
+	if got, want := conf.DriverProperties.StatementCancelTimeout, 10000; got != want {
+		t.Fatalf("default cancel timeout = %d, want %d", got, want)
+	}
+}
+
+// TestConfiguration_AssignFromMapStatementCancelTimeout verifies that the statement
+// cancellation timeout can be configured in milliseconds.
+func TestConfiguration_AssignFromMapStatementCancelTimeout(t *testing.T) {
+	t.Parallel()
+
+	conf := NewOracleDriverConfig()
+	err := conf.AssignFromMap(map[string]string{
+		"oracle.go.DriverProperties.StatementCancelTimeout": "2500",
+	})
+	if err != nil {
+		t.Fatalf("cancel timeout assignment should not raise an error: %v", err)
+	}
+	if got, want := conf.DriverProperties.StatementCancelTimeout, 2500; got != want {
+		t.Fatalf("configured cancel timeout = %d, want %d", got, want)
+	}
+}
+
 // TestConfiguration_DefaultClientLanguageIsLanguageTag checks the default
 // ClientLanguage configuration value.
 // expectations:

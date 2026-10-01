@@ -64,6 +64,7 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 	mar := createMarshaller(buf, failOn, callN)
 
 	shelf := newShelf[common.MessageType]()
+	initializeTestDriverProperties(shelf)
 	shelf.RegisterMarshaller(mar)
 
 	funcReg := NewRegistry[functionRegistryKey]()
@@ -111,6 +112,7 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	shelf := newShelf[common.MessageType]()
+	initializeTestDriverProperties(shelf)
 	shelf.RegisterMarshaller(mar)
 
 	// Local registries limited to what this test needs.
