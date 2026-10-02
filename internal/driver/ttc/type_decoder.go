@@ -46,6 +46,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype/json"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -486,29 +487,21 @@ func DecodeClob(columnContext columnContext, data driverCommon.B1Array) (driver.
 }
 
 /*
-DecodeJson decodes a TTC JSON payload into a Go string. In V1, we are requesting BLOB
-for JSON. As a result, the server sends it as utf-8 string. Hence, no decoding is
-necessary.
-
-Description:
-
-	The current JSON fetch path provides prefetched JSON data as text-compatible bytes.
-	This helper converts that payload directly into a Go string.
+DecodeJson returns the underlying JSON payload as a driver.Value.
 
 Parameters:
-  - _: Unused column metadata (present for a uniform decode function signature).
+  - columnContext: _
   - data: Raw TTC payload bytes for the JSON column.
 
 Returns:
-  - driver.Value: A Go string containing the decoded JSON document.
-  - error: Always nil.
+  - driver.Value: raw OSON bytes.
+  - error: an error if the payload is not OSON.
 
 Errors:
-  - None.
+  - None
 */
 func DecodeJson(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
-	// Default path: assume payload is UTF-8 compatible.
-	return string(data), nil
+	return []byte(data), nil
 }
 
 /*
@@ -624,7 +617,7 @@ func GetScanTypeForIntervalYearToMonthColumn(_ columnContext) reflect.Type {
 }
 
 func GetScanTypeForJsonColumn(_ columnContext) reflect.Type {
-	return reflect.TypeFor[string]()
+	return reflect.TypeOf((*json.JSON)(nil))
 }
 
 func GetScanTypeForCLOBColumn(_ columnContext) reflect.Type {
