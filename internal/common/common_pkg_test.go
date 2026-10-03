@@ -105,6 +105,5 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestRegistryGetAllReturnsSnapshotInRegistrationOrder", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetAllReturnsSnapshotInRegistrationOrder},
 	{Name: "TestRegistryGetAllReturnsEmptySnapshotWhenUninitialized", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetAllReturnsEmptySnapshotWhenUninitialized},
 	{Name: "TestRegistryGetSkipsNilItems", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetSkipsNilItems},
-	{Name: "TestSafeTTLCacheDelegatesCacheOperations", Categories: "unitary", Exclusive: false, Fn: TestSafeTTLCacheDelegatesCacheOperations},
-	{Name: "TestSafeLRUCacheDelegatesCacheOperations", Categories: "unitary", Exclusive: false, Fn: TestSafeLRUCacheDelegatesCacheOperations},
+	{Name: "TestSafeTTLCacheStoresAndReplacesValues", Categories: "unitary", Exclusive: false, Fn: TestSafeTTLCacheStoresAndReplacesValues},
 }

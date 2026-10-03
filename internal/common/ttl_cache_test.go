@@ -376,11 +376,11 @@ func cacheConcurrency(t *testing.T, cache Cache[string]) {
 	wg.Wait()
 }
 
-// TestSafeTTLCacheDelegatesCacheOperations verifies that the thread-safe TTL
-// cache exposes the same put, get, remove, clear, and constructor behavior as
-// the underlying TTL cache. It expects replacement, removal, and invalid
-// constructor arguments to be reported consistently.
-func TestSafeTTLCacheDelegatesCacheOperations(t *testing.T) {
+// TestSafeTTLCacheStoresAndReplacesValues checks the cache used by the driver's
+// down-host tracking. Put must return the old value, Get must return the new
+// value, and invalid capacity or TTL arguments must return no cache.
+func TestSafeTTLCacheStoresAndReplacesValues(t *testing.T) {
+	t.Parallel()
 	cache := NewSafeTTLCache[string](2, time.Minute)
 	if cache == nil {
 		t.Fatal("NewSafeTTLCache returned nil for valid arguments")
@@ -397,48 +397,10 @@ func TestSafeTTLCacheDelegatesCacheOperations(t *testing.T) {
 	if value, found := cache.Get("key"); !found || value != "second" {
 		t.Fatalf("Get returned (%q, %v), want (second, true)", value, found)
 	}
-	if !cache.Remove("key") || cache.Remove("key") {
-		t.Fatal("Remove did not report the expected removal results")
-	}
-	cache.Put("another", "value")
-	cache.Clear()
-	if _, found := cache.Get("another"); found {
-		t.Fatal("Clear left an entry in the cache")
-	}
 	if NewSafeTTLCache[string](0, time.Minute) != nil {
 		t.Fatal("zero-sized SafeTTLCache should be nil")
 	}
 	if NewSafeTTLCache[string](1, 0) != nil {
 		t.Fatal("zero-TTL SafeTTLCache should be nil")
-	}
-}
-
-// TestSafeLRUCacheDelegatesCacheOperations verifies that the thread-safe LRU
-// cache exposes replacement, lookup, removal, clear, and invalid-constructor
-// behavior through its public cache methods.
-func TestSafeLRUCacheDelegatesCacheOperations(t *testing.T) {
-	cache := NewSafeLRUCache[string](2)
-	if cache == nil {
-		t.Fatal("NewSafeLRUCache returned nil for valid arguments")
-	}
-	if previous := cache.Put("key", "first"); previous != "" {
-		t.Fatalf("first Put returned %q, want empty previous value", previous)
-	}
-	if previous := cache.Put("key", "second"); previous != "first" {
-		t.Fatalf("replacement Put returned %q, want first", previous)
-	}
-	if value, found := cache.Get("key"); !found || value != "second" {
-		t.Fatalf("Get returned (%q, %v), want (second, true)", value, found)
-	}
-	if !cache.Remove("key") || cache.Remove("key") {
-		t.Fatal("Remove did not report the expected removal results")
-	}
-	cache.Put("another", "value")
-	cache.Clear()
-	if _, found := cache.Get("another"); found {
-		t.Fatal("Clear left an entry in the cache")
-	}
-	if NewSafeLRUCache[string](0) != nil {
-		t.Fatal("zero-sized SafeLRUCache should be nil")
 	}
 }

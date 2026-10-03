@@ -61,7 +61,8 @@ type connectionWrapper struct {
 //
 // Returns:
 //   - *connectionWrapper: Wrapper for the supplied connection.
-//   - error: Error if the underlying driver connection type is not supported.
+//   - error: Error if the underlying driver connection type is not supported,
+//     or sql.ErrConnDone if the dedicated connection has been closed.
 func NewConnectionWrapper(connection *sql.Conn) (*connectionWrapper, error) {
 	var wrapper *connectionWrapper
 	err := connection.Raw(func(c any) error {

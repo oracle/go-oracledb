@@ -531,10 +531,10 @@ func TestParseExtendedParams_IgnoresEmptyParameters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if recognized["CONNECT_TIMEOUT"] != "10" {
+	if len(recognized) != 1 || recognized["CONNECT_TIMEOUT"] != "10" {
 		t.Errorf("expected CONNECT_TIMEOUT=10, got %q", recognized["CONNECT_TIMEOUT"])
 	}
-	if unrecognized["CUSTOM"] != "value" {
+	if len(unrecognized) != 1 || unrecognized["CUSTOM"] != "value" {
 		t.Errorf("expected CUSTOM=value, got %q", unrecognized["CUSTOM"])
 	}
 }

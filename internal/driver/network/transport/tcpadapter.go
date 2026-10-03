@@ -95,13 +95,17 @@ type ioOperationResult struct {
 	ioerr     error // error of the I/O operation
 }
 
-// Send send buffer bytes to the underlying stream
+// Send writes all bytes in buf to the connected stream.
 // parameters:
-//   - ctx : context to be used while reading
+//   - ctx : context used to cancel the write.
 //   - buf : the buffer to be sent.
 //
 // returns :
-//   - error raised during read operation
+//   - nil when all bytes have been written.
+//   - ChannelWriteFailed if the underlying write fails.
+//   - CtxTimeout if the context or configured SendTimeout expires or is canceled.
+//
+// After cancellation, Send joins the writer and resets the socket write deadline.
 func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 
 	var ctxToBeUsed context.Context
@@ -148,15 +152,21 @@ func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 	}
 }
 
-// Receive read bytes2Read byte form underlying stream
+// Receive reads bytes2Read bytes from the connected stream into buf.
 // parameters:
-//   - ctx : context to be used while reading
+//   - ctx : context used to cancel the read.
 //   - buf : the buffer to copy bytes to.
-//   - bytes2Read: number of byte sot be read
+//   - bytes2Read: non-negative number of bytes to read, no greater than len(buf).
 //
 // returns :
-//   - read bytes count
-//   - error raised during read operation
+//   - bytes2Read and nil on success; bytes beyond bytes2Read are unchanged.
+//   - zero and InvalidNetworkExpectedLength if bytes2Read exceeds len(buf).
+//   - the bytes already read and ChannelReadFailed if the stream read fails.
+//   - zero and the context cause if the context or configured RecvTimeout expires
+//     or is canceled. RecvTimeout uses a CtxTimeoutCauseError with recv-timeout as
+//     its source, the timeout in milliseconds, and the connection ID.
+//
+// After cancellation, Receive joins the reader and resets the socket read deadline.
 func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error) {
 
 	if bytes2Read > len(buf) {

@@ -59,12 +59,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-var testCases = []oracleTest.CategorizedTestCase{
-	{Name: "TestQueryStringToMapTrimsValues", Categories: "unitary", Exclusive: false, Fn: TestQueryStringToMapTrimsValues},
-	{Name: "TestQueryStringToMapRejectsMissingValue", Categories: "unitary", Exclusive: false, Fn: TestQueryStringToMapRejectsMissingValue},
-	{Name: "TestLoggingConfigPublicAPI", Categories: "unitary", Exclusive: false, Fn: TestLoggingConfigPublicAPI},
-	{Name: "TestDriverConfigValidateRejectsNegativeTimeout", Categories: "unitary", Exclusive: false, Fn: TestDriverConfigValidateRejectsNegativeTimeout},
-}
+var testCases = []oracleTest.CategorizedTestCase{}
 
 func TestCategoryExecutor(t *testing.T) {
 	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)

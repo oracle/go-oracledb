@@ -14,11 +14,14 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net"
 	"strings"
 	"testing"
 	"time"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 func TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared(t *testing.T) {
@@ -316,6 +319,72 @@ func TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse(t *testing.T) {
 	}
 	if nt.connected {
 		t.Fatal("expected connected flag to be false")
+	}
+}
+
+// TestNTTCPSClearRemovesSensitiveTLSMaterial processes a wallet with a valid
+// certificate and private key, then checks that Clear releases the adapter's
+// TLS material and removes private-key references from the retained certificates.
+// Calling Clear again must be safe. This does not claim to erase key bytes in memory.
+func TestNTTCPSClearRemovesSensitiveTLSMaterial(t *testing.T) {
+	t.Parallel()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "wallet-client"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+	wallet := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	wallet = append(wallet, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})...)
+	nt := NewNTTCPS(NTattributes{WalletContent: wallet})
+	if err := nt.processWallet(); err != nil {
+		t.Fatalf("process wallet failed: %v", err)
+	}
+	if nt.clientCert == nil || nt.clientCert.PrivateKey == nil || len(nt.clientCert.Certificate) == 0 || nt.rootCAs == nil {
+		t.Fatal("wallet processing did not populate the certificate, key, and trust store")
+	}
+	nt.config = &tls.Config{Certificates: []tls.Certificate{*nt.clientCert}, RootCAs: nt.rootCAs}
+	config := nt.config
+	configCertificate := &config.Certificates[0]
+	clientCert := nt.clientCert
+
+	nt.Clear()
+	if nt.config != nil || nt.clientCert != nil || nt.rootCAs != nil {
+		t.Fatal("Clear retained sensitive TLS state")
+	}
+	if configCertificate.PrivateKey != nil || len(config.Certificates) != 0 {
+		t.Fatal("Clear retained certificate material in the TLS config")
+	}
+	if clientCert.PrivateKey != nil || len(clientCert.Certificate) != 0 {
+		t.Fatal("Clear retained certificate material in the client certificate")
+	}
+	nt.Clear()
+}
+
+// TestNTTCPSProcessWalletRejectsUnknownPEMBlock checks that an unsupported PEM
+// block returns InvalidNetworkValue without installing certificates or a trust store.
+func TestNTTCPSProcessWalletRejectsUnknownPEMBlock(t *testing.T) {
+	t.Parallel()
+	nt := NewNTTCPS(NTattributes{WalletContent: pem.EncodeToMemory(&pem.Block{
+		Type:  "UNKNOWN",
+		Bytes: []byte("wallet data"),
+	})})
+	err := nt.processWallet()
+	var sqlErr oracleErrors.SQLError
+	if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.InvalidNetworkValue) {
+		t.Fatalf("processWallet error = %v, want %s", err, oracleErrors.InvalidNetworkValue)
+	}
+	if nt.walletProcessed || nt.rootCAs != nil || nt.clientCert != nil {
+		t.Fatal("unsupported wallet content installed TLS material or was marked processed")
 	}
 }
 

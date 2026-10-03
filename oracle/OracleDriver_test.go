@@ -42,6 +42,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -99,7 +100,8 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 
 // TestDriver_Functional_ConnectionWrapper verifies that a dedicated
 // database/sql connection opened by go-oracledb can be wrapped for Oracle
-// specific operations, and that wrapping a closed connection returns an error.
+// specific operations. The wrapper must retain that connection, and wrapping it
+// after Close must return sql.ErrConnDone and no wrapper.
 func TestDriver_Functional_ConnectionWrapper(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
@@ -116,19 +118,20 @@ func TestDriver_Functional_ConnectionWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to acquire dedicated connection: %v", err)
 	}
+	defer conn.Close()
 	wrapper, err := NewConnectionWrapper(conn)
 	if err != nil {
 		t.Fatalf("NewConnectionWrapper failed: %v", err)
 	}
-	if wrapper == nil {
-		t.Fatal("NewConnectionWrapper returned a nil wrapper")
+	if wrapper == nil || wrapper.connection != conn {
+		t.Fatal("NewConnectionWrapper did not wrap the supplied Oracle connection")
 	}
 	if err := conn.Close(); err != nil {
 		t.Fatalf("closing dedicated connection failed: %v", err)
 	}
 
-	if closedWrapper, err := NewConnectionWrapper(conn); err == nil || closedWrapper != nil {
-		t.Fatalf("NewConnectionWrapper on a closed connection returned (%v, %v), want an error and nil wrapper", closedWrapper, err)
+	if closedWrapper, err := NewConnectionWrapper(conn); !errors.Is(err, sql.ErrConnDone) || closedWrapper != nil {
+		t.Fatalf("NewConnectionWrapper on a closed connection returned (%v, %v), want nil wrapper and sql.ErrConnDone", closedWrapper, err)
 	}
 }
 

@@ -485,6 +485,7 @@ type OracleCredentials struct {
 	// LogonMode sets the administrative logon mode, such as SYSDBA or SYSOPER.
 	LogonMode string `propertyName:"logon_mode" default:"" validator:"validateLogonMode" help:"specifies the logon mode for the connection"`
 	// Password stores the database password configuration.
+	// Password is sensitive and is not included in configuration string output.
 	Password string `cliVisible:"false" sensitive:"true"`
 }
 
@@ -1006,10 +1007,11 @@ func (config *OracleDriverConfig) AssignFromMap(items map[string]string) error {
 }
 
 // QueryStringToMap converts a query string (key1=value1&key2=value2&...)
-// to a key/value map
+// to a key/value map. Keys and values are trimmed; equals signs within a value
+// are preserved. Each pair must contain an equals sign.
 // returns :
-//   - the key/valeu map
-//   - the error if parsing has failed
+//   - the key/value map and nil on success.
+//   - nil and NamingParseFailed if a pair has no equals sign.
 func QueryStringToMap(s string) (map[string]string, error) {
 	result := make(map[string]string)
 	queryParts := strings.Split(s, "&")
