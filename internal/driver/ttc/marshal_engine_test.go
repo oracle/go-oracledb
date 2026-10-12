@@ -1362,7 +1362,7 @@ func TestUnmarshalKeyValue(t *testing.T) {
 
 			dataBuffer.currentReadPosition = 0
 			returnedKeyValuePairs := newPreallocatedKeyValueList(tt.keyValuePairs.Len())
-			err = ((common.UnMarshallable)(returnedKeyValuePairs)).UnMarshalFrom(context.Background(), engine)
+			err = ((common.Unmarshallable)(returnedKeyValuePairs)).UnmarshalFrom(context.Background(), engine)
 			if err != nil {
 				t.Errorf("Error unmarshalling key value %v", err)
 			}
@@ -1606,7 +1606,7 @@ func TestUnmarshalKeyValueNoSpace(t *testing.T) {
 			dataBuffer.currentWritePosition = tt.writePosition
 			dataBuffer.currentReadPosition = 0
 			keyvalFlags := newPreallocatedKeyValueList(tt.keyValuePairs.Len())
-			err = ((common.UnMarshallable)(keyvalFlags)).UnMarshalFrom(context.Background(), engine)
+			err = ((common.Unmarshallable)(keyvalFlags)).UnmarshalFrom(context.Background(), engine)
 			if err == nil {
 				t.Errorf("UnmarshalKeyValue should have failed")
 			}
@@ -1866,9 +1866,9 @@ func TestDynamicAllocatedArrayRejectsNegativeUniversalLength(t *testing.T) {
 	}
 
 	var dalc dynamicAllocatedArray
-	err := dalc.UnMarshalFrom(context.Background(), engine)
+	err := dalc.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
-		t.Fatalf("UnMarshalFrom should have failed")
+		t.Fatalf("UnmarshalFrom should have failed")
 	}
 	checkSQLErrorCodeContains(t, err, string(oracleErrors.MarshalEngineError), "unmarshal value")
 }
@@ -2119,7 +2119,7 @@ func TestMarshalDALC(t *testing.T) {
 	dalc.MarshalTo(context.Background(), engine)
 
 	var unMarshalledDalc dynamicAllocatedArray
-	unMarshalledDalc.UnMarshalFrom(context.Background(), engine)
+	unMarshalledDalc.UnmarshalFrom(context.Background(), engine)
 
 	if len(dalc.value) != len(unMarshalledDalc.value) {
 		t.Fatalf("Invalid length expected %d, but was %d", len(dalc.value), len(unMarshalledDalc.value))

@@ -197,7 +197,7 @@ func TestTTIrxd_BvcOnFirstRow_ReturnsError(t *testing.T) {
 	rxd.setBvcState(bitset, true)
 	// This is a valid two-column payload, so only the missing previous row can reject it.
 	mar := createMarshaller([]byte{1, 'a', 1, 'b'}, 0, 0)
-	err := rxd.UnMarshalFrom(context.Background(), mar)
+	err := rxd.UnmarshalFrom(context.Background(), mar)
 	if err == nil {
 		t.Fatalf("Expected error for BVC on first row, got <nil>")
 	}
@@ -248,7 +248,7 @@ func TestTTIrxd_Setters(t *testing.T) {
 	}
 }
 
-// TestTTIrxd_UnmarshalFrom_ErrorCases exercises error handling for TTIrxd's UnMarshalFrom method.
+// TestTTIrxd_UnmarshalFrom_ErrorCases exercises error handling for TTIrxd's UnmarshalFrom method.
 // It checks for various misconfigurations and insufficient payload scenarios, ensuring correct error responses.
 // Each test case covers a different error trigger.
 func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
@@ -335,7 +335,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 			// Create the test marshaller with provided payload
 			mar := createMarshaller(tc.payload, 0, 0)
 			// Attempt to unmarshal; should error in each test case
-			err := rxd.UnMarshalFrom(context.Background(), mar)
+			err := rxd.UnmarshalFrom(context.Background(), mar)
 			if err == nil {
 				t.Fatalf("Expected error but got <nil>")
 			}
@@ -367,9 +367,9 @@ func TestTTIrxd_UnmarshalFrom(t *testing.T) {
 	rxd.setColumnContexts([]columnContext{{DataType: DtyVCS}, {DataType: DtyVCS}})
 
 	// Attempt to unmarshal: should succeed with valid data
-	err := rxd.UnMarshalFrom(context.Background(), mar)
+	err := rxd.UnmarshalFrom(context.Background(), mar)
 	if err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	// The row must contain exactly the expected number of columns
@@ -454,7 +454,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 		// Step: read message code from stream, abort if finished
 		code, err := mar.UnmarshalUB1(ctx)
 		if err != nil {
-			t.Fatalf("UnMarshal Msg Code failed: %v", err)
+			t.Fatalf("Unmarshal Msg Code failed: %v", err)
 		}
 
 		// Stop when the TTIRPA code is encountered (end of rows)
@@ -477,9 +477,9 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 			}
 			rxd.setColumnContexts(columnContexts)
 			// Step: Attempt to unmarshal row data
-			err = rxd.UnMarshalFrom(ctx, mar)
+			err = rxd.UnmarshalFrom(ctx, mar)
 			if err != nil {
-				t.Fatalf("UnMarshalFrom RXD failed: %v", err)
+				t.Fatalf("UnmarshalFrom RXD failed: %v", err)
 			}
 
 			// Compare this row's bytes to expected output
@@ -499,9 +499,9 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 			// Step: BVC - Unmarshal BVC state for next rounds
 			bvc = &tTIbvc{}
 			bvc.SetNumberOfColumns(noCols)
-			err = bvc.UnMarshalFrom(ctx, mar)
+			err = bvc.UnmarshalFrom(ctx, mar)
 			if err != nil {
-				t.Fatalf("UnMarshalFrom BVC failed: %v", err)
+				t.Fatalf("UnmarshalFrom BVC failed: %v", err)
 			}
 			// print state to terminal (debug/test visibility)
 			fmt.Printf("Row %v: BVC %v\n", rowCount, bvc.bvcColSent.String())
@@ -513,7 +513,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 	}
 }
 
-// TestTTIrxd_BvcPresentColumn_UnmarshalError verifies error propagation in UnMarshalFrom when a BVC bitset
+// TestTTIrxd_BvcPresentColumn_UnmarshalError verifies error propagation in UnmarshalFrom when a BVC bitset
 // marks a column as present (so unmarshalColumn is called) but marshalling fails (e.g. not enough data).
 func TestTTIrxd_BvcPresentColumn_UnmarshalError(t *testing.T) {
 	t.Parallel()
@@ -530,7 +530,7 @@ func TestTTIrxd_BvcPresentColumn_UnmarshalError(t *testing.T) {
 	// Payload with only length byte, not enough data (forces error in _unmarshalScalarColumn)
 	payload := []byte{5}
 	mar := createMarshaller(payload, 0, 0)
-	err := rxd.UnMarshalFrom(context.Background(), mar)
+	err := rxd.UnmarshalFrom(context.Background(), mar)
 	if err == nil {
 		t.Fatalf("Expected error for insufficient data on present column, got <nil>")
 	}
@@ -564,8 +564,8 @@ func TestTTIrxd_BvcCarriedNullKeepsLobContextAligned(t *testing.T) {
 	rxd.setBvcState(bitset, true)
 
 	mar := createMarshaller([]byte{1, 0x22}, 0, 0)
-	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	if got := len(rxd.row); got != numCols {
@@ -619,8 +619,8 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 	}
 	rxd := msg.(*tTIrxd)
 	mar := createMarshaller([]byte{1, 0x22}, 0, 0)
-	if err := rxd.UnMarshalFrom(context.Background(), mar); err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	if !reflect.DeepEqual(rxd.row[1], clobData) {

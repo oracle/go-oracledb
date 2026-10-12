@@ -244,8 +244,8 @@ func TestTTIproUnmarshalFrom_Success(t *testing.T) {
 			buf := NewArrayDataBuffer(1024)
 			buf.WriteBytesWithContext(context.Background(), tt.payload)
 			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-			unmarshallable, _ := p.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := p.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -335,8 +335,8 @@ func TestTTIproUnmarshalFrom_FailInvalidData(t *testing.T) {
 			buf := NewArrayDataBuffer(1024)
 			buf.WriteBytesWithContext(context.Background(), payload)
 			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-			unmarshallable, _ := p.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := p.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 			if err == nil {
 				t.Errorf("expected error but got none")
 				return
@@ -379,8 +379,8 @@ func TestTTIproUnmarshalFrom_FailUnmarshal(t *testing.T) {
 				FailOnReadBytesCall:  rerr.failBytesCount,
 			}
 			engine := NewNativeMarshalEngine(faulty, common.BIG_ENDIAN)
-			unmarshallable, _ := p.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := p.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 			if err == nil || !regexp.MustCompile(rerr.wantErr).MatchString(err.Error()) {
 				t.Errorf("expected error %q but got %v", rerr.wantErr, err)
 			}

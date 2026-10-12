@@ -436,7 +436,7 @@ type connInvalidationMsg struct {
 }
 
 func (m *connInvalidationMsg) GetMsgCode() driverCommon.MessageType { return m.msgType }
-func (m *connInvalidationMsg) UnMarshalFrom(_ context.Context, _ driverCommon.Marshaller) error {
+func (m *connInvalidationMsg) UnmarshalFrom(_ context.Context, _ driverCommon.Marshaller) error {
 	return nil
 }
 func (m *connInvalidationMsg) isBeingDrainned() bool {

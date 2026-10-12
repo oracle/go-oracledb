@@ -75,13 +75,13 @@ func (p *tTIiov) SetNumberOfBindPositions(numberOfBindPositions int) {
 	p.numberOfBindPositions = numberOfBindPositions
 }
 
-// UnMarshalFrom unmarshals a TTC IOV message from the network buffer.
+// UnmarshalFrom unmarshals a TTC IOV message from the network buffer.
 //
 // It first unmarshals the RXH companion message, then reads one bind-type byte
 // per bind position and records whether each position is IN and/or OUT.
-func (p *tTIiov) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (p *tTIiov) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	if p.rxh != nil {
-		if err := p.rxh.UnMarshalFrom(ctx, mar); err != nil {
+		if err := p.rxh.UnmarshalFrom(ctx, mar); err != nil {
 			return err
 		}
 		p.bindCount = p.rxh.numRequest

@@ -75,15 +75,15 @@ func (bvc *tTIbvc) SetNumberOfColumns(noOfCols driverCommon.UB4) {
 	bvc.bvcFound = false
 }
 
-// UnMarshalFrom reads a bit vector column (BVC) from the marshaller for fast fetch optimization.
+// UnmarshalFrom reads a bit vector column (BVC) from the marshaller for fast fetch optimization.
 // It reads enough bytes to account for all columns. After this call, bvc.bvcColSent is set,
 // and each column's presence can be checked with bvc.bvcColSent.Get(col).
-func (bvc *tTIbvc) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (bvc *tTIbvc) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	// Read the number of columns that will be described by the incoming BVC.
 	// Save the value so we can perform a sanity check after bitvector initialization.
 	numColsSent, err := mar.UnmarshalUB2(ctx)
 	if err != nil {
-		common.Odl.Warn("TTIbvc.UnMarshalFrom: failed to read BVC column count", "error", err)
+		common.Odl.Warn("TTIbvc.UnmarshalFrom: failed to read BVC column count", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[bvc.GetMsgCode()])
 	}
 
@@ -96,7 +96,7 @@ func (bvc *tTIbvc) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	// Efficiently read the required BVC bytes in one operation, then assign using SetBytes.
 	bvcBuf, err := mar.UnmarshalB1Array(ctx, int(nbOfUB1))
 	if err != nil {
-		common.Odl.Warn("TTIbvc.UnMarshalFrom: failed to read BVC byte array", "error", err)
+		common.Odl.Warn("TTIbvc.UnmarshalFrom: failed to read BVC byte array", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[bvc.GetMsgCode()])
 	}
 	bvc.bvcColSent.SetBytes(0, bvcBuf)
@@ -107,7 +107,7 @@ func (bvc *tTIbvc) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	// Sanity check: count set columns in bvcColSent and compare with numCols (as received in this message)
 	setCols := bvc.bvcColSent.Cardinality()
 	if setCols != int(numColsSent) {
-		common.Odl.Warn("TTIbvc.UnMarshalFrom: column count sanity check failed",
+		common.Odl.Warn("TTIbvc.UnmarshalFrom: column count sanity check failed",
 			"presence-vector has columns", setCols, "message specified columns", numColsSent)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[bvc.GetMsgCode()])
 	}

@@ -62,16 +62,16 @@ func TestTTIrxhConstructor(t *testing.T) {
 	}
 }
 
-// TestTTIrxhUnMarshalFrom_Success checks that UnMarshalFrom correctly decodes a valid payload.
+// TestTTIrxhUnmarshalFrom_Success checks that UnmarshalFrom correctly decodes a valid payload.
 // Validates rxhflags, numRequest, iterationNum, numItersThisTime, uacBufLength, rowBitVector, logicalRowId.
-func TestTTIrxhUnMarshalFrom_Success(t *testing.T) {
+func TestTTIrxhUnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	payload := makeTtirxhPayload(validTtirxhDump)
 	mar := createMarshaller(payload, 0, 0)
 	p := newTTIrxh()
 	ctx := context.Background()
-	unmarshallable, _ := p.(common.UnMarshallable)
-	err := unmarshallable.UnMarshalFrom(ctx, mar)
+	unmarshallable, _ := p.(common.Unmarshallable)
+	err := unmarshallable.UnmarshalFrom(ctx, mar)
 	if err != nil {
 		t.Errorf("unMarshalFrom failed: %v", err)
 	}
@@ -100,10 +100,10 @@ func TestTTIrxhUnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-// TestTTIrxhUnMarshalFrom_Fail checks that UnMarshalFrom correctly returns an error for simulated
+// TestTTIrxhUnmarshalFrom_Fail checks that UnmarshalFrom correctly returns an error for simulated
 // read failures at each decoding step, and that the error contains the expected message.
 // One subtest is run for each possible field in tTIrxh that can fail unmarshalling.
-func TestTTIrxhUnMarshalFrom_Fail(t *testing.T) {
+func TestTTIrxhUnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	type faultyTest struct {
 		name      string
@@ -125,8 +125,8 @@ func TestTTIrxhUnMarshalFrom_Fail(t *testing.T) {
 			ctx := context.Background()
 			mar := createMarshaller(payload, failOnReadByte, tc.failCount)
 			rxh := newTTIrxh()
-			unmarshallable, _ := rxh.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(ctx, mar)
+			unmarshallable, _ := rxh.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(ctx, mar)
 			if err == nil {
 				t.Errorf("expected error, got nil for case: %s", tc.name)
 			} else if !strings.Contains(err.Error(), "simulated read error") {
