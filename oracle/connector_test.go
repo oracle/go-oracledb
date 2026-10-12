@@ -133,6 +133,20 @@ func assertNoTokenProviderRegistered(t *testing.T, providerRegistry common.Regis
 	}
 }
 
+// TestDriver_ConnectorDriver verifies OpenConnector links the connector to
+// the driver that created it.
+func TestDriver_ConnectorDriver(t *testing.T) {
+	t.Parallel()
+	drv := NewDriver()
+	connector, err := drv.openConnector("localhost:1521/service")
+	if err != nil {
+		t.Fatalf("openConnector returned error: %v", err)
+	}
+	if got := connector.Driver(); got != drv {
+		t.Fatalf("connector Driver returned %T, want %T", got, drv)
+	}
+}
+
 // TestConnectorRegisterProviderMakesProviderAvailableToConnectionFactory
 // verifies that a provider registered on a connector is passed to the
 // connection-instantiator factory used by a later Connect call.
@@ -142,6 +156,7 @@ func TestConnectorRegisterProviderMakesProviderAvailableToConnectionFactory(t *t
 	provider := struct{ name string }{name: "registered-provider"}
 	ns := &mockConnectorNetworkSession{}
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfig(t),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
@@ -187,6 +202,7 @@ func TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails(t *testi
 	t.Parallel()
 	ns := &mockConnectorNetworkSession{}
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfig(t),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
@@ -226,6 +242,7 @@ func TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails(t *test
 	t.Parallel()
 	ns := &mockConnectorNetworkSession{}
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfig(t),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
@@ -259,6 +276,7 @@ func TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess(t *testing.T) {
 	t.Parallel()
 	ns := &mockConnectorNetworkSession{}
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfig(t),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
@@ -290,6 +308,7 @@ func TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess(t *test
 	ns := &mockConnectorNetworkSession{}
 	attempts := 0
 	connector, err := newOracleConnector(
+		nil,
 		newConnectorTestConfigWithConnectString(t, "(DESCRIPTION=(FAILOVER=ON)(LOAD_BALANCE=OFF)(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=127.0.0.1)(PORT=1521))(ADDRESS=(PROTOCOL=TCP)(HOST=127.0.0.2)(PORT=1522)))(CONNECT_DATA=(SERVICE_NAME=test)))"),
 		NewOracleDriverConfig(),
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {

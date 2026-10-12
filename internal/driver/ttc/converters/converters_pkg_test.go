@@ -136,4 +136,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestEncodeBoolean_Wires", Categories: "unitary", Exclusive: false, Fn: TestEncodeBoolean_Wires},
 	{Name: "TestDecodeBoolean_FromKnownWires", Categories: "unitary", Exclusive: false, Fn: TestDecodeBoolean_FromKnownWires},
 	{Name: "TestEncodeBinary_ReturnsSameBytes", Categories: "unitary", Exclusive: false, Fn: TestEncodeBinary_ReturnsSameBytes},
+	{Name: "TestEncodeNull", Categories: "unitary", Exclusive: false, Fn: TestEncodeNull},
+	{Name: "TestEncodeBooleanAsNumber", Categories: "unitary", Exclusive: false, Fn: TestEncodeBooleanAsNumber},
 }
