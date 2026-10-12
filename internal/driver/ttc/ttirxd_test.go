@@ -116,7 +116,7 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 
 	// Encoded bind data set before calling MarshalTo (nil, then 3-byte value)
 	val := common.B1Array{0x01, 0x02, 0x03}
-	rxd.setBindValues([]common.B1Array{nil, val})
+	rxd.setBindValues([]bindValue{newCLRBindValue(nil), newCLRBindValue(val)})
 
 	// Use ArrayBasedDataBuffer via NewMarshalEngineTest so we can inspect bytes directly
 	buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 64)
@@ -138,7 +138,7 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.setBindValues([]common.B1Array{nil})
+	rxd.setBindValues([]bindValue{newCLRBindValue(nil)})
 
 	// Fail the first WriteByteWithContext call (which writes the null indicator)
 	mar := createMarshaller(make([]byte, 8), failOnWriteByte, 1)
@@ -162,7 +162,7 @@ func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {
 func TestTTIrxd_MarshalTo_FailOnCLRDataWrite(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.setBindValues([]common.B1Array{{0xAA, 0xBB, 0xCC}})
+	rxd.setBindValues([]bindValue{newCLRBindValue(common.B1Array{0xAA, 0xBB, 0xCC})})
 
 	// First WriteBytesWithContext call should fail (after successful length byte write)
 	mar := createMarshaller(make([]byte, 8), failOnWriteBytes, 1)
