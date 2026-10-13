@@ -40,7 +40,6 @@ package oracle
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -69,8 +68,7 @@ func TestQueryNonExistentTable_NegativeCase(t *testing.T) {
 	}
 
 	// ORA-00942 (table or view does not exist)
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, string(oracleErrors.TableOrViewNotFound)) {
+	if !isExpectedError(err, oracleErrors.TableOrViewNotFound) {
 		t.Errorf("expected error to contain %s, got: %v", oracleErrors.TableOrViewNotFound, err)
 	}
 	t.Logf("correctly received error for non-existent table: %v", err)
@@ -110,8 +108,7 @@ func TestPreparedStatementNonExistentTable_NegativeCase(t *testing.T) {
 		t.Fatal("expected error when executing prepared statement on non-existent table")
 	}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, string(oracleErrors.TableOrViewNotFound)) {
+	if !isExpectedError(err, oracleErrors.TableOrViewNotFound) {
 		t.Errorf("expected error to contain %s, got: %v", oracleErrors.TableOrViewNotFound, err)
 	}
 	t.Logf("correctly received error for prepared statement execution: %v", err)
@@ -139,8 +136,7 @@ func TestSelectSpecificColumnsNonExistentTable_NegativeCase(t *testing.T) {
 		t.Fatal("expected error when selecting specific columns from non-existent table")
 	}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, string(oracleErrors.TableOrViewNotFound)) {
+	if !isExpectedError(err, oracleErrors.TableOrViewNotFound) {
 		t.Errorf("expected error to contain %s, got: %v", oracleErrors.TableOrViewNotFound, err)
 	}
 	t.Logf("correctly received error: %v", err)
@@ -168,8 +164,7 @@ func TestCountQueryNonExistentTable_NegativeCase(t *testing.T) {
 		t.Fatal("expected error when executing COUNT on non-existent table")
 	}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, string(oracleErrors.TableOrViewNotFound)) {
+	if err.(oracleErrors.SQLError).ErrorCode() != string(oracleErrors.TableOrViewNotFound) {
 		t.Errorf("expected error to contain %s, got: %v", oracleErrors.TableOrViewNotFound, err)
 	}
 	t.Logf("correctly received error for COUNT query: %v", err)
@@ -197,8 +192,7 @@ func TestJoinWithNonExistentTable_NegativeCase(t *testing.T) {
 		t.Fatal("expected error when joining with non-existent table")
 	}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, string(oracleErrors.TableOrViewNotFound)) {
+	if !isExpectedError(err, oracleErrors.TableOrViewNotFound) {
 		t.Errorf("expected error to contain %s, got: %v", oracleErrors.TableOrViewNotFound, err)
 	}
 	t.Logf("correctly received error for JOIN query: %v", err)
@@ -226,8 +220,7 @@ func TestSubqueryWithNonExistentTable_NegativeCase(t *testing.T) {
 		t.Fatal("expected error when using subquery with non-existent table")
 	}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, string(oracleErrors.TableOrViewNotFound)) {
+	if !isExpectedError(err, oracleErrors.TableOrViewNotFound) {
 		t.Errorf("expected error to contain %s, got: %v", oracleErrors.TableOrViewNotFound, err)
 	}
 	t.Logf("correctly received error for subquery: %v", err)
@@ -284,8 +277,7 @@ func TestInvalidTableNameSyntax_NegativeCase(t *testing.T) {
 	}
 
 	// syntax error (ORA-00903 invalid table name)
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, string(oracleErrors.InvalidTableName)) && !strings.Contains(errMsg, string(oracleErrors.TableOrViewNotFound)) {
+	if !isExpectedError(err, oracleErrors.InvalidTableName) && !isExpectedError(err, oracleErrors.TableOrViewNotFound) {
 		t.Errorf("expected %s or %s, got: %v", oracleErrors.InvalidTableName, oracleErrors.TableOrViewNotFound, err)
 	}
 	t.Logf("correctly received error for invalid syntax: %v", err)

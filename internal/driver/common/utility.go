@@ -40,6 +40,7 @@ package common
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"strconv"
 	"strings"
 	"time"
@@ -169,12 +170,6 @@ func GetTimeZoneBytes() []byte {
 	return _tzBytes
 }
 
-// GenerateRandomBytes fills the provided byte slice with cryptographically secure random bytes.
-func GenerateRandomBytes(bytes []byte) error {
-	_, err := rand.Read(bytes)
-	return err
-}
-
 // NibbleToHex nibble To hex.
 // This will take a nibble (4 low bits of the byte passed) and convert it into
 // the Hex value. If the value of nibble is greater than 4 bits, the
@@ -220,4 +215,29 @@ func ToBinArray(hexStr string) []byte {
 	}
 
 	return bArray
+}
+
+// GenUUID generates a UUID.
+// same as GenRandomString(16)
+func GenUUID() string {
+	return GenRandomString(16)
+}
+
+// GenRandomString generates a random base64 character string with a given length
+// parameter:
+//
+//	count : random string length
+//
+// returns:
+//   - the unique ID
+func GenRandomString(count int) string {
+	buf := GenerateRandomBytes(count)
+	return base64.StdEncoding.EncodeToString(buf)
+}
+
+// GenerateRandomBytes fills the provided byte slice with cryptographically secure random bytes.
+func GenerateRandomBytes(size int) []byte {
+	kb := make([]byte, size)
+	rand.Read(kb)
+	return kb
 }

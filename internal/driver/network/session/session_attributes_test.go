@@ -40,7 +40,6 @@ package session
 
 import (
 	"context"
-	"encoding/base64"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -50,18 +49,6 @@ import (
 	common "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 )
-
-func TestGenUUID(t *testing.T) {
-	t.Parallel()
-	uuid, err := GenUUID()
-	if err != nil {
-		t.Fatalf("GenUUID returned error: %v", err)
-	}
-	if _, err := base64.StdEncoding.DecodeString(uuid); err != nil {
-		t.Fatalf("GenUUID did not return base64 string: %v", err)
-	}
-	// Error path from rand.Read is hard to test without mocking
-}
 
 func TestNewSessionAttsDefaults(t *testing.T) {
 	t.Parallel()

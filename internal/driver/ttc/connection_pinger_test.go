@@ -49,7 +49,7 @@ import (
 func TestConnectionPinger_Ping(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
 	}
 	mockStr := &mockStreamer{
 		pullMsg: &mockOer{err: nil},
@@ -101,7 +101,7 @@ func TestConnectionPinger_Ping(t *testing.T) {
 func TestConnectionPinger_IsValid(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
 	}
 	mockStr := &mockStreamer{
 		pullMsg: &mockOer{err: nil},
@@ -130,7 +130,7 @@ func TestConnectionPinger_IsValid(t *testing.T) {
 func TestConnectionPinger_IsValidWithInband(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
 	}
 	mockStr := &mockStreamer{
 		pullMsg: &mockOer{err: fmt.Errorf("an error occurred")},

@@ -292,7 +292,7 @@ func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, 
 
 	candidates := f.funcregistry.getCandidates(key)
 	if len(candidates) == 0 {
-		common.Odl.Warn("Requested function type is not available", "message type", msgType, "function type", funcType)
+		common.Odl.Warn("Requested function type is not available", "message type", toString(msgType), "function type", funcType)
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 
 	}

@@ -276,7 +276,6 @@ func TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse(t *testing.T) 
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()
 	nt.stream = clientConn
-	nt.tcpStream = clientConn
 	nt.connected = true
 
 	if err := nt.Disconnect(); err != nil {
@@ -285,9 +284,6 @@ func TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse(t *testing.T) 
 
 	if nt.stream != nil {
 		t.Fatal("expected stream to be cleared after disconnect.")
-	}
-	if nt.tcpStream != nil {
-		t.Fatal("expected tcpStream to be cleared after disconnect")
 	}
 	if !nt.walletProcessed {
 		t.Fatal("expected processed-wallet marker to remain for redirect reuse")

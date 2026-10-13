@@ -69,7 +69,7 @@ func TestRegisterServerToClientPiggybacks(t *testing.T) {
 	data := NewArrayDataBuffer(len(buf) + 64)
 	// Add header for SPF message
 	data.WriteByteWithContext(context.Background(), byte(TTISPF))
-	data.WriteByteWithContext(context.Background(), ocssync)
+	data.WriteByteWithContext(context.Background(), byte(ocssync))
 	// Add Payload
 	if werr := data.WriteBytesWithContext(context.Background(), buf); werr != nil {
 		t.Fatalf("failed to seed buffer: %v", werr)

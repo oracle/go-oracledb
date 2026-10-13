@@ -48,7 +48,7 @@ import (
 func TestConnectionResetter_Reset(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
 	}
 	mockStr := &mockStreamer{
 		pullMsg: &mockOer{err: nil},

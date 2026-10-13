@@ -94,3 +94,13 @@ type ConnectionInstantiator interface {
 	// GetConnection returns a new connection to the database
 	GetConnection(ctx context.Context) (driver.Conn, error)
 }
+
+type DRCPUser interface {
+	// AttachToResidentPool Attach the connection to the remote pool.
+	// Errors: OGD-00180 / OGD-00181
+	AttachToResidentPool(ctx context.Context) error
+
+	// DetachFromResidentPool Detach the connection from the remote pool.
+	// Errors: OGD-00180 / OGD-00181
+	DetachFromResidentPool(ctx context.Context) error
+}

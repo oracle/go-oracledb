@@ -84,7 +84,7 @@ func TestGetConnection(t *testing.T) {
 		cancelErr: nil,
 	}
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
 	}
 	mockStr := &mockStreamer{
 		pullMsg: &mockOer{err: nil},
@@ -136,7 +136,7 @@ func TestGetConnection(t *testing.T) {
 				},
 				authenticator:       &mockAuthenticator{err: tt.authErr},
 				ns:                  ns,
-				drvierConfig:        oracleconfig,
+				driverConfig:        oracleconfig,
 				localizationService: common.NewLocalizationService(language.English),
 				newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
 					return newTestConnection(shelf, sessCtx, ns), nil
@@ -182,7 +182,7 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	ctx := context.Background()
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{err: nil}})
-	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
+	shelf.RegisterMessageFactory(&mockFactory{returnMsg: newOall18()})
 
 	oracleconfig := &oracleconfig.OracleDriverConfig{
 		DriverProperties: oracleconfig.OracleDriverProperties{},
@@ -198,7 +198,7 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 		newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
 			return newTestConnection(shelf, sessCtx, ns), nil
 		},
-		drvierConfig:        oracleconfig,
+		driverConfig:        oracleconfig,
 		localizationService: nil,
 	}
 

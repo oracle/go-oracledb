@@ -593,11 +593,7 @@ func isAllZero(data []byte) bool {
 func (o *o5Logon) generateKb(ka []byte, verifier []byte,
 	encryptedKBNibbles []byte, encryptedKANibbles []byte) ([]byte, error) {
 
-	kb := make([]byte, len(ka))
-	if err := driverCommon.GenerateRandomBytes(kb); err != nil {
-		common.Odl.Warn("Failed to generate random kb", "error", err)
-		return nil, common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
-	}
+	kb := driverCommon.GenerateRandomBytes(len(ka))
 
 	encryptedKBBytes, err := o._encryptAES(verifier, kb, o.sessKeyStr)
 	if err != nil {
@@ -620,14 +616,8 @@ func (o *o5Logon) generateKb(ka []byte, verifier []byte,
 func (o *o5Logon) generateSpeedKey(confounderLen int, verifierType int,
 	pkEncryptedNibbles []byte, pkEncryptedNibblesLength []int,
 	pk []byte) error {
-	confounder := make([]byte, confounderLen)
-
 	if verifierType == ZtvtSha512 {
-		if err := driverCommon.GenerateRandomBytes(confounder); err != nil {
-			common.Odl.Warn("Failed to generate confounder", "error", err)
-			return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
-		}
-
+		confounder := driverCommon.GenerateRandomBytes(confounderLen)
 		cfpk := append(confounder, pk...)
 
 		// Encrypt using AES with O5logon key
@@ -654,12 +644,7 @@ func (o *o5Logon) _encryptPassword(noQuotesPwdNetBytes []byte,
 		return common.NewOracleError(oracleErrors.AuthenticatorError, nil, "resource E missing")
 	}
 
-	confounder := make([]byte, confounderLen)
-	if err := driverCommon.GenerateRandomBytes(confounder); err != nil {
-		common.Odl.Warn("Failed to generate confounder", "error", err)
-		return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
-	}
-
+	confounder := driverCommon.GenerateRandomBytes(confounderLen)
 	cfpwd := append(confounder, noQuotesPwdNetBytes...)
 	jenc, err := o._encryptAESWithO5logonKey(cfpwd, o.pwdEncStr)
 	if err != nil {

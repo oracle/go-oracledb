@@ -541,7 +541,7 @@ func buildConnectData(serviceName, serverMode, instanceName string, params map[s
 	}
 
 	connectData.WriteString(")")
-
+	common.Odl.Debug("buildConnectData", "connectData", connectData.String())
 	return connectData.String()
 }
 

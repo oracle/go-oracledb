@@ -48,10 +48,10 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-// TestOSesskeyNew asserts that NewOSesskey returns a valid, non-nil object.
+// TestOSesskeyNew asserts that newOSesskey returns a valid, non-nil object.
 func TestOSesskeyNew(t *testing.T) {
 	t.Parallel()
-	sess := NewOSesskey()
+	sess := newOSesskey()
 	if sess == nil {
 		t.Fatal("NewOSesskey returned nil")
 	}
@@ -73,7 +73,7 @@ func TestOSesskeyMarshalTo_Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			sess := NewOSesskey()
+			sess := newOSesskey()
 			if tc.user != "" {
 				(sess).(*oSessionKey).setUser(common.B1Array(tc.user))
 			}
@@ -98,7 +98,7 @@ func TestOSesskeyMarshalTo_Success(t *testing.T) {
 func TestOSesskeyMarshalTo_GoldenMatch(t *testing.T) {
 	t.Parallel()
 	// Create oSesskey and initialize fields to match the golden capture
-	want := NewOSesskey18()
+	want := newOSesskey18()
 	impl := want.(*oSessionKey)
 
 	impl.logonMode = 1 // KPZ_LOGON set in buildKeyValueList; keep explicit to be safe
@@ -151,7 +151,7 @@ func TestOSesskeyMarshalTo_Fail(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			sess := NewOSesskey()
+			sess := newOSesskey()
 			// Optional: set user to ensure user path is exercised in some cases
 			(sess).(*oSessionKey).setUser(common.B1Array(tc.user))
 
@@ -177,10 +177,10 @@ func TestOSesskeyMarshalTo_Fail(t *testing.T) {
 	}
 }
 
-// TestOSesskeyRPANew asserts that NewOSesskeyRPA returns a valid, non-nil object.
+// TestOSesskeyRPANew asserts that newOSesskeyRPA returns a valid, non-nil object.
 func TestOSesskeyRPANew(t *testing.T) {
 	t.Parallel()
-	rpa := NewOSesskeyRPA()
+	rpa := newOSesskeyRPA()
 	if rpa == nil {
 		t.Fatal("NewOSesskeyRPA returned nil")
 	}
@@ -244,7 +244,7 @@ func makeOSesskeyRPASuccessPayload() []byte {
 func TestOSesskeyRPAUnMarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	payload := makeOSesskeyRPASuccessPayload()
-	rpa := NewOSesskeyRPA()
+	rpa := newOSesskeyRPA()
 	buf := NewArrayDataBuffer(1024)
 	buf.WriteBytesWithContext(context.Background(), payload)
 	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
@@ -316,7 +316,7 @@ func TestOSesskeyRPAUnMarshalFrom_Fail(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rpa := NewOSesskeyRPA()
+			rpa := newOSesskeyRPA()
 			var dataBuf *ArrayBasedDataBuffer
 			if tc.payload != nil {
 				dataBuf = NewArrayDataBuffer(4096)
@@ -406,7 +406,7 @@ func makeOSesskeyRPAInvalidCountPayload(countType, value string) []byte {
 func TestOSesskeyRPAGetters(t *testing.T) {
 	t.Parallel()
 	payload := makeOSesskeyRPASuccessPayload()
-	rpa := NewOSesskeyRPA()
+	rpa := newOSesskeyRPA()
 	buf := NewArrayDataBuffer(1024)
 	buf.WriteBytesWithContext(context.Background(), payload)
 	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
@@ -457,7 +457,7 @@ func TestOSesskeyRPAUnMarshalFrom_Golden(t *testing.T) {
 		t.Fatal("golden RPA payload decode returned empty")
 	}
 
-	rpa := NewOSesskeyRPA()
+	rpa := newOSesskeyRPA()
 	buf := NewArrayDataBuffer(4096)
 	buf.WriteBytesWithContext(context.Background(), payload)
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})

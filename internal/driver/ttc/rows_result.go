@@ -133,8 +133,8 @@ type ttcRows struct {
 func (r *ttcRows) SetShelf(shelf *ttiShelf[driverCommon.MessageType]) {
 	r.shelf = shelf
 	r.strictNullHandlingValue = true
-	if r.shelf.Shelf.GetConnectionProperties() != nil {
-		r.strictNullHandlingValue = r.shelf.Shelf.GetConnectionProperties().IsStrictNullValueHandling()
+	if r.shelf.Shelf.GetDriverConfig() != nil {
+		r.strictNullHandlingValue = r.shelf.Shelf.GetDriverConfig().DriverProperties.IsStrictNullValueHandling()
 	}
 }
 

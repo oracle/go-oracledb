@@ -44,6 +44,7 @@ import (
 	"testing"
 
 	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 func TestMain(m *testing.M) {
@@ -280,3 +281,7 @@ type TestingEnvironment = oracleTest.TestingEnvironment
 var DefaultTestConfig *TestConfig
 var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
+
+func isExpectedError(err error, expected oracleErrors.ErrorCode) bool {
+	return (err.(oracleErrors.SQLError).ErrorCode() == string(expected))
+}

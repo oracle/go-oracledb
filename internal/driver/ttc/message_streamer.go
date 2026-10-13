@@ -257,6 +257,8 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 		if isExpectedMessageType {
 			common.Odl.Fine("New message out of streamer", "Message", msg)
 			return msg, processingError
+		} else {
+			common.Odl.Debug("Parking unexpected message", "Message", msg)
 		}
 
 		// we do not keep a faulty message

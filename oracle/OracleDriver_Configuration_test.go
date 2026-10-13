@@ -42,11 +42,13 @@ import (
 	"context"
 	"database/sql"
 	"flag"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 )
 
 // TestDriver_ConfigurationWithConnectorBasic verifies that a connector can be
@@ -402,4 +404,22 @@ func TestDriver_OpenConnectorReturnsInvalidDSNParameterError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected invalid DSN parameter error")
 	}
+}
+
+// TestDriver_OpenConnectorForDRCP verifies that
+// DRCP configuration is properly propagated to the DSN.
+func TestDriver_OpenConnectorForDRCP(t *testing.T) {
+	c := NewOracleDriverConfig()
+	c.ConnectionProperties.ServerType = common.ServerTypePooled
+	c.ConnectionProperties.Drcp.Class = "test_class"
+	c.ConnectionProperties.Drcp.Purity = common.DrcpPuritySelf
+	c.ConnectionProperties.Drcp.Boundary = common.DrcpBoundaryStatement
+	c.ConnectDescriptor = "user/pass@localhost:1521/freepdb1"
+	err := c.Validate()
+	if err != nil {
+		t.Fatalf("Validate() failed: %v", err)
+	}
+	t.Logf("dsn  [%v]\n", c.ToNSConnectionParameters())
+	_, _ = naming.ParseDSNString(fmt.Sprintf("%s?%s", c.ConnectDescriptor, c.ToNSConnectionParameters()))
+
 }

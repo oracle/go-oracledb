@@ -42,6 +42,8 @@ import (
 	"context"
 	"database/sql/driver"
 	"time"
+
+	"github.com/oracle/go-oracledb/v26/internal/common"
 )
 
 // Implementation of Pinger and Validator interfaces
@@ -73,8 +75,34 @@ const (
 // Returns: true if the connection is valid otherwise false
 func (c *connection) IsValid() bool {
 
+	common.Odl.Debug("IsValid() called", "cnx", (*c).String())
 	// Check if inband notification has been received.
 	c._isValid = c._isValid && !c.ns.CheckInbandNotification()
+	if !c._isValid {
+		return false
+	}
+
+	statements := c.shelf.GetStatements(true)
+	common.Odl.Debug("closing statements", "count", len(statements))
+	for _, statement := range statements {
+		if err := statement.Close(); err != nil {
+			common.Odl.Warn("Stale statement left in connection cannot be closed", "error", err)
+			c._isValid = false
+			return c._isValid
+		}
+	}
+
+	if c._drcpState == _drcpExplicitPooling && c._drcpConnectionState == _drcpConnectionStateAttached {
+		common.Odl.Debug("Detaching from DRCP")
+		ctx, cancel := context.WithTimeout(context.Background(), _pingTimeout)
+		defer cancel()
+		err := c.DetachFromResidentPool(ctx)
+		if err != nil {
+			common.Odl.Debug("Failed to attach to the DRCP pool", "error", err)
+			c._isValid = false
+			return c._isValid
+		}
+	}
 
 	return c._isValid
 }

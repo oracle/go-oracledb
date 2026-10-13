@@ -577,7 +577,10 @@ func (m *MarshalEngine) MarshalCLR(ctx context.Context, value driverCommon.B1Arr
 //   - An error if the unmarshaling operation fails.
 func (m *MarshalEngine) UnmarshalUB1(ctx context.Context) (driverCommon.UB1, error) {
 	value, err := m._dataBuffer.ReadByteWithContext(ctx)
-	return driverCommon.UB1(value), _wrapError(err, m._numericTypeRep[UB1Index].typeName)
+	if err != nil {
+		return driverCommon.UB1(0), _wrapError(err, m._numericTypeRep[UB1Index].typeName)
+	}
+	return driverCommon.UB1(value), nil
 }
 
 // UnmarshalUB2 unmarshals a UB2 value from the data buffer, using either native

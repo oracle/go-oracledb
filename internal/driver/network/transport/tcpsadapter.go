@@ -57,7 +57,6 @@ import (
 type nttcps struct {
 	nttcp
 	config          *tls.Config
-	tcpStream       net.Conn
 	doDNMatch       bool
 	walletProcessed bool
 	clientCert      *tls.Certificate
@@ -85,7 +84,6 @@ func (nt *nttcps) Connect(ctx context.Context, address Address) error {
 	if err := nt.nttcp.Connect(ctx, address); err != nil { // Establish a TCP connection
 		return err
 	}
-	nt.tcpStream = nt.stream
 	cleanupOnError := func() {
 		nt.Clear()
 		_ = nt.Disconnect()
@@ -160,7 +158,7 @@ func (nt *nttcps) Connect(ctx context.Context, address Address) error {
 		nt.doDNMatch = true
 	}
 
-	nt.stream = tls.Client(nt.tcpStream, nt.config)
+	nt.stream = tls.Client(nt.stream, nt.config)
 
 	return nil
 }
@@ -206,7 +204,7 @@ func (nt *nttcps) verifyServerDN(cert *x509.Certificate) error {
 
 // Perform TLS Handshake to establish a TLS connection
 func (nt *nttcps) TLSReneg() {
-	nt.stream = tls.Client(nt.tcpStream, nt.config)
+	nt.stream = tls.Client(nt.stream, nt.config)
 }
 
 // Clear out sensitive data
@@ -225,9 +223,8 @@ func (nt *nttcps) Clear() {
 }
 
 func (nt *nttcps) Disconnect() error {
-	err := nt.nttcp.Disconnect()
-	nt.tcpStream = nil
-	return err
+	common.Odl.Debug("disconnecting TCPS adapter")
+	return nt.nttcp.Disconnect()
 }
 
 // Process the PEM wallet

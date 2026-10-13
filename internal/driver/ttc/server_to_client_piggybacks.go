@@ -68,25 +68,49 @@ func (sessionUpdater serverToClientPiggybackUpdater) handleServerToClientPiggyba
 	if !ok {
 		return false, common.NewOracleError(oracleErrors.SPFNotFunction, nil)
 	}
+	if e != nil {
+		return false, e
+	}
 	functionCode := function.GetFuncCode()
 	switch functionCode {
-	case driverCommon.FunctionType(ocssync):
-		return sessionUpdater.updateSessionProperties(msg, e)
+	case ocssync:
+		return sessionUpdater.updateSessionSyncProperties(msg)
+	case ocsessret:
+		return sessionUpdater.updateSessionRetProperties(msg)
+	case ocospid:
+		return sessionUpdater.updateOsPID(msg)
 	default:
 		return false, common.NewOracleError(oracleErrors.UnknownSPFFunction, nil, functionCode)
 	}
 
 }
 
-// updateSessionProperties handles OCSSYNC message. Updates session properties.
-func (sessionUpdater serverToClientPiggybackUpdater) updateSessionProperties(msg driverCommon.Message[driverCommon.MessageType], e error) (bool, error) {
-	if e != nil {
-		return false, e
-	}
+func (sessionUpdater serverToClientPiggybackUpdater) updateOsPID(msg driverCommon.Message[driverCommon.MessageType]) (bool, error) {
+	common.Odl.Debug("got updateOsPID")
+	//ttiSPFOSPID, _ := msg.(*ttiSPFOCOspid)
+	return false, nil
+}
+
+// updateSessionSyncProperties handles OCSSYNC message. Updates session properties.
+func (sessionUpdater serverToClientPiggybackUpdater) updateSessionSyncProperties(msg driverCommon.Message[driverCommon.MessageType]) (bool, error) {
+
+	common.Odl.Debug("Update session sync properties")
 
 	ttiSPFOCSSync, _ := msg.(*ttiSPFOCSSync)
 
 	sessionUpdater.sessionCtx.UpdateSessionProperties(ttiSPFOCSSync.getKeyValueArr())
+
+	return false, nil
+}
+
+// updateSessionSyncProperties handles OCSSYNC message. Updates session properties.
+func (sessionUpdater serverToClientPiggybackUpdater) updateSessionRetProperties(msg driverCommon.Message[driverCommon.MessageType]) (bool, error) {
+	ttiSPFOCSessret, _ := msg.(*ttiSPFOCSessret)
+	props := driverCommon.NewProperties[string]()
+	props.SetProperty(authSessionId, ttiSPFOCSessret.getSessretidx())
+	props.SetProperty(authSessionSerial, ttiSPFOCSessret.getSessretser())
+	common.Odl.Debug("ocsessret / session updated", authSessionId, ttiSPFOCSessret.getSessretidx(), authSessionSerial, ttiSPFOCSessret.getSessretser())
+	sessionUpdater.sessionCtx.UpdateSessionProperties(props)
 
 	return false, nil
 }

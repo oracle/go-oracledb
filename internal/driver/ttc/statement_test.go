@@ -75,7 +75,7 @@ func (f queryContextFunc) QueryContext(ctx context.Context, query *qualifiedSQLS
 func TestConnection_cancelCurrentExecution(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
 	}
 	mockStr := &mockStreamer{}
 	shelf := newShelf[drvierCommon.MessageType]()

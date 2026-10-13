@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -73,7 +74,7 @@ func TestServerError(t *testing.T) {
 		t.Skipf("setting shared on local DB may end in looping indefinitively, waiting for a fix of that test")
 
 		noHandlerCfg := TestingConfig.Clone()
-		noHandlerCfg.Database.ServerType = "shared"
+		noHandlerCfg.Database.ServerType = common.ServerTypeShared
 
 		dsn := noHandlerCfg.GetConnectionString()
 		db, err := sql.Open(noHandlerCfg.Driver.Name, dsn)

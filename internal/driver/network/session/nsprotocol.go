@@ -547,10 +547,8 @@ func (ns *networkSession) connect(ctx context.Context, address transport.Address
 		}
 	}
 }
-func ConnectToOption(ctx context.Context, option *naming.ConnectionOption) (driverCommon.NetworkSession, error) {
-	return ConnectToOptionWithConnectionID(ctx, option, "")
-}
-func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
+
+func ConnectToOption(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 	ns := newNetworkSession()
 	addressOption := option.Address
 	description := option.Description

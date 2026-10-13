@@ -59,7 +59,15 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-var testCases = []oracleTest.CategorizedTestCase{}
+var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestValidateLoggingLevel", Categories: "unitary", Exclusive: false, Fn: TestValidateLoggingLevel},
+	{Name: "TestValidateBooleanValue", Categories: "unitary", Exclusive: false, Fn: TestValidateBooleanValue},
+	{Name: "TestValidateLogonModeValue", Categories: "unitary", Exclusive: false, Fn: TestValidateLogonModeValue},
+	{Name: "TestValidateLanguage", Categories: "unitary", Exclusive: false, Fn: TestValidateLanguage},
+	{Name: "TestValidateZeroOrPositive", Categories: "unitary", Exclusive: false, Fn: TestValidateZeroOrPositive},
+	{Name: "TestValidateDRCPPurity", Categories: "unitary", Exclusive: false, Fn: TestValidateDRCPPurity},
+	{Name: "TestValidateDRCPBoundary", Categories: "unitary", Exclusive: false, Fn: TestValidateDRCPBoundary},
+}
 
 func TestCategoryExecutor(t *testing.T) {
 	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)

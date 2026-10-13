@@ -39,11 +39,7 @@
 package common
 
 import "github.com/oracle/go-oracledb/v26/internal/common"
-
-type DriverProperties interface {
-	IsStrictNullValueHandling() bool
-	GetDefaultLobPrefetchSize() int
-}
+import oracleConfig "github.com/oracle/go-oracledb/v26/oracle/config"
 
 // Capability client/server capabilities
 // used to maintain a map of capabilities enabled after negotiation
@@ -54,22 +50,22 @@ type Capability struct {
 
 // Shelf as a global storage to share driver infrastructure
 type Shelf[T any] struct {
-	marshaller           Marshaller
-	msgFactory           Factory
-	msgStmr              Streamer[T]
-	localizationService  common.LocalizationService
-	capabilities         map[string]Capability
-	connectionProperties DriverProperties // connectionProperties represents the connection properties set in dsn string
+	marshaller          Marshaller
+	msgFactory          Factory
+	msgStmr             Streamer[T]
+	localizationService common.LocalizationService
+	capabilities        map[string]Capability
+	driverConfig        *oracleConfig.OracleDriverConfig // driverConfig represents the connection properties set in dsn string
 }
 
 // NewShelf Creates a new Shelf
 func NewShelf[T any]() *Shelf[T] {
 	return &Shelf[T]{
-		marshaller:           nil,
-		msgFactory:           nil,
-		msgStmr:              nil,
-		localizationService:  nil,
-		connectionProperties: nil,
+		marshaller:          nil,
+		msgFactory:          nil,
+		msgStmr:             nil,
+		localizationService: nil,
+		driverConfig:        nil,
 	}
 }
 
@@ -113,16 +109,16 @@ func (s *Shelf[T]) RegisterCapabilities(capabilities map[string]Capability) *She
 	return s
 }
 
-// UpdateConnectionProperties adds the provided connection properties to the Shelf.
+// UpdateDriverConfig adds the provided connection properties to the Shelf.
 // Existing properties with the same keys will be overwritten by the new values.
-func (s *Shelf[T]) UpdateConnectionProperties(props DriverProperties) *Shelf[T] {
-	s.connectionProperties = props
+func (s *Shelf[T]) UpdateDriverConfig(props *oracleConfig.OracleDriverConfig) *Shelf[T] {
+	s.driverConfig = props
 	return s
 }
 
-// GetConnectionProperties retrieves the connection properties stored on the Shelf.
-func (s *Shelf[T]) GetConnectionProperties() DriverProperties {
-	return s.connectionProperties
+// GetDriverConfig retrieves the connection properties stored on the Shelf.
+func (s *Shelf[T]) GetDriverConfig() *oracleConfig.OracleDriverConfig {
+	return s.driverConfig
 }
 
 // GetMessageStreamer Retrieves the streamer previously registered or nil

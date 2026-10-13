@@ -61,4 +61,21 @@ const (
 	oExfen common.FunctionType = 78
 	// occa is the function code for close cursor/cancel,
 	occa common.FunctionType = 105
+
+	// Oracle Client side Function Codes
+	ocqcinv      common.FunctionType = 1  // Query Cache Invalidations
+	ocospid      common.FunctionType = 2  // OS PID for MTS connection
+	octrcevt     common.FunctionType = 3  // OCI trace event piggyback
+	ocsessret    common.FunctionType = 4  // Server DRCP return values for GET
+	ocssync      common.FunctionType = 5  // Session state synchronization
+	ocxsss       common.FunctionType = 6  // eXtensible security Session State Sync
+	ocltxid      common.FunctionType = 7  // LTXID
+	ocappcontctl common.FunctionType = 8  // application continuity replay context
+	ocxsss2      common.FunctionType = 9  // eXtensible security Session State Sync 2
+	osesssign    common.FunctionType = 10 // session signature sync
+	ocshrdkey    common.FunctionType = 11 // sharding key to client
+	maxOcfn      common.FunctionType = 11 // last item al
+
+	ocsessget common.FunctionType = 162
+	ocsessrls common.FunctionType = 163
 )

@@ -47,6 +47,8 @@ import (
 
 // initMessagesEn Initialises error messages for English language.
 func initMessagesEn() {
+
+	message.SetString(language.English, string(oracleErrors.UserRequestCancel), "User requested cancel of current operation")
 	// Document: No
 	// Cause:    N/A
 	// Action:   N/A
@@ -586,7 +588,7 @@ func initMessagesEn() {
 	// Document: No
 	// Cause:    An error occured during Token-based authentication
 	// Action:   Verify that the token provider returns a valid token and private key (for signed token providers)
-	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occured during token authentication")
+	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occurred during token authentication")
 
 	// Document: No
 	// Cause:    A required value could not be retrieved or was empty.
@@ -605,5 +607,16 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.ExpiredToken), "access token has expired")
 
 	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider found of the requested type")
+
+	// Document: No
+	// Cause:    DRCP is not enabled on the current connection
+	// Action:   Enable DRCP
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.DRCPNotEnabled), "DRCP is not enabled")
+	// Document: No
+	// Cause:    An operation is made on a connection which is not in the right attachment state.
+	// Action:   N/A
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.DRCPInvalidState), "Invalid DRCP state %d")
 
 }

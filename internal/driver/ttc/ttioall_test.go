@@ -67,12 +67,12 @@ func newEngine(capacity int) (*ArrayBasedDataBuffer, drvCommon.Marshaller) {
 
 func TestOall8_New_Success(t *testing.T) {
 	t.Parallel()
-	msg := NewOall18()
+	msg := newOall18()
 	if msg == nil {
 		t.Fatal("NewOall18 returned nil")
 	}
 
-	msg = NewOall()
+	msg = newOall()
 	if msg == nil {
 		t.Fatal("NewOall returned nil")
 	}
@@ -80,7 +80,7 @@ func TestOall8_New_Success(t *testing.T) {
 
 func TestOall8_GetMsgCode(t *testing.T) {
 	t.Parallel()
-	msg := NewOall18()
+	msg := newOall18()
 	if msg.GetMsgCode() != TTIFUN {
 		t.Errorf("expected TTIFUN, got %v", msg.GetMsgCode())
 	}
@@ -88,7 +88,7 @@ func TestOall8_GetMsgCode(t *testing.T) {
 
 func TestOall8_getFuncCode(t *testing.T) {
 	t.Parallel()
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	if m.GetFuncCode() != oAll8 {
 		t.Errorf("expected oAll8, got %v", m.GetFuncCode())
 	}
@@ -167,7 +167,7 @@ func makeAl8i4Select(rowsToFetch int) []drvCommon.UB4 {
 func TestOall8_MarshalTo_Drop_MatchesGolden(t *testing.T) {
 	t.Parallel()
 	// Build message
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
 	m.setCursorId(0)
 	m.setMaxLength(maxLength)
@@ -198,7 +198,7 @@ func TestOall8_MarshalTo_Create_MatchesGolden(t *testing.T) {
 	t.Parallel()
 	sql := "CREATE TABLE IF NOT EXISTS table1 (id number, name varchar2(100))"
 
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
 	m.setCursorId(0)
 	m.setMaxLength(maxLength)
@@ -229,7 +229,7 @@ func TestOall8_MarshalTo_Insert_MatchesGolden(t *testing.T) {
 	t.Parallel()
 	sql := "INSERT INTO table1 (id, name) VALUES(1, 'abc'), (2, 'xyz'), (3, 'pqr')"
 
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	// PRS|EXE|COM|NPL (no BND since SQL uses literals, not binds)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
 	m.setCursorId(0)
@@ -264,7 +264,7 @@ func TestOall8_MarshalTo_Delete_MatchesGolden(t *testing.T) {
 	t.Parallel()
 	sql := "delete from table1 where name = 'xyz'"
 
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
 	m.setCursorId(0)
 	m.setMaxLength(maxLength)
@@ -296,7 +296,7 @@ func TestOall8_MarshalTo_Select_MatchesGolden(t *testing.T) {
 	t.Parallel()
 	sql := "select * from table1"
 
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	// PRS|EXE only, no FCH. isSelect true and rowsToFetch 10 => max prefetch size, 10 rows.
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode)
 	m.setCursorId(0)
@@ -334,7 +334,7 @@ func TestOall8_MarshalTo_Select_MatchesGolden(t *testing.T) {
 
 // Builders for each statement kind
 func buildOall8DDL(sql string) *tTIOall {
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
 	m.setCursorId(0)
 	m.setMaxLength(maxLength)
@@ -345,7 +345,7 @@ func buildOall8DDL(sql string) *tTIOall {
 }
 
 func buildOall8DML(sql string) *tTIOall {
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
 	m.setCursorId(0)
 	m.setMaxLength(maxLength)
@@ -359,7 +359,7 @@ func buildOall8DML(sql string) *tTIOall {
 }
 
 func buildOall8SELECT(sql string, rowsToFetch int) *tTIOall {
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode) // (!FCH) && EXE && PRS && isSelect
 	m.setCursorId(0)
 	m.setMaxLength(maxLength)
@@ -447,7 +447,7 @@ func TestOall8_MarshalTo_Fail_DDL(t *testing.T) {
 // buildOall8WithBinds constructs an OALL8 that takes the bindValuesPresent branch:
 // (options&bindValuesPresent) != 0 && numberOfBinds > 0 && sendBindsDefinition == true.
 func buildOall8WithBinds() *tTIOall {
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode | bindValuesPresent)
 	m.setCursorId(0)
 	m.setMaxLength(maxLength)
@@ -524,7 +524,7 @@ func TestOall8_MarshalTo_Fail_BindCount(t *testing.T) {
 // buildOall8WithDefines constructs an OALL8 that takes the defineColumnsProvided branch:
 // m.defineColumns > 0 && (m.options&defineColumnsProvided) != 0.
 func buildOall8WithDefines() *tTIOall {
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode | defineColumnsProvided)
 	m.setCursorId(0)
 	m.setMaxLength(maxLength)
@@ -642,7 +642,7 @@ func TestOall8_MarshalTo_Fail_AL8I4_DataWrite(t *testing.T) {
 // ============ Empty SQL and Empty oall8Options coverage ============
 
 func buildOall8Empty() *tTIOall {
-	m := NewOall18().(*tTIOall)
+	m := newOall18().(*tTIOall)
 	// Minimal PRS|EXE path, non-SELECT, non-DML
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode)
 	m.setCursorId(0)

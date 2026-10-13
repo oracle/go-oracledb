@@ -56,10 +56,11 @@ type connectionInstantiator struct {
 	authenticator       Authenticator
 	dataBuffer          driverCommon.DataBuffer
 	ns                  driverCommon.NetworkSession
-	drvierConfig        *oracleconfig.OracleDriverConfig
+	driverConfig        *oracleconfig.OracleDriverConfig
 	newConnectionFunc   func(context.Context, *ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext, driverCommon.NetworkSession) (*connection, error)
 	localizationService common.LocalizationService
 	providerRegistry    common.Registry[oracleProviders.Provider]
+	uuid                string // session uuid to be used
 }
 
 // NewTTCConnectionInstantiator creates a new TTC connection instantiator.
@@ -72,7 +73,7 @@ type connectionInstantiator struct {
 // Returns:
 //   - the TTC connection instantiator bound to ns.
 //   - an error if the authenticator or instantiator cannot be initialized.
-func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+func NewTTCConnectionInstantiator(uuid string, config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
 	dataBuffer := ns.(driverCommon.DataBuffer)
 	negotiator := GetNegotiator(dataBuffer)
 	localizationService := common.NewLocalizationService(config.Locale.ClientLanguage)
@@ -86,10 +87,11 @@ func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns dr
 		authenticator:       authenticator,
 		dataBuffer:          dataBuffer,
 		ns:                  ns,
-		drvierConfig:        config,
+		driverConfig:        config,
 		newConnectionFunc:   newConnection,
 		localizationService: localizationService,
 		providerRegistry:    providerRegistry,
+		uuid:                uuid,
 	}, nil
 }
 
@@ -117,10 +119,15 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 	// by the client for authentication
 	sessCtx.GetClientProperties().SetProperty(driverCommon.RemoteAddress, connInstantiator.ns.GetRemoteAddress())
 	sessCtx.GetClientProperties().SetProperty(driverCommon.RemotePort, connInstantiator.ns.GetRemotePort())
-	sessCtx.GetClientProperties().SetProperty(driverCommon.ConnectDescriptor, connInstantiator.drvierConfig.ConnectDescriptor)
+	sessCtx.GetClientProperties().SetProperty(driverCommon.ConnectDescriptor, connInstantiator.driverConfig.ConnectDescriptor)
+
+	sessCtx.GetClientProperties().SetProperty(driverCommon.SessionUuid,
+		fmt.Sprintf("%s%s",
+			connInstantiator.driverConfig.ConnectionProperties.ConnectionIdPrefix,
+			connInstantiator.uuid))
 
 	// Add connection properties to shelf for downstream consumers
-	shelf.UpdateConnectionProperties(connInstantiator.drvierConfig.DriverProperties)
+	shelf.UpdateDriverConfig(connInstantiator.driverConfig)
 	shelf.RegisterLocalizationService(connInstantiator.localizationService)
 	shelf.registerProviderRegistry(connInstantiator.providerRegistry)
 
@@ -173,6 +180,7 @@ func GetAuthenticator(parameters *oracleconfig.OracleDriverConfig, providerRegis
 			return createPasswordAuthenticator(parameters)
 		}
 	} else {
+		common.Odl.Fine("No user in credentials")
 		if len(parameters.Credentials.Password) > 0 {
 			// if there is a password but no username
 			return nil, common.NewOracleError(oracleErrors.EmptyUsernameError, nil, nil)

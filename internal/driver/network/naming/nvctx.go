@@ -95,6 +95,9 @@ type Description struct {
 	SendBufSize             int
 	Enable                  string
 	ConnectionIDPrefix      string
+	PoolConnectionClass     string
+	PoolPurity              string
+	PoolBoundary            string
 
 	// Compression parameters
 	Compression       bool
@@ -129,6 +132,9 @@ func NewDescription() *Description {
 		SendBufSize:             0,
 		Enable:                  "",
 		ConnectionIDPrefix:      "",
+		PoolConnectionClass:     "",
+		PoolPurity:              "",
+		PoolBoundary:            "",
 		Compression:             false,
 		Security:                *NewSecurity(),
 	}
@@ -182,15 +188,18 @@ func NewAddress() *Address {
 
 // ConnectData contains database identification and connection parameters
 type ConnectData struct {
-	ServiceName        string
-	SID                string
-	Server             string
-	InstanceName       string
-	FailoverMode       string
-	HS                 string
-	RDBDatabase        string
-	GlobalName         string
-	ConnectionIDPrefix string
+	ServiceName         string
+	SID                 string
+	Server              string
+	InstanceName        string
+	FailoverMode        string
+	HS                  string
+	RDBDatabase         string
+	GlobalName          string
+	ConnectionIDPrefix  string
+	PoolConnectionClass string
+	PoolPurity          string
+	PoolBoundary        string
 }
 
 // Security with SSL/TLS security parameters
@@ -518,6 +527,12 @@ func extractConnectData(node *Node) (*ConnectData, error) {
 			connectData.GlobalName = child.Value
 		case "CONNECTION_ID_PREFIX":
 			connectData.ConnectionIDPrefix = child.Value
+		case "POOL_CONNECTION_CLASS":
+			connectData.PoolConnectionClass = child.Value
+		case "POOL_PURITY":
+			connectData.PoolPurity = child.Value
+		case "POOL_BOUNDARY":
+			connectData.PoolBoundary = child.Value
 		default:
 			return nil, common.NewOracleError(oracleErrors.NamingContextError, nil, child.Name, "CONNECT_DATA")
 		}

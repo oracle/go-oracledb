@@ -103,6 +103,79 @@ func TestDriver_Table_Select(t *testing.T) {
 
 }
 
+// TestDriver_Table_Select creates the table, inserts a row, selects and decodes values, then cleans up.
+func TestDriver_Table_EmptyStringSelect(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	config := NewOracleDriverConfig()
+
+	config.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
+	config.Credentials.User = TestingConfig.Credentials.Username
+	config.Credentials.Password = TestingConfig.Credentials.Password
+	config.ConnectDescriptor = TestingConfig.GetConnectionDSN()
+	config.DriverProperties.StrictNullValueHandling = true
+	connector, err := NewOracleConnector(config)
+
+	db := sql.OpenDB(connector)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close db: %v", err)
+		}
+	}()
+	err = db.Ping()
+	if err != nil {
+		t.Fatalf("ping connection failed: %v", err)
+	}
+
+	table := createObjectName("t_select_string_empty")
+	//table := "godrivertest_261008_t_select_string_empty_943800"
+	ctx := context.Background()
+	cols := map[string]string{
+		"id": "number",
+		"A":  "varchar2(100)",
+		"B":  "varchar2(100)",
+		"C":  "varchar2(100)",
+	}
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	if _, err := db.ExecContext(context.Background(), "INSERT INTO "+table+" (id, a,c) VALUES(42, 'AD','CD')"); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	rows, err := db.QueryContext(context.Background(), "select id, A,B,C from "+table)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		var _a sql.NullString
+		var _b sql.NullString
+		var _c sql.NullString
+
+		if err := rows.Scan(&id, &_a, &_b, &_c); err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
+
+		t.Logf("row: id=%d a=%s b=%s c=%s", id, _a.String, _b.String, _c.String)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows err: %v", err)
+	}
+
+}
+
 // TestDriver_Select_5000Rows_NumberColumn verifies that the driver can fetch
 // and decode at least 5,000 rows containing NUMBER values without losing rows
 // or returning an error while iterating through the result set.

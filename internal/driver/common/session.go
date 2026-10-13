@@ -45,6 +45,7 @@ const (
 	RemoteAddress            = "remoteAddress"
 	RemotePort               = "remotePort"
 	ConnectDescriptor        = "connectDescriptor"
+	SessionUuid              = "sessionUuid"
 )
 
 // SessionContext connection session context. This holds database session information

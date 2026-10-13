@@ -176,19 +176,7 @@ const (
 	// MaxTtcverSupported is the maximum supported TTC version.
 	MaxTtcverSupported common.UB2 = 6
 
-	// Oracle Client side Function Codes
-	ocqcinv      byte = 1  // Query Cache Invalidations
-	ocospid      byte = 2  // OS PID for MTS connection
-	octrcevt     byte = 3  // OCI trace event piggyback
-	ocsessret    byte = 4  // Server CP return values for GET
-	ocssync      byte = 5  // Session state synchronization
-	ocxsss       byte = 6  // eXtensible security Session State Sync
-	ocltxid      byte = 7  // LTXID
-	ocappcontctl byte = 8  // application continuity replay context
-	ocxsss2      byte = 9  // eXtensible security Session State Sync 2
-	osesssign    byte = 10 // session signature sync
-	ocshrdkey    byte = 11 // sharding key to client
-	maxOcfn      byte = 11 // last item allocated
+	located
 
 	// TTCLXMULTI indicates Flags for multibyte conversions
 	TTCLXMULTI = 0x01
@@ -212,6 +200,8 @@ const (
 	TtiEocEct = 0x08
 	// TtiEocfDropWhenReturned indicates this connection is affected by a planned-down
 	TtiEocfDropWhenReturned common.UB4 = 0x00000800
+	// TtiEocRel clean-up cusror ID with implicit pooling on
+	TtiEocRel common.UB4 = 0x00008000
 
 	// Piggyback/session property key for elastic pool LDR flag
 	al8kwPdbElasticPoolLdrStr = "AL8KW_PDB_ELASTIC_POOL_LDR"
@@ -225,4 +215,5 @@ const (
 	ldiRegIDFlag             = byte(0x80) // region id present if (value[2] & 0xFF) > ldiRegIDFlag
 	ldiRegIDSet              = byte(0x40) // base offset applied to hour when region id present
 	ldiMaxTimeField          = byte(60)   // base offset applied to hour/minute when region id not present
+
 )

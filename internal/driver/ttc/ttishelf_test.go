@@ -46,6 +46,7 @@ import (
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	driverConfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 	"golang.org/x/text/language"
@@ -287,7 +288,7 @@ func (t *testCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
 func (t *testCodecFactory) getBindOac(_ normalizedBindValue, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
 	return t.bindOac, nil
 }
-func (t *testCodecFactory) getDefineOac(_ DtyType, _ columnContext, _ driverCommon.DriverProperties) driverCommon.Marshallable {
+func (t *testCodecFactory) getDefineOac(_ DtyType, _ columnContext, _ *driverConfig.OracleDriverConfig) driverCommon.Marshallable {
 	return t.defineOac
 }
 

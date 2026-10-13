@@ -160,8 +160,8 @@ func TestDriver_PLSQL_BreakCausedByTimeout(t *testing.T) {
 	if !ok {
 		t.Fatalf("Error should be SQLError, but was %v", err)
 	}
-	if sqlError.ErrorCode() != "ORA-01013" {
-		t.Fatalf("Error code should be %s, but was %s, %v", "ORA-01013", sqlError.ErrorCode(), err)
+	if sqlError.ErrorCode() != string(oracleErrors.UserRequestCancel) {
+		t.Fatalf("Error code should be %s, but was %s, %v", string(oracleErrors.UserRequestCancel), sqlError.ErrorCode(), err)
 	}
 
 	// Check that the connection can still be used after the cancel

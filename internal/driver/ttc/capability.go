@@ -238,36 +238,36 @@ func newCapabilityMetadata() *capability {
 			koleLobCapTmplocSz:             {index: 23, value: 0x08, isFlag: true, isDefault: true},         // Flag indicating that temporary LOB locator size is KOLBLTLMXL
 			koleLobCapRemDataInt:           {index: 23, value: 0x10, isFlag: true, isDefault: true},         // flag indicating that define of remote LOB as char works (data interface)
 			// "KOLE_LOB_CAP_ARRAY": {index: 23, flag: 0x20, isFlag: true}, // flag for LOB array read/write -> not included for some reason
-			koleLobCapPrfch:                {index: 23, value: 0x40, isFlag: true, isDefault: true},          // LOB capabilities for 11g begin here
-			koleLobCap12c:                  {index: 23, value: 0x80, isFlag: true, isDefault: true},          // Enables smart lob creation on the server side
-			kpccapCtKpin:                   {index: 24, value: 1, isFlag: false, isDefault: true},            // Not used default value
-			kpccapCtAqPropDqa:              {index: 25, value: 0x00, isFlag: true, isDefault: true},          // AQ not supported
-			kpccapCtbTtc2Zlnp:              {index: 26, value: 0x04, isFlag: true, isDefault: true},          // can peer handle new key-val pairs
-			kpccapCtUb2dty:                 {index: 27, value: 0x01, isFlag: true, isDefault: true},          // ub2 dty support
-			kpccapCtReplLcrx2y:             {index: 28, value: 0x01, isFlag: true, isDefault: true},          // Streams LCRX2Y propagation capability
-			kpccapCtAstr:                   {index: 29, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
-			kpccapCtObfuscate:              {index: 30, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
-			kpccapCtbOci2Cqc:               {index: 31, value: 0x04, isFlag: true, isDefault: true},          // remote handles OCI query caching
-			kpccapCtbOci2Edition:           {index: 31, value: 0x08, isFlag: true, isDefault: true},          // application EDITION
-			kpccapCtbOci2Srvcp:             {index: 31, value: 0x10, isFlag: true, isDefault: true},          // Server-side Connection pooling
-			kpccapCtProxy:                  {index: 32, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
-			kpccapCtStrmsCca:               {index: 33, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
-			kpccapCtMaxocfn:                {index: 34, value: maxOcfn, isFlag: false, isDefault: true},      // understanding Server Piggyback Function code
-			kpccapCtbOci3Ocssync:           {index: 35, value: 0x20, isFlag: true, isDefault: true},          // sessstate sync via s2c piggyback
-			kpccapCtbOci3AppcontAuto:       {index: 35, value: 0x80, isFlag: true, isDefault: true},          // Client to send pdbuid when getting PDB's startup time in OFGI request
-			kpccapCtbXMLCsxxmlt:            {index: 36, value: 0x01, isFlag: true, isDefault: true},          // client can decode CSX XMLType image
-			kpccapCtbXMLLobstrImgOnly:      {index: 36, value: 0x02, isFlag: true, isDefault: true},          // client can understand only lob/string based images
-			kpccapCtbTtc3Colmetadata:       {index: 37, value: 0x01, isFlag: true, isDefault: true},          // column metadata byte
-			kpccapCtbTtc3Tzver:             {index: 37, value: 0x02, isFlag: true, isDefault: true},          // remote to send timezone version
-			kpccapCtbTtc3Implres:           {index: 37, value: 0x10, isFlag: true, isDefault: true},          // Implicit Results feature, 12g
-			kpccapCtbTtc3BigchunkClr:       {index: 37, value: 0x20, isFlag: true, isDefault: true},          // ttcclr supports big chunks
-			kpccapCtbTtc3KeepOutOrder:      {index: 37, value: 0x80, isFlag: true, isDefault: true},          // preserve out bind order
-			kpccapCtXstreamOut:             {index: 38, value: 0x00, isFlag: true, isDefault: true},          // XStream Out capability
-			kpccapCtDtysesssignRecVsn:      {index: 39, value: ttcFldVsn231, isFlag: false, isDefault: true}, // 20.1 ext 1
-			kpccapCtbTtc4FastReneg:         {index: 40, value: 0x02, isFlag: true, isDefault: true},          // can renegotiate post logon with 1 RPC
-			kpccapCtbTtc4Ibnm:              {index: 40, value: 0x04, isFlag: true, isDefault: true},          // supports inband notifications
-			kpccapCtbTtc4BigTztc:           {index: 40, value: 0x10, isFlag: true, isDefault: true},          // understands 4 byte length DST tables
-			kpccapCtbTtc4ExplBound:         {index: 40, value: 0x40, isFlag: true, isDefault: true},          // Explicit request boundary support
+			koleLobCapPrfch:                {index: 23, value: 0x40, isFlag: true, isDefault: true},           // LOB capabilities for 11g begin here
+			koleLobCap12c:                  {index: 23, value: 0x80, isFlag: true, isDefault: true},           // Enables smart lob creation on the server side
+			kpccapCtKpin:                   {index: 24, value: 1, isFlag: false, isDefault: true},             // Not used default value
+			kpccapCtAqPropDqa:              {index: 25, value: 0x00, isFlag: true, isDefault: true},           // AQ not supported
+			kpccapCtbTtc2Zlnp:              {index: 26, value: 0x04, isFlag: true, isDefault: true},           // can peer handle new key-val pairs
+			kpccapCtUb2dty:                 {index: 27, value: 0x01, isFlag: true, isDefault: true},           // ub2 dty support
+			kpccapCtReplLcrx2y:             {index: 28, value: 0x01, isFlag: true, isDefault: true},           // Streams LCRX2Y propagation capability
+			kpccapCtAstr:                   {index: 29, value: 0x00, isFlag: true, isDefault: true},           // Not used default value
+			kpccapCtObfuscate:              {index: 30, value: 0x00, isFlag: true, isDefault: true},           // Not used default value
+			kpccapCtbOci2Cqc:               {index: 31, value: 0x04, isFlag: true, isDefault: true},           // remote handles OCI query caching
+			kpccapCtbOci2Edition:           {index: 31, value: 0x08, isFlag: true, isDefault: true},           // application EDITION
+			kpccapCtbOci2Srvcp:             {index: 31, value: 0x10, isFlag: true, isDefault: true},           // Server-side Connection pooling
+			kpccapCtProxy:                  {index: 32, value: 0x00, isFlag: true, isDefault: true},           // Not used default value
+			kpccapCtStrmsCca:               {index: 33, value: 0x00, isFlag: true, isDefault: true},           // Not used default value
+			kpccapCtMaxocfn:                {index: 34, value: byte(maxOcfn), isFlag: false, isDefault: true}, // understanding Server Piggyback Function code
+			kpccapCtbOci3Ocssync:           {index: 35, value: 0x20, isFlag: true, isDefault: true},           // sessstate sync via s2c piggyback
+			kpccapCtbOci3AppcontAuto:       {index: 35, value: 0x80, isFlag: true, isDefault: true},           // Client to send pdbuid when getting PDB's startup time in OFGI request
+			kpccapCtbXMLCsxxmlt:            {index: 36, value: 0x01, isFlag: true, isDefault: true},           // client can decode CSX XMLType image
+			kpccapCtbXMLLobstrImgOnly:      {index: 36, value: 0x02, isFlag: true, isDefault: true},           // client can understand only lob/string based images
+			kpccapCtbTtc3Colmetadata:       {index: 37, value: 0x01, isFlag: true, isDefault: true},           // column metadata byte
+			kpccapCtbTtc3Tzver:             {index: 37, value: 0x02, isFlag: true, isDefault: true},           // remote to send timezone version
+			kpccapCtbTtc3Implres:           {index: 37, value: 0x10, isFlag: true, isDefault: true},           // Implicit Results feature, 12g
+			kpccapCtbTtc3BigchunkClr:       {index: 37, value: 0x20, isFlag: true, isDefault: true},           // ttcclr supports big chunks
+			kpccapCtbTtc3KeepOutOrder:      {index: 37, value: 0x80, isFlag: true, isDefault: true},           // preserve out bind order
+			kpccapCtXstreamOut:             {index: 38, value: 0x00, isFlag: true, isDefault: true},           // XStream Out capability
+			kpccapCtDtysesssignRecVsn:      {index: 39, value: ttcFldVsn231, isFlag: false, isDefault: true},  // 20.1 ext 1
+			kpccapCtbTtc4FastReneg:         {index: 40, value: 0x02, isFlag: true, isDefault: true},           // can renegotiate post logon with 1 RPC
+			kpccapCtbTtc4Ibnm:              {index: 40, value: 0x04, isFlag: true, isDefault: true},           // supports inband notifications
+			kpccapCtbTtc4BigTztc:           {index: 40, value: 0x10, isFlag: true, isDefault: true},           // understands 4 byte length DST tables
+			kpccapCtbTtc4ExplBound:         {index: 40, value: 0x40, isFlag: true, isDefault: true},           // Explicit request boundary support
 			kpccapCtSqlidLength:            {index: 41, value: sqlidLength, isFlag: false, isDefault: true},
 			koleLob2CapQuasi:               {index: 42, value: 0x01, isFlag: true, isDefault: true}, // flag used for V4 value based locator feature in 20c
 			koleLob2CapVbl32:               {index: 42, value: 0x02, isFlag: true, isDefault: true}, // For Value based locators, assume default prefetch of 32K

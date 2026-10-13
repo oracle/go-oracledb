@@ -95,16 +95,16 @@ type tTIOall struct {
 	defineOACs []driverCommon.Marshallable
 }
 
-// NewOall18 constructs a new OALL8 TTC function message with default limits.
-func NewOall18() driverCommon.Message[driverCommon.MessageType] {
+// newOall18 constructs a new OALL8 TTC function message with default limits.
+func newOall18() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIOall{
 		headerMarshaller: &ttiFunHeader18{ttiFunHeader: &ttiFunHeader{_funcType: oAll8}},
 		maxLength:        maxLength,
 	}
 }
 
-// NewOall constructs a new OALL8 TTC function message with default limits.
-func NewOall() driverCommon.Message[driverCommon.MessageType] {
+// newOall constructs a new OALL8 TTC function message with default limits.
+func newOall() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIOall{
 		headerMarshaller: &ttiFunHeader{_funcType: oAll8},
 		maxLength:        maxLength,

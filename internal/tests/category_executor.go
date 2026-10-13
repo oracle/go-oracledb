@@ -77,8 +77,6 @@ func RunCategoryExecutor(t *testing.T, categories TestCategoryList, cases []Cate
 			} else {
 				regularCases = append(regularCases, c)
 			}
-		} else {
-			t.Logf("No enabled category for test case %s", c.Name)
 		}
 	}
 

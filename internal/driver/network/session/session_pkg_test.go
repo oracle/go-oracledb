@@ -138,7 +138,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestControlPacketUnmarshal", Categories: "unitary", Exclusive: false, Fn: TestControlPacketUnmarshal},
 	{Name: "TestResendPacketUnmarshal", Categories: "unitary", Exclusive: false, Fn: TestResendPacketUnmarshal},
 	{Name: "TestContains", Categories: "unitary", Exclusive: false, Fn: TestContains},
-	{Name: "TestGenUUID", Categories: "unitary", Exclusive: false, Fn: TestGenUUID},
 	{Name: "TestNewSessionAttsDefaults", Categories: "unitary", Exclusive: false, Fn: TestNewSessionAttsDefaults},
 	{Name: "TestSessionAttsSetFromDescription", Categories: "unitary", Exclusive: false, Fn: TestSessionAttsSetFromDescription},
 	{Name: "TestSessionAttsSetFromNil", Categories: "unitary", Exclusive: false, Fn: TestSessionAttsSetFromNil},

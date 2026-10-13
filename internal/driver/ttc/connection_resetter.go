@@ -55,7 +55,19 @@ func (c *connection) ResetSession(ctx context.Context) error {
 	if c._isClosed || !c._isValid {
 		return driver.ErrBadConn
 	}
+
+	if c._drcpState == _drcpExplicitPooling && c._drcpConnectionState == _drcpConnectionStateDetached {
+		common.Odl.Debug("Attaching to DRCP")
+		err := c.AttachToResidentPool(ctx)
+		if err != nil {
+			common.Odl.Debug("Failed to attach to the DRCP pool", "error", err)
+			c._isValid = false
+			return driver.ErrBadConn
+		}
+	}
+
 	statements := c.shelf.GetStatements(true)
+	common.Odl.Debug("closing statements", "count", len(statements))
 	for _, statement := range statements {
 		if err := statement.Close(); err != nil {
 			common.Odl.Warn("Stale statement left in connection cannot be closed", "error", err)
@@ -65,6 +77,7 @@ func (c *connection) ResetSession(ctx context.Context) error {
 	}
 
 	c.sessCtx.GetSessionProperties().Reset()
+	common.Odl.Debug("Flushing streamer")
 	err := c.shelf.GetMessageStreamer().Flush(ctx)
 	if err != nil {
 		common.Odl.Warn("Flush of messages during reset has failed", "error", err)

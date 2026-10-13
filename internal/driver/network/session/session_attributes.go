@@ -39,8 +39,6 @@
 package session
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,16 +75,6 @@ type sessionAtts struct {
 	firstSendCompressedPacket          bool
 	version                            int
 	options                            int
-}
-
-// GenUUID generates a UUID for connection ID
-func GenUUID() (string, error) {
-	buf := make([]byte, 16)
-	_, err := rand.Read(buf)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(buf), nil
 }
 
 // newSessionAtts creates a new sessionAtts instance
@@ -223,13 +211,7 @@ func (sa *sessionAtts) readWalletFile() ([]byte, error) {
 func (sa *sessionAtts) prepare(protocol driverCommon.Protocol) error {
 	sa.sdu = clamp(sa.sdu, NSPMNSDULN, NSPABSSDULN)
 
-	if sa.uuid == "" {
-		uuid, err := GenUUID()
-		if err != nil {
-			return err
-		}
-		sa.uuid = uuid
-	}
+	// TODO : remove this and handle it as driver configuration level
 	if sa.nt.Connectionidprefix != "" {
 		sa.nt.Connectionid = sa.nt.Connectionidprefix + sa.uuid
 	} else {

@@ -39,9 +39,11 @@
 package oracle
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -68,6 +70,7 @@ func NewConnectionWrapper(connection *sql.Conn) (*connectionWrapper, error) {
 		// Include here all functions/interfaces we want a connection to implement in
 		// order to be wrapped by this wrapper
 		type canBeWrapped interface {
+			driverCommon.DRCPUser
 		}
 		_, ok := c.(canBeWrapped)
 		if !ok {
@@ -77,4 +80,19 @@ func NewConnectionWrapper(connection *sql.Conn) (*connectionWrapper, error) {
 		return nil
 	})
 	return wrapper, err
+}
+
+func (c *connectionWrapper) AttachToDrcpPool(ctx context.Context) error {
+	return c.connection.Raw(func(c any) error {
+		oc, _ := c.(driverCommon.DRCPUser)
+		return oc.AttachToResidentPool(ctx)
+	})
+}
+func (c *connectionWrapper) DetachFromDrcpPool(ctx context.Context) error {
+
+	return c.connection.Raw(func(c any) error {
+		oc, _ := c.(driverCommon.DRCPUser)
+		return oc.DetachFromResidentPool(ctx)
+	})
+
 }

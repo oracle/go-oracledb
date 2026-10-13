@@ -58,6 +58,7 @@ import (
 // network session and the connector's currently registered providers.
 //
 // Parameters:
+//   - sessionUid : uuid that will be set on newly created connection environment
 //   - config: the Oracle driver configuration for the connection attempt.
 //   - ns: the established network session to bind to the instantiator.
 //   - providerRegistry: the provider registry registered on the connector for this attempt.
@@ -65,7 +66,8 @@ import (
 // Returns:
 //   - a connection instantiator bound to ns.
 //   - an error if the instantiator cannot be created.
-type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error)
+type ConnInstantiatorFactory func(sessionUid string,
+	config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error)
 
 // ConnCreator opens a network session for a specific connection option and
 // connection identifier.
@@ -98,7 +100,7 @@ type oracleConnector = connector
 // This is the main entry point for database/sql to acquire an Oracle database Connector.
 func buildOracleConnector(driver driver.Driver, cfg *naming.ParsedConfig, drvConfig *oracleconfig.OracleDriverConfig) driver.Connector {
 	// this should never return an error, both functions are being set to not nil values
-	connector, _ := newOracleConnector(cfg, drvConfig, session.ConnectToOptionWithConnectionID, drv.GetConnectionInstantiator)
+	connector, _ := newOracleConnector(cfg, drvConfig, session.ConnectToOption, drv.GetConnectionInstantiator)
 	return connector
 }
 
@@ -126,7 +128,7 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	isNsConnected := false
 	isConnectionEstablished := false
 
-	sessionUid, _ := session.GenUUID()
+	sessionUid := driverCommon.GenUUID()
 
 	localizationService := common.NewLocalizationService(c.connectorConfig.Locale.ClientLanguage)
 
@@ -204,7 +206,7 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	common.OdlT(sessionUid).Fine("Network session established")
 
-	connInstantiator, err := c.connInstantiatorFactory(c.connectorConfig, ns, c.providerRegistry)
+	connInstantiator, err := c.connInstantiatorFactory(sessionUid, c.connectorConfig, ns, c.providerRegistry)
 	if err != nil {
 		e := common.NewOracleError(oracleErrors.ConnectFailed, err)
 		return nil, localizationService.LocalizeError(e)

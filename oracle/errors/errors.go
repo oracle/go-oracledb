@@ -15,7 +15,7 @@ type ErrorCode string
 // accordingly.
 const (
 	// ORA-XXXXX errors
-	InvalidCredential      ErrorCode = "ORA-01017"
+	UserRequestCancel      ErrorCode = "ORA-01013"
 	NoDataFound            ErrorCode = "ORA-01403"
 	ConnectionLost         ErrorCode = "ORA-03113"
 	AliasNotFound          ErrorCode = "ORA-12154"
@@ -196,8 +196,12 @@ const (
 	// InvalidFileConfig Can't load configuration from file.
 	InvalidFileConfig ErrorCode = "OGD-00066"
 
-	// TRANSACTION PROCESSING
+	DRCPNotEnabled    ErrorCode = "OGD-00180"
+	DRCPInvalidState  ErrorCode = "OGD-00181"
+	DRCPAttachFailed  ErrorCode = "OGD-00182"
+	DRCPDettachFailed ErrorCode = "OGD-00183"
 
+	// TRANSACTION PROCESSING
 	// Not in transaction error
 	NotInTransaction ErrorCode = "OGD-00080"
 	// Isolation level not supported error
@@ -209,6 +213,7 @@ const (
 	// Error when creating a transaction, ALTER SESSION to set isolation level
 	ConfigureTransactionError ErrorCode = "OGD-00084"
 
+	InvalidCredential       ErrorCode = "ORA-00090"
 	AuthenticatorError      ErrorCode = "OGD-00091"
 	NegotiatorError         ErrorCode = "OGD-00092"
 	MarshalEngineError      ErrorCode = "OGD-00093"

@@ -40,6 +40,8 @@ package ttc
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -233,6 +235,7 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 	}
 
 	sessionProperties := pa._sessionContext.GetSessionProperties()
+	clientProperties := pa._sessionContext.GetClientProperties()
 
 	oauthMsg.(*oAuth).setEncryptedSK(sessionProperties.GetProperty(authSesskey).(*driverCommon.KeyValue).Value)
 	oauthMsg.(*oAuth).setSalt(sessionProperties.GetProperty(authVFRData).(*driverCommon.KeyValue).Value)
@@ -275,6 +278,30 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 	oauthMsg.(*oAuth).setHasO5LNPSupport(shelf.GetCapabilities()[kztvovKpclogO5lNp].IsSet)
 	oauthMsg.(*oAuth).setHasO7LMRSupport(shelf.GetCapabilities()[kztvovKpclogO7lMr].IsSet)
 	oauthMsg.(*oAuth).setBUseO5Logon(sessionProperties.ContainsKey(authVFRData))
+
+	if shelf.GetDriverConfig().ConnectionProperties.ServerType == common.ServerTypePooled {
+		drcpClassName := shelf.GetDriverConfig().ConnectionProperties.Drcp.Class
+		if len(drcpClassName) == 0 {
+			h := sha256.New()
+			_, _ = h.Write([]byte(shelf.GetDriverConfig().ConnectDescriptor))
+
+			uuid := driverCommon.GenRandomString(4)
+			drcpClassName = fmt.Sprintf("%s_%x_%s",
+				shelf.GetDriverConfig().Credentials.User, h.Sum(nil), uuid)
+			common.Odl.Fine(fmt.Sprintf("No DRCP class name specified, using [%s]",
+				drcpClassName))
+		}
+		oauthMsg.(*oAuth).setDrcpConnectionClass(
+			driverCommon.B1Array(drcpClassName))
+		if clientProperties.ContainsKey(AuthKpplPurity) {
+			oauthMsg.(*oAuth).setDrcpPurity(
+				driverCommon.B1Array(shelf.GetDriverConfig().ConnectionProperties.Drcp.Purity))
+		}
+		if shelf.GetDriverConfig().ConnectionProperties.Drcp.Tag != "" {
+			oauthMsg.(*oAuth).setDrcpTagProps(shelf.GetDriverConfig().ConnectionProperties.Drcp.Tag,
+				shelf.GetDriverConfig().ConnectionProperties.Drcp.UseMultipleTag)
+		}
+	}
 	oauthMsg.(*oAuth).setLogonMode(pa._logonMode)
 	if common.KpzLogonSysdba.Enabled(pa._logonMode) && len(pa._password) == 0 {
 		common.Odl.Fine("KpzLogonSysdba mode, skip _oSessionKeyInit of o response")

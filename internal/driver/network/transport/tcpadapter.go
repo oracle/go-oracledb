@@ -394,11 +394,12 @@ func (nt *nttcp) Connect(ctx context.Context, address Address) error {
 }
 
 func (nt *nttcp) Disconnect() error {
-	nt.connected = false
-	if nt.stream != nil {
-		err := nt.stream.Close()
-		nt.stream = nil
-		return err
+	common.Odl.Debug("disconnecting TCP adapter")
+	if !nt.connected {
+		return nil
 	}
-	return nil
+	err := nt.stream.Close()
+	nt.stream = nil
+	nt.connected = false
+	return err
 }
