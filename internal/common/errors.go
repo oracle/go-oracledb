@@ -97,10 +97,10 @@ type LocalizationService interface {
 // used as the fallback.
 func NewLocalizationService(userLanguage language.Tag) LocalizationService {
 	matcher := language.NewMatcher(messageLanguages)
-	matchedLanguage, _, confidence := matcher.Match(userLanguage)
+	matchedLanguage, matchedIndex, confidence := matcher.Match(userLanguage)
 	Odl.Debug(fmt.Sprintf("Matched language %s with confidence %v", matchedLanguage, confidence))
 	initializeLanguageMessages(language.English)
-	initializeLanguageMessages(matchedLanguage)
+	initializeLanguageMessages(messageLanguages[matchedIndex])
 	return &localizationService{
 		printer: message.NewPrinter(matchedLanguage),
 	}
