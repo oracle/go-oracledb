@@ -41,6 +41,7 @@ package common
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -49,9 +50,30 @@ import (
 )
 
 var messageLanguages = []language.Tag{
-	language.English, // en: First language will be the default if match fails
-	language.French,  // fr
-	language.Spanish, // es
+	language.English,    // en: First language will be the default if match fails
+	language.French,     // fr
+	language.Spanish,    // es
+	language.Portuguese, // pt
+	language.Italian,    // it
+}
+
+type languageMessageInitializer struct {
+	once       sync.Once
+	initialize func()
+}
+
+var languageMessageInitializers = map[language.Tag]*languageMessageInitializer{
+	language.English:    {initialize: initMessagesEn},
+	language.French:     {initialize: initMessagesFr},
+	language.Spanish:    {initialize: initMessagesEs},
+	language.Portuguese: {initialize: initMessagesPt},
+	language.Italian:    {initialize: initMessagesIt},
+}
+
+func initializeLanguageMessages(languageTag language.Tag) {
+	if initializer := languageMessageInitializers[languageTag]; initializer != nil {
+		initializer.once.Do(initializer.initialize)
+	}
 }
 
 var defaultPrinter = message.NewPrinter(language.English)
@@ -77,6 +99,8 @@ func NewLocalizationService(userLanguage language.Tag) LocalizationService {
 	matcher := language.NewMatcher(messageLanguages)
 	matchedLanguage, _, confidence := matcher.Match(userLanguage)
 	Odl.Debug(fmt.Sprintf("Matched language %s with confidence %v", matchedLanguage, confidence))
+	initializeLanguageMessages(language.English)
+	initializeLanguageMessages(matchedLanguage)
 	return &localizationService{
 		printer: message.NewPrinter(matchedLanguage),
 	}
@@ -145,9 +169,12 @@ func (e *oracleError) ErrorCode() string {
 
 // Error returns an error message prefixed with error code.
 func (e *oracleError) Error() string {
-	msg := defaultPrinter.Sprintf(string(e.code), e.args...)
+	var msg string
 	if e.localizationService != nil {
 		msg = e.localizationService.Format(e.code, e.args...)
+	} else {
+		initializeLanguageMessages(language.English)
+		msg = defaultPrinter.Sprintf(string(e.code), e.args...)
 	}
 	if len(msg) != 0 && msg != string(e.code) {
 		if e.cause != nil {

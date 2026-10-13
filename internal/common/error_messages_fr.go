@@ -5,8 +5,8 @@
 **
 ** Subject to the condition set forth below, permission is hereby granted to any
 ** person obtaining a copy of this software, associated documentation and/or data
-** (collectively, the "Software"), free of charge and under any and all copyright
-** rights in the Software, and under any and all patent rights owned or freely
+** (collectively the "Software"), free of charge and under any and all copyright
+** rights in the Software, and any and all patent rights owned or freely
 ** licensable by each licensor hereunder covering either (i) the unmodified
 ** Software as contributed to or provided by such licensor, or (ii) the Larger
 ** Works (as defined below), to deal in both
@@ -141,8 +141,8 @@ func initMessagesFr() {
 		{oracleErrors.NetworkCompressionFailed, "échec de la compression du paquet réseau avec %s"},
 		{oracleErrors.NetworkDecompressionFailed, "échec de la décompression du paquet réseau avec %s"},
 		{oracleErrors.ConnectTimeout, "délai d'attente %s de %d pour %s.(CONNECTION_ID=%s)"},
-		{oracleErrors.ListenerFailed, "ORA-12500: TNS:échec du démarrage d'un processus serveur dédié par l'écouteur"},
-		{oracleErrors.NoDispatcherAvailable, "ORA-12516: TNS:l'écouteur n'a pas trouvé de gestionnaire disponible avec la pile de protocoles correspondante"},
+		{oracleErrors.ListenerFailed, "TNS:échec du démarrage d'un processus serveur dédié par l'écouteur"},
+		{oracleErrors.NoDispatcherAvailable, "TNS:l'écouteur n'a pas trouvé de gestionnaire disponible avec la pile de protocoles correspondante"},
 		{oracleErrors.ConnectFailed, "connexion impossible"},
 		{oracleErrors.TableOrViewNotFound, "la table ou la vue n'existe pas"},
 		{oracleErrors.InsufficientPrivilege, "privilèges insuffisants"},

@@ -312,13 +312,13 @@ func initMessagesEn() {
 	// Cause:    The listener was unable to start a dedicated server process for the connection request.
 	// Action:   Increase the PROCESSES parameter in the database initialization file or check for resource constraints on the server.
 	// Comment:  Often due to insufficient processes or memory on the database server.
-	message.SetString(language.English, string(oracleErrors.ListenerFailed), "ORA-12500: TNS:listener failed to start a dedicated server process")
+	message.SetString(language.English, string(oracleErrors.ListenerFailed), "TNS:listener failed to start a dedicated server process")
 
 	// Document: Yes
 	// Cause:    The listener could not find an available handler (dispatcher) for the requested protocol stack in shared server mode.
 	// Action:   Increase dispatchers or check for high load on the database.
 	// Comment:  Common in shared server configurations with insufficient resources.
-	message.SetString(language.English, string(oracleErrors.NoDispatcherAvailable), "ORA-12516: TNS:listener could not find available handler with matching protocol stack")
+	message.SetString(language.English, string(oracleErrors.NoDispatcherAvailable), "TNS:listener could not find available handler with matching protocol stack")
 
 	message.SetString(language.English, string(oracleErrors.ConnectFailed), "cannot connect")
 
