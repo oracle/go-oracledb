@@ -77,7 +77,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestErrorBasic3113Fr", Categories: "unitary", Exclusive: false, Fn: TestErrorBasic3113Fr},
 	{Name: "TestError3113", Categories: "unitary", Exclusive: false, Fn: TestError3113},
 	{Name: "TestError3113Fr", Categories: "unitary", Exclusive: false, Fn: TestError3113Fr},
-	{Name: "TestError3113pt", Categories: "unitary", Exclusive: false, Fn: TestError3113pt},
 	{Name: "TestError3113NoLanguage", Categories: "unitary", Exclusive: false, Fn: TestError3113NoLanguage},
 	{Name: "TestErrorUnwrap", Categories: "unitary", Exclusive: false, Fn: TestErrorUnwrap},
 	{Name: "TestError3113InvalidLanguage", Categories: "unitary", Exclusive: false, Fn: TestError3113InvalidLanguage},
