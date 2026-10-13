@@ -467,6 +467,7 @@ func (config *OracleLoggingConfig) AssignFromFlags() error {
 // database session.
 type OracleNLSParameters struct {
 	// ClientLanguage selects the language used for driver error messages.
+	// English, French, and Spanish are supported; other languages fall back to English.
 	ClientLanguage language.Tag `default:"en" cliVisible:"true" validator:"validateLanguage" help:"driver language to be used"`
 	// Language sets the default database language for the session.
 	Language string `default:"AMERICAN" help:"specifies the default language of the database"`

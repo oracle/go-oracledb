@@ -51,6 +51,7 @@ import (
 var messageLanguages = []language.Tag{
 	language.English, // en: First language will be the default if match fails
 	language.French,  // fr
+	language.Spanish, // es
 }
 
 var defaultPrinter = message.NewPrinter(language.English)

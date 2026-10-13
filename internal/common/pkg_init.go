@@ -46,4 +46,5 @@ func init() {
 	initSystemInformation()
 	initMessagesEn()
 	initMessagesFr()
+	initMessagesEs()
 }
