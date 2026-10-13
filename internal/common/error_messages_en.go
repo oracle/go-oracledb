@@ -584,9 +584,9 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.EmptyTokenError), "token-based authentication token id empty")
 
 	// Document: No
-	// Cause:    An error occured during Token-based authentication
+	// Cause:    An error occurred during Token-based authentication
 	// Action:   Verify that the token provider returns a valid token and private key (for signed token providers)
-	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occured during token authentication")
+	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occurred during token authentication")
 
 	// Document: No
 	// Cause:    A required value could not be retrieved or was empty.

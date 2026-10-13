@@ -175,7 +175,7 @@ func (config *OracleDriverConfig) ToNSConnectionParameters() string {
 		subsb.Reset()
 		NsNAme := field.element.Tag.Get("ns_name")
 		if len(NsNAme) != 0 {
-			// we discard convertion error as we trust default value
+			// we discard conversion error as we trust default value
 			switch field.elementValue.Kind() {
 			case reflect.String:
 				v := field.elementValue.String()
@@ -273,7 +273,7 @@ func NewOracleLoggingConfig() *OracleLoggingConfig {
 		field := item.Value.(*_fieldListElem)
 		defaultValue := field.element.Tag.Get("default")
 		if len(defaultValue) != 0 {
-			// we discard convertion error as we trust default value
+			// we discard conversion error as we trust default value
 			switch field.elementValue.Kind() {
 			case reflect.String:
 				field.elementValue.Set(reflect.ValueOf(defaultValue))

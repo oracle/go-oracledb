@@ -309,7 +309,7 @@ func (rpa *oSesskeyRPA) UnmarshalFrom(ctx context.Context, engine driverCommon.M
 	}
 	if !isValidPBKDF2VgenCount(PBKDF2VgenCount) {
 		// minimumPBKDF2VgenCount is the minimum agreed count.
-		// If its less then most likely its a dirty server.
+		// If it's less than the minimum, it's most likely a dirty server.
 		common.Odl.Warn(fmt.Sprintf("PBKDF2VgenCount outside allowed range [%d, %d] received: [%d]",
 			minimumPBKDF2VgenCount,
 			maximumPBKDF2VgenCount,

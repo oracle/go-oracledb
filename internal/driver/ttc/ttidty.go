@@ -106,7 +106,7 @@ func (p *tTIdty) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) err
 
 	}
 
-	// Convert to Little Endian format for TTC protocol compatability
+	// Convert to Little Endian format for TTC protocol compatibility
 	// This message is used during protocol negotiation. At that stage, we assume that the marshaller
 	// we are using is BIG ENDIAN (the default one used until negotiation is completed.)
 	// By design, the cliRIN field is always encoded in LITTLE ENDIAN. We then have to change
@@ -117,7 +117,7 @@ func (p *tTIdty) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) err
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
-	// Convert to Little Endian format for TTC protocol compatability
+	// Convert to Little Endian format for TTC protocol compatibility
 	// This message is used during protocol negotiation. At that stage, we assume that the marshaller
 	// we are using is BIG ENDIAN (the default one used until negotiation is completed.)
 	// By design, the cliROUT field is always encoded in LITTLE ENDIAN. We then have to change

@@ -301,7 +301,7 @@ func extractInputBindValues(bindDetails *bindDetails, in []driver.NamedValue) ([
 }
 
 // extractInputBindValuesForPlSql special implementation for PL/SQL that aligns
-// the supplied NamedValue slice to match the order of occurence if the
+// the supplied NamedValue slice to match the order of occurrence if the
 // placeholders in the PL/SQL statement.
 func extractInputBindValuesForPlSql(bindDetails *bindDetails, in []driver.NamedValue) ([]driver.Value, error) {
 

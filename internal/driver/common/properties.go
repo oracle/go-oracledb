@@ -162,7 +162,7 @@ func (p *Properties[T]) GetProperty(key T) any {
 //
 // returns:
 //
-//	a trimmed verison of associated value
+//	a trimmed version of associated value
 //
 // errors: if associated value cannot be asserted to a string (or mapping is missing)
 func (p *Properties[T]) GetTrimmedString(key T) (string, error) {

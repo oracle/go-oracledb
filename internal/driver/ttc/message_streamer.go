@@ -52,7 +52,7 @@ import (
 // This callback is called on a new message arrival, before unmarshalling it.
 // It is mainly used to allocate new messages based on an incoming message type.
 // The basic example of this case is for RPA responses. A Simple call to the message factory is not
-// enough to get the right RPA reponse structure. I.e All types of RPA messages have the same message code,
+// enough to get the right RPA response structure. I.e All types of RPA messages have the same message code,
 // but the associated structure can be different based on operation being performed.
 // In that situation, the streamer can delegate the allocation of the correct RPA response to the callback
 // Such callback must not perform any action on the incoming data in the channel.

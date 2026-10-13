@@ -329,7 +329,7 @@ func TestMarshalKeyValue(t *testing.T) {
 				kv := e.Value.(*common.KeyValue)
 				keySize, err := engine.UnmarshalUB4(context.Background())
 				if err != nil {
-					t.Errorf("Errror: %s", err.Error())
+					t.Errorf("Error: %s", err.Error())
 				}
 				if int(keySize) != len(kv.Key) {
 					t.Errorf("key size mismatch: got %d, want %d", keySize, len(kv.Key))
@@ -338,7 +338,7 @@ func TestMarshalKeyValue(t *testing.T) {
 					key := make([]byte, keySize)
 					readKeySize, err := engine.UnmarshalCLR(context.Background(), (common.B1Array)(key), int(keySize))
 					if err != nil {
-						t.Errorf("Errror: %s", err.Error())
+						t.Errorf("Error: %s", err.Error())
 					}
 					if int(keySize) != readKeySize {
 						t.Errorf("Wrong value of bytes read %d", readKeySize)
@@ -350,7 +350,7 @@ func TestMarshalKeyValue(t *testing.T) {
 
 				valueSize, err := engine.UnmarshalUB4(context.Background())
 				if err != nil {
-					t.Errorf("Errror: %s", err.Error())
+					t.Errorf("Error: %s", err.Error())
 				}
 				if int(valueSize) != len(kv.Value) {
 					t.Errorf("value size mismatch: got %d, want %d", valueSize, len(kv.Value))
@@ -359,7 +359,7 @@ func TestMarshalKeyValue(t *testing.T) {
 					value := make([]byte, valueSize)
 					readValueSize, err := engine.UnmarshalCLR(context.Background(), (common.B1Array)(value), int(valueSize))
 					if err != nil {
-						t.Errorf("Errror: %s", err.Error())
+						t.Errorf("Error: %s", err.Error())
 					}
 					if int(valueSize) != readValueSize {
 						t.Errorf("Wrong value of bytes read %d", readValueSize)
@@ -371,7 +371,7 @@ func TestMarshalKeyValue(t *testing.T) {
 
 				keyvalflagValue, err := engine.UnmarshalUB4(context.Background())
 				if err != nil {
-					t.Errorf("Errror: %s", err.Error())
+					t.Errorf("Error: %s", err.Error())
 				}
 				if uint32(keyvalflagValue) != uint32(kv.Flag) {
 					t.Errorf("keyvalflag mismatch: got %d, want %d", keyvalflagValue, kv.Flag)

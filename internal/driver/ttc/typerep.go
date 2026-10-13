@@ -502,8 +502,7 @@ type representationTable struct {
 	representations  []int16
 	conversionFlags  byte
 	serverConversion bool
-	// keep track of native types being wether UNIVERSAL
-	// or NATIVE
+	// Keep track of whether native types are UNIVERSAL or NATIVE.
 	nativeTypesRepresentation [5]byte
 }
 
