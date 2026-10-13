@@ -150,7 +150,7 @@ func (r *ttcRows) Columns() []string {
 	return res
 }
 
-// Next implements driver.Rows.Next. It advances the cursorId and assigns each
+// Next implements driver.Rows.Next. It advances the cursor ID and assigns each
 // column's payload as a value in dest. Row count is
 // computed once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {

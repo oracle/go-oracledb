@@ -83,18 +83,18 @@ func _initEnvironmentStaticInformation() {
 	// Reuse the process metadata captured once by common to avoid repeated OS calls.
 	currentUserName = driverCommon.StringToB1Array(common.UserName)
 	currentProcessPath = driverCommon.StringToB1Array(common.ProgramName)
-	currentProcessId := driverCommon.StringToB1Array(common.ProcessID)
+	currentProcessID := driverCommon.StringToB1Array(common.ProcessID)
 	currentMachineName := driverCommon.StringToB1Array(common.HostName)
 	currentDriverInternalName = driverCommon.StringToB1Array(driverInternalName)
 
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authTerminal), Value: currentTerminal})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authProgramNm), Value: currentProcessPath})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authMachine), Value: currentMachineName})
-	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authPid), Value: currentProcessId})
+	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authPid), Value: currentProcessID})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authSid), Value: currentUserName})
 
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authMachineKey, Value: currentMachineName})
-	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authPidKey, Value: currentProcessId})
+	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authPidKey, Value: currentProcessID})
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authACLKey, Value: currentDriverACLValue})
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authClientCapabilitiesKey, Value: _authClientCapabilitiesVal})
 
@@ -302,7 +302,7 @@ func init() {
 		common.Odl.Warn("Failed to register ping function", "error", err)
 	}
 
-	// Register OCCA cursorId close/cancel function
+	// Register the OCCA cursor ID close/cancel function
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: occa}, 18, newOcca18)
 	if err != nil {
 		common.Odl.Warn("Failed to register function occa", "error", err)
@@ -899,7 +899,7 @@ func init() {
 	}
 
 	if err := DecoderRegistry.Register(DtyJSON, MinTTCProtocolVersion,
-		newTypeDecoder(DecodeJson, GetScanTypeForJsonColumn, unwrapJSONColumn)); err != nil {
+		newTypeDecoder(DecodeJSON, GetScanTypeForJSONColumn, unwrapJSONColumn)); err != nil {
 		common.Odl.Warn("Failed to register JSON decoder", "error", err)
 	}
 

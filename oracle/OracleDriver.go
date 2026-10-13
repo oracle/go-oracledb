@@ -233,7 +233,7 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 	// TODO: make network layer use the same and do not parse again.
 	parsed, err := naming.ParseDSNString(fmt.Sprintf("%s?%s", connectDescriptor, confToUse.ToNSConnectionParameters()))
 	if err != nil {
-		common.Odl.Debug("Failed  to parse DNS", "err", err)
+		common.Odl.Debug("Failed to parse DSN", "err", err)
 		return nil, err
 	}
 	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {

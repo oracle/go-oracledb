@@ -130,7 +130,7 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	localizationService := common.NewLocalizationService(c.connectorConfig.Locale.ClientLanguage)
 
-	common.OdlT(sessionUid).Log(common.BackgroundContext, common.OlFine, "Connecting to oracle")
+	common.OdlT(sessionUid).Log(common.BackgroundContext, common.OlFine, "Connecting to Oracle")
 
 	iterator := c.config.NewConnectionAttemptIterator(ctx)
 	if !iterator.HasNext() {

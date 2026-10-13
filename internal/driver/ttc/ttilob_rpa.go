@@ -67,11 +67,11 @@ func newTTILobRPA() driverCommon.Message[driverCommon.MessageType] {
 	return &ttiLobRpa{}
 }
 
-// UnMarshalFrom decodes the LOB RPA core payload.
+// UnmarshalFrom decodes the LOB RPA core payload.
 // It reads:
 //   - UB2 al8o4l (length), then al8o4l times UB4 values into al8o4
 //   - Builds SCN from al8o4[0] (low) and al8o4[1]&^KSCNFVB (high)
-//   - Sets cursorId from al8o4[2]
+//   - Sets the cursor ID from al8o4[2]
 //   - Reads transaction context length (UB2) and bytes (ignored)
 //   - Reads keyword-values length (UB2); decoding of pairs is deferred
 //
@@ -81,7 +81,7 @@ func newTTILobRPA() driverCommon.Message[driverCommon.MessageType] {
 //
 // Returns:
 //   - error: FailUnmarshal oracleError when unmarshalling fails; nil on success or when the definition is nil.
-func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (p *ttiLobRpa) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	common.Odl.Finest("TTILobRpa.UnmarshalFrom: begin", "operation", p.lobDefinition.operation)
 
 	var err error

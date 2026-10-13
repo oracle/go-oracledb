@@ -51,7 +51,7 @@ func TestConstants_GetLogonModeFromString(t *testing.T) {
 	t.Parallel()
 	l, err := GetLogonModeFromString("SYSDBA")
 	if err != nil {
-		t.Errorf("should have not receive an error for \"SYSDBA\" string")
+		t.Errorf("expected no error for \"SYSDBA\", got: %v", err)
 	}
 	if l != KpzLogonSysdba {
 		t.Errorf("wrong logon mode value for [%s], wanted [%s], got [%s]",
@@ -60,7 +60,7 @@ func TestConstants_GetLogonModeFromString(t *testing.T) {
 	}
 	l, err = GetLogonModeFromString("SYSOPER")
 	if err != nil {
-		t.Errorf("should have not receive an error for \"SYSOPER\" string")
+		t.Errorf("expected no error for \"SYSOPER\", got: %v", err)
 	}
 	if l != KpzLogonSysoper {
 		t.Errorf("wrong logon mode value for [%s], wanted [%s], got [%s]",
@@ -69,7 +69,7 @@ func TestConstants_GetLogonModeFromString(t *testing.T) {
 	}
 	l, err = GetLogonModeFromString("XXXXXX")
 	if err == nil {
-		t.Errorf("should have  receive an error for \"XXXXXX\" string")
+		t.Errorf("expected an error for \"XXXXXX\", got nil")
 	}
 
 }

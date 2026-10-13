@@ -59,9 +59,8 @@ type NetworkSession interface {
 	// execution
 	CancelOperation(ctx context.Context) error
 
-	// CheckInbandNotification non-blocking call that checks if a inband
-	// notification has been received.
-	// Returns: true if an inband notification has been received otherwise false.
+	// CheckInbandNotification reports whether an in-band notification has been received without blocking.
+	// Returns true if an in-band notification has been received; false otherwise.
 	CheckInbandNotification() bool
 
 	// GetRemoteAddress returns the remote network address when it is available,

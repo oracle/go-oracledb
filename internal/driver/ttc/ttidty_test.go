@@ -226,7 +226,7 @@ func TestTTIdtyUnmarshalFrom_Success(t *testing.T) {
 
 	mar := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 
-	err := u.UnMarshalFrom(ctx, mar)
+	err := u.UnmarshalFrom(ctx, mar)
 	if err != nil {
 		t.Fatalf("Expected success, got error: %v", err)
 	}
@@ -244,12 +244,12 @@ func TestTTIdtyUnmarshalFrom_Failure(t *testing.T) {
 		{
 			name:        "capabilities not set",
 			setCaps:     false,
-			expectedErr: "Failed to unmarshal message: Data type message",
+			expectedErr: "failed to unmarshal message: Data type message",
 		},
 		{
 			name:        "typerep unmarshal fail",
 			setCaps:     true,
-			expectedErr: "Failed to unmarshal message: Data type message",
+			expectedErr: "failed to unmarshal message: Data type message",
 		},
 	}
 
@@ -279,7 +279,7 @@ func TestTTIdtyUnmarshalFrom_Failure(t *testing.T) {
 
 			mar := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 
-			err := u.UnMarshalFrom(ctx, mar)
+			err := u.UnmarshalFrom(ctx, mar)
 			if err == nil {
 				t.Fatalf("[%s] Expected error matching %q, got nil", tc.name, tc.expectedErr)
 			}

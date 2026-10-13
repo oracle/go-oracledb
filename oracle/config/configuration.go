@@ -175,7 +175,7 @@ func (config *OracleDriverConfig) ToNSConnectionParameters() string {
 		subsb.Reset()
 		NsNAme := field.element.Tag.Get("ns_name")
 		if len(NsNAme) != 0 {
-			// we discard convertion error as we trust default value
+			// we discard conversion error as we trust default value
 			switch field.elementValue.Kind() {
 			case reflect.String:
 				v := field.elementValue.String()
@@ -273,7 +273,7 @@ func NewOracleLoggingConfig() *OracleLoggingConfig {
 		field := item.Value.(*_fieldListElem)
 		defaultValue := field.element.Tag.Get("default")
 		if len(defaultValue) != 0 {
-			// we discard convertion error as we trust default value
+			// we discard conversion error as we trust default value
 			switch field.elementValue.Kind() {
 			case reflect.String:
 				field.elementValue.Set(reflect.ValueOf(defaultValue))
@@ -864,7 +864,7 @@ func (config *OracleDriverConfig) loadFromEnviron() error {
 	return nil
 }
 
-// _getEnvironmentVarName map a configuration item name to a environment variable name
+// _getEnvironmentVarName maps a configuration item name to an environment variable name.
 // ex : a.b.c is mapped to A_B_C
 func _getEnvironmentVarName(name string) string {
 	return strings.ToUpper(strings.ReplaceAll(name, ".", "_"))
@@ -1093,10 +1093,10 @@ func validateLoggingLevel(value reflect.Value, valueName string) (any, error) {
 	)
 }
 
-// validateZeroOrPositive validator for positive non-zero integer value.
+// validateZeroOrPositive validates that a value is a positive, non-zero integer.
 // errors:
-//   - value is not assignable to a int
-//   - int value is less or equal to zero
+//   - the value is not assignable to an int
+//   - the integer value is less than or equal to zero
 func validateZeroOrPositive(value reflect.Value, valueName string) (any, error) {
 	switch value.Kind() {
 	case reflect.String:
@@ -1161,7 +1161,7 @@ func validateLanguage(value reflect.Value, valueName string) (any, error) {
 		oracleErrors.InvalidConnectionParameter,
 		nil,
 		value,
-		valueName, "one of language Tag",
+		valueName, "a language tag",
 	)
 }
 

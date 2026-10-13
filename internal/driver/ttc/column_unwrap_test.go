@@ -238,7 +238,7 @@ func TestColumnUnwrapDispatch(t *testing.T) {
 	rxd.setCodecFactory(factory)
 	rxd.setNumberofReturningArgs(1)
 	rxd.setColumnContexts([]columnContext{{DataType: DtyJSON}})
-	if err := rxd.UnMarshalFrom(ctx, createMarshaller([]byte{0, 0, 0, 0}, 0, 0)); err != nil {
+	if err := rxd.UnmarshalFrom(ctx, createMarshaller([]byte{0, 0, 0, 0}, 0, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if len(rxd.row) != 1 || rxd.row[0].data != nil || rxd.row[0].lob == nil {
@@ -265,7 +265,7 @@ func TestColumnPayloadConstructedValues(t *testing.T) {
 	rxd.setCodecFactory(factory)
 	rxd.setColumnContexts(columns)
 	rxd.setNumberOfColumns(1)
-	if err := rxd.UnMarshalFrom(ctx, createMarshaller(nil, 0, 0)); err != nil {
+	if err := rxd.UnmarshalFrom(ctx, createMarshaller(nil, 0, 0)); err != nil {
 		t.Fatal(err)
 	}
 	rows := newTTCRows(columns)
@@ -275,7 +275,7 @@ func TestColumnPayloadConstructedValues(t *testing.T) {
 	rxd.setPrevRow(state.prevRow)
 	rxd.setBvcState(nil, true)
 	// A carried cursor must not call a reader or clone the cursor itself.
-	if err := rxd.UnMarshalFrom(ctx, createMarshaller(nil, 0, 0)); err != nil {
+	if err := rxd.UnmarshalFrom(ctx, createMarshaller(nil, 0, 0)); err != nil {
 		t.Fatal(err)
 	}
 	state.handleRXDRow(rxd)
@@ -425,7 +425,7 @@ func TestColumnUnwrapPLSQLFailures(t *testing.T) {
 			bits := driverCommon.NewBitSet(1)
 			bits.SetBytes(0, []byte{1})
 			rxd.setBvcState(bits, bvc)
-			err := rxd.UnMarshalFrom(context.Background(), createMarshaller(wire, 0, 0))
+			err := rxd.UnmarshalFrom(context.Background(), createMarshaller(wire, 0, 0))
 			if (err != nil) != (len(wire) == 2) {
 				t.Fatalf("BVC %t wire %v: %v", bvc, wire, err)
 			}
@@ -433,7 +433,7 @@ func TestColumnUnwrapPLSQLFailures(t *testing.T) {
 	}
 	rxd := newTTIrxd().(*tTIrxd)
 	rxd.setNumberOfColumns(1)
-	if err := rxd.UnMarshalFrom(context.Background(), createMarshaller(nil, 0, 0)); err == nil {
+	if err := rxd.UnmarshalFrom(context.Background(), createMarshaller(nil, 0, 0)); err == nil {
 		t.Fatal("expected column context mismatch")
 	}
 }
