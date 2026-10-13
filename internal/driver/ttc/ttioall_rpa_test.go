@@ -229,7 +229,7 @@ func TestTTIOallRPA_UnmarshalFrom_UnsupportedNonZeroValues(t *testing.T) {
 			mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 			rpa := &ttioallrpa{}
-			if err := rpa.UnmarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "Failed to unmarshal message") {
+			if err := rpa.UnmarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "failed to unmarshal message") {
 				t.Fatalf("expected failure for unsupported non-zero %s, got err=%v", tc.name, err)
 			}
 		})
@@ -346,7 +346,7 @@ func TestTTIOallRPA_Unmarshal_TransactionContext_Fail_Bytes(t *testing.T) {
 	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	rpa := &ttioallrpa{}
-	if err := rpa.UnmarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "Failed to unmarshal message") {
+	if err := rpa.UnmarshalFrom(context.Background(), mar); err == nil || !strings.Contains(err.Error(), "failed to unmarshal message") {
 		t.Fatalf("expected failure for transaction context bytes, got err=%v", err)
 	}
 }

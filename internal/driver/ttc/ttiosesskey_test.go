@@ -302,11 +302,11 @@ func TestOSesskeyRPAUnmarshalFrom_Fail(t *testing.T) {
 		{"Error Reading Number of Pairs (ReadByte)", []byte{0x00, 0x05}, 1, 0, "simulated read error"},
 		{"Error Reading Key Value List (ReadBytes)", makeOSesskeyRPAPayload(), 0, 2, "simulated read error"},
 		// Missing keys in payload
-		{"Missing AUTH_SESSKEY", makeOSesskeyRPAMissingKeyPayload("AUTH_SESSKEY"), 0, 0, "Failed to unmarshal message"},
-		{"Missing AUTH_VFR_DATA", makeOSesskeyRPAMissingKeyPayload("AUTH_VFR_DATA"), 0, 0, "Failed to unmarshal message"},
-		{"Missing AUTH_PBKDF2_CSK_SALT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_CSK_SALT"), 0, 0, "Failed to unmarshal message"},
-		{"Missing AUTH_PBKDF2_VGEN_COUNT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_VGEN_COUNT"), 0, 0, "Failed to unmarshal message"},
-		{"Missing AUTH_PBKDF2_SDER_COUNT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_SDER_COUNT"), 0, 0, "Failed to unmarshal message"},
+		{"Missing AUTH_SESSKEY", makeOSesskeyRPAMissingKeyPayload("AUTH_SESSKEY"), 0, 0, "failed to unmarshal message"},
+		{"Missing AUTH_VFR_DATA", makeOSesskeyRPAMissingKeyPayload("AUTH_VFR_DATA"), 0, 0, "failed to unmarshal message"},
+		{"Missing AUTH_PBKDF2_CSK_SALT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_CSK_SALT"), 0, 0, "failed to unmarshal message"},
+		{"Missing AUTH_PBKDF2_VGEN_COUNT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_VGEN_COUNT"), 0, 0, "failed to unmarshal message"},
+		{"Missing AUTH_PBKDF2_SDER_COUNT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_SDER_COUNT"), 0, 0, "failed to unmarshal message"},
 		// Invalid counts that must fail strconv.Atoi
 		{"Invalid VGEN_COUNT", makeOSesskeyRPAInvalidCountPayload("VGEN", "abcd"), 0, 0, "strconv.Atoi"},
 		{"Invalid SDER_COUNT", makeOSesskeyRPAInvalidCountPayload("SDER", "d"), 0, 0, "strconv.Atoi"},

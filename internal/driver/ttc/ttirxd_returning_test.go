@@ -299,7 +299,7 @@ func TestTTIrxd_UnmarshalFrom_Returning_DataReadError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for truncated CLR data, got nil")
 	}
-	wantSub := "Failed to unmarshal message: Row transfer data message"
+	wantSub := "failed to unmarshal message: Row transfer data message"
 	if !contains(err.Error(), wantSub) {
 		t.Errorf("error %q does not contain %q", err.Error(), wantSub)
 	}
@@ -324,7 +324,7 @@ func TestTTIrxd_UnmarshalFrom_Returning_IndicatorReadError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing UB2 indicator, got nil")
 	}
-	wantSub := "Failed to unmarshal message: Row transfer data message"
+	wantSub := "failed to unmarshal message: Row transfer data message"
 	if !contains(err.Error(), wantSub) {
 		t.Errorf("error %q does not contain %q", err.Error(), wantSub)
 	}

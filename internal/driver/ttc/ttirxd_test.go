@@ -203,7 +203,7 @@ func TestTTIrxd_BvcOnFirstRow_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected error for BVC on first row, got <nil>")
 	}
-	expError := "Failed to unmarshal message: Row transfer data message"
+	expError := "failed to unmarshal message: Row transfer data message"
 	if got := err.Error(); got == "" || !contains(got, expError) {
 		t.Errorf("Unexpected error. Got: %v, Want substring: %v", got, expError)
 	}
@@ -272,7 +272,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 				rxd.setBvcState(nil, false)
 			},
 			payload:    []byte{10, 20, 30}, // arbitrary data shouldn't matter, as zero cols should error early
-			wantErrSub: "Failed to unmarshal message: Row transfer data message",
+			wantErrSub: "failed to unmarshal message: Row transfer data message",
 		},
 		{
 			name: "payload too short for column header",
@@ -284,7 +284,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 				rxd.setBvcState(nil, false)
 			},
 			payload:    []byte{}, // empty payload
-			wantErrSub: "Failed to unmarshal message: Row transfer data message",
+			wantErrSub: "failed to unmarshal message: Row transfer data message",
 		},
 		{
 			name: "payload too short for column data",
@@ -296,7 +296,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 				rxd.setBvcState(nil, false)
 			},
 			payload:    []byte{5}, // column claims 5 bytes, but only length present
-			wantErrSub: "Failed to unmarshal message: Row transfer data message",
+			wantErrSub: "failed to unmarshal message: Row transfer data message",
 		},
 		{
 			name: "bvc found, prevRow is nil",
@@ -308,7 +308,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 				rxd.setBvcState(bitset, true)
 			},
 			payload:    []byte{42, 43}, // won't be used, error triggers before unmarshalling
-			wantErrSub: "Failed to unmarshal message: Row transfer data message",
+			wantErrSub: "failed to unmarshal message: Row transfer data message",
 		},
 		{
 			name: "bvc found, prevRow wrong length",
@@ -320,7 +320,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 				rxd.setBvcState(bitset, true)
 			},
 			payload:    []byte{42, 43}, // won't be used, error triggers before unmarshalling
-			wantErrSub: "Failed to unmarshal message: Row transfer data message",
+			wantErrSub: "failed to unmarshal message: Row transfer data message",
 		},
 	}
 	// Iterate all error case scenarios
@@ -540,7 +540,7 @@ func TestTTIrxd_BvcPresentColumn_UnmarshalError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected error for insufficient data on present column, got <nil>")
 	}
-	wantSub := "Failed to unmarshal message: Row transfer data message"
+	wantSub := "failed to unmarshal message: Row transfer data message"
 	if got := err.Error(); !contains(got, wantSub) {
 		t.Errorf("Expected error to contain %q, got: %v", wantSub, got)
 	}

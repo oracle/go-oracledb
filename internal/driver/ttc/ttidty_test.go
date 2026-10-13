@@ -244,12 +244,12 @@ func TestTTIdtyUnmarshalFrom_Failure(t *testing.T) {
 		{
 			name:        "capabilities not set",
 			setCaps:     false,
-			expectedErr: "Failed to unmarshal message: Data type message",
+			expectedErr: "failed to unmarshal message: Data type message",
 		},
 		{
 			name:        "typerep unmarshal fail",
 			setCaps:     true,
-			expectedErr: "Failed to unmarshal message: Data type message",
+			expectedErr: "failed to unmarshal message: Data type message",
 		},
 	}
 

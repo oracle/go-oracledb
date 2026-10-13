@@ -220,7 +220,7 @@ func TestOexfen_MarshalTo_Failures(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "Failed to marshal message") {
+		if !strings.Contains(err.Error(), "failed to marshal message") {
 			t.Fatalf("expected header error, got %v", err)
 		}
 	})
@@ -234,10 +234,10 @@ func TestOexfen_MarshalTo_Failures(t *testing.T) {
 		capacity int
 		wantSub  string
 	}{
-		{"Fail_Cursor", 3, "Failed to marshal message"},
-		{"Fail_Iterations", 5, "Failed to marshal message"},
-		{"Fail_Exerof", 10, "Failed to marshal message"},
-		{"Fail_Exeflg", 12, "Failed to marshal message"},
+		{"Fail_Cursor", 3, "failed to marshal message"},
+		{"Fail_Iterations", 5, "failed to marshal message"},
+		{"Fail_Exerof", 10, "failed to marshal message"},
+		{"Fail_Exeflg", 12, "failed to marshal message"},
 	}
 
 	for _, tc := range tests {

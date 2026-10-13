@@ -322,10 +322,10 @@ func TestTTIproUnmarshalFrom_FailInvalidData(t *testing.T) {
 		payload     []byte
 		expectedErr string
 	}{
-		{name: "InvalidVersion", expectedErr: "Failed to unmarshal message: Protocol message"},
+		{name: "InvalidVersion", expectedErr: "failed to unmarshal message: Protocol message"},
 		{name: "CharSetElemPresentButTooShort", expectedErr: "EOF"},
-		{name: "FDOZeroLength", expectedErr: "Failed to unmarshal message: Protocol message"},
-		{name: "FDOInvalidOffset", expectedErr: "Failed to unmarshal message: Protocol message"},
+		{name: "FDOZeroLength", expectedErr: "failed to unmarshal message: Protocol message"},
+		{name: "FDOInvalidOffset", expectedErr: "failed to unmarshal message: Protocol message"},
 	}
 
 	for _, tt := range failures {

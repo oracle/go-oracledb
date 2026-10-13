@@ -819,8 +819,8 @@ func TestOAuthRPAUnmarshalFrom_Fail(t *testing.T) {
 		{"Error Reading Number of Pairs (ReadByte)", []byte{0x00}, 1, 0, "simulated read error"},
 		{"Error Reading Key Value List (ReadBytes)", makeOauthRPAPayload(), 0, 2, "simulated read error"},
 		// Logical failures based on content
-		{"Missing AUTH_DB_MOUNT_ID", []byte{0x00}, 0, 0, "Failed to unmarshal message"},
-		{"Invalid AUTH_DB_MOUNT_ID (parse error)", nil, 0, 0, "Failed to unmarshal message"},
+		{"Missing AUTH_DB_MOUNT_ID", []byte{0x00}, 0, 0, "failed to unmarshal message"},
+		{"Invalid AUTH_DB_MOUNT_ID (parse error)", nil, 0, 0, "failed to unmarshal message"},
 		{"NOMOUNT AUTH_DB_MOUNT_ID == 0", nil, 0, 0, "NOMOUNT"},
 	}
 
