@@ -48,13 +48,7 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 )
-
-func init() {
-	message.SetString(language.French, string(oracleErrors.InternalError), "erreur interne factice.")
-	message.SetString(language.French, string(oracleErrors.StatementExecutionFailed), "echec factice de preparation de %s: %s.")
-}
 
 func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 	t.Parallel()
@@ -145,7 +139,7 @@ func TestConnection_ExecContext_LocalizesError(t *testing.T) {
 	if sqlErr.ErrorCode() != string(oracleErrors.StatementExecutionFailed) {
 		t.Fatalf("expected error code %s, got %s", oracleErrors.StatementExecutionFailed, sqlErr.ErrorCode())
 	}
-	if got, want := err.Error(), "OGD-00050 - echec factice de preparation de query: empty SQL."; got != want {
+	if got, want := err.Error(), "OGD-00050 - échec de la préparation de l'instruction query : empty SQL."; got != want {
 		t.Fatalf("unexpected localized error %q, want %q", got, want)
 	}
 }
@@ -170,7 +164,7 @@ func TestConnection_QueryContext_LocalizesError(t *testing.T) {
 	if sqlErr.ErrorCode() != string(oracleErrors.StatementExecutionFailed) {
 		t.Fatalf("expected error code %s, got %s", oracleErrors.StatementExecutionFailed, sqlErr.ErrorCode())
 	}
-	if got, want := err.Error(), "OGD-00050 - echec factice de preparation de query: empty SQL."; got != want {
+	if got, want := err.Error(), "OGD-00050 - échec de la préparation de l'instruction query : empty SQL."; got != want {
 		t.Fatalf("unexpected localized error %q, want %q", got, want)
 	}
 }
