@@ -696,7 +696,7 @@ func (rpa *OAuthRPA) UnmarshalFrom(ctx context.Context, engine driverCommon.Mars
 	var err error
 	rpa.outNbPairs, err = engine.UnmarshalUB2(ctx)
 	if err != nil {
-		common.Odl.Warn("Unable to unmarshal oAuth RPA, cant' get pairs count", "error", err)
+		common.Odl.Warn("Unable to unmarshal oAuth RPA, cannot get pairs count", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAUTH RPA")
 	}
 	if err = validateAuthKeyValueLength("pairs", driverCommon.SB4(rpa.outNbPairs), maxAuthKeyValuePairs); err != nil {
@@ -707,7 +707,7 @@ func (rpa *OAuthRPA) UnmarshalFrom(ctx context.Context, engine driverCommon.Mars
 	keyValueList := newPreallocatedKeyValueList(int(rpa.outNbPairs))
 	err = ((driverCommon.Unmarshallable)(keyValueList)).UnmarshalFrom(ctx, engine)
 	if err != nil {
-		common.Odl.Warn("Unable to unmarshal oAuth RPA, cant' unmarshal key/value pairs", "error", err)
+		common.Odl.Warn("Unable to unmarshal oAuth RPA, cannot unmarshal key/value pairs", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAUTH RPA")
 	}
 

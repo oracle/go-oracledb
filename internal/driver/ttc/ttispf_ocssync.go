@@ -144,7 +144,7 @@ func (spf *ttiSPFOCSSync) UnmarshalFrom(ctx context.Context, engine driverCommon
 	spf.keyValueArr = keyValueList
 	err = ((driverCommon.Unmarshallable)(keyValueList)).UnmarshalFrom(ctx, engine)
 	if err != nil {
-		common.Odl.Warn("Unable to unmarshal Server-To-Client Piggyback, cant' unmarshal key/value pairs", "error", err)
+		common.Odl.Warn("Unable to unmarshal Server-To-Client Piggyback, cannot unmarshal key/value pairs", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "keyword/value")
 	}
 

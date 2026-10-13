@@ -279,7 +279,7 @@ func NewTestingEnvironment(fileName string) (TestingEnvironment, error) {
 
 	_, err := os.Stat(fileName)
 	if os.IsNotExist(err) {
-		return TestingEnvironment{}, fmt.Errorf("specified configuration file %s do not exists", fileName)
+		return TestingEnvironment{}, fmt.Errorf("specified configuration file %s does not exist", fileName)
 	}
 
 	f, err := os.Open(fileName)
@@ -303,7 +303,7 @@ func NewTestingEnvironment(fileName string) (TestingEnvironment, error) {
 // Error: config is not found or disabled
 func (e *TestingEnvironment) GetConfig(name string) (*TestConfig, error) {
 	if e.driverConfigs == nil {
-		return nil, fmt.Errorf("attempt to get a configuration but not configuration available")
+		return nil, fmt.Errorf("attempted to get a configuration, but no configurations are available")
 	}
 	for _, config := range e.driverConfigs {
 		if config.ConfigName == name {

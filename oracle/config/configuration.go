@@ -1161,7 +1161,7 @@ func validateLanguage(value reflect.Value, valueName string) (any, error) {
 		oracleErrors.InvalidConnectionParameter,
 		nil,
 		value,
-		valueName, "one of language Tag",
+		valueName, "a language tag",
 	)
 }
 
