@@ -101,7 +101,7 @@ func TestOall8_getFuncCode(t *testing.T) {
 // 6: SCN high (0 here)
 // 7: 1 for SELECT, else 0
 // 9: flags: +AL8EX_IMPL_RESULTS_CLIENT if EXE, +AL8EX_GET_PIDMLRC if DML
-// 11: SSS cursorId position (0 here)
+// 11: SSS cursor ID position (0 here)
 func makeAl8i4Drop() []drvCommon.UB4 {
 	al := make([]drvCommon.UB4, 13)
 	al[0] = 1                       // PRS
@@ -169,7 +169,7 @@ func TestOall8_MarshalTo_Drop_MatchesGolden(t *testing.T) {
 	// Build message
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	m.setSQL([]byte("DROP TABLE TABLE1"))
 	m.setOall8Options(makeAl8i4Drop())
@@ -200,7 +200,7 @@ func TestOall8_MarshalTo_Create_MatchesGolden(t *testing.T) {
 
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	m.setSQL([]byte(sql))
 	m.setOall8Options(makeAl8i4Create())
@@ -232,7 +232,7 @@ func TestOall8_MarshalTo_Insert_MatchesGolden(t *testing.T) {
 	m := NewOall18().(*tTIOall)
 	// PRS|EXE|COM|NPL (no BND since SQL uses literals, not binds)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	m.setCurrentRank(1)
 
@@ -266,7 +266,7 @@ func TestOall8_MarshalTo_Delete_MatchesGolden(t *testing.T) {
 
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	m.setCurrentRank(1)
 	m.setSQL([]byte(sql))
@@ -299,7 +299,7 @@ func TestOall8_MarshalTo_Select_MatchesGolden(t *testing.T) {
 	m := NewOall18().(*tTIOall)
 	// PRS|EXE only, no FCH. isSelect true and rowsToFetch 10 => max prefetch size, 10 rows.
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	// to match dump values.
 	m.maxClientBuffer = maxValue
@@ -336,7 +336,7 @@ func TestOall8_MarshalTo_Select_MatchesGolden(t *testing.T) {
 func buildOall8DDL(sql string) *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	m.setSQL([]byte(sql))
@@ -347,7 +347,7 @@ func buildOall8DDL(sql string) *tTIOall {
 func buildOall8DML(sql string) *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	m.setCurrentRank(1)
@@ -361,7 +361,7 @@ func buildOall8DML(sql string) *tTIOall {
 func buildOall8SELECT(sql string, rowsToFetch int) *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode) // (!FCH) && EXE && PRS && isSelect
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	m.setRowsToFetch()
@@ -449,7 +449,7 @@ func TestOall8_MarshalTo_Fail_DDL(t *testing.T) {
 func buildOall8WithBinds() *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode | bindValuesPresent)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	// Keep SQL and oall8Options empty to reduce unrelated payload noise
@@ -526,7 +526,7 @@ func TestOall8_MarshalTo_Fail_BindCount(t *testing.T) {
 func buildOall8WithDefines() *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode | defineColumnsProvided)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	// Keep SQL and oall8Options empty to reduce unrelated payload noise
@@ -645,7 +645,7 @@ func buildOall8Empty() *tTIOall {
 	m := NewOall18().(*tTIOall)
 	// Minimal PRS|EXE path, non-SELECT, non-DML
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	// Both payloads empty

@@ -89,14 +89,14 @@ func runTTIRPATest(t *testing.T, name string, dump []string) {
 	}
 
 	// Minimal invariants from decoder:
-	// - al8o4 must be present and contain at least [0]=SCN low, [1]=SCN high, [2]=cursorId
+	// - al8o4 must be present and contain at least [0]=SCN low, [1]=SCN high, and [2]=cursor ID
 	if len(rpa.al8o4) < 3 {
 		t.Fatalf("%s: al8o4 too short, got %d", name, len(rpa.al8o4))
 	}
 
-	// The computed cursorId is derived from al8o4[2]; ensure it matches
-	if rpa.cursorId != common.SB4(rpa.al8o4[2]) {
-		t.Fatalf("%s: cursorId mismatch: got %d want %d", name, rpa.cursorId, common.SB4(rpa.al8o4[2]))
+	// The computed cursor ID is derived from al8o4[2]; ensure it matches.
+	if rpa.cursorID != common.SB4(rpa.al8o4[2]) {
+		t.Fatalf("%s: cursorId mismatch: got %d want %d", name, rpa.cursorID, common.SB4(rpa.al8o4[2]))
 	}
 
 	// Recompute SCN as the implementation does and compare
@@ -112,14 +112,14 @@ func runTTIRPATest(t *testing.T, name string, dump []string) {
 }
 
 // TestTTIOallRPA_Unmarshal_Drop verifies DROP TTIRPA payload decodes without error and core invariants hold.
-// Expectation: UnmarshalFrom succeeds and derived fields (cursorId, SCN, al8o4) are consistent.
+// Expectation: UnmarshalFrom succeeds and the derived cursor ID, SCN, and al8o4 values are consistent.
 func TestTTIOallRPA_Unmarshal_Drop(t *testing.T) {
 	t.Parallel()
 	runTTIRPATest(t, "DROP", validTTIRPADropDump)
 }
 
 // TestTTIOallRPA_Unmarshal_Create verifies CREATE TTIRPA payload decodes without error and core invariants hold.
-// Expectation: UnmarshalFrom succeeds and computed values (cursorId, SCN) match expected derivations.
+// Expectation: UnmarshalFrom succeeds and the computed cursor ID and SCN match the expected values.
 func TestTTIOallRPA_Unmarshal_Create(t *testing.T) {
 	t.Parallel()
 	runTTIRPATest(t, "CREATE", validTTIRPACreateDump)
@@ -133,7 +133,7 @@ func TestTTIOallRPA_Unmarshal_Insert(t *testing.T) {
 }
 
 // TestTTIOallRPA_Unmarshal_AlterSessionDrop verifies ALTER SESSION/DROP style TTIRPA payload decodes correctly.
-// Expectation: UnmarshalFrom succeeds and invariants (cursorId, SCN) hold true.
+// Expectation: UnmarshalFrom succeeds and the cursor ID and SCN satisfy the expected invariants.
 func TestTTIOallRPA_Unmarshal_AlterSessionDrop(t *testing.T) {
 	t.Parallel()
 	runTTIRPATest(t, "ALTER_SESSION_DROP", validTTIRPAAlterSessionDrop)
@@ -271,7 +271,7 @@ func TestTTIOallRPA_UnmarshalDMLRows_FaultyBuffer(t *testing.T) {
 
 // Exercise transaction context path: set al8txl > 0 and supply 3 bytes (A,B,C).
 // TestTTIOallRPA_Unmarshal_TransactionContext verifies parsing succeeds when transaction context bytes are present.
-// Expectation: UnmarshalFrom completes and invariants (cursorId and SCN derived from al8o4) match expected values.
+// Expectation: UnmarshalFrom completes, and the cursor ID and SCN derived from al8o4 match the expected values.
 func TestTTIOallRPA_Unmarshal_TransactionContext(t *testing.T) {
 	t.Parallel()
 	// Start from DROP dump payload
@@ -306,8 +306,8 @@ func TestTTIOallRPA_Unmarshal_TransactionContext(t *testing.T) {
 	if len(rpa.al8o4) < 3 {
 		t.Fatalf("al8o4 too short, got %d", len(rpa.al8o4))
 	}
-	if rpa.cursorId != common.SB4(rpa.al8o4[2]) {
-		t.Fatalf("cursorId mismatch: got %d want %d", rpa.cursorId, common.SB4(rpa.al8o4[2]))
+	if rpa.cursorID != common.SB4(rpa.al8o4[2]) {
+		t.Fatalf("cursorID mismatch: got %d want %d", rpa.cursorID, common.SB4(rpa.al8o4[2]))
 	}
 	const KSCNFVB common.UB4 = 0x8000
 	least := rpa.al8o4[0]

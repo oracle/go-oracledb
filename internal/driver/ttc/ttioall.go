@@ -80,7 +80,7 @@ type tTIOall struct {
 	sql              driverCommon.B1Array      // sql represents SQL text payload encoded in network character set
 	options          driverCommon.UB4          // options represents operation flags (statementParsedByServer / bindValuesPresent / executeStatement / defineColumnsProvided /...)
 	oall8Options     []driverCommon.UB4        // oall8Options represents variable-length vector (we use len=13)
-	cursorId         driverCommon.SB4          // cursorId id of the cursorId
+	cursorID         driverCommon.SB4          // cursor ID used by this request
 	maxLength        driverCommon.UB4          // maxLength represents max bytes for marshalling
 	numberOfBinds    driverCommon.SB4          // numberOfBinds represents number of bindValuesPresent positions present in this request
 	defineColumns    driverCommon.SB4          // defineColumns represents number of defineColumnsProvided columns provided by the client
@@ -126,8 +126,8 @@ func (m *tTIOall) setOptions(opts driverCommon.UB4) { m.options = opts }
 // setOall8Options sets the i4 vector (length, iterations, flags, etc.).
 func (m *tTIOall) setOall8Options(v []driverCommon.UB4) { m.oall8Options = v }
 
-// setCursorId sets the cursor id.
-func (m *tTIOall) setCursorId(c driverCommon.SB4) { m.cursorId = c }
+// setCursorID sets the cursor ID.
+func (m *tTIOall) setCursorID(c driverCommon.SB4) { m.cursorID = c }
 
 // setMaxLength sets the maximum length used for marshalling.
 func (m *tTIOall) setMaxLength(n driverCommon.UB4) { m.maxLength = n }
@@ -187,8 +187,8 @@ func (m *tTIOall) MarshalTo(ctx context.Context, engine driverCommon.Marshaller)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
-	// cursorId
-	if err := engine.MarshalSB4(ctx, m.cursorId); err != nil {
+	// cursorID
+	if err := engine.MarshalSB4(ctx, m.cursorID); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 cursorId", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 

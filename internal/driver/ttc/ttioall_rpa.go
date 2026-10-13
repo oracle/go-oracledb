@@ -48,13 +48,13 @@ import (
 )
 
 // ttioallrpa represents the OALL8 RPA (Response Parameters) block as decoded from the wire.
-// - al8o4 (UB4 vector) with SCN and cursorId
+// - al8o4 (UB4 vector) with SCN and cursor ID
 // - transaction context (length + bytes) is read/ignored
 // - keyword-values is read
 type ttioallrpa struct {
 	// Decoded fields (subset)
 	scn      uint64             // built from al8o4[0] and al8o4[1] without KSCNFVB
-	cursorId driverCommon.SB4   // from al8o4[2]
+	cursorID driverCommon.SB4   // from al8o4[2]
 	al8o4    []driverCommon.UB4 // raw UB4 vector for reference
 
 	registrationFeedback []byte
@@ -66,8 +66,8 @@ func (p *ttioallrpa) GetMsgCode() driverCommon.MessageType {
 	return TTIRPA
 }
 
-func (p *ttioallrpa) getCursorId() driverCommon.SB4 {
-	return p.cursorId
+func (p *ttioallrpa) getCursorID() driverCommon.SB4 {
+	return p.cursorID
 }
 
 func newTTIOallRPA() driverCommon.Message[driverCommon.MessageType] {
@@ -78,7 +78,7 @@ func newTTIOallRPA() driverCommon.Message[driverCommon.MessageType] {
 // It reads:
 //   - UB2 al8o4l (length), then al8o4l times UB4 values into al8o4
 //   - Builds SCN from al8o4[0] (low) and al8o4[1]&^KSCNFVB (high)
-//   - Sets cursorId from al8o4[2]
+//   - Sets the cursor ID from al8o4[2]
 //   - Reads transaction context length (UB2) and bytes (ignored)
 //   - Reads keyword-values length (UB2); decoding of pairs is deferred
 func (p *ttioallrpa) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
@@ -93,7 +93,7 @@ func (p *ttioallrpa) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	// read al8o4 UB4 vector used for sequence numbers
 	// al8o4[0] currentSCN (1/2 )
 	// al8o4[1] current SCN (other 1/2)
-	// al8o4[2] returned cursorId
+	// al8o4[2] contains the returned cursor ID
 	// al8o4[3] XA out flags
 	// al8o4[4] number of rows cached on server
 	// al8o4[5] checksum from server
@@ -117,7 +117,7 @@ func (p *ttioallrpa) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	}
 	// Cursor id
 	if len(p.al8o4) >= 3 {
-		p.cursorId = driverCommon.SB4(p.al8o4[2])
+		p.cursorID = driverCommon.SB4(p.al8o4[2])
 	}
 
 	// Transaction context length + bytes (ignored as we don't support it)

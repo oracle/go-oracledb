@@ -71,7 +71,7 @@ func newTTILobRPA() driverCommon.Message[driverCommon.MessageType] {
 // It reads:
 //   - UB2 al8o4l (length), then al8o4l times UB4 values into al8o4
 //   - Builds SCN from al8o4[0] (low) and al8o4[1]&^KSCNFVB (high)
-//   - Sets cursorId from al8o4[2]
+//   - Sets the cursor ID from al8o4[2]
 //   - Reads transaction context length (UB2) and bytes (ignored)
 //   - Reads keyword-values length (UB2); decoding of pairs is deferred
 //

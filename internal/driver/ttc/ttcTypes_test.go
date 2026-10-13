@@ -61,36 +61,36 @@ func TestMarshalKeywordValuePairs(t *testing.T) {
 
 	kva.MarshalTo(context.Background(), engine)
 
-	unMarshalledKva := make(keywordValueArray, 2)
-	unMarshalledKva.UnmarshalFrom(context.Background(), engine)
+	unmarshalledKva := make(keywordValueArray, 2)
+	unmarshalledKva.UnmarshalFrom(context.Background(), engine)
 
-	if len(kva) != len(unMarshalledKva) {
-		t.Fatalf("Invalid length expected %d, but was %d", len(kva), len(unMarshalledKva))
+	if len(kva) != len(unmarshalledKva) {
+		t.Fatalf("Invalid length expected %d, but was %d", len(kva), len(unmarshalledKva))
 	}
 	for index, item := range kva {
 
-		if len(item.textValue.value) != len(unMarshalledKva[index].textValue.value) {
-			t.Fatalf("Invalid length expected %d, but was %d", len(item.textValue.value), len(unMarshalledKva[index].textValue.value))
+		if len(item.textValue.value) != len(unmarshalledKva[index].textValue.value) {
+			t.Fatalf("Invalid length expected %d, but was %d", len(item.textValue.value), len(unmarshalledKva[index].textValue.value))
 		}
 
 		for i, value := range item.textValue.value {
-			if value != unMarshalledKva[index].textValue.value[i] {
-				t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unMarshalledKva[index].textValue.value[i])
+			if value != unmarshalledKva[index].textValue.value[i] {
+				t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unmarshalledKva[index].textValue.value[i])
 			}
 		}
 
-		if len(item.binaryValue.value) != len(unMarshalledKva[index].binaryValue.value) {
-			t.Fatalf("Invalid length expected %d, but was %d", len(item.binaryValue.value), len(unMarshalledKva[index].binaryValue.value))
+		if len(item.binaryValue.value) != len(unmarshalledKva[index].binaryValue.value) {
+			t.Fatalf("Invalid length expected %d, but was %d", len(item.binaryValue.value), len(unmarshalledKva[index].binaryValue.value))
 		}
 
 		for i, value := range item.binaryValue.value {
-			if value != unMarshalledKva[index].binaryValue.value[i] {
-				t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unMarshalledKva[index].binaryValue.value[i])
+			if value != unmarshalledKva[index].binaryValue.value[i] {
+				t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unmarshalledKva[index].binaryValue.value[i])
 			}
 		}
 
-		if item.keyword != unMarshalledKva[index].keyword {
-			t.Fatalf("Invalid keyword expected %d, but was %d", item.keyword, unMarshalledKva[index].keyword)
+		if item.keyword != unmarshalledKva[index].keyword {
+			t.Fatalf("Invalid keyword expected %d, but was %d", item.keyword, unmarshalledKva[index].keyword)
 		}
 	}
 }
@@ -111,36 +111,36 @@ func TestMarshalKeywordValuePairsWithEmptyValues(t *testing.T) {
 
 	kva.MarshalTo(context.Background(), engine)
 
-	unMarshalledKva := make(keywordValueArray, 2)
-	unMarshalledKva.UnmarshalFrom(context.Background(), engine)
+	unmarshalledKva := make(keywordValueArray, 2)
+	unmarshalledKva.UnmarshalFrom(context.Background(), engine)
 
-	if len(kva) != len(unMarshalledKva) {
-		t.Fatalf("Invalid length expected %d, but was %d", len(kva), len(unMarshalledKva))
+	if len(kva) != len(unmarshalledKva) {
+		t.Fatalf("Invalid length expected %d, but was %d", len(kva), len(unmarshalledKva))
 	}
 	for index, item := range kva {
 
-		if len(item.textValue.value) != len(unMarshalledKva[index].textValue.value) {
-			t.Fatalf("Invalid length expected %d, but was %d", len(item.textValue.value), len(unMarshalledKva[index].textValue.value))
+		if len(item.textValue.value) != len(unmarshalledKva[index].textValue.value) {
+			t.Fatalf("Invalid length expected %d, but was %d", len(item.textValue.value), len(unmarshalledKva[index].textValue.value))
 		}
 
 		for i, value := range item.textValue.value {
-			if value != unMarshalledKva[index].textValue.value[i] {
-				t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unMarshalledKva[index].textValue.value[i])
+			if value != unmarshalledKva[index].textValue.value[i] {
+				t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unmarshalledKva[index].textValue.value[i])
 			}
 		}
 
-		if len(item.binaryValue.value) != len(unMarshalledKva[index].binaryValue.value) {
-			t.Fatalf("Invalid length expected %d, but was %d", len(item.binaryValue.value), len(unMarshalledKva[index].binaryValue.value))
+		if len(item.binaryValue.value) != len(unmarshalledKva[index].binaryValue.value) {
+			t.Fatalf("Invalid length expected %d, but was %d", len(item.binaryValue.value), len(unmarshalledKva[index].binaryValue.value))
 		}
 
 		for i, value := range item.binaryValue.value {
-			if value != unMarshalledKva[index].binaryValue.value[i] {
-				t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unMarshalledKva[index].binaryValue.value[i])
+			if value != unmarshalledKva[index].binaryValue.value[i] {
+				t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unmarshalledKva[index].binaryValue.value[i])
 			}
 		}
 
-		if item.keyword != unMarshalledKva[index].keyword {
-			t.Fatalf("Invalid keyword expected %d, but was %d", item.keyword, unMarshalledKva[index].keyword)
+		if item.keyword != unmarshalledKva[index].keyword {
+			t.Fatalf("Invalid keyword expected %d, but was %d", item.keyword, unmarshalledKva[index].keyword)
 		}
 	}
 }

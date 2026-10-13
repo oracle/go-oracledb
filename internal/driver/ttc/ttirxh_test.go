@@ -73,7 +73,7 @@ func TestTTIrxhUnmarshalFrom_Success(t *testing.T) {
 	unmarshallable, _ := p.(common.Unmarshallable)
 	err := unmarshallable.UnmarshalFrom(ctx, mar)
 	if err != nil {
-		t.Errorf("unMarshalFrom failed: %v", err)
+		t.Errorf("UnmarshalFrom failed: %v", err)
 	}
 	rxh := p.(*tTIrxh)
 	// Check for known values from validTtirxhDump

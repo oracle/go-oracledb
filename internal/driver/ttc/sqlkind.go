@@ -83,7 +83,7 @@ type qualifiedSQLStatement struct {
 	query    driverCommon.B1Array // the original SQL query
 	kind     sqlKind              // the kind of the SQL query
 	binds    *bindDetails         // the binds of the SQL query
-	cursorId driverCommon.SB4     // id of the cursorId while this query is executed
+	cursorID driverCommon.SB4     // ID of the cursor while this query is executed
 }
 
 // newQualifiedSQLStatement creates a new qualifiedSQLStatement

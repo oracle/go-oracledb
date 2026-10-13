@@ -81,7 +81,7 @@ func (t *tTIoer14) init() {
 }
 
 // UnmarshalFrom reads and processes error attributes from the network buffer.
-// It returns the current cursorId ID and an error if unmarshalling fails.
+// It returns the current cursor ID or an error if unmarshalling fails.
 func (t *tTIoer14) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	common.Odl.Finest("TTIoer14.UnmarshalFrom: start")
 	if err := t._unmarshalAttributes(ctx, mar); err != nil {
