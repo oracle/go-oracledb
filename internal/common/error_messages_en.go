@@ -513,7 +513,7 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.AlreadyInTransaction), "Isolation level not supported")
 	// Document: No
 	// Cause:    An error occurred while committing or rolling back the transaction.
-	// Action:   Try agian.
+	// Action:   Try again.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.ErrorInTransaction), "An error occurred while performing transaction operation %s")
 	// Document: No
@@ -559,7 +559,7 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.DatabaseMountStateError), "database is in NOMOUNT state")
 	// Document: Yes
 	// Cause:    No username was provided
-	// Action:   Provide a username and try agian.
+	// Action:   Provide a username and try again.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.EmptyUsernameError), "empty username not supported")
 	// Document: Yes

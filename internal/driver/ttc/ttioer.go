@@ -49,10 +49,10 @@ import (
 
 // tTIOerIface defines an interface for Oracle error data protocol unmarshalling and processing.
 type tTIOerIface interface {
-	// getError gets the wrapped error sent back from the server.
-	// in some context. Oer can be received but that do not indicate an error situation.
-	// when that is the case, this method return nil.
-	// 'getError() == nil' is equivalent as 'GetErrorCode() == 0'
+	// getError returns the wrapped error sent by the server.
+	// An OER may be received in some contexts without indicating an error.
+	// In that case, this method returns nil.
+	// A nil result from getError() is equivalent to GetErrorCode() == 0.
 	getError() error
 }
 
@@ -94,7 +94,7 @@ type tTIoer struct {
 	errorLength [1]int
 	errorMsg    []byte
 
-	// Store oerepa for DPL. This represents start and end stream offset of data in error.
+	// For Direct Path Load (DPL), oerepa stores the start and end offsets of error data in the stream.
 	oerepa []byte
 
 	// EOCS is activated through a compile time capability and is sent by the server at the beginning of either TTIOER or TTISTA.
