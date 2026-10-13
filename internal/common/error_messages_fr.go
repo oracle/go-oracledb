@@ -58,4 +58,5 @@ func initMessagesFr() {
 	message.SetString(language.French, string(oracleErrors.InvalidIdentifier), "identifiant SQL invalide")
 	message.SetString(language.French, string(oracleErrors.MissingReadPrivilege), "privilège READ manquant")
 	message.SetString(language.French, string(oracleErrors.MissingLocalizationService), "service de localisation manquant sur la shelf")
+	message.SetString(language.French, string(oracleErrors.InvalidBufferOperation), "opération de tampon invalide")
 }
