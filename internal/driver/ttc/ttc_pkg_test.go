@@ -80,6 +80,16 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestColumnDecoderRegistrations", Categories: "unitary", Exclusive: false, Fn: TestColumnDecoderRegistrations},
+	{Name: "TestColumnUnwrapExecutors", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapExecutors},
+	{Name: "TestColumnUnwrapPLSQLFailures", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapPLSQLFailures},
+
+	{Name: "TestColumnUnwrapSelection", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapSelection},
+	{Name: "TestColumnUnwrapWire", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapWire},
+	{Name: "TestColumnUnwrapDispatch", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapDispatch},
+	{Name: "TestColumnPayloadConstructedValues", Categories: "unitary", Exclusive: false, Fn: TestColumnPayloadConstructedValues},
+	{Name: "TestColumnPayloadDecode", Categories: "unitary", Exclusive: false, Fn: TestColumnPayloadDecode},
+
 	{Name: "TestCapabilityNew", Categories: "unitary", Exclusive: false, Fn: TestCapabilityNew},
 	{Name: "TestCapabilityNewDefault", Categories: "unitary", Exclusive: false, Fn: TestCapabilityNewDefault},
 	{Name: "TestCapabilityMarshalTo_Success", Categories: "unitary", Exclusive: false, Fn: TestCapabilityMarshalTo_Success},
@@ -99,6 +109,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConnectionPinger_Ping", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_Ping},
 	{Name: "TestConnectionPinger_IsValid", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValid},
 	{Name: "TestConnectionPinger_IsValidWithInband", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValidWithInband},
+	{Name: "TestFactoryCodecInjection", Categories: "unitary", Exclusive: false, Fn: TestFactoryCodecInjection},
 	{Name: "TestFactoryRegistries", Categories: "unitary", Exclusive: false, Fn: TestFactoryRegistries},
 	{Name: "TestReplaceMessage", Categories: "unitary", Exclusive: false, Fn: TestReplaceMessage},
 	{Name: "TestFactoryGetMessage", Categories: "unitary", Exclusive: false, Fn: TestFactoryGetMessage},

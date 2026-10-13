@@ -189,11 +189,9 @@ type queryRunState struct {
 	rowCount   driverCommon.UB4
 	bvcColSent *driverCommon.BitSet
 	bvcFound   bool
-	// prevRow and prevLobColContext form the aligned previous-row state used by
-	// BVC carry.
-	prevRow           []driverCommon.B1Array
-	prevLobColContext []*lobColumnContext
-	rows              *ttcRows
+	// prevRow retains complete column payloads for BVC carry.
+	prevRow []columnPayload
+	rows    *ttcRows
 }
 
 // newQueryRunState creates clean row and BVC state for one runQuery invocation.
@@ -1131,7 +1129,6 @@ func (e *statementExecutorSelect) createRXD(state *queryRunState, t *messageHead
 	rxd.setColumnContexts(e.resultMetadata.columns)
 	if state.prevRow != nil {
 		rxd.setPrevRow(state.prevRow)
-		rxd.setPrevLobColumnContext(state.prevLobColContext)
 	}
 	// Pass the character set to RXD so that it can be set in lobContext if
 	// no character set is returned
@@ -1204,7 +1201,7 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 	for i, dest := range e.outDestPtrs {
 		// Skip destinations that have no matching returned value
 		// or no data received from server.
-		if i >= len(rxd.row) || len(rxd.row[i]) == 0 {
+		if i >= len(rxd.row) || rxd.row[i].data == nil {
 			continue
 		}
 
@@ -1214,16 +1211,12 @@ func (e *statementExecutorExec) handleRXDRow(msg driverCommon.Message[driverComm
 			columnContext = e.outColumnContexts[i]
 		}
 
-		// Decode the TTC payload for this returned bind position into a Go value.
-		decoder, err := codecFactory.getDecoder(columnContext.DataType)
+		columnContext.LobContext = rxd.row[i].lob
+		value, err := decodeOutColumn(codecFactory, columnContext, rxd.row[i])
 		if err != nil {
 			return err
 		}
 
-		value, err := decoder.decodeToType(columnContext, rxd.row[i])
-		if err != nil {
-			return err
-		}
 		if value == nil {
 			continue
 		}
@@ -1356,18 +1349,12 @@ func (e *statementExecutorExec) registerIOVCallbacks(ctx context.Context) {
 // LOB metadata for possible BVC carry into the next row.
 func (s *queryRunState) handleRXDRow(msg driverCommon.Message[driverCommon.MessageType]) {
 	if rxd, ok := msg.(*tTIrxd); ok && rxd != nil {
-		currRow := make([]driverCommon.B1Array, len(rxd.row))
+		currRow := make([]columnPayload, len(rxd.row))
 		for i := range rxd.row {
-			currRow[i] = append(driverCommon.B1Array(nil), rxd.row[i]...)
+			currRow[i] = rxd.row[i].clone()
 		}
-		// RXD messages are created per row and their LOB contexts are read-only
-		// after unmarshalling, so rows and BVC state can safely share this slice.
-		currLobColContext := rxd.getLobColumnContext()
 		s.rows.rowData = append(s.rows.rowData, currRow)
-		s.rows.lobColContext = append(s.rows.lobColContext, currLobColContext)
 		s.prevRow = currRow
-		common.Odl.Fine("handleRXDRow: appended RXD row", "len", len(rxd.row))
-		s.prevLobColContext = currLobColContext
 		common.Odl.Fine("handleRXDRow: appended RXD row", "len", len(rxd.row))
 	}
 	s.bvcColSent = nil
@@ -1507,4 +1494,17 @@ func (s statementExecutorOperationNotSupported) QueryContext(_ context.Context, 
 		"error", nil, "sqlKind", s.kind)
 	return nil, common.NewOracleError(oracleErrors.StatementExecutionFailed, nil,
 		s.kind.String(), "Query")
+}
+
+// decodeOutColumn preserves constructed values and decodes only wire images.
+func decodeOutColumn(factory codecFactory, column columnContext, payload columnPayload) (sqldriver.Value, error) {
+	data, raw := payload.data.(driverCommon.B1Array)
+	if !raw {
+		return payload.data, nil
+	}
+	decoder, err := factory.getDecoder(column.DataType)
+	if err != nil {
+		return nil, err
+	}
+	return decoder.decodeToType(column, data)
 }

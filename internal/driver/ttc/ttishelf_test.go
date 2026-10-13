@@ -282,7 +282,7 @@ func (t *testCodecFactory) getEncoder(_ normalizedBindValue) (encoderFunc, error
 func (t *testCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
 	return newTypeDecoder(func(columnContext, driverCommon.B1Array) (driver.Value, error) {
 		return t.decode, nil
-	}, nil), nil
+	}, nil, unwrapCLRColumn), nil
 }
 func (t *testCodecFactory) getBindOac(_ normalizedBindValue, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
 	return t.bindOac, nil

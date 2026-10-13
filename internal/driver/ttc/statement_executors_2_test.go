@@ -124,10 +124,10 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	// explicitly requests registering them. Add minimal decoders to keep registry complete.
 	_ = decoderRegistry.Register(DtyVCS, 2, newTypeDecoder(func(_ columnContext, data common.B1Array) (sqldriver.Value, error) {
 		return string(data), nil
-	}, nil))
+	}, nil, unwrapCLRColumn))
 	_ = decoderRegistry.Register(DtyBin, 2, newTypeDecoder(func(_ columnContext, data common.B1Array) (sqldriver.Value, error) {
 		return []byte(data), nil
-	}, nil))
+	}, nil, unwrapCLRColumn))
 
 	factory := &CodecFactoryImpl{
 		ttcVersion: ttcProtocolVersion,

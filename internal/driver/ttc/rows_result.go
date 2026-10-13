@@ -117,13 +117,12 @@ type columnContext struct {
 //   - RowsColumnTypeScanType
 type ttcRows struct {
 	// row buffer
-	rowData       [][]driverCommon.B1Array
+	rowData       [][]columnPayload
 	currentRowIdx int
 	numOfRows     int
 
 	// metadata caches for ColumnType* interfaces
 	columnContexts []columnContext
-	lobColContext  [][]*lobColumnContext
 	shelf          *ttiShelf[driverCommon.MessageType]
 
 	strictNullHandlingValue bool
@@ -152,7 +151,7 @@ func (r *ttcRows) Columns() []string {
 }
 
 // Next implements driver.Rows.Next. It advances the cursor ID and assigns each
-// column's raw []common.B1Array value as a type provided in dest. Row count is
+// column's payload as a value in dest. Row count is
 // computed once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {
 	if r.currentRowIdx >= r.numOfRows {
@@ -173,7 +172,8 @@ func (r *ttcRows) Next(dest []driver.Value) error {
 // decodeColumnValue returns the decoded driver.Value for the current row's column i.
 //
 // Behaviour:
-//   - Oracle NULLs are detected via zero-length payloads.
+//   - Handlers normalize Oracle NULL payloads to nil.
+//   - Constructed values pass through without byte decoding.
 //   - When a decoder is available for the column's TTC datatype, it is invoked; otherwise
 //     the raw protocol bytes are surfaced unchanged.
 //
@@ -184,12 +184,17 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	colCtx := r.columnContexts[i]
 	dtype := colCtx.DataType
 	scale := colCtx.Scale
-	data := r.rowData[r.currentRowIdx][i]
-	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]
+	payload := r.rowData[r.currentRowIdx][i]
+	colCtx.LobContext = payload.lob
 	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
 	// Handle Oracle SQL NULL (typically raw length zero is NULL).
-	if len(data) == 0 {
+	if payload.data == nil {
 		return r.handleNull(i, dtype, scale), nil
+	}
+
+	data, raw := payload.data.(driverCommon.B1Array)
+	if !raw {
+		return payload.data, nil
 	}
 
 	decoder, err := r.shelf.GetCodecFactory().getDecoder(dtype)
@@ -200,7 +205,7 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 
 	val, err := decoder.decodeToType(colCtx, data)
 	if err != nil {
-		// Preserve unknown types as raw bytes
+		// Preserve the decoder error for localization.
 		return nil, r.shelf.LocalizeError(err)
 	}
 
@@ -356,7 +361,6 @@ func newTTCRows(columnContexts []columnContext) *ttcRows {
 	for i := 0; i < n; i++ {
 		rows.columnContexts[i] = columnContexts[i]
 	}
-	rows.lobColContext = make([][]*lobColumnContext, 0)
 
 	return rows
 }

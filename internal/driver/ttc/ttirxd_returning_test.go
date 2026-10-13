@@ -153,7 +153,7 @@ func TestTTIrxd_UnmarshalFrom_Returning_SinglePosition_SingleRow(t *testing.T) {
 	if len(rxd.row) != 1 {
 		t.Fatalf("row length: got %d, want 1", len(rxd.row))
 	}
-	if !reflect.DeepEqual([]byte(rxd.row[0]), data) {
+	if !reflect.DeepEqual([]byte(rxd.row[0].data.(common.B1Array)), data) {
 		t.Errorf("row[0]: got %v, want %v", rxd.row[0], data)
 	}
 }
@@ -176,10 +176,10 @@ func TestTTIrxd_UnmarshalFrom_Returning_TwoPositions_SingleRowEach(t *testing.T)
 	if len(rxd.row) != 2 {
 		t.Fatalf("row length: got %d, want 2", len(rxd.row))
 	}
-	if !reflect.DeepEqual([]byte(rxd.row[0]), data0) {
+	if !reflect.DeepEqual([]byte(rxd.row[0].data.(common.B1Array)), data0) {
 		t.Errorf("row[0]: got %v, want %v", rxd.row[0], data0)
 	}
-	if !reflect.DeepEqual([]byte(rxd.row[1]), data1) {
+	if !reflect.DeepEqual([]byte(rxd.row[1].data.(common.B1Array)), data1) {
 		t.Errorf("row[1]: got %v, want %v", rxd.row[1], data1)
 	}
 }
@@ -203,7 +203,7 @@ func TestTTIrxd_UnmarshalFrom_Returning_ZeroRowsForPosition(t *testing.T) {
 		t.Fatalf("row length: got %d, want 1", len(rxd.row))
 	}
 	// With 0 rows the inner loop never executes, so row[0] stays nil.
-	if rxd.row[0] != nil {
+	if rxd.row[0].data != nil {
 		t.Errorf("row[0] should be nil for zero-row position, got %v", rxd.row[0])
 	}
 }
@@ -225,7 +225,7 @@ func TestTTIrxd_UnmarshalFrom_Returning_NullValue(t *testing.T) {
 	if len(rxd.row) != 1 {
 		t.Fatalf("row length: got %d, want 1", len(rxd.row))
 	}
-	if rxd.row[0] != nil {
+	if rxd.row[0].data != nil {
 		t.Errorf("row[0] should be nil (SQL NULL), got %v", rxd.row[0])
 	}
 }
@@ -252,7 +252,7 @@ func TestTTIrxd_UnmarshalFrom_Returning_MultipleRows(t *testing.T) {
 		t.Fatalf("row length: got %d, want 1", len(rxd.row))
 	}
 	// The second (last) iteration overwrites the first – verify the last value won.
-	if !reflect.DeepEqual([]byte(rxd.row[0]), last) {
+	if !reflect.DeepEqual([]byte(rxd.row[0].data.(common.B1Array)), last) {
 		t.Errorf("row[0]: got %v, want last value %v", rxd.row[0], last)
 	}
 }
@@ -354,13 +354,13 @@ func TestTTIrxd_UnmarshalFrom_Returning_ThreePositionsMixed(t *testing.T) {
 	if len(rxd.row) != 3 {
 		t.Fatalf("row length: got %d, want 3", len(rxd.row))
 	}
-	if !reflect.DeepEqual([]byte(rxd.row[0]), data0) {
+	if !reflect.DeepEqual([]byte(rxd.row[0].data.(common.B1Array)), data0) {
 		t.Errorf("row[0]: got %v, want %v", rxd.row[0], data0)
 	}
-	if rxd.row[1] != nil {
+	if rxd.row[1].data != nil {
 		t.Errorf("row[1] should be nil (zero rows), got %v", rxd.row[1])
 	}
-	if rxd.row[2] != nil {
+	if rxd.row[2].data != nil {
 		t.Errorf("row[2] should be nil (NULL value), got %v", rxd.row[2])
 	}
 }
@@ -382,7 +382,7 @@ func TestTTIrxd_SetNumberofReturningArgs_SwitchesMode(t *testing.T) {
 	if err := rxd.UnmarshalFrom(context.Background(), mar); err != nil {
 		t.Fatalf("RETURNING mode must not require numberOfColumns; got error: %v", err)
 	}
-	if len(rxd.row) != 1 || !reflect.DeepEqual([]byte(rxd.row[0]), data) {
+	if len(rxd.row) != 1 || !reflect.DeepEqual([]byte(rxd.row[0].data.(common.B1Array)), data) {
 		t.Errorf("unexpected row data: got %v, want %v", rxd.row, data)
 	}
 }

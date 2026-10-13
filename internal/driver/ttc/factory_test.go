@@ -108,6 +108,7 @@ func _createTestFactory(pv int8,
 	fr *Registry[functionRegistryKey]) Factory {
 	var factory = &SimpleFactory{
 		ttcVersion:   pv,
+		codecFactory: NewCodecFactoryForProtocol(pv),
 		msgregistry:  mr,
 		funcregistry: fr,
 	}
@@ -591,5 +592,57 @@ func TestFactorySelectsCapabilitySpecificMessages(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestFactoryCodecInjection verifies protocol-matched dependency injection on
+// both creation paths, instance reuse, and messages that need no codec factory.
+func TestFactoryCodecInjection(t *testing.T) {
+	t.Parallel()
+	for _, version := range []int8{-1, 12, 20} {
+		factory := NewMessageFactoryForProtocol(version, nil).(*SimpleFactory)
+		factory.msgregistry = NewRegistry[common.MessageType]()
+		factory.funcregistry = NewRegistry[functionRegistryKey]()
+		_ = factory.msgregistry.Register(TTIRXD, 0, newTTIrxd)
+		_ = factory.msgregistry.Register(TTIPRO, 0, newTestDummyMessage1)
+		_ = factory.funcregistry.Register(functionRegistryKey{TTIRPA, oAll8}, 0, newTTIrxd)
+		_ = factory.funcregistry.Register(functionRegistryKey{TTIFUN, oAll8}, 0, newTestDummyMessage1)
+		codecs := factory.codecFactory.(*CodecFactoryImpl)
+		if codecs.ttcVersion != version {
+			t.Fatalf("codec version = %d, want %d", codecs.ttcVersion, version)
+		}
+		var previous *tTIrxd
+		for _, create := range []func() (common.Message[common.MessageType], error){
+			func() (common.Message[common.MessageType], error) { return factory.GetMessage(TTIRXD) },
+			func() (common.Message[common.MessageType], error) {
+				return factory.GetMessageForFunction(TTIRPA, oAll8)
+			},
+			func() (common.Message[common.MessageType], error) { return factory.GetMessage(TTIRXD) },
+		} {
+			msg, err := create()
+			if err != nil {
+				t.Fatal(err)
+			}
+			rxd := msg.(*tTIrxd)
+			if rxd.codecFactory != codecs {
+				t.Fatal("message did not receive shared codec factory")
+			}
+			if rxd == previous {
+				t.Fatal("message factory reused RXD instance")
+			}
+			previous = rxd
+		}
+		msg, err := factory.GetMessage(TTIPRO)
+		if err != nil || msg != &dummy1 {
+			t.Fatalf("ordinary message: %v, %v", msg, err)
+		}
+		msg, err = factory.GetMessageForFunction(TTIFUN, oAll8)
+		if err != nil || msg != &dummy1 {
+			t.Fatalf("ordinary function: %v, %v", msg, err)
+		}
+	}
+	factory := NewMessageFactory().(*SimpleFactory)
+	if factory.codecFactory.(*CodecFactoryImpl).ttcVersion != -1 {
+		t.Fatal("default factory lost unrestricted protocol version")
 	}
 }

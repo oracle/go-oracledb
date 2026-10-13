@@ -90,10 +90,12 @@ func makeRowPayload(dump []string) []byte {
 
 // rowToBytes converts a slice of common.B1Array (used for row data) to a slice of byte slices.
 // Primarily used to compare row results in tests.
-func rowToBytes(row []common.B1Array) [][]byte {
+func rowToBytes(row []columnPayload) [][]byte {
 	out := make([][]byte, len(row))
 	for i, arr := range row {
-		out[i] = []byte(arr)
+		if arr.data != nil {
+			out[i] = []byte(arr.data.(common.B1Array))
+		}
 	}
 	return out
 }
@@ -237,7 +239,7 @@ func TestTTIrxd_Setters(t *testing.T) {
 		t.Errorf("setPrevRow(nil): expected nil, got %v", rxd.prevRow)
 	}
 	// Set prevRow to previous data and verify
-	rxd.setPrevRow(prev)
+	rxd.setPrevRow(testColumnRow(prev))
 	if len(rxd.prevRow) != 2 {
 		t.Errorf("setPrevRow: expected len 2, got %d", len(rxd.prevRow))
 	}
@@ -312,8 +314,8 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 			name: "bvc found, prevRow wrong length",
 			setup: func(rxd *tTIrxd) {
 				rxd.setNumberOfColumns(3)
-				rxd.setRowCount(2)                         // not first row
-				rxd.setPrevRow([]common.B1Array{{1}, {2}}) // length 2, should be 3
+				rxd.setRowCount(2)                                        // not first row
+				rxd.setPrevRow(testColumnRow([]common.B1Array{{1}, {2}})) // length 2, should be 3
 				bitset := &common.BitSet{}
 				rxd.setBvcState(bitset, true)
 			},
@@ -326,6 +328,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create a new tTIrxd & configure it for this scenario
 			rxd := newTTIrxd().(*tTIrxd)
+			rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 			tc.setup(rxd)
 			columnContexts := make([]columnContext, int(rxd.numberOfColumns))
 			for i := range columnContexts {
@@ -360,6 +363,7 @@ func TestTTIrxd_UnmarshalFrom(t *testing.T) {
 
 	// Configure tTIrxd for straightforward unmarshalling
 	rxd := newTTIrxd().(*tTIrxd)
+	rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	rxd.setNumberOfColumns(colCount)
 	rxd.setRowCount(rowCount)
 	rxd.setPrevRow(nil)
@@ -379,7 +383,7 @@ func TestTTIrxd_UnmarshalFrom(t *testing.T) {
 
 	// Each column should have non-empty data
 	for i, col := range rxd.row {
-		if col == nil || len(col) == 0 {
+		if col.data == nil || len(col.data.(common.B1Array)) == 0 {
 			t.Errorf("Expected non-empty data in col %d; got %v", i, col)
 		}
 	}
@@ -446,7 +450,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 	payload, _ := ExtractBytesFromDump(dump)
 	mar := createMarshaller(payload, 0, 0)
 	bvc := &tTIbvc{}
-	var prevRow []common.B1Array
+	var prevRow []columnPayload
 	rowCount := common.UB4(0)
 	rxdIndex := 0
 
@@ -467,6 +471,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 			// Step: RXD - Prepare to read a new row
 			rowCount++
 			rxd := newTTIrxd().(*tTIrxd)
+			rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 			rxd.setBvcState(bvc.bvcColSent, bvc.bvcFound)
 			rxd.setRowCount(rowCount)
 			rxd.setNumberOfColumns(noCols)
@@ -514,14 +519,15 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 }
 
 // TestTTIrxd_BvcPresentColumn_UnmarshalError verifies error propagation in UnmarshalFrom when a BVC bitset
-// marks a column as present (so unmarshalColumn is called) but marshalling fails (e.g. not enough data).
+// marks a column as present (so _unmarshalColumn is called) but marshalling fails (e.g. not enough data).
 func TestTTIrxd_BvcPresentColumn_UnmarshalError(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
+	rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	const numCols = 2
 	rxd.setNumberOfColumns(numCols)
 	rxd.setRowCount(2) // not first row
-	rxd.setPrevRow([]common.B1Array{{0x11}, {0x22}})
+	rxd.setPrevRow(testColumnRow([]common.B1Array{{0x11}, {0x22}}))
 	bitset := common.NewBitSet(numCols)
 	bitset.SetBytes(0, []byte{0x01}) // Only column 0 marked present
 	rxd.setBvcState(bitset, true)
@@ -549,9 +555,10 @@ func TestTTIrxd_BvcCarriedNullKeepsLobContextAligned(t *testing.T) {
 	const numCols = 2
 
 	rxd := newTTIrxd().(*tTIrxd)
+	rxd.setCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	rxd.setNumberOfColumns(numCols)
 	rxd.setRowCount(2)
-	rxd.setPrevRow([]common.B1Array{{0x11}, nil})
+	rxd.setPrevRow(testColumnRow([]common.B1Array{{0x11}, nil}))
 	rxd.setColumnContexts([]columnContext{
 		{DataType: DtyVCS},
 		{DataType: DtyClob},
@@ -571,10 +578,10 @@ func TestTTIrxd_BvcCarriedNullKeepsLobContextAligned(t *testing.T) {
 	if got := len(rxd.row); got != numCols {
 		t.Fatalf("row column count = %d, want %d", got, numCols)
 	}
-	if rxd.row[1] != nil {
+	if rxd.row[1].data != nil {
 		t.Fatalf("carried NULL column = %v, want nil", rxd.row[1])
 	}
-	if got := len(rxd.getLobColumnContext()); got != numCols {
+	if got := len(rxd.row); got != numCols {
 		t.Fatalf("LOB context count = %d, want %d to remain aligned with the row", got, numCols)
 	}
 }
@@ -602,8 +609,7 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 	clobData := common.B1Array("hello")
 	previousLobContext := &lobColumnContext{CharsetID: al16Utf16CharSet}
 	state.handleRXDRow(&tTIrxd{
-		row:           []common.B1Array{{0x11}, clobData},
-		lobColContext: []*lobColumnContext{nil, previousLobContext},
+		row: []columnPayload{{data: common.B1Array{0x11}}, {data: clobData, lob: previousLobContext}},
 	})
 
 	// Only column 0 is sent for the next row. Column 1 must carry both its CLOB
@@ -623,13 +629,22 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
-	if !reflect.DeepEqual(rxd.row[1], clobData) {
+	if !reflect.DeepEqual(rxd.row[1].data, clobData) {
 		t.Fatalf("carried CLOB data = %v, want %v", rxd.row[1], clobData)
 	}
-	if got := len(rxd.getLobColumnContext()); got != numCols {
+	if got := len(rxd.row); got != numCols {
 		t.Fatalf("LOB context count = %d, want %d", got, numCols)
 	}
-	if got := rxd.getLobColumnContext()[1]; !reflect.DeepEqual(got, previousLobContext) {
+	if got := rxd.row[1].lob; !reflect.DeepEqual(got, previousLobContext) {
 		t.Fatalf("carried CLOB context = %#v, want %#v", got, previousLobContext)
 	}
+}
+
+// testColumnRow builds raw column payloads for wire fixtures.
+func testColumnRow(row []common.B1Array) []columnPayload {
+	result := make([]columnPayload, len(row))
+	for i, data := range row {
+		result[i] = byteColumnPayload(data)
+	}
+	return result
 }

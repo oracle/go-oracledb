@@ -419,7 +419,7 @@ func TestHandleRXDRow_AssignsDecodedValue(t *testing.T) {
 
 	// Build a fake tTIrxd carrying the wire bytes for "hello".
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{common.B1Array("hello")}
+	rxd.row = testColumnRow([]common.B1Array{common.B1Array("hello")})
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error: %v", err)
@@ -448,7 +448,7 @@ func TestHandleRXDRow_NilDestinationSkipped(t *testing.T) {
 	}
 
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{common.B1Array("ignored")}
+	rxd.row = testColumnRow([]common.B1Array{common.B1Array("ignored")})
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error for nil destination: %v", err)
@@ -479,7 +479,7 @@ func TestHandleRXDRow_MoreDestsThanReturnedValues(t *testing.T) {
 
 	// Server only returned one value.
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{common.B1Array("value1")} // only 1 element
+	rxd.row = testColumnRow([]common.B1Array{common.B1Array("value1")}) // only 1 element
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error: %v", err)
@@ -514,7 +514,7 @@ func TestHandleRXDRow_NilWireValue_SkipsAssignment(t *testing.T) {
 
 	// Nil wire payload – decoder returns nil → assignment skipped.
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{nil}
+	rxd.row = testColumnRow([]common.B1Array{nil})
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error for nil wire value: %v", err)
@@ -546,7 +546,7 @@ func TestHandleRXDRow_RawBytes_AssignedToByteSlice(t *testing.T) {
 
 	payload := common.B1Array{0xDE, 0xAD, 0xBE, 0xEF}
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = []common.B1Array{payload}
+	rxd.row = testColumnRow([]common.B1Array{payload})
 
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error: %v", err)

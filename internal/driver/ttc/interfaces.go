@@ -73,3 +73,14 @@ type Negotiator interface {
 	Negotiate(context.Context) (*common.SessionContext,
 		*ttiShelf[common.MessageType], error)
 }
+
+// codecFactoryUser identifies messages that require protocol-matched codecs.
+// The message factory injects its codec factory immediately after creating a
+// message through GetMessage or GetMessageForFunction, before it is used.
+// Implementations do not need access to the connection shelf for codec lookup.
+type codecFactoryUser interface {
+	// setCodecFactory stores the codec factory for subsequent codec lookups.
+	// factory uses the same TTC protocol version as the creating message factory
+	// and is shared by messages created by that factory.
+	setCodecFactory(factory codecFactory)
+}

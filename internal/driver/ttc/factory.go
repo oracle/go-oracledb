@@ -220,6 +220,7 @@ func (r *Registry[K]) getCandidates(key K) []RegisteredItem {
 
 // SimpleFactory is a simple factory implementation that retrieves the best message or function implementor based on protocol version.
 type SimpleFactory struct {
+	codecFactory codecFactory
 	ttcVersion   int8
 	msgregistry  *Registry[driverCommon.MessageType]
 	funcregistry *Registry[functionRegistryKey]
@@ -236,7 +237,8 @@ func NewMessageFactory() Factory {
 }
 
 // NewMessageFactoryForProtocol creates a factory for a TTC protocol version,
-// using the default message and function registries.
+// using the default message and function registries. It creates a codec factory
+// for the same protocol version and injects it into codecFactoryUser messages.
 //
 // Parameters:
 //   - protocolVersion is the negotiated TTC protocol version. A value of -1
@@ -248,6 +250,7 @@ func NewMessageFactory() Factory {
 func NewMessageFactoryForProtocol(protocolVersion int8, capabilities map[string]driverCommon.Capability) Factory {
 	return &SimpleFactory{
 		ttcVersion:   protocolVersion,
+		codecFactory: NewCodecFactoryForProtocol(protocolVersion),
 		msgregistry:  MessageRegistry,
 		funcregistry: FunctionRegistry,
 		capabilities: capabilities,
@@ -272,7 +275,7 @@ func (f *SimpleFactory) GetMessage(msgType driverCommon.MessageType) (driverComm
 	bestCandidate := getBestImplementor(f.ttcVersion, candidates, f.capabilities)
 	if bestCandidate != nil {
 		common.Odl.Debug("Message returned", "candidate", bestCandidate)
-		return bestCandidate.makeFunc(), nil
+		return f.initializeMessage(bestCandidate.makeFunc()), nil
 	}
 	common.Odl.Warn("No candidate message found", "message type", msgType)
 	return nil, common.NewOracleError(oracleErrors.InternalError, nil)
@@ -297,10 +300,24 @@ func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, 
 	bestCandidate := getBestImplementor(f.ttcVersion, candidates, f.capabilities)
 	if bestCandidate != nil {
 		common.Odl.Fine("Function returned", "candidate", bestCandidate)
-		return bestCandidate.makeFunc(), nil
+		return f.initializeMessage(bestCandidate.makeFunc()), nil
 	}
 	common.Odl.Warn("No candidate function found", "message type", msgType, "function type", funcType)
 	return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+}
+
+// initializeMessage supplies the factory's protocol-matched codecs to messages
+// implementing codecFactoryUser. Other messages are returned unchanged.
+//
+// Parameters:
+//   - msg is the newly constructed message.
+//
+// Returns the same message after dependency initialization.
+func (f *SimpleFactory) initializeMessage(msg driverCommon.Message[driverCommon.MessageType]) driverCommon.Message[driverCommon.MessageType] {
+	if user, ok := msg.(codecFactoryUser); ok {
+		user.setCodecFactory(f.codecFactory)
+	}
+	return msg
 }
 
 // getBestImplementor selects the highest-version candidate compatible with the
