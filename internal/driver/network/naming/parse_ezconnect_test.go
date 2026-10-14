@@ -415,7 +415,7 @@ func TestParseEzConnect_EmptyURL(t *testing.T) {
 // TestParseEzConnect_SecurityParams tests TCPS with security parameters
 func TestParseEzConnect_SecurityParams(t *testing.T) {
 	t.Parallel()
-	convResult, err := parseEzConnect("tcps://host:2484/mydb?ssl_server_dn_match=yes&wallet_location=/wallet")
+	convResult, err := parseEzConnect("tcps://host:2484/mydb?ssl_server_dn_match=yes&wallet_location=/wallet&token_auth=OAUTH&token_location=/token/location")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -429,6 +429,24 @@ func TestParseEzConnect_SecurityParams(t *testing.T) {
 	}
 	if !strings.Contains(result, "(SSL_SERVER_DN_MATCH=yes)") {
 		t.Errorf("expected SSL_SERVER_DN_MATCH in SECURITY, got %s", result)
+	}
+	if !strings.Contains(result, "(TOKEN_AUTH=OAUTH)") {
+		t.Errorf("expected TOKEN_AUTH in SECURITY, got %s", result)
+	}
+	if !strings.Contains(result, "(TOKEN_LOCATION=/token/location)") {
+		t.Errorf("expected TOKEN_LOCATION in SECURITY, got %s", result)
+	}
+
+	root, err := Parse(result)
+	if err != nil {
+		t.Fatalf("could not parse generated descriptor: %v", err)
+	}
+	context, err := ExtractConnectionContext(root)
+	if err != nil {
+		t.Fatalf("could not extract generated descriptor: %v", err)
+	}
+	if context.Description.Security.TokenAuth != "OAUTH" || context.Description.Security.TokenLocation != "/token/location" {
+		t.Errorf("unexpected token security values: %+v", context.Description.Security)
 	}
 }
 

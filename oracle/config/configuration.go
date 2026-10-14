@@ -102,6 +102,14 @@ type OracleConnectionProperties struct {
 	// WalletLocation sets the directory containing Oracle wallets.
 	WalletLocation string `ns_name:"wallet_location" default:"" help:"sets the directory containing the Oracle wallets"`
 
+	// TokenAuth specifies the token authentication mechanism requested by the
+	// connect descriptor.
+	TokenAuth string `ns_name:"token_auth" default:"" help:"specifies the token authentication mechanism"`
+
+	// TokenLocation specifies the location of token material used by token
+	// authentication.
+	TokenLocation string `ns_name:"token_location" default:"" help:"specifies the location of token material"`
+
 	// HttpsProxy sets an unauthenticated HTTP CONNECT proxy hostname or IP
 	// address used to tunnel TCPS client connections. Proxy authentication and
 	// the Proxy-Authorization header are not supported.
