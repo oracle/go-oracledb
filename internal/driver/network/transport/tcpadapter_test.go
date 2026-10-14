@@ -22,6 +22,54 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
+type fakeSocketBufferSetter struct {
+	recvBufSize int
+	sendBufSize int
+	recvErr     error
+	sendErr     error
+}
+
+func (s *fakeSocketBufferSetter) SetReadBuffer(bytes int) error {
+	s.recvBufSize = bytes
+	return s.recvErr
+}
+
+func (s *fakeSocketBufferSetter) SetWriteBuffer(bytes int) error {
+	s.sendBufSize = bytes
+	return s.sendErr
+}
+
+func TestConfigureSocketBuffers(t *testing.T) {
+	t.Parallel()
+
+	setter := &fakeSocketBufferSetter{}
+	if err := configureSocketBuffers(setter, 8192, 16384); err != nil {
+		t.Fatalf("configureSocketBuffers failed: %v", err)
+	}
+	if setter.recvBufSize != 8192 || setter.sendBufSize != 16384 {
+		t.Fatalf("unexpected buffer sizes: recv=%d send=%d", setter.recvBufSize, setter.sendBufSize)
+	}
+}
+
+func TestConfigureSocketBuffersErrors(t *testing.T) {
+	t.Parallel()
+
+	recvErr := errors.New("receive buffer failed")
+	setter := &fakeSocketBufferSetter{recvErr: recvErr}
+	if err := configureSocketBuffers(setter, 8192, 16384); !errors.Is(err, recvErr) {
+		t.Fatalf("expected receive buffer error, got %v", err)
+	}
+	if setter.sendBufSize != 0 {
+		t.Fatalf("send buffer must not be configured after receive failure, got %d", setter.sendBufSize)
+	}
+
+	sendErr := errors.New("send buffer failed")
+	setter = &fakeSocketBufferSetter{sendErr: sendErr}
+	if err := configureSocketBuffers(setter, 0, 16384); !errors.Is(err, sendErr) {
+		t.Fatalf("expected send buffer error, got %v", err)
+	}
+}
+
 // TestNormalizeDialError_PreservesDNSTimeout verifies that a timed-out DNS
 // lookup is not converted into a generic connection timeout.
 func TestNormalizeDialError_PreservesDNSTimeout(t *testing.T) {

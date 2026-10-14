@@ -71,6 +71,8 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestConfigureSocketBuffers", Categories: "unitary", Exclusive: false, Fn: TestConfigureSocketBuffers},
+	{Name: "TestConfigureSocketBuffersErrors", Categories: "unitary", Exclusive: false, Fn: TestConfigureSocketBuffersErrors},
 	{Name: "TestNormalizeDialError_PreservesDNSTimeout", Categories: "unitary", Exclusive: false, Fn: TestNormalizeDialError_PreservesDNSTimeout},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_HappyPath", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_HappyPath},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_NilBlock", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_NilBlock},
