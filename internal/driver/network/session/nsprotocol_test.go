@@ -528,7 +528,7 @@ func TestConnectSubtests(t *testing.T) {
 		ns.ntAdapter = mock
 		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
 		// mock redirect packet from server without overflow
-		redirectData := []byte("(ADDRESS=(PROTOCOL=tcps)(HOST=redirecthost)(PORT=1522))")
+		redirectData := []byte("(DESCRIPTION=(SECURITY=(TLS_SERVER_CERT_HOST=redirect-cert.example.com))(ADDRESS=(PROTOCOL=tcps)(HOST=redirecthost)(PORT=1522)))")
 		dataLen := len(redirectData)
 		packetLen := 8 + 2 + dataLen
 		fullPacket := make([]byte, packetLen)
@@ -562,6 +562,9 @@ func TestConnectSubtests(t *testing.T) {
 		}
 		if mock.lastAddress.OriginHost != "originalhost" {
 			t.Errorf("Expected original host to be preserved as fallback, got %q", mock.lastAddress.OriginHost)
+		}
+		if ns.sAtts.nt.TLSServerCertHost != "redirect-cert.example.com" {
+			t.Errorf("Expected redirect TLS certificate hostname to be preserved, got %q", ns.sAtts.nt.TLSServerCertHost)
 		}
 		if mock.lastAddress.HTTPSProxy != "proxy.example.com" || mock.lastAddress.HTTPSProxyPort != 8080 {
 			t.Errorf("Expected proxy settings to be preserved, got %q:%d", mock.lastAddress.HTTPSProxy, mock.lastAddress.HTTPSProxyPort)

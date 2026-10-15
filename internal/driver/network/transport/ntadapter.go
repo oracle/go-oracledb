@@ -75,6 +75,7 @@ type NTattributes struct {
 	WalletContent           []byte
 	WalletPassword          string
 	SSLServerCertDN         string
+	TLSServerCertHost       string
 	Servicename             string
 	WalletLocation          string
 	UseSystemTrust          bool
