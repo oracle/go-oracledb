@@ -257,6 +257,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestStatementExecutor_Others_FaultyPush", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutor_Others_FaultyPush},
 	{Name: "TestPasswordAuthenticator_doOSESSKEY_Golden", Categories: "unitary", Exclusive: false, Fn: TestPasswordAuthenticator_doOSESSKEY_Golden},
 	{Name: "TestPasswordAuthenticator_doOAuth_Golden", Categories: "unitary", Exclusive: false, Fn: TestPasswordAuthenticator_doOAuth_Golden},
+	{Name: "TestPasswordAuthenticatorAuthenticateParsesProxy", Categories: "unitary", Exclusive: false, Fn: TestPasswordAuthenticatorAuthenticateParsesProxy},
 	{Name: "TestGetAuthenticator_SelectionLogic", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_SelectionLogic},
 	{Name: "TestProviderRegistryReturnsFirstRegisteredTokenProvider", Categories: "unitary", Exclusive: false, Fn: TestProviderRegistryReturnsFirstRegisteredTokenProvider},
 	{Name: "TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature", Categories: "unitary", Exclusive: false, Fn: TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature},
