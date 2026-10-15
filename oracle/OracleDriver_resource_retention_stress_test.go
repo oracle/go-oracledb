@@ -27,7 +27,6 @@ import (
 	"runtime/pprof"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -169,58 +168,45 @@ func runResourceRetentionWorkers(ctx context.Context, workers, total int, operat
 	if workers <= 0 || total < workers {
 		return 0, fmt.Errorf("workload requires positive workers and at least one operation per worker")
 	}
-	workCtx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
-	completed := make([]int, workers) // Each worker writes only its own element.
-	workerErrors := make([]error, workers)
-	start := make(chan struct{})
-	var ready, finished sync.WaitGroup
-	ready.Add(workers)
-	finished.Add(workers)
-	for worker := 0; worker < workers; worker++ {
-		go func(worker int) {
-			defer finished.Done()
-			defer func() {
-				if value := recover(); value != nil {
-					workerErrors[worker] = fmt.Errorf("worker %d panicked: %v", worker+1, value)
-					cancel(workerErrors[worker])
-				}
-			}()
-			ready.Done()
-			<-start
-			for index := 0; index < resourceRetentionWorkerOperations(total, workers, worker); index++ {
-				if workCtx.Err() != nil {
-					return
-				}
-				if err := operation(workCtx, worker, index); err != nil {
-					// The first cause wins; successful operations alone are counted.
-					workerErrors[worker] = fmt.Errorf("worker %d operation %d: %w", worker+1, index+1, err)
-					cancel(workerErrors[worker])
-					return
-				}
-				completed[worker]++
-			}
-		}(worker)
+	// Compatibility adapter for the original fixed-count unit-test seam.
+	config := oracleTest.ResourceRetentionConfig{Workers: workers, TotalOperations: total}.Normalized()
+	p := &retentionProgress{}
+	_, _, err := runRetentionEpoch(ctx, config, make([]int, workers), 0, p, func(ctx context.Context, worker, index int) (retentionCounts, error) {
+		err := operation(ctx, worker, index)
+		return retentionCounts{Cycles: 1}, err
+	})
+	return int(p.snapshot().Cycles), err
+}
+
+// Warm-up uses the same worker runner, but separate counts and schedule indices.
+// Mixed runs validate any variant not covered by workers' first cycles once.
+func warmResourceRetention(ctx context.Context, db *sql.DB, config oracleTest.ResourceRetentionConfig) error {
+	warm := config
+	warm.Duration, warm.TotalOperations = "", config.Workers
+	_, _, err := runRetentionEpoch(ctx, warm, make([]int, warm.Workers), 0, &retentionProgress{}, func(ctx context.Context, worker, index int) (retentionCounts, error) {
+		return executeRetentionCycle(ctx, db, config, worker, index)
+	})
+	if err != nil || config.Workload != "mixed" {
+		return err
 	}
-	ready.Wait()
-	close(start)
-	// Context deadlines are cooperative. The go test -timeout remains the final
-	// bound if a driver call ignores cancellation; do not abandon live workers.
-	finished.Wait()
-	count := 0
-	for _, value := range completed {
-		count += value
+	covered := make(map[string]bool)
+	for worker := 0; worker < config.Workers; worker++ {
+		covered[retentionVariant("mixed", worker, 0)] = true
 	}
-	firstError := context.Cause(workCtx)
-	err := firstError
-	for _, workerError := range workerErrors {
-		if workerError != nil && workerError != firstError {
-			// Preserve additional cleanup/operation errors, not just the first
-			// failure that triggered sibling cancellation.
-			err = errors.Join(err, workerError)
+	warm.Workers, warm.TotalOperations = 1, 1
+	for _, kind := range retentionWorkloadKinds("mixed") {
+		if covered[kind] {
+			continue
+		}
+		warm.Workload = kind
+		_, _, err = runRetentionEpoch(ctx, warm, []int{0}, 0, &retentionProgress{}, func(ctx context.Context, worker, index int) (retentionCounts, error) {
+			return executeRetentionCycle(ctx, db, warm, worker, index)
+		})
+		if err != nil {
+			return fmt.Errorf("warm-up %s: %w", kind, err)
 		}
 	}
-	return count, err
+	return nil
 }
 
 // Large-data workloads, result validation, fixture preflight, and TLS helpers.
@@ -642,9 +628,15 @@ func TestDriver_ResourceRetentionLargeDataBaseline(t *testing.T) {
 	}
 	for _, kind := range retentionWorkloadKinds(config.Workload) {
 		t.Run(kind, func(t *testing.T) {
+			opTimeout, _ := time.ParseDuration(config.OperationTimeout)
+			opCtx, done := retentionOperationContext(ctx, opTimeout)
+			defer done()
 			c := config
 			c.Workload = kind
-			if _, err := executeRetentionCycle(ctx, db, c, 0, 0); err != nil {
+			if _, err := executeRetentionCycle(opCtx, db, c, 0, 0); err != nil {
+				t.Fatal(err)
+			}
+			if err := opCtx.Err(); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -659,28 +651,10 @@ func retentionWorkloadKinds(workload string) []string {
 }
 
 func preflightRetentionFixtures(ctx context.Context, db *sql.DB, config oracleTest.ResourceRetentionConfig) error {
-	return preflightRetentionFixturesObserved(ctx, db, config, nil)
-}
-
-// The optional observer adds stage evidence for stress execution only. Shared
-// functional validation keeps the same queries, data checks and ownership.
-func preflightRetentionFixturesObserved(ctx context.Context, db *sql.DB, config oracleTest.ResourceRetentionConfig, observe func(string, func(context.Context) error) error) error {
 	if config.Workload == "select_dual" {
 		return nil
 	}
 	operationTimeout, _ := time.ParseDuration(config.Normalized().OperationTimeout)
-	operation := func(name string, fn func(context.Context) error) error {
-		bounded := func(parent context.Context) error {
-			opCtx, cancel := retentionOperationContext(parent, operationTimeout)
-			defer cancel()
-			err := fn(opCtx)
-			return errors.Join(err, opCtx.Err())
-		}
-		if observe != nil {
-			return observe(name, bounded)
-		}
-		return bounded(ctx)
-	}
 	// Metadata checks distinguish native JSON from a CLOB/text substitute.
 	required := map[string]map[string]string{
 		"ORA_STRESS_CORE":   {"ID": "NUMBER", "GROUP_ID": "NUMBER", "FIXTURE_VERSION": "NUMBER", "INT_VALUE": "NUMBER", "DECIMAL_VALUE": "NUMBER", "FLOAT_VALUE": "BINARY_FLOAT", "DOUBLE_VALUE": "BINARY_DOUBLE", "TEXT_VALUE": "VARCHAR2", "NCHAR_VALUE": "NCHAR", "UNICODE_VALUE": "NVARCHAR2", "RAW_VALUE": "RAW", "DATE_VALUE": "DATE", "TIMESTAMP_VALUE": "TIMESTAMP(9)", "TZ_VALUE": "TIMESTAMP(9) WITH TIME ZONE"},
@@ -695,57 +669,51 @@ func preflightRetentionFixturesObserved(ctx context.Context, db *sql.DB, config 
 		}
 	}
 	for table, columns := range required {
-		if err := operation("fixture_metadata_"+table, func(opCtx context.Context) error {
-			rows, err := db.QueryContext(opCtx, `SELECT column_name, data_type FROM all_tab_columns WHERE owner=COALESCE(:owner, SYS_CONTEXT('USERENV','CURRENT_SCHEMA')) AND table_name=:table_name`, sql.Named("owner", strings.ToUpper(config.FixtureSchema)), sql.Named("table_name", table))
-			if err != nil {
-				return fmt.Errorf("fixture metadata %s: %w", table, err)
-			}
-			var readErr error
-			for rows.Next() {
-				var name, kind string
-				if e := rows.Scan(&name, &kind); e != nil {
-					readErr = e
-					break
-				}
-				if expected, ok := columns[name]; ok {
-					if kind != expected {
-						readErr = fmt.Errorf("%s.%s has type %s, want %s", table, name, kind, expected)
-						break
-					}
-					delete(columns, name)
-				}
-			}
-			readErr = errors.Join(readErr, rows.Err(), retentionCleanup("metadata rows", rows.Close()))
-			if readErr != nil {
-				return readErr
-			}
-			if len(columns) > 0 {
-				return fmt.Errorf("missing fixture columns in %s: %v", table, columns)
-			}
-			return nil
-		}); err != nil {
+		opCtx, cancel := retentionOperationContext(ctx, operationTimeout)
+		err := checkRetentionFixtureColumns(opCtx, db, config, table, columns)
+		cancel()
+		if err != nil {
 			return err
 		}
 	}
 	var count, minID, maxID, minVersion, maxVersion int
-	err := operation("fixture_identity", func(opCtx context.Context) error {
-		return db.QueryRowContext(opCtx, "SELECT COUNT(*), MIN(id), MAX(id), MIN(fixture_version), MAX(fixture_version) FROM "+retentionTable(config, "ORA_STRESS_CORE")).Scan(&count, &minID, &maxID, &minVersion, &maxVersion)
-	})
+	opCtx, cancel := retentionOperationContext(ctx, operationTimeout)
+	err := errors.Join(db.QueryRowContext(opCtx, "SELECT COUNT(*), MIN(id), MAX(id), MIN(fixture_version), MAX(fixture_version) FROM "+retentionTable(config, "ORA_STRESS_CORE")).Scan(&count, &minID, &maxID, &minVersion, &maxVersion), opCtx.Err())
+	cancel()
 	if err != nil {
 		return fmt.Errorf("fixture identity: %w", err)
 	}
 	if count != 512 || minID != 1 || maxID != 512 || minVersion != retentionFixtureVersion || maxVersion != retentionFixtureVersion {
 		return errors.New("fixture version/ID range mismatch; expected version 1 and IDs 1..512")
 	}
-	for _, kind := range retentionWorkloadKinds(config.Workload) {
-		c := config
-		c.Workload = kind
-		if err := operation("fixture_workload_"+kind, func(opCtx context.Context) error {
-			_, err := executeRetentionCycle(opCtx, db, c, 0, 0)
+	return nil
+}
+
+// Preflight reads metadata only. Full value checks belong to validated warm-up
+// (or the functional baseline), not another duplicate large-data query.
+func checkRetentionFixtureColumns(ctx context.Context, db *sql.DB, config oracleTest.ResourceRetentionConfig, table string, columns map[string]string) (err error) {
+	rows, err := db.QueryContext(ctx, `SELECT column_name, data_type FROM all_tab_columns WHERE owner=COALESCE(:owner, SYS_CONTEXT('USERENV','CURRENT_SCHEMA')) AND table_name=:table_name`, sql.Named("owner", strings.ToUpper(config.FixtureSchema)), sql.Named("table_name", table))
+	if err != nil {
+		return fmt.Errorf("fixture metadata %s: %w", table, err)
+	}
+	defer func() { err = errors.Join(err, retentionCleanup("metadata rows", rows.Close())) }()
+	for rows.Next() {
+		var name, kind string
+		if err := rows.Scan(&name, &kind); err != nil {
 			return err
-		}); err != nil {
-			return fmt.Errorf("fixture preflight %s: %w", kind, err)
 		}
+		if expected, ok := columns[name]; ok {
+			if kind != expected {
+				return fmt.Errorf("%s.%s has type %s, want %s", table, name, kind, expected)
+			}
+			delete(columns, name)
+		}
+	}
+	if err := errors.Join(rows.Err(), ctx.Err()); err != nil {
+		return err
+	}
+	if len(columns) != 0 {
+		return fmt.Errorf("missing fixture columns in %s: %v", table, columns)
 	}
 	return nil
 }
@@ -1002,80 +970,84 @@ type retentionProgress struct {
 func (p *retentionProgress) add(c retentionCounts)     { p.Lock(); p.counts.add(c); p.Unlock() }
 func (p *retentionProgress) snapshot() retentionCounts { p.Lock(); defer p.Unlock(); return p.counts }
 
+// Deliberately omit MemStats' pause histories and allocation-size arrays.
+// Field names preserve existing PowerShell paths under runtime_memstats.
+type retentionMemory struct {
+	HeapAlloc, HeapObjects, HeapInuse, HeapSys, HeapReleased uint64
+	TotalAlloc, Mallocs, Frees, PauseTotalNs                 uint64
+	NumGC, NumForcedGC                                       uint32
+	GCCPUFraction                                            float64
+}
+
 type retentionSample struct {
-	RunID           string           `json:"run_id"`
-	PID             int              `json:"pid"`
-	Timestamp       time.Time        `json:"timestamp_utc"`
-	ElapsedNS       int64            `json:"elapsed_ns"`
-	Phase           string           `json:"phase"`
-	Stage           string           `json:"stage,omitempty"`
-	StageStatus     string           `json:"stage_status,omitempty"`
-	Checkpoint      int              `json:"checkpoint"`
-	Counts          retentionCounts  `json:"completed"`
-	Memory          runtime.MemStats `json:"runtime_memstats"`
-	Goroutines      int              `json:"goroutines"`
-	Pool            sql.DBStats      `json:"pool"`
-	PoolAvailable   bool             `json:"pool_available"`
-	AllocationDelta uint64           `json:"total_alloc_delta"`
-	MallocDelta     uint64           `json:"mallocs_delta"`
-	FreeDelta       uint64           `json:"frees_delta"`
-	GCDelta         uint32           `json:"gc_delta"`
-	PauseDelta      uint64           `json:"gc_pause_ns_delta"`
+	RunID           string          `json:"run_id"`
+	PID             int             `json:"pid"`
+	Timestamp       time.Time       `json:"timestamp_utc"`
+	ElapsedNS       int64           `json:"elapsed_ns"`
+	Phase           string          `json:"phase"`
+	Stage           string          `json:"stage,omitempty"`
+	StageStatus     string          `json:"stage_status,omitempty"`
+	Checkpoint      int             `json:"checkpoint"`
+	Counts          retentionCounts `json:"completed"`
+	Memory          retentionMemory `json:"runtime_memstats"`
+	Goroutines      int             `json:"goroutines"`
+	Pool            sql.DBStats     `json:"pool"`
+	PoolAvailable   bool            `json:"pool_available"`
+	AllocationDelta uint64          `json:"total_alloc_delta"`
+	MallocDelta     uint64          `json:"mallocs_delta"`
+	FreeDelta       uint64          `json:"frees_delta"`
+	GCDelta         uint32          `json:"gc_delta"`
+	PauseDelta      uint64          `json:"gc_pause_ns_delta"`
 }
 
 // Stream samples to one file. Keep only the previous state for deltas.
 type retentionRecorder struct {
 	sync.Mutex
 	writer       io.Writer
-	previous     runtime.MemStats
+	previous     retentionMemory
 	runID        string
 	started      time.Time
-	previousHeap resourceRetentionHeap
-	growthStreak int
 	stage        string
 	stageStatus  string
+	stageStarted time.Time
 	testConfig   *TestConfig
 }
 
-// Stage events are bounded setup/epoch diagnostics, never per-row histories.
-// Natural boundary samples do not force GC or change measured completion counts.
-func (r *retentionRecorder) runStage(ctx context.Context, name string, db *sql.DB, p *retentionProgress, operation func(context.Context) error) (err error) {
-	began := time.Now()
+// Progress records observations only: callers execute work and own deadlines.
+// Beginning the next stage finishes the previous successful stage.
+func (r *retentionRecorder) progress(name string, db *sql.DB, p *retentionProgress) error {
 	r.Lock()
+	defer r.Unlock()
+	if err := r.finishLocked(nil, db, p); err != nil {
+		return err
+	}
 	r.stage, r.stageStatus = name, "running"
-	err = r.writeStageLocked("stage_start", name, began, nil)
-	if err == nil {
-		_, err = r.sampleLocked("natural", -1, db, p)
+	r.stageStarted = time.Now()
+	if err := r.writeStageLocked("stage_start", name, r.stageStarted, nil); err != nil {
+		return err
 	}
-	r.Unlock()
+	_, err := r.sampleLocked("natural", -1, db, p)
+	return err
+}
+
+func (r *retentionRecorder) finish(err error, db *sql.DB, p *retentionProgress) error {
+	r.Lock()
+	defer r.Unlock()
+	return r.finishLocked(err, db, p)
+}
+
+func (r *retentionRecorder) finishLocked(err error, db *sql.DB, p *retentionProgress) error {
+	if r.stageStatus != "running" {
+		return err
+	}
+	r.stageStatus = "complete"
 	if err != nil {
-		return fmt.Errorf("stage %s reporting: %w", name, err)
+		r.stageStatus = "failed"
+		err = fmt.Errorf("stage %s: %w", r.stage, err)
 	}
-	finished := false
-	defer func() {
-		r.Lock()
-		defer r.Unlock()
-		r.stageStatus = "complete"
-		if err != nil || !finished {
-			r.stageStatus = "failed"
-		}
-		reportedErr := err
-		if !finished {
-			reportedErr = errors.New("stage interrupted before returning")
-		}
-		err = errors.Join(err, r.writeStageLocked("stage_end", name, began, reportedErr))
-		_, sampleErr := r.sampleLocked("natural", -1, db, p)
-		err = errors.Join(err, sampleErr)
-	}()
-	err = operation(ctx)
-	finished = true
-	if err == nil {
-		err = ctx.Err()
-	}
-	if err != nil {
-		err = fmt.Errorf("stage %s: %w", name, err)
-	}
-	return
+	err = errors.Join(err, r.writeStageLocked("stage_end", r.stage, r.stageStarted, err))
+	_, sampleErr := r.sampleLocked("natural", -1, db, p)
+	return errors.Join(err, sampleErr)
 }
 
 func (r *retentionRecorder) writeStageLocked(phase, name string, began time.Time, err error) error {
@@ -1098,8 +1070,14 @@ func (r *retentionRecorder) sample(phase string, index int, db *sql.DB, p *reten
 	return r.sampleLocked(phase, index, db, p)
 }
 func (r *retentionRecorder) sampleLocked(phase string, index int, db *sql.DB, p *retentionProgress) (resourceRetentionHeap, error) {
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+	mem := retentionMemory{
+		HeapAlloc: stats.HeapAlloc, HeapObjects: stats.HeapObjects, HeapInuse: stats.HeapInuse,
+		HeapSys: stats.HeapSys, HeapReleased: stats.HeapReleased, TotalAlloc: stats.TotalAlloc,
+		Mallocs: stats.Mallocs, Frees: stats.Frees, NumGC: stats.NumGC, NumForcedGC: stats.NumForcedGC,
+		PauseTotalNs: stats.PauseTotalNs, GCCPUFraction: stats.GCCPUFraction,
+	}
 	s := retentionSample{RunID: r.runID, PID: os.Getpid(), Timestamp: time.Now().UTC(), ElapsedNS: time.Since(r.started).Nanoseconds(), Phase: phase, Stage: r.stage, StageStatus: r.stageStatus, Checkpoint: index, Counts: p.snapshot(), Memory: mem, Goroutines: runtime.NumGoroutine(), PoolAvailable: db != nil}
 	if db != nil {
 		s.Pool = db.Stats()
@@ -1127,15 +1105,6 @@ func (r *retentionRecorder) checkpoint(index int, db *sql.DB, p *retentionProgre
 	}
 	runtime.GC()
 	heap, err := r.sampleLocked("post_gc", index, db, p)
-	if err == nil {
-		if r.previousHeap.HeapAlloc != 0 && heap.HeapAlloc > r.previousHeap.HeapAlloc && heap.HeapObjects > r.previousHeap.HeapObjects {
-			r.growthStreak++
-		} else {
-			r.growthStreak = 0
-		}
-		r.previousHeap = heap
-		err = json.NewEncoder(r.writer).Encode(map[string]any{"phase": "retained_growth_review", "run_id": r.runID, "checkpoint": index, "consecutive_heap_and_object_increases": r.growthStreak, "investigate": r.growthStreak >= 3, "diagnostic_only": true})
-	}
 	if err == nil && profiles {
 		err = writeRetentionProfile(filepath.Join(dir, fmt.Sprintf("heap-%03d.pprof", index)), "heap", 0)
 	}
@@ -1156,26 +1125,28 @@ func writeRetentionProfile(path, name string, level int) (err error) {
 func runRetentionEpoch(ctx context.Context, config oracleTest.ResourceRetentionConfig, indices []int, span time.Duration, p *retentionProgress, operation func(context.Context, int, int) (retentionCounts, error)) (elapsed, drain time.Duration, err error) {
 	workCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	var stop atomic.Bool
-	var stopAt atomic.Int64
 	start := make(chan struct{})
 	var ready, done sync.WaitGroup
 	ready.Add(config.Workers)
 	done.Add(config.Workers)
 	errorsByWorker := make([]error, config.Workers)
-	operationTimeout, _ := time.ParseDuration(config.OperationTimeout)
+	operationTimeout, _ := time.ParseDuration(config.Normalized().OperationTimeout)
+	var admissionDeadline time.Time // Published by the common start barrier.
 	for worker := 0; worker < config.Workers; worker++ {
 		go func(worker int) {
 			defer done.Done()
 			defer func() {
 				if v := recover(); v != nil {
-					errorsByWorker[worker] = fmt.Errorf("worker %d panic: %v", worker+1, v)
+					errorsByWorker[worker] = fmt.Errorf("worker %d panicked: %v", worker+1, v)
 					cancel(errorsByWorker[worker])
 				}
 			}()
 			ready.Done()
 			<-start
-			for !stop.Load() && workCtx.Err() == nil {
+			for workCtx.Err() == nil {
+				if !admissionDeadline.IsZero() && !time.Now().Before(admissionDeadline) {
+					return
+				}
 				if config.TotalOperations > 0 && indices[worker] >= resourceRetentionWorkerOperations(config.TotalOperations, config.Workers, worker) {
 					return
 				}
@@ -1189,7 +1160,7 @@ func runRetentionEpoch(ctx context.Context, config oracleTest.ResourceRetentionC
 					return c, e
 				}()
 				if e != nil {
-					errorsByWorker[worker] = fmt.Errorf("worker %d cycle %d: %w", worker+1, indices[worker]+1, e)
+					errorsByWorker[worker] = fmt.Errorf("worker %d operation %d: %w", worker+1, indices[worker]+1, e)
 					cancel(errorsByWorker[worker])
 					return
 				}
@@ -1205,16 +1176,14 @@ func runRetentionEpoch(ctx context.Context, config oracleTest.ResourceRetentionC
 	}
 	ready.Wait()
 	began := time.Now()
-	var timer *time.Timer
 	if span > 0 {
-		timer = time.AfterFunc(span, func() { stopAt.Store(time.Now().UnixNano()); stop.Store(true) })
-		defer timer.Stop()
+		admissionDeadline = began.Add(span)
 	}
 	close(start)
 	done.Wait()
 	elapsed = time.Since(began)
-	if stopped := stopAt.Load(); stopped != 0 {
-		drain = time.Since(time.Unix(0, stopped))
+	if !admissionDeadline.IsZero() {
+		drain = max(time.Duration(0), time.Since(admissionDeadline))
 	}
 	err = context.Cause(workCtx)
 	for _, e := range errorsByWorker {
@@ -1231,11 +1200,13 @@ func executeExpandedResourceRetention(config oracleTest.ResourceRetentionConfig,
 	}
 	config = config.Normalized()
 	result.MemoryLimitBytes = debug.SetMemoryLimit(-1)
-	if config.MemoryLimitMiB != nil {
-		result.MemoryLimitBytes = *config.MemoryLimitMiB * (1 << 20)
-		previous := debug.SetMemoryLimit(result.MemoryLimitBytes)
-		defer debug.SetMemoryLimit(previous)
-	}
+	var previousLimit int64
+	limitApplied := false
+	defer func() {
+		if limitApplied {
+			debug.SetMemoryLimit(previousLimit)
+		}
+	}()
 	began := time.Now()
 	defer func() { result.Wall = time.Since(began) }()
 	dir := filepath.Join(config.OutputDirectory, runID)
@@ -1252,8 +1223,13 @@ func executeExpandedResourceRetention(config oracleTest.ResourceRetentionConfig,
 	}
 	recorder := &retentionRecorder{writer: f, runID: runID, started: began, testConfig: testConfig}
 	defer func() { err = errors.Join(err, f.Sync(), f.Close()) }()
+	if config.MemoryLimitMiB != nil {
+		result.MemoryLimitBytes = *config.MemoryLimitMiB * (1 << 20)
+		previousLimit = debug.SetMemoryLimit(result.MemoryLimitBytes)
+		limitApplied = true
+	}
 	metadata := map[string]any{
-		"phase": "configuration", "run_id": runID, "pid": os.Getpid(), "run_start_utc": began.UTC(),
+		"artifact_format_version": 2, "phase": "configuration", "run_id": runID, "pid": os.Getpid(), "run_start_utc": began.UTC(),
 		"go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpu": runtime.NumCPU(), "gomaxprocs": runtime.GOMAXPROCS(0),
 		"gogc": os.Getenv("GOGC"), "gomemlimit": os.Getenv("GOMEMLIMIT"), "memory_target_bytes": result.MemoryLimitBytes,
 		"profile": config, "fixture_version": retentionFixtureVersion, "lob_bytes_per_column": retentionLOBBytes, "json_padding_bytes": retentionJSONPadding,
@@ -1295,56 +1271,72 @@ func executeExpandedResourceRetention(config oracleTest.ResourceRetentionConfig,
 		return
 	}
 	timeout, _ := time.ParseDuration(config.Timeout)
+	operationTimeout, _ := time.ParseDuration(config.OperationTimeout)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	operationTimeout, _ := time.ParseDuration(config.OperationTimeout)
 	p := &retentionProgress{}
 	var db *sql.DB
-	err = recorder.runStage(ctx, "database_initialization", nil, p, func(parent context.Context) error {
-		opCtx, done := retentionOperationContext(parent, operationTimeout)
-		defer done()
-		var openErr error
-		db, openErr = openDB(opCtx)
-		return errors.Join(openErr, opCtx.Err())
-	})
-	// Even a successful factory can be followed by a reporting/deadline failure.
-	// Install pool cleanup before returning any such error.
-	if db == nil {
-		return result, errors.Join(err, errors.New("database initialization returned no handle"))
-	}
+	var stopSampling context.CancelFunc
+	var sampled chan struct{}
+	var sampleErr error
+	// One cleanup path: join the sampler, close the pool, then record the result.
+	// A panic still propagates after best-effort cleanup and failed-stage evidence.
 	defer func() {
-		closeStart := time.Now()
-		recorder.Lock()
-		recorder.stage, recorder.stageStatus = "database_cleanup", "running"
-		err = errors.Join(err, recorder.writeStageLocked("stage_start", "database_cleanup", closeStart, nil))
-		recorder.Unlock()
-		closeErr := db.Close()
-		err = errors.Join(err, retentionCleanup("database", closeErr))
-		recorder.Lock()
-		recorder.stageStatus = "complete"
-		if closeErr != nil {
-			recorder.stageStatus = "failed"
+		panicValue := recover()
+		if panicValue != nil {
+			err = errors.Join(err, fmt.Errorf("runner panic: %v", panicValue))
 		}
-		err = errors.Join(err, recorder.writeStageLocked("stage_end", "database_cleanup", closeStart, closeErr))
-		recorder.Unlock()
+		if stopSampling != nil {
+			stopSampling()
+			<-sampled
+			err = errors.Join(err, sampleErr)
+		}
+		err = recorder.finish(err, db, p)
+		poolClosed := false
+		if db != nil {
+			err = errors.Join(err, recorder.progress("database_cleanup", db, p))
+			closeErr := db.Close()
+			poolClosed = closeErr == nil
+			err = errors.Join(err, recorder.finish(closeErr, nil, p))
+		}
 		status := "complete"
 		if err != nil {
 			status = "failed"
 		}
-		err = errors.Join(err, recorder.event(map[string]any{"phase": "result", "run_id": runID, "timestamp_utc": time.Now().UTC(), "status": status, "counts": result.Counts, "active_ns": result.Duration.Nanoseconds(), "drain_ns": result.Drain.Nanoseconds(), "checkpoint_pause_ns": result.Pauses.Nanoseconds(), "wall_ns": time.Since(began).Nanoseconds(), "baseline": result.Baseline, "final": result.Final, "pool_closed": closeErr == nil, "error": redactRetentionText(safeRetentionError(err), testConfig), "diagnostic_only": true}))
+		err = errors.Join(err, recorder.event(map[string]any{
+			"phase": "result", "run_id": runID, "timestamp_utc": time.Now().UTC(), "status": status,
+			"counts": result.Counts, "active_ns": result.Duration.Nanoseconds(), "drain_ns": result.Drain.Nanoseconds(),
+			"checkpoint_pause_ns": result.Pauses.Nanoseconds(), "wall_ns": time.Since(began).Nanoseconds(),
+			"baseline": result.Baseline, "final": result.Final, "pool_closed": poolClosed,
+			"error": redactRetentionText(safeRetentionError(err), testConfig), "diagnostic_only": true,
+		}))
+		if panicValue != nil {
+			panic(panicValue)
+		}
 	}()
+	if err = recorder.progress("database_initialization", nil, p); err != nil {
+		return
+	}
+	opCtx, done := retentionOperationContext(ctx, operationTimeout)
+	db, err = openDB(opCtx)
+	err = errors.Join(err, opCtx.Err())
+	done()
 	if err != nil {
 		return
+	}
+	if db == nil {
+		return result, errors.New("database initialization returned no handle")
 	}
 	db.SetMaxOpenConns(config.MaxOpenConnections)
 	db.SetMaxIdleConns(config.MaxOpenConnections)
 	db.SetConnMaxLifetime(0)
 	db.SetConnMaxIdleTime(0)
-	// Start before the first database query. The same sampler remains alive at
-	// baseline and final checkpoints, and is joined before pool/file cleanup.
-	samplingCtx, stopSampling := context.WithCancel(ctx)
-	sampled := make(chan struct{})
-	var sampleErr error
+
+	// Start before the first query. Keep the sampler alive at every checkpoint,
+	// and join it before closing the pool or artifact file.
+	var samplingCtx context.Context
+	samplingCtx, stopSampling = context.WithCancel(ctx)
+	sampled = make(chan struct{})
 	sampleInterval, _ := time.ParseDuration(config.SampleInterval)
 	go func() {
 		defer close(sampled)
@@ -1363,140 +1355,119 @@ func executeExpandedResourceRetention(config oracleTest.ResourceRetentionConfig,
 			}
 		}
 	}()
-	defer func() { stopSampling(); <-sampled; err = errors.Join(err, sampleErr) }()
-	stage := func(name string, operation func(context.Context) error) error {
-		return recorder.runStage(ctx, name, db, p, operation)
-	}
-	boundedStage := func(name string, operation func(context.Context) error) error {
-		return stage(name, func(parent context.Context) error {
-			opCtx, done := retentionOperationContext(parent, operationTimeout)
-			defer done()
-			return errors.Join(operation(opCtx), opCtx.Err())
-		})
-	}
+
 	if testConfig != nil {
-		// Configuration versions are sometimes unspecified. Record the live
-		// release/service/PDB using public, read-only identity queries.
+		if err = recorder.progress("database_identity", db, p); err != nil {
+			return
+		}
 		var version, name, pdb, service string
-		if e := boundedStage("database_version", func(opCtx context.Context) error {
-			return db.QueryRowContext(opCtx, `
-	SELECT version_full
-	FROM product_component_version
-	WHERE product LIKE 'Oracle Database%'
-	   OR product LIKE 'Oracle AI Database%'
-`).Scan(&version)
-		}); e != nil {
-			return result, fmt.Errorf("database version preflight: %w", e)
+		opCtx, done = retentionOperationContext(ctx, operationTimeout)
+		err = errors.Join(db.QueryRowContext(opCtx, "SELECT version_full FROM product_component_version WHERE product LIKE 'Oracle Database%' OR product LIKE 'Oracle AI Database%'").Scan(&version), opCtx.Err())
+		done()
+		if err != nil {
+			return result, fmt.Errorf("database version preflight: %w", err)
 		}
-		if e := boundedStage("database_identity", func(opCtx context.Context) error {
-			return db.QueryRowContext(opCtx, `SELECT SYS_CONTEXT('USERENV','DB_NAME'),SYS_CONTEXT('USERENV','CON_NAME'),SYS_CONTEXT('USERENV','SERVICE_NAME') FROM DUAL`).Scan(&name, &pdb, &service)
-		}); e != nil {
-			return result, fmt.Errorf("database identity preflight: %w", e)
+		opCtx, done = retentionOperationContext(ctx, operationTimeout)
+		err = errors.Join(db.QueryRowContext(opCtx, "SELECT SYS_CONTEXT('USERENV','DB_NAME'),SYS_CONTEXT('USERENV','CON_NAME'),SYS_CONTEXT('USERENV','SERVICE_NAME') FROM DUAL").Scan(&name, &pdb, &service), opCtx.Err())
+		done()
+		if err != nil {
+			return result, fmt.Errorf("database identity preflight: %w", err)
 		}
-		if e := recorder.event(map[string]any{"phase": "database_identity", "run_id": runID, "database_version": version, "database": name, "pdb": pdb, "service": service}); e != nil {
-			return result, e
+		if err = recorder.event(map[string]any{"phase": "database_identity", "run_id": runID, "database_version": version, "database": name, "pdb": pdb, "service": service}); err != nil {
+			return
 		}
 	}
-	if err = stage("pool_priming", func(parent context.Context) error {
-		return primeResourceRetentionPool(parent, db, config.MaxOpenConnections, operationTimeout)
-	}); err != nil {
+	if err = recorder.progress("pool_priming", db, p); err != nil {
 		return
 	}
-	if err = preflightRetentionFixturesObserved(ctx, db, config, stage); err != nil {
+	if err = primeResourceRetentionPool(ctx, db, config.MaxOpenConnections, operationTimeout); err != nil {
 		return
 	}
-	var fingerprint string
-	if err = stage("initial_fixture_fingerprint", func(parent context.Context) error {
-		var e error
-		fingerprint, e = retentionFixtureFingerprint(parent, db, config, operationTimeout)
-		return e
-	}); err != nil {
+	if err = recorder.progress("fixture_checks", db, p); err != nil {
 		return
 	}
-	// Complete warm-up cycles are additional to measured cycles.
-	err = stage("warm_up", func(parent context.Context) error {
-		_, e := runResourceRetentionWorkers(parent, config.Workers, config.Workers, func(ctx context.Context, w, i int) error {
-			opTimeout, _ := time.ParseDuration(config.OperationTimeout)
-			opCtx, cancel := context.WithTimeout(ctx, opTimeout)
-			defer cancel()
-			_, e := executeRetentionCycle(opCtx, db, config, w, i)
-			return e
-		})
-		return e
-	})
-	if err != nil {
+	if err = preflightRetentionFixtures(ctx, db, config); err != nil {
 		return
 	}
-	err = stage("baseline_checkpoint", func(context.Context) error {
-		var e error
-		result.Baseline, e = recorder.checkpoint(0, db, p, config.DiagnosticProfiles, dir)
-		return e
-	})
+	fingerprint, e := retentionFixtureFingerprint(ctx, db, config, operationTimeout)
+	if e != nil {
+		return result, e
+	}
+	if err = recorder.progress("warm_up", db, p); err != nil {
+		return
+	}
+	if err = warmResourceRetention(ctx, db, config); err != nil {
+		return
+	}
+	if err = recorder.progress("baseline_checkpoint", db, p); err != nil {
+		return
+	}
+	result.Baseline, err = recorder.checkpoint(0, db, p, config.DiagnosticProfiles, dir)
 	if err != nil {
 		return
 	}
 	if err = recorder.event(map[string]any{"phase": "tls_verified", "run_id": runID, "protocol": "tcps", "fixture_fingerprint": fingerprint}); err != nil {
 		return
 	}
+
 	indices := make([]int, config.Workers)
 	checkpointEvery, _ := time.ParseDuration(config.CheckpointInterval)
 	duration, _ := time.ParseDuration(config.Duration)
 	checkpoint := 1
 	for {
+		if err = recorder.progress("measured_workload", db, p); err != nil {
+			return
+		}
 		span := checkpointEvery
 		if duration > 0 {
 			span = min(span, duration-result.Duration)
 		}
-		var elapsed, drain time.Duration
-		e := stage("measured_workload", func(parent context.Context) error {
-			var epochErr error
-			elapsed, drain, epochErr = runRetentionEpoch(parent, config, indices, span, p, func(ctx context.Context, w, i int) (retentionCounts, error) {
-				return executeRetentionCycle(ctx, db, config, w, i)
-			})
-			return epochErr
+		elapsed, drain, epochErr := runRetentionEpoch(ctx, config, indices, span, p, func(ctx context.Context, worker, index int) (retentionCounts, error) {
+			return executeRetentionCycle(ctx, db, config, worker, index)
 		})
 		result.Duration += elapsed
 		result.Drain += drain
 		result.Counts = p.snapshot()
 		result.Completed = int(result.Counts.Cycles)
-		if e != nil {
-			err = e
+		if epochErr != nil {
+			err = epochErr
 			break
 		}
-		finished := duration > 0 && result.Duration >= duration || config.TotalOperations > 0 && result.Completed == config.TotalOperations
-		if finished {
+		if duration > 0 && result.Duration >= duration || config.TotalOperations > 0 && result.Completed == config.TotalOperations {
 			break
+		}
+		if err = recorder.progress("drained_checkpoint", db, p); err != nil {
+			return
 		}
 		pauseStart := time.Now()
-		err = stage("drained_checkpoint", func(context.Context) error {
-			_, e := recorder.checkpoint(checkpoint, db, p, config.DiagnosticProfiles, dir)
-			return e
-		})
+		_, err = recorder.checkpoint(checkpoint, db, p, config.DiagnosticProfiles, dir)
 		result.Pauses += time.Since(pauseStart)
 		checkpoint++
 		if err != nil {
 			break
 		}
 	}
-	var finalFingerprint string
-	e = stage("final_fixture_verification", func(parent context.Context) error {
-		var fingerprintErr error
-		finalFingerprint, fingerprintErr = retentionFixtureFingerprint(parent, db, config, operationTimeout)
-		return fingerprintErr
-	})
-	err = errors.Join(err, e)
-	if e == nil && finalFingerprint != fingerprint {
-		err = errors.Join(err, errors.New("fixture changed during run"))
+	if err == nil && (result.Completed == 0 || config.TotalOperations > 0 && result.Completed != config.TotalOperations) {
+		err = errors.New("incomplete measured workload")
 	}
-	e = stage("final_checkpoint", func(context.Context) error {
-		var checkpointErr error
-		result.Final, checkpointErr = recorder.checkpoint(checkpoint, db, p, config.DiagnosticProfiles, dir)
-		return checkpointErr
-	})
-	err = errors.Join(err, e, ctx.Err())
+	err = recorder.finish(err, db, p)
+	if reportErr := recorder.progress("final_fixture_verification", db, p); reportErr != nil {
+		return result, errors.Join(err, reportErr)
+	}
+	finalFingerprint, verifyErr := retentionFixtureFingerprint(ctx, db, config, operationTimeout)
+	if verifyErr == nil && finalFingerprint != fingerprint {
+		verifyErr = errors.New("fixture changed during run")
+	}
+	err = errors.Join(err, recorder.finish(verifyErr, db, p))
+	if reportErr := recorder.progress("final_checkpoint", db, p); reportErr != nil {
+		return result, errors.Join(err, reportErr)
+	}
+	result.Final, e = recorder.checkpoint(checkpoint, db, p, config.DiagnosticProfiles, dir)
+	e = errors.Join(e, ctx.Err())
 	if config.DiagnosticProfiles {
-		err = errors.Join(err, writeRetentionProfile(filepath.Join(dir, "goroutines.txt"), "goroutine", 2))
+		e = errors.Join(e, writeRetentionProfile(filepath.Join(dir, "goroutines.txt"), "goroutine", 2))
 	}
+	err = errors.Join(err, recorder.finish(e, db, p))
 	return
 }
 

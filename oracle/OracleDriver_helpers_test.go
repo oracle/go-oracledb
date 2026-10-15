@@ -397,25 +397,32 @@ func TestResourceRetentionLargeResults(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				if c.queries.Load() != 3 {
+					t.Fatal("metadata preflight executed a workload query")
+				}
+				// Functional baseline: metadata plus one validated cycle, not two.
+				if _, err = executeRetentionCycle(context.Background(), db, config, 0, 0); err != nil || c.queries.Load() != 4 {
+					t.Fatalf("baseline duplicated workload: queries=%d err=%v", c.queries.Load(), err)
+				}
 				if _, err = retentionFixtureFingerprint(context.Background(), db, config); err != nil {
 					t.Fatal(err)
 				}
-				// Reuse this fixture fake to prove that the large preflight query,
-				// not just the measured worker, receives its own deadline.
+				// Full data validation is now warm-up, with its own deadline.
 				originalRequest := c.request
 				config.OperationTimeout = "20ms"
+				config.Workers = 1
 				c.request = func(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 					if strings.Contains(query, "ROW_NUMBER()") {
 						if _, ok := ctx.Deadline(); !ok {
-							return nil, errors.New("preflight query has no deadline")
+							return nil, errors.New("warm-up query has no deadline")
 						}
 						<-ctx.Done()
 						return nil, ctx.Err()
 					}
 					return originalRequest(ctx, query, args)
 				}
-				if err = preflightRetentionFixtures(context.Background(), db, config); !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "fixture preflight complex_select") {
-					t.Fatalf("preflight workload deadline lost: %v", err)
+				if err = warmResourceRetention(context.Background(), db, config); !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "complex_select") {
+					t.Fatalf("warm-up workload deadline lost: %v", err)
 				}
 				c.request = func(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 					<-ctx.Done()
@@ -657,16 +664,33 @@ func TestResourceRetentionEpochsAndArtifacts(t *testing.T) {
 			t.Fatal("ignored artifact error")
 		}
 	})
-	t.Run("growth is an investigation flag only", func(t *testing.T) {
+	t.Run("compact snapshots without automatic interpretation", func(t *testing.T) {
 		db := sql.OpenDB(&retentionFakeConnector{})
 		defer db.Close()
 		var output strings.Builder
-		r := &retentionRecorder{writer: &output, started: time.Now(), previousHeap: resourceRetentionHeap{HeapAlloc: 1, HeapObjects: 1}, growthStreak: 2}
+		r := &retentionRecorder{writer: &output, started: time.Now()}
 		if _, err := r.checkpoint(3, db, &retentionProgress{}, false, ""); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(output.String(), `"investigate":true`) {
-			t.Fatal("missing investigation flag")
+		for _, removed := range []string{"retained_growth_review", "investigate", "PauseNs", "PauseEnd", "BySize"} {
+			if strings.Contains(output.String(), removed) {
+				t.Fatalf("unexpected reporting machinery: %s", removed)
+			}
+		}
+		decoder := json.NewDecoder(strings.NewReader(output.String()))
+		for _, phase := range []string{"drained_natural", "post_gc"} {
+			var record struct {
+				Phase  string
+				Memory map[string]json.RawMessage `json:"runtime_memstats"`
+			}
+			if err := decoder.Decode(&record); err != nil || record.Phase != phase || len(record.Memory) != 12 {
+				t.Fatalf("compact record: %+v err=%v", record, err)
+			}
+			for _, field := range []string{"HeapAlloc", "HeapObjects", "HeapInuse", "HeapSys", "HeapReleased", "TotalAlloc", "Mallocs", "Frees", "NumGC", "NumForcedGC", "PauseTotalNs", "GCCPUFraction"} {
+				if _, ok := record.Memory[field]; !ok {
+					t.Fatalf("missing %s", field)
+				}
+			}
 		}
 	})
 	t.Run("duration with repeated checkpoints", func(t *testing.T) {
@@ -706,6 +730,9 @@ func TestResourceRetentionEpochsAndArtifacts(t *testing.T) {
 		}
 		if !strings.Contains(string(data), `"status":"complete"`) || !strings.Contains(string(data), `"phase":"post_gc"`) {
 			t.Fatal("missing artifacts")
+		}
+		if !strings.Contains(string(data), `"artifact_format_version":2`) || strings.Contains(string(data), "retained_growth_review") {
+			t.Fatal("incorrect artifact version or obsolete heuristic")
 		}
 		if _, err = os.Stat(filepath.Join(filepath.Dir(result.Artifact), "goroutines.txt")); err != nil {
 			t.Fatal(err)
@@ -748,8 +775,11 @@ func TestResourceRetentionSetupDiagnostics(t *testing.T) {
 		config.Credentials.Password = "unit-secret"
 		r := &retentionRecorder{writer: &output, runID: "stage-test", started: time.Now(), testConfig: config}
 		cause := errors.New("unit-secret query failure")
-		err := r.runStage(context.Background(), "fixture_workload_lob_select", nil, &retentionProgress{}, func(context.Context) error { return cause })
-		if !errors.Is(err, cause) || !strings.Contains(err.Error(), "fixture_workload_lob_select") {
+		if err := r.progress("warm_up", nil, &retentionProgress{}); err != nil {
+			t.Fatal(err)
+		}
+		err := r.finish(cause, nil, &retentionProgress{})
+		if !errors.Is(err, cause) || !strings.Contains(err.Error(), "warm_up") {
 			t.Fatalf("lost stage/cause: %v", err)
 		}
 		for _, expected := range []string{`"phase":"stage_start"`, `"phase":"stage_end"`, `"status":"failed"`, `"pool_available":false`, "[redacted]"} {
@@ -761,9 +791,8 @@ func TestResourceRetentionSetupDiagnostics(t *testing.T) {
 			t.Fatal("stage evidence contains password")
 		}
 		r.writer = retentionBrokenWriter{}
-		called := false
-		if err := r.runStage(context.Background(), "setup", nil, &retentionProgress{}, func(context.Context) error { called = true; return nil }); err == nil || called {
-			t.Fatal("reporting failure admitted database work")
+		if err := r.progress("setup", nil, &retentionProgress{}); err == nil {
+			t.Fatal("ignored progress reporting failure")
 		}
 	})
 	t.Run("priming deadline and parent deadline", func(t *testing.T) {
@@ -878,7 +907,7 @@ func TestResourceRetentionSetupDiagnostics(t *testing.T) {
 				t.Fatal("sampled closed pool")
 			}
 		}
-		want := "database_initialization,pool_priming,initial_fixture_fingerprint,warm_up,baseline_checkpoint,measured_workload,final_fixture_verification,final_checkpoint,database_cleanup"
+		want := "database_initialization,pool_priming,fixture_checks,warm_up,baseline_checkpoint,measured_workload,final_fixture_verification,final_checkpoint,database_cleanup"
 		if active != "" || strings.Join(stages, ",") != want {
 			t.Fatalf("stage order: %v", stages)
 		}
@@ -896,6 +925,82 @@ func (retentionBrokenWriter) Write([]byte) (int, error) {
 }
 
 func TestResourceRetentionTLSAndMixedSchedule(t *testing.T) {
+	for _, workers := range []int{1, 4, 16} {
+		t.Run(fmt.Sprintf("mixed warm-up workers=%d", workers), func(t *testing.T) {
+			fake := &retentionFakeConnector{}
+			var queries [3]atomic.Int64 // complex, LOB, JSON
+			fake.request = func(ctx context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+				kind, columns, index := "complex_select", 17, 0
+				if strings.Contains(query, "ORA_STRESS_LOB") {
+					kind, columns, index = "lob_select", 3, 1
+				} else if strings.Contains(query, "ORA_STRESS_JSON") {
+					kind, columns, index = "json_select", 2, 2
+				}
+				queries[index].Add(1)
+				return &retentionSyntheticRows{columns: make([]string, columns), count: 3, closed: &fake.rowsClosed, row: func(id int) []driver.Value { return retentionExpectedFakeRow(kind, id, 3) }}, ctx.Err()
+			}
+			db := sql.OpenDB(fake)
+			defer db.Close()
+			db.SetMaxOpenConns(workers)
+			config := oracleTest.ResourceRetentionConfig{Workers: workers, TotalOperations: workers, Workload: "mixed", RowsPerQuery: 3, OperationTimeout: "1s"}
+			before := config
+			want := map[string]int{}
+			for worker := 0; worker < workers; worker++ {
+				want[retentionVariant("mixed", worker, 0)]++
+			}
+			for _, kind := range retentionWorkloadKinds("mixed") {
+				if want[kind] == 0 {
+					want[kind] = 1
+				}
+			}
+			check := func() {
+				t.Helper()
+				expected := [3]int{want["complex_select"] + 2*want["prepared_select"] + want["transaction_commit"] + want["transaction_rollback"], want["lob_select"] + want["connection_checkout"], want["json_select"]}
+				for index, count := range expected {
+					if queries[index].Load() != int64(count) {
+						t.Fatalf("query class %d count=%d want=%d", index, queries[index].Load(), count)
+					}
+				}
+				if fake.statementsClosed.Load() != int64(want["prepared_select"]) || fake.committed.Load() != int64(want["transaction_commit"]) || fake.rolledBack.Load() != int64(want["transaction_rollback"]) || db.Stats().InUse != 0 {
+					t.Fatal("mixed warm-up omitted a lifecycle or retained a checkout")
+				}
+			}
+			if err := warmResourceRetention(context.Background(), db, config); err != nil {
+				t.Fatal(err)
+			}
+			check()
+			if config != before {
+				t.Fatal("warm-up changed selected configuration")
+			}
+			p := &retentionProgress{}
+			_, _, err := runRetentionEpoch(context.Background(), config, make([]int, workers), 0, p, func(ctx context.Context, worker, index int) (retentionCounts, error) {
+				if index != 0 {
+					return retentionCounts{}, errors.New("warm-up advanced measured indices")
+				}
+				return executeRetentionCycle(ctx, db, config, worker, index)
+			})
+			if err != nil || p.snapshot().Cycles != uint64(workers) {
+				t.Fatalf("warm-up inflated measured work: %+v %v", p.snapshot(), err)
+			}
+			for worker := 0; worker < workers; worker++ {
+				want[retentionVariant("mixed", worker, 0)]++
+			}
+			check()
+		})
+	}
+	t.Run("standalone LOB warm-up and one measured query", func(t *testing.T) {
+		fake := retentionFixtureFake("lob_select", 3)
+		db := sql.OpenDB(fake)
+		defer db.Close()
+		config := oracleTest.ResourceRetentionConfig{Workers: 1, Workload: "lob_select", RowsPerQuery: 3, OperationTimeout: "1s"}
+		if err := warmResourceRetention(context.Background(), db, config); err != nil {
+			t.Fatal(err)
+		}
+		count, err := executeRetentionCycle(context.Background(), db, config, 0, 0)
+		if err != nil || count.Cycles != 1 || fake.queries.Load() != 2 || fake.rowsClosed.Load() != 2 || db.Stats().InUse != 0 {
+			t.Fatalf("duplicate LOB setup/cleanup: %+v queries=%d err=%v", count, fake.queries.Load(), err)
+		}
+	})
 	c := &TestConfig{}
 	if validateRetentionTLS(c) == nil {
 		t.Fatal("TCP accepted")
