@@ -495,9 +495,15 @@ func initMessagesEn() {
 	// Document: No
 	// Cause:    A call was made to commit or rollback and there is not active
 	//           transaction.
-	// Action:   Start a transaction befor calling commit or rollback.
+	// Action:   Start a transaction before calling commit or rollback.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.NotInTransaction), "not in transaction")
+	// Document: No
+	// Cause:    A transaction operation was requested using a transaction handle
+	//           that is not the transaction currently registered on the connection.
+	// Action:   Use the current transaction handle for the connection.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.NotCurrentTransaction), "transaction is not the current transaction")
 	// Document: No
 	// Cause:    The provided isolation level is not supported.
 	// Action:   Use one of the following isolation levels: LevelSerializable or
@@ -510,18 +516,17 @@ func initMessagesEn() {
 	// Action:   Commit or rollback the current transaction before starting a new
 	//           one.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.AlreadyInTransaction), "isolation level not supported")
+	message.SetString(language.English, string(oracleErrors.AlreadyInTransaction), "a transaction is current active in this connection")
 	// Document: No
 	// Cause:    An error occurred while committing or rolling back the transaction.
 	// Action:   Try again.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.ErrorInTransaction), "an error occurred while performing transaction operation %s")
 	// Document: No
-	// Cause:    An error occurred while executing the ALTER SESSION statement to
-	//           set the transaction ISOLATION LEVEL.
+	// Cause:    An error occurred while starting or resuming a transaction.
 	// Action:   Verify the cause of the error, and try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.ConfigureTransactionError), "failed to configure transaction")
+	message.SetString(language.English, string(oracleErrors.StartResumeTransactionFailure), "failed to start or resume transaction")
 	// Document: No
 	// Cause:    An error occurred while authenticating.
 	// Action:   Check the credentials and try again.
@@ -605,5 +610,10 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.ExpiredToken), "access token has expired")
 
 	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider of the requested type was found")
+	// Document: No
+	// Cause:    The provided global transaction ID is empty or exceeds the maximum size accepted by the server.
+	// Action:   Provide a non-empty global transaction ID up to 64 bytes.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidGlobalTransactionIDValue), "invalid global transaction ID value")
 
 }

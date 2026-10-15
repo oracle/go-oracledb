@@ -38,12 +38,19 @@
 
 package ttc
 
-import "testing"
+import (
+	"testing"
+)
 
 // testEventListener records received events for event service tests.
 type testEventListener struct {
 	events []eventType
+	data   []eventData
 }
+
+type noopEventListener struct{}
+
+func (*noopEventListener) notify(eventType, eventData) {}
 
 // notify appends the received event to the listener history.
 //
@@ -51,8 +58,9 @@ type testEventListener struct {
 //   - event: the event type posted by the event service.
 //
 // Returns: none.
-func (l *testEventListener) notify(event eventType) {
+func (l *testEventListener) notify(event eventType, e eventData) {
 	l.events = append(l.events, event)
+	l.data = append(l.data, e)
 }
 
 // TestEventServiceRegisterAndPost verifies that the event service notifies only
@@ -69,13 +77,30 @@ func TestEventServiceRegisterAndPost(t *testing.T) {
 	listener := &testEventListener{}
 
 	service.register(listener, connectionInvalidatedEvent)
-	service.post(connectionClosedEvent)
+	service.post(connectionClosedEvent, nil)
 	if len(listener.events) != 0 {
 		t.Fatalf("listener received unregistered event: %v", listener.events)
 	}
 
-	service.post(connectionInvalidatedEvent)
+	service.post(connectionInvalidatedEvent, nil)
 	if len(listener.events) != 1 || listener.events[0] != connectionInvalidatedEvent {
 		t.Fatalf("listener events = %v, want [%v]", listener.events, connectionInvalidatedEvent)
+	}
+}
+
+// TestEventServicePostPreservesData verifies that posted event data reaches
+// the registered listener unchanged.
+func TestEventServicePostPreservesData(t *testing.T) {
+	t.Parallel()
+
+	service := newEventService()
+	listener := &testEventListener{}
+	marker := &struct{}{}
+
+	service.register(listener, sessionPropertiesUpdateEvent)
+	service.post(sessionPropertiesUpdateEvent, marker)
+
+	if len(listener.data) != 1 || listener.data[0] != marker {
+		t.Fatalf("listener data = %v, want marker", listener.data)
 	}
 }

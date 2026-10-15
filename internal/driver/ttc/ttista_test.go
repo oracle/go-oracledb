@@ -41,6 +41,8 @@ package ttc
 import (
 	"context"
 	"testing"
+
+	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
 // Test_newTTISTA test that _supportsEndOfCallStatus is not set when newTTISTA
@@ -121,7 +123,7 @@ func Test_ttiSTA_UnmarshalFrom_WithSupport(t *testing.T) {
 	if sta.eocStatus.elapsedTime != 100 {
 		t.Errorf("expected elapsedTime 100, got %v", sta.eocStatus.elapsedTime)
 	}
-	if sta.eocStatus.connectionShouldBeDropped {
+	if sta.eocStatus.connectionShouldBeDropped() {
 		t.Error("expected drop false")
 	}
 	if sta.endToEndECIDSequenceNumber != 42 {
@@ -151,7 +153,7 @@ func Test_ttiSTA_UnmarshalFrom_WithSupport_DropFlag(t *testing.T) {
 	if sta.eocStatus.elapsedTime != 0 {
 		t.Errorf("expected elapsedTime 0, got %v", sta.eocStatus.elapsedTime)
 	}
-	if !sta.eocStatus.connectionShouldBeDropped {
+	if !sta.eocStatus.connectionShouldBeDropped() {
 		t.Error("expected drop true")
 	}
 	if sta.endToEndECIDSequenceNumber != 42 {
@@ -208,40 +210,52 @@ func Test_ttiSTA_UnmarshalFrom_WithSupport_ErrorInElapsedTime(t *testing.T) {
 	}
 }
 
+// Test_ttiSTA_getConnectionShouldBeDropped verifies planned-down and active
+// transaction flags from TTISTA end-of-call status.
 func Test_ttiSTA_getConnectionShouldBeDropped(t *testing.T) {
 	t.Parallel()
 	msg := &ttiSTA{
 		_supportsEndOfCallStatus: false,
 		eocStatus:                nil,
 	}
-	if msg.isBeingDrainned() {
+	if msg.isBeingDrained() {
 		t.Fatalf("Wrong value returned by connectionStatus.getConnectionShouldBeDropped()")
 	}
 	msg = &ttiSTA{
 		_supportsEndOfCallStatus: true,
 		eocStatus:                nil,
 	}
-	if msg.isBeingDrainned() {
+	if msg.isBeingDrained() {
 		t.Fatalf("Wrong value returned by connectionStatus.getConnectionShouldBeDropped()")
 	}
 	msg = &ttiSTA{
 		_supportsEndOfCallStatus: true,
 		eocStatus: &endOfCallStatus{
-			elapsedTime:               0,
-			connectionShouldBeDropped: false,
+			elapsedTime:          0,
+			endOfCallStatusFlags: 0,
 		},
 	}
-	if msg.isBeingDrainned() {
+	if msg.isBeingDrained() {
 		t.Fatalf("Wrong value returned by connectionStatus.getConnectionShouldBeDropped()")
 	}
 	msg = &ttiSTA{
 		_supportsEndOfCallStatus: true,
 		eocStatus: &endOfCallStatus{
-			elapsedTime:               0,
-			connectionShouldBeDropped: true,
+			elapsedTime:          0,
+			endOfCallStatusFlags: common.UB4(ttiEocfDropWhenReturned),
 		},
 	}
-	if !msg.isBeingDrainned() {
+	if !msg.isBeingDrained() {
 		t.Fatalf("Wrong value returned by connectionStatus.getConnectionShouldBeDropped()")
+	}
+
+	msg = &ttiSTA{
+		_supportsEndOfCallStatus: true,
+		eocStatus: &endOfCallStatus{
+			endOfCallStatusFlags: common.UB4(ttiEocFRo | ttiEocDon | ttiEocCur | ttiEocTTi),
+		},
+	}
+	if msg.transactionState() != active {
+		t.Fatal("inTransaction() returned false")
 	}
 }

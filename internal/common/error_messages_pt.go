@@ -177,10 +177,11 @@ func initMessagesPt() {
 		{oracleErrors.InvalidSqlOutParameter, "parâmetro sql.Out inválido: %s"},
 		{oracleErrors.InvalidFileConfig, "falha ao carregar a configuração"},
 		{oracleErrors.NotInTransaction, "nenhuma transação ativa"},
+		{oracleErrors.NotCurrentTransaction, "a transação não é a transação atual"},
 		{oracleErrors.IsolationLevelNotSupported, "nível de isolamento não compatível"},
 		{oracleErrors.AlreadyInTransaction, "a transação já foi iniciada"},
 		{oracleErrors.ErrorInTransaction, "ocorreu um erro durante a operação de transação %s"},
-		{oracleErrors.ConfigureTransactionError, "falha ao configurar a transação"},
+		{oracleErrors.StartResumeTransactionFailure, "falha ao iniciar ou retomar a transação"},
 		{oracleErrors.AuthenticatorError, "ocorreu um erro durante a autenticação"},
 		{oracleErrors.NegotiatorError, "ocorreu um erro durante a negociação da conexão"},
 		{oracleErrors.MarshalEngineError, "ocorreu um erro ao serializar ou desserializar um valor do tipo %s"},
@@ -198,6 +199,7 @@ func initMessagesPt() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "chave privada de token assinado inválida"},
 		{oracleErrors.ExpiredToken, "o token de acesso expirou"},
 		{oracleErrors.ProviderNotFound, "nenhum provedor do tipo solicitado foi encontrado"},
+		{oracleErrors.InvalidGlobalTransactionIDValue, "valor inválido do identificador global de transação"},
 	}
 
 	for _, translation := range translations {

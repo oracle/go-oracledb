@@ -49,224 +49,154 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestTransactionCommitSuccess verifies that commit succeeds for supported
-// transaction options and that a second commit is rejected.
-func TestTransactionCommitSuccess(t *testing.T) {
-	t.Parallel()
-	messageRegistry := NewRegistry[common.MessageType]()
-	messageRegistry.Register(TTIOER, 1, newTTIoer)
-	functionRegistry := NewRegistry[functionRegistryKey]()
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: commit}, 1, newCommit)
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
-	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
-	mockStr := &mockStreamer{}
-	shelf := newShelf[common.MessageType]()
-	shelf.RegisterMessageFactory(messageFactory).RegisterMessageStreamer(mockStr)
-
-	conn := newTestConnection(shelf, nil, nil)
-
-	// Clean error message so that connection close succeeds
-	mockStr.pullMsg = &mockOer{}
-	tests := []struct {
-		isolationLevel sql.IsolationLevel
-		readOnly       bool
-		expectedSQL    []string
-	}{
-		{
-			isolationLevel: sql.LevelReadCommitted,
-			readOnly:       true,
-			expectedSQL:    []string{_isolationLevelReadCommitted, _transactionReadOnly},
-		},
-		{
-			isolationLevel: sql.LevelReadCommitted,
-			readOnly:       false,
-			expectedSQL:    []string{_isolationLevelReadCommitted},
-		},
-		{
-			isolationLevel: sql.LevelSerializable,
-			readOnly:       true,
-			expectedSQL:    []string{_isolationLevelSerializable, _transactionReadOnly},
-		},
-		{
-			isolationLevel: sql.LevelSerializable,
-			readOnly:       false,
-			expectedSQL:    []string{_isolationLevelSerializable},
-		},
+// assertDeferredTransactionStart verifies BeginTx queues one OTXSE start as a
+// TTIPFN piggyback, encodes opts in its flags, and does not read a response yet.
+func assertDeferredTransactionStart(t *testing.T, streamer *mockStreamer, opts driver.TxOptions) {
+	t.Helper()
+	if streamer.pushedMsg.Len() != 1 {
+		t.Fatalf("BeginTx pushed %d messages, want 1", streamer.pushedMsg.Len())
+	}
+	if streamer.pullCalled {
+		t.Fatal("BeginTx should not pull a response for a deferred start")
 	}
 
-	for _, testItem := range tests {
-		mockStr.pushedMsg.Init()
-
-		tx, err := conn.BeginTx(context.Background(), driver.TxOptions{Isolation: driver.IsolationLevel(testItem.isolationLevel), ReadOnly: testItem.readOnly})
-		if err != nil {
-			t.Fatalf("Unexpected error %v", err)
-		}
-
-		if mockStr.pushedMsg.Len() != len(testItem.expectedSQL) {
-			t.Errorf("Wrong number of statements pushed, expected %d transaction setup statements but was %d", len(testItem.expectedSQL), mockStr.pushedMsg.Len())
-		}
-
-		// Check that OAll8 was pushed for transaction setup.
-		setupElement := mockStr.pushedMsg.Front()
-		for _, expectedSQL := range testItem.expectedSQL {
-			if setupElement == nil {
-				t.Errorf("Missing transaction setup statement %s", expectedSQL)
-				break
-			}
-			pushedMsg := setupElement.Value.(*common.Message[common.MessageType])
-			oAll8, ok := (*pushedMsg).(*tTIOall)
-			if !ok {
-				t.Errorf("Message pushed was not oAll8")
-				setupElement = setupElement.Next()
-				continue
-			}
-			if sql := common.B1ArrayToString(oAll8.sql); sql != expectedSQL {
-				t.Errorf("Expected transaction setup statement %s, but was %s", expectedSQL, sql)
-			}
-			if oAll8.options&commitAfterExecution != 0 {
-				t.Errorf("Transaction setup should not commit after execution, options=%x", oAll8.options)
-			}
-			setupElement = setupElement.Next()
-		}
-
-		mockStr.pushedMsg.Init()
-		err = tx.Commit()
-		if err != nil {
-			t.Errorf("Unexpected error %v", err)
-		}
-		msg := mockStr.pushedMsg.Front().Value.(*common.Message[common.MessageType])
-		msgHeader, ok := (*msg).(*ttiFunHeader)
-		if !ok {
-			t.Errorf("Message pushed was not ttiFunHeader")
-		}
-		if msgHeader._funcType != commit {
-			t.Errorf("Expected function type to be %d, but was %d", commit, msgHeader._funcType)
-		}
-		// try to commit again and check that not in transaction is thrown
-		err = tx.Commit()
-		if err == nil {
-			t.Errorf("Transaction should be closed, expected error")
-		}
-		if sqlErr, ok := err.(oracleErrors.SQLError); ok {
-			if sqlErr.ErrorCode() != string(oracleErrors.NotInTransaction) {
-				t.Errorf("Wrong error, expected %s but was %s", oracleErrors.NotInTransaction, sqlErr.ErrorCode())
-			}
-		}
-		// try to rollback and check that not in transaction is thrown
-		err = tx.Rollback()
-		if err == nil {
-			t.Errorf("Transaction should be closed, expected error")
-		}
-		if sqlErr, ok := err.(oracleErrors.SQLError); ok {
-			if sqlErr.ErrorCode() != string(oracleErrors.NotInTransaction) {
-				t.Errorf("Wrong error, expected %s but was %s", oracleErrors.NotInTransaction, sqlErr.ErrorCode())
-			}
-		}
+	msg := streamer.pushedMsg.Front().Value.(*common.Message[common.MessageType])
+	otxse, ok := (*msg).(*tTIOtxse)
+	if !ok {
+		t.Fatalf("BeginTx message = %T, want *tTIOtxse", *msg)
+	}
+	if otxse.GetMsgCode() != TTIPFN {
+		t.Fatalf("BeginTx message code = %v, want TTIPFN", otxse.GetMsgCode())
+	}
+	if otxse.operation != otxseStart {
+		t.Fatalf("OTXSE operation = %d, want %d", otxse.operation, otxseStart)
+	}
+	if otxse.flags != convertTxOptionsToFlags(opts) {
+		t.Fatalf("OTXSE flags = %#x, want %#x", otxse.flags, convertTxOptionsToFlags(opts))
 	}
 }
 
-// TestTransactionRollbackSuccess verifies that rollback succeeds for supported
-// transaction options and that a second rollback is rejected.
-func TestTransactionRollbackSuccess(t *testing.T) {
+// TestTransactionCommitSuccess verifies that BeginTx queues a deferred OTXSE
+// start and that commit succeeds without unregistering before end-of-call status.
+func TestTransactionCommitSuccess(t *testing.T) {
 	t.Parallel()
-	messageRegistry := NewRegistry[common.MessageType]()
-	messageRegistry.Register(TTIOER, 1, newTTIoer)
-	functionRegistry := NewRegistry[functionRegistryKey]()
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 1, newRollback)
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
-	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
-	mockStr := &mockStreamer{pullMsg: &mockOer{err: nil}}
-	shelf := newShelf[common.MessageType]()
-	shelf.RegisterMessageFactory(messageFactory).RegisterMessageStreamer(mockStr)
-
-	conn := newTestConnection(shelf, nil, nil)
-
-	// Clean error message so that connection close succeeds
-	mockStr.pullMsg = &mockOer{}
-	tests := []struct {
-		isolationLevel sql.IsolationLevel
-		readOnly       bool
-		expectedSQL    []string
-	}{
-		{
-			isolationLevel: sql.LevelReadCommitted,
-			readOnly:       true,
-			expectedSQL:    []string{_isolationLevelReadCommitted, _transactionReadOnly},
-		},
-		{
-			isolationLevel: sql.LevelReadCommitted,
-			readOnly:       false,
-			expectedSQL:    []string{_isolationLevelReadCommitted},
-		},
-		{
-			isolationLevel: sql.LevelSerializable,
-			readOnly:       true,
-			expectedSQL:    []string{_isolationLevelSerializable, _transactionReadOnly},
-		},
-		{
-			isolationLevel: sql.LevelSerializable,
-			readOnly:       false,
-			expectedSQL:    []string{_isolationLevelSerializable},
-		},
+	tests := []driver.TxOptions{
+		{Isolation: driver.IsolationLevel(sql.LevelReadCommitted), ReadOnly: true},
+		{Isolation: driver.IsolationLevel(sql.LevelReadCommitted)},
+		{Isolation: driver.IsolationLevel(sql.LevelSerializable), ReadOnly: true},
+		{Isolation: driver.IsolationLevel(sql.LevelSerializable)},
 	}
 
-	for _, testItem := range tests {
-		mockStr.pushedMsg.Init()
-		tx, err := conn.BeginTx(context.Background(), driver.TxOptions{Isolation: driver.IsolationLevel(testItem.isolationLevel), ReadOnly: testItem.readOnly})
-		if err != nil {
-			t.Errorf("Unexpected error %v", err)
+	for _, opts := range tests {
+		name := "read-write"
+		if opts.ReadOnly {
+			name = "read-only"
 		}
+		t.Run(name, func(t *testing.T) {
+			streamer := &mockStreamer{pullMsg: &mockOer{}}
+			conn := newTransactionTestConnection(streamer)
 
-		if mockStr.pushedMsg.Len() != len(testItem.expectedSQL) {
-			t.Errorf("Wrong number of statements pushed, expected %d transaction setup statements but was %d", len(testItem.expectedSQL), mockStr.pushedMsg.Len())
-		}
+			tx, err := conn.BeginTx(context.Background(), opts)
+			if err != nil {
+				t.Fatalf("BeginTx returned error: %v", err)
+			}
+			assertDeferredTransactionStart(t, streamer, opts)
 
-		// Check that OAll8 was pushed for transaction setup.
-		setupElement := mockStr.pushedMsg.Front()
-		for _, expectedSQL := range testItem.expectedSQL {
-			if setupElement == nil {
-				t.Errorf("Missing transaction setup statement %s", expectedSQL)
-				break
+			streamer.pushedMsg.Init()
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("Commit returned error: %v", err)
 			}
-			pushedMsg := setupElement.Value.(*common.Message[common.MessageType])
-			oAll8, ok := (*pushedMsg).(*tTIOall)
-			if !ok {
-				t.Errorf("Message pushed was not oAll8")
-				setupElement = setupElement.Next()
-				continue
+			assertTransactionFunction(t, streamer, common.SB4(otxenCommit), k2cmdCommit)
+			if !conn.shelf.isInTransaction() {
+				t.Fatal("Commit without end-of-call status unregistered the transaction")
 			}
-			if sql := common.B1ArrayToString(oAll8.sql); sql != expectedSQL {
-				t.Errorf("Expected transaction setup statement %s, but was %s", expectedSQL, sql)
-			}
-			if oAll8.options&commitAfterExecution != 0 {
-				t.Errorf("Transaction setup should not commit after execution, options=%x", oAll8.options)
-			}
-			setupElement = setupElement.Next()
-		}
+		})
+	}
+}
 
-		mockStr.pushedMsg.Init()
-		err = tx.Rollback()
-		if err != nil {
-			t.Errorf("Unexpected error %v", err)
+// TestTransactionRollbackSuccess verifies that BeginTx queues a deferred OTXSE
+// start and that rollback succeeds without unregistering before end-of-call status.
+func TestTransactionRollbackSuccess(t *testing.T) {
+	t.Parallel()
+	tests := []driver.TxOptions{
+		{Isolation: driver.IsolationLevel(sql.LevelReadCommitted), ReadOnly: true},
+		{Isolation: driver.IsolationLevel(sql.LevelReadCommitted)},
+		{Isolation: driver.IsolationLevel(sql.LevelSerializable), ReadOnly: true},
+		{Isolation: driver.IsolationLevel(sql.LevelSerializable)},
+	}
+
+	for _, opts := range tests {
+		name := "read-write"
+		if opts.ReadOnly {
+			name = "read-only"
 		}
-		msg := mockStr.pushedMsg.Front().Value.(*common.Message[common.MessageType])
-		msgHeader, ok := (*msg).(*ttiFunHeader)
-		if !ok {
-			t.Errorf("Message pushed was not ttiFunHeader")
-		}
-		if msgHeader._funcType != rollback {
-			t.Errorf("Expected function type to be %d, but was %d", commit, msgHeader._funcType)
-		}
-		// try to commit again and check that not in transaction is thrown
-		err = tx.Rollback()
-		if err == nil {
-			t.Errorf("Transaction should be closed, expected error")
-		}
-		if sqlErr, ok := err.(oracleErrors.SQLError); ok {
-			if sqlErr.ErrorCode() != string(oracleErrors.NotInTransaction) {
-				t.Errorf("Wrong error, expected %s but was %s", oracleErrors.NotInTransaction, sqlErr.ErrorCode())
+		t.Run(name, func(t *testing.T) {
+			streamer := &mockStreamer{pullMsg: &mockOer{}}
+			conn := newTransactionTestConnection(streamer)
+
+			tx, err := conn.BeginTx(context.Background(), opts)
+			if err != nil {
+				t.Fatalf("BeginTx returned error: %v", err)
 			}
-		}
+			assertDeferredTransactionStart(t, streamer, opts)
+
+			streamer.pushedMsg.Init()
+			if err := tx.Rollback(); err != nil {
+				t.Fatalf("Rollback returned error: %v", err)
+			}
+			assertTransactionFunction(t, streamer, common.SB4(otxenAbort), k2cmdAbort)
+			if !conn.shelf.isInTransaction() {
+				t.Fatal("Rollback without end-of-call status unregistered the transaction")
+			}
+		})
+	}
+}
+
+// TestTransactionEndConsumesOTxEnRPA verifies that transaction end consumes
+// OTXEN return parameters before reading the terminal status message.
+func TestTransactionEndConsumesOTxEnRPA(t *testing.T) {
+	t.Parallel()
+	streamer := &mockStreamer{
+		pullMsgs: []common.Message[common.MessageType]{
+			&ttiOTxEnRPA{outState: 1},
+			&mockOer{},
+		},
+	}
+	conn := newTransactionTestConnection(streamer)
+
+	tx, err := conn.BeginTx(context.Background(), driver.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx returned error: %v", err)
+	}
+	streamer.pushedMsg.Init()
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+	if len(streamer.pullTypes) != 3 || streamer.pullTypes[0] != TTIRPA || streamer.pullTypes[1] != TTIOER || streamer.pullTypes[2] != TTISTA {
+		t.Fatalf("OTXEN pull types = %v, want [TTIRPA TTIOER TTISTA]", streamer.pullTypes)
+	}
+}
+
+// assertTransactionFunction verifies that one OTXEN transaction-end message
+// was queued with the expected operation, input state, and zero flags.
+func assertTransactionFunction(t *testing.T, streamer *mockStreamer, operation common.SB4, inState common.UB4) {
+	t.Helper()
+	if streamer.pushedMsg.Len() != 1 {
+		t.Fatalf("transaction operation pushed %d messages, want 1", streamer.pushedMsg.Len())
+	}
+	msg := streamer.pushedMsg.Front().Value.(*common.Message[common.MessageType])
+	otxen, ok := (*msg).(*tTIOtxen)
+	if !ok {
+		t.Fatalf("transaction operation message = %T, want *tTIOtxen", *msg)
+	}
+	if otxen.operation != operation {
+		t.Fatalf("OTXEN operation = %d, want %d", otxen.operation, operation)
+	}
+	if otxen.inState != inState {
+		t.Fatalf("OTXEN in-state = %d, want %d", otxen.inState, inState)
+	}
+	if otxen.flags != 0 {
+		t.Fatalf("OTXEN transaction state change flags = %d, want 0", otxen.flags)
 	}
 }
 
@@ -282,7 +212,8 @@ func TestCallBeginTxTwice(t *testing.T) {
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: logOff}, 1, newLogOff)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 1, newRollback)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
-	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
+	functionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, 18, newOTxSePfn18)
+	messageFactory := &SimpleFactory{ttcVersion: 18, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	mockStr := &mockStreamer{pullMsg: &mockOer{err: nil}}
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMessageFactory(messageFactory).RegisterMessageStreamer(mockStr)
@@ -310,17 +241,24 @@ func TestCallBeginTxTwice(t *testing.T) {
 
 }
 
+// newTransactionTestConnection creates a connection with the message handlers
+// needed by the transaction tests and the supplied streamer.
 func newTransactionTestConnection(streamer *mockStreamer) *connection {
 	messageRegistry := NewRegistry[common.MessageType]()
 	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
-	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxEn}, 18, newOTxEn18)
+	functionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oTxEn}, 1, newOTxEnRPA)
+	functionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, 18, newOTxSePfn18)
+	messageFactory := &SimpleFactory{ttcVersion: 18, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMessageFactory(messageFactory).RegisterMessageStreamer(streamer)
 	return newTestConnection(shelf, nil, nil)
 }
 
+// transactionErrorCode verifies err is a transaction SQL error and returns its
+// Oracle error code.
 func transactionErrorCode(t *testing.T, err error) oracleErrors.ErrorCode {
 	t.Helper()
 	if err == nil {
@@ -333,8 +271,8 @@ func transactionErrorCode(t *testing.T, err error) oracleErrors.ErrorCode {
 	return oracleErrors.ErrorCode(sqlErr.ErrorCode())
 }
 
-// TestConnectionBeginUsesDefaultIsolationLevel verifies that Begin uses the
-// read-committed isolation level when no options are supplied.
+// TestConnectionBeginUsesDefaultIsolationLevel verifies that Begin queues a
+// read-committed, read-write OTXSE start when no options are supplied.
 func TestConnectionBeginUsesDefaultIsolationLevel(t *testing.T) {
 	t.Parallel()
 	streamer := &mockStreamer{pullMsg: &mockOer{}}
@@ -344,17 +282,7 @@ func TestConnectionBeginUsesDefaultIsolationLevel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin returned error: %v", err)
 	}
-	if streamer.pushedMsg.Len() != 1 {
-		t.Fatalf("Begin pushed %d setup messages, want 1", streamer.pushedMsg.Len())
-	}
-	msg := streamer.pushedMsg.Front().Value.(*common.Message[common.MessageType])
-	oall, ok := (*msg).(*tTIOall)
-	if !ok {
-		t.Fatalf("setup message = %T, want *tTIOall", *msg)
-	}
-	if got := common.B1ArrayToString(oall.sql); got != _isolationLevelReadCommitted {
-		t.Fatalf("default isolation SQL = %q, want %q", got, _isolationLevelReadCommitted)
-	}
+	assertDeferredTransactionStart(t, streamer, driver.TxOptions{Isolation: driver.IsolationLevel(sql.LevelReadCommitted)})
 	if tx == nil {
 		t.Fatal("Begin returned a nil transaction")
 	}
@@ -379,46 +307,28 @@ func TestConnectionBeginTxRejectsUnsupportedIsolationLevel(t *testing.T) {
 	}
 }
 
-// TestConnectionBeginTxUnregistersAfterSetupErrors verifies that transaction
-// setup failures remove the partially initialized transaction.
-func TestConnectionBeginTxUnregistersAfterSetupErrors(t *testing.T) {
+// TestConnectionBeginTxReturnsPushError verifies that an error queuing the
+// deferred start operation is returned to the caller.
+func TestConnectionBeginTxReturnsPushError(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name     string
-		pullMsgs []common.Message[common.MessageType]
-		wantPush int
-	}{
-		{
-			name:     "isolation setup error",
-			pullMsgs: []common.Message[common.MessageType]{&mockOer{err: errors.New("isolation failed")}},
-			wantPush: 1,
-		},
-		{
-			name:     "read only setup error",
-			pullMsgs: []common.Message[common.MessageType]{&mockOer{}, &mockOer{err: errors.New("read only failed")}},
-			wantPush: 2,
-		},
+	streamer := &mockStreamer{pushErr: errors.New("start transaction failed")}
+	conn := newTransactionTestConnection(streamer)
+
+	_, err := conn.BeginTx(context.Background(), driver.TxOptions{})
+	if got := transactionErrorCode(t, err); got != oracleErrors.StreamerWriteError {
+		t.Fatalf("error code = %s, want %s", got, oracleErrors.StreamerWriteError)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			streamer := &mockStreamer{pullMsgs: tt.pullMsgs}
-			conn := newTransactionTestConnection(streamer)
-			_, err := conn.BeginTx(context.Background(), driver.TxOptions{ReadOnly: tt.name == "read only setup error"})
-			if got := transactionErrorCode(t, err); got != oracleErrors.ConfigureTransactionError {
-				t.Fatalf("error code = %s, want %s", got, oracleErrors.ConfigureTransactionError)
-			}
-			if streamer.pushedMsg.Len() != tt.wantPush {
-				t.Fatalf("pushed messages = %d, want %d", streamer.pushedMsg.Len(), tt.wantPush)
-			}
-			if conn.shelf.isInTransaction() {
-				t.Fatal("setup failure should unregister the transaction")
-			}
-		})
+	if streamer.pushedMsg.Len() != 1 {
+		t.Fatalf("pushed messages = %d, want 1", streamer.pushedMsg.Len())
+	}
+	if conn.shelf.isInTransaction() {
+		t.Fatal("BeginTx push failure should unregister the transaction")
 	}
 }
 
 // TestTransactionOperationErrors verifies that commit and rollback errors are
-// wrapped as transaction errors and leave the transaction registered.
+// wrapped as transaction errors and do not unregister a transaction without an
+// end-of-call status from the server.
 func TestTransactionOperationErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -426,47 +336,30 @@ func TestTransactionOperationErrors(t *testing.T) {
 		operation func(*transaction) error
 		message   string
 	}{
-		{name: "commit", operation: (*transaction).Commit, message: "commit failed"},
-		{name: "rollback", operation: (*transaction).Rollback, message: "rollback failed"},
+		{
+			name:      "commit",
+			operation: (*transaction).Commit,
+			message:   "commit failed",
+		},
+		{
+			name:      "rollback",
+			operation: (*transaction).Rollback,
+			message:   "rollback failed",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			streamer := &mockStreamer{pullMsg: &mockOer{err: errors.New(tt.message)}}
 			conn := newTransactionTestConnection(streamer)
 			tx := newTransaction(conn, context.Background())
+			tx.transactionState(transactionStartedServer)
 			conn.shelf.registerTransaction(tx)
 
 			if got := transactionErrorCode(t, tt.operation(tx)); got != oracleErrors.ErrorInTransaction {
 				t.Fatalf("error code = %s, want %s", got, oracleErrors.ErrorInTransaction)
 			}
 			if !conn.shelf.isInTransaction() {
-				t.Fatal("transaction should remain registered after operation error")
-			}
-		})
-	}
-}
-
-// TestTransactionOperationRejectsStaleMessages verifies that commit and
-// rollback fail when connection validation reports stale messages.
-func TestTransactionOperationRejectsStaleMessages(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name      string
-		operation func(*transaction) error
-	}{
-		{name: "commit", operation: (*transaction).Commit},
-		{name: "rollback", operation: (*transaction).Rollback},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			streamer := &mockStreamer{pullMsg: &mockOer{}, drainIn: 1}
-			conn := newTransactionTestConnection(streamer)
-			tx := newTransaction(conn, context.Background())
-			conn.shelf.registerTransaction(tx)
-			conn.shelf.registerStateValidator(&shelfConnectionValidator{valid: false})
-
-			if got := transactionErrorCode(t, tt.operation(tx)); got != oracleErrors.InternalError {
-				t.Fatalf("error code = %s, want %s", got, oracleErrors.InternalError)
+				t.Fatal("transaction operation error without end-of-call status unregistered the transaction")
 			}
 		})
 	}

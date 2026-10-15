@@ -177,10 +177,11 @@ func initMessagesIt() {
 		{oracleErrors.InvalidSqlOutParameter, "parametro sql.Out non valido: %s"},
 		{oracleErrors.InvalidFileConfig, "caricamento della configurazione non riuscito"},
 		{oracleErrors.NotInTransaction, "nessuna transazione attiva"},
+		{oracleErrors.NotCurrentTransaction, "la transazione non è la transazione corrente"},
 		{oracleErrors.IsolationLevelNotSupported, "livello di isolamento non supportato"},
 		{oracleErrors.AlreadyInTransaction, "transazione già avviata"},
 		{oracleErrors.ErrorInTransaction, "si è verificato un errore durante l'operazione di transazione %s"},
-		{oracleErrors.ConfigureTransactionError, "configurazione della transazione non riuscita"},
+		{oracleErrors.StartResumeTransactionFailure, "impossibile avviare o riprendere la transazione"},
 		{oracleErrors.AuthenticatorError, "si è verificato un errore durante l'autenticazione"},
 		{oracleErrors.NegotiatorError, "si è verificato un errore durante la negoziazione della connessione"},
 		{oracleErrors.MarshalEngineError, "si è verificato un errore durante la serializzazione o deserializzazione di un valore di tipo %s"},
@@ -198,6 +199,7 @@ func initMessagesIt() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "chiave privata del token firmato non valida"},
 		{oracleErrors.ExpiredToken, "il token di accesso è scaduto"},
 		{oracleErrors.ProviderNotFound, "nessun provider del tipo richiesto trovato"},
+		{oracleErrors.InvalidGlobalTransactionIDValue, "valore non valido dell'identificatore globale di transazione"},
 	}
 
 	for _, translation := range translations {

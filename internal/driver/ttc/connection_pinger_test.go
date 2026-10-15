@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -154,4 +155,50 @@ func TestConnectionPinger_IsValidWithInband(t *testing.T) {
 		t.Errorf("Connection should be invalid")
 	}
 
+}
+
+// TestConnectionValidator_RollsBackActiveTransaction verifies that ResetSession
+// rolls back a transaction reported as active by the server without unregistering
+// it until an end-of-call status confirms that it ended.
+func TestConnectionValidator_RollsBackActiveTransaction(t *testing.T) {
+	t.Parallel()
+
+	streamer := &mockStreamer{pullMsg: &mockOer{}}
+	connection := newTransactionTestConnection(streamer)
+	connection.sessCtx = common.NewSessionContext()
+	connection.ns = &mockNetworkSession{
+		inband: false,
+	}
+	transaction := newTransaction(connection, context.Background())
+	transaction.transactionState(transactionStartedServer)
+	connection.shelf.registerTransaction(transaction)
+
+	if !connection.IsValid() {
+		t.Fatalf("IsValid should have returned true")
+	}
+
+	assertTransactionFunction(t, streamer, common.SB4(otxenAbort), k2cmdAbort)
+	if !connection.shelf.isInTransaction() {
+		t.Fatal("rollback without end-of-call status unregistered the transaction")
+	}
+}
+
+// TestConnectionValidator_RollbackFailureInvalidatesConnection verifies that a
+// failed rollback prevents a connection from being returned to the pool.
+func TestConnectionValidator_RollbackFailureInvalidatesConnection(t *testing.T) {
+	t.Parallel()
+
+	streamer := &mockStreamer{pullMsg: &mockOer{err: errors.New("rollback failed")}}
+	connection := newTransactionTestConnection(streamer)
+	connection.sessCtx = common.NewSessionContext()
+	connection.ns = &mockNetworkSession{
+		inband: false,
+	}
+	transaction := newTransaction(connection, context.Background())
+	transaction.transactionState(transactionStartedServer)
+	connection.shelf.registerTransaction(transaction)
+
+	if connection.IsValid() {
+		t.Fatalf("IsValid should be false")
+	}
 }
