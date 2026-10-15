@@ -121,6 +121,7 @@ func (sa *sessionAtts) setFrom(source interface{}) {
 	var sslAllowWeakDNMatch bool
 	var sslServerDNMatch bool
 	var sslServerCertDN string
+	var tlsServerCertHost string
 	var enable string
 	var httpsProxy string
 	var httpsProxyPort float64
@@ -143,6 +144,7 @@ func (sa *sessionAtts) setFrom(source interface{}) {
 		sslAllowWeakDNMatch = src.Security.IsSSLAllowWeakDNMatchEnabled()
 		sslServerDNMatch = src.Security.IsSSLServerDNMatchEnabled()
 		sslServerCertDN = src.Security.SSLServerCertDN
+		tlsServerCertHost = src.Security.TLSServerCertHost
 		enable = src.Enable
 		walletLocation = src.Security.WalletLocation
 		useSNI = src.IsUseSNIEnabled()
@@ -208,6 +210,7 @@ func (sa *sessionAtts) setFrom(source interface{}) {
 	sa.nt.SSLAllowWeakDNMatch = sslAllowWeakDNMatch
 	sa.nt.SSLServerDNMatch = sslServerDNMatch
 	sa.nt.SSLServerCertDN = sslServerCertDN
+	sa.nt.TLSServerCertHost = tlsServerCertHost
 	sa.nt.WalletPassword = walletPassword
 	sa.nt.UseSNI = useSNI // Assuming NT has UseSNI; add if not
 

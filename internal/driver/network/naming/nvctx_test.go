@@ -212,7 +212,7 @@ func TestExtractDescription_Complete(t *testing.T) {
   (CONNECTION_ID_PREFIX=prefix)
   (COMPRESSION=on)
   (COMPRESSION_LEVELS=(LEVEL=low)(LEVEL=high))
-  (SECURITY=(SSL_SERVER_CERT_DN=cert)(SSL_SERVER_DN_MATCH=yes)(SSL_ALLOW_WEAK_DN_MATCH=no)(WALLET_LOCATION=/loc)(MY_WALLET_DIRECTORY=/dir))
+  (SECURITY=(SSL_SERVER_CERT_DN=cert)(TLS_SERVER_CERT_HOST=db.example.com)(SSL_SERVER_DN_MATCH=yes)(SSL_ALLOW_WEAK_DN_MATCH=no)(WALLET_LOCATION=/loc)(MY_WALLET_DIRECTORY=/dir))
   (ADDRESS_LIST=(LOAD_BALANCE=on)(FAILOVER=off)(SOURCE_ROUTE=yes)(ADDRESS=(PROTOCOL=TCP)(HOST=host1)(PORT=1521)))
   (ADDRESS=(PROTOCOL=TCP)(HOST=host2)(PORT=1522))
   (CONNECT_DATA=(SERVICE_NAME=service)(SID=sid)(SERVER=dedicated)(INSTANCE_NAME=inst)(FAILOVER_MODE=select)(HS=ok)(RDB_DATABASE=db)(GLOBAL_NAME=global)(CONNECTION_ID_PREFIX=conn_prefix))
@@ -233,6 +233,9 @@ func TestExtractDescription_Complete(t *testing.T) {
 	}
 	if desc.Security.SSLServerCertDN != "cert" {
 		t.Errorf("expected SSLServerCertDN cert, got %q", desc.Security.SSLServerCertDN)
+	}
+	if desc.Security.TLSServerCertHost != "db.example.com" {
+		t.Errorf("expected TLSServerCertHost db.example.com, got %q", desc.Security.TLSServerCertHost)
 	}
 	if len(desc.AddressLists) != 1 {
 		t.Errorf("expected 1 AddressList, got %d", len(desc.AddressLists))
