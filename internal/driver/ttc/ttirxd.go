@@ -54,7 +54,7 @@ and retains raw wire bytes or constructed values together with their LOB metadat
 type tTIrxd struct {
 	// numberOfColumns is the expected number of columns for each incoming RXD row.
 	numberOfColumns driverCommon.UB4
-	// codecFactory supplies protocol-matched decoders during unmarshalling.
+	// codecFactory supplies protocol-matched column unwrap handlers.
 	codecFactory codecFactory
 	// rowCount is the zero-based index of the row currently being processed/unmarshalled.
 	rowCount driverCommon.UB4
@@ -62,6 +62,9 @@ type tTIrxd struct {
 	row []columnPayload
 	// prevRow contains each column's data from the previous unmarshalled row, used for column-carry (BVC logic).
 	prevRow []columnPayload
+	// refCursorRows retains REF CURSOR values constructed while unmarshalling
+	// this message so the statement executor can register their connection ownership.
+	refCursorRows []*ttcRowsRefCursor
 	// bvcColSent is a BitSet indicating which columns are present in this row (per BVC protocol column-carry rules).
 	bvcColSent *driverCommon.BitSet
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
@@ -319,8 +322,19 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 	if err != nil {
 		return err
 	}
+	// REF CURSOR rows need connection ownership before they are later exposed
+	// through GetRows. The statement executor registers this per-message list
+	// after the full RXD message has been unmarshalled.
+	if cursor, ok := payload.data.(*ttcRowsRefCursor); ok && cursor != nil {
+		rxd.refCursorRows = append(rxd.refCursorRows, cursor)
+	}
 	rxd.row[col] = payload
 	return nil
+}
+
+// getRefCursorRows returns the REF CURSOR values decoded from this RXD message.
+func (rxd *tTIrxd) getRefCursorRows() []*ttcRowsRefCursor {
+	return rxd.refCursorRows
 }
 
 // _unmarshalScalarColumn decodes a single column's value into rxd.row[col].

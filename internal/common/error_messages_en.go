@@ -453,6 +453,23 @@ func initMessagesEn() {
 	// Action:   Use an identifier with a supported length and characters.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidIdentifier), "invalid SQL identifier")
+	// Document: No
+	message.SetString(language.English, string(oracleErrors.ImplicitResultMessageCreationFailed), "failed to create implicit result message")
+	// Document: No
+	// Cause:    A REF CURSOR was fetched using a connection other than the one that opened it.
+	// Action:   Fetch the REF CURSOR using the connection on which it was opened.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.RefCursorConnectionMismatch), "REF CURSOR must be fetched using the connection on which it was opened")
+	// Document: No
+	// Cause:    A REF CURSOR OUT bind used an unsupported destination type.
+	// Action:   Use *datatype.Cursor as the sql.Out destination.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidRefCursorOutParameter), "REF CURSOR OUT binds require *datatype.Cursor")
+	// Document: No
+	// Cause:    The REF CURSOR executor received an unsupported argument value.
+	// Action:   Pass the decoded REF CURSOR rows to the executor.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidRefCursorArgument), "invalid REF CURSOR argument")
 
 	// Document: No
 	message.SetString(language.English, string(oracleErrors.CancelOperationError), "cancel operation failed")

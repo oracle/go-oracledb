@@ -71,6 +71,10 @@ const (
 	plsqlMaxLength = 32760
 	// maxValue is a sentinel UB4 used for prefetch size to indicate "use server maximum".
 	maxValue = 0xFFFFFFFF
+	// implicitResultPrefetchRowCount bounds rows returned for each implicit
+	// cursor in the execution response. The OALL8 max-value sentinel is not valid
+	// for the implicit-result prefetch protocol on all server versions.
+	implicitResultPrefetchRowCount driverCommon.UB4 = 200000000
 )
 
 // tTIOall represents the OALL8 execute/query TTC function request.
@@ -137,6 +141,12 @@ func (m *tTIOall) setRowsToFetch() {
 	m.maxClientBuffer = maxValue
 	m.rowsToFetch = maxValue
 
+}
+
+// setRowsToFetchCount limits the number of rows requested in an OALL8
+// prefetch response while retaining the maximum client buffer sentinel.
+func (m *tTIOall) setRowsToFetchCount(count driverCommon.UB4) {
+	m.rowsToFetch = count
 }
 
 func (m *tTIOall) resetRowsToFetch() {

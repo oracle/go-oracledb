@@ -39,9 +39,12 @@
 package oracle
 
 import (
+	"context"
 	"database/sql"
+	"database/sql/driver"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -51,6 +54,12 @@ import (
 // The wrapped connection must be a connection returned by this driver.
 type connectionWrapper struct {
 	connection *sql.Conn
+}
+
+// canBeWrapped lists the Oracle-specific operations required from the physical
+// driver connection before it can be exposed through connectionWrapper.
+type canBeWrapped interface {
+	GetRows(context.Context, driver.Rows) error
 }
 
 // NewConnectionWrapper validates and wraps a dedicated database/sql connection
@@ -65,10 +74,6 @@ type connectionWrapper struct {
 func NewConnectionWrapper(connection *sql.Conn) (*connectionWrapper, error) {
 	var wrapper *connectionWrapper
 	err := connection.Raw(func(c any) error {
-		// Include here all functions/interfaces we want a connection to implement in
-		// order to be wrapped by this wrapper
-		type canBeWrapped interface {
-		}
 		_, ok := c.(canBeWrapped)
 		if !ok {
 			return common.NewOracleError(oracleErrors.InvalidConnection, nil)
@@ -77,4 +82,21 @@ func NewConnectionWrapper(connection *sql.Conn) (*connectionWrapper, error) {
 		return nil
 	})
 	return wrapper, err
+}
+
+// Fetch fetches raw on this wrapper's dedicated connection and exposes it as
+// standard database/sql rows. The wrapper must represent the same connection
+// that received the REF CURSOR OUT bind.
+func (w *connectionWrapper) Fetch(ctx context.Context, raw *datatype.Cursor) (*sql.Rows, error) {
+	rows := raw.DriverRows()
+	if rows == nil {
+		return nil, nil
+	}
+	if err := w.connection.Raw(func(c any) error {
+		fetcher, _ := c.(canBeWrapped)
+		return fetcher.GetRows(ctx, rows)
+	}); err != nil {
+		return nil, err
+	}
+	return w.connection.QueryContext(ctx, datatype.RefCursorQuery, rows)
 }

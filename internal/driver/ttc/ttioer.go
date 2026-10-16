@@ -63,11 +63,11 @@ type tTIoer struct {
 	arrayElemWError            driverCommon.UB2
 	arrayElemErrno             driverCommon.UB2
 	currCursorID               driverCommon.UB2
-	errorPosition              driverCommon.UB2
+	errorPosition              driverCommon.SB2
 	sqlType                    driverCommon.UB1
-	oerFatal                   driverCommon.UB2
-	flags                      driverCommon.UB2
-	userCursorOpt              driverCommon.UB2
+	oerFatal                   driverCommon.SB1
+	flags                      driverCommon.SB1
+	userCursorOpt              driverCommon.SB1
 	upiParam                   driverCommon.UB1
 	warningFlag                driverCommon.UB1
 	osError                    driverCommon.UB4
@@ -239,7 +239,13 @@ func (o *tTIoer) _unmarshalAttributes(ctx context.Context, mar driverCommon.Mars
 		)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[o.GetMsgCode()])
 	}
+	return o._unmarshalAttributeBody(ctx, mar)
+}
 
+// _unmarshalAttributeBody decodes the OER fields shared by ordinary and
+// implicit-result OER messages. Its input starts at the current-row count.
+func (o *tTIoer) _unmarshalAttributeBody(ctx context.Context, mar driverCommon.Marshaller) error {
+	var err error
 	if o.curRowNumber, err = mar.UnmarshalUB4(ctx); err != nil {
 		common.Odl.Error("TTIoer.UnmarshalAttributes: curRowNumber unmarshal failed",
 			"error", err,
@@ -272,7 +278,7 @@ func (o *tTIoer) _unmarshalAttributes(ctx context.Context, mar driverCommon.Mars
 		)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[o.GetMsgCode()])
 	}
-	if o.errorPosition, err = mar.UnmarshalUB2(ctx); err != nil {
+	if o.errorPosition, err = mar.UnmarshalSB2(ctx); err != nil {
 		common.Odl.Error("TTIoer.UnmarshalAttributes: errorPosition unmarshal failed",
 			"error", err,
 		)
@@ -284,20 +290,20 @@ func (o *tTIoer) _unmarshalAttributes(ctx context.Context, mar driverCommon.Mars
 		)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[o.GetMsgCode()])
 	}
-	if o.oerFatal, err = mar.UnmarshalUB2(ctx); err != nil {
+	if o.oerFatal, err = mar.UnmarshalSB1(ctx); err != nil {
 		common.Odl.Error("TTIoer.UnmarshalAttributes: oerFatal unmarshal failed",
 			"error", err,
 		)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[o.GetMsgCode()])
 	}
-	if o.flags, err = mar.UnmarshalUB2(ctx); err != nil {
+	if o.flags, err = mar.UnmarshalSB1(ctx); err != nil {
 		common.Odl.Error("TTIoer.UnmarshalAttributes: flags unmarshal failed",
 			"error", err,
 		)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[o.GetMsgCode()])
 	}
 
-	if o.userCursorOpt, err = mar.UnmarshalUB2(ctx); err != nil {
+	if o.userCursorOpt, err = mar.UnmarshalSB1(ctx); err != nil {
 		common.Odl.Error("TTIoer.UnmarshalAttributes: userCursorOpt unmarshal failed",
 			"error", err,
 		)
@@ -527,7 +533,11 @@ func (o *tTIoer) getError() error {
 	if o.retCode == 0 && o.oerrcd2 == 0 {
 		return nil
 	}
-	return common.NewOERMessageError(fmt.Sprintf("ORA-%05d", o.retCode), string(o.errorMsg))
+	code := driverCommon.UB4(o.retCode)
+	if o.oerrcd2 != 0 {
+		code = o.oerrcd2
+	}
+	return common.NewOERMessageError(fmt.Sprintf("ORA-%05d", code), string(o.errorMsg))
 }
 
 // GetCurRowNumber returns the number of rows that were returned in the oer message.

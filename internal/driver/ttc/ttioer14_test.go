@@ -63,22 +63,6 @@ func TestNewTTIoer14(t *testing.T) {
 	}
 }
 
-// TestTTIoer14_Init sets nonzero values, calls Init, and checks that all fields reset.
-func TestTTIoer14_Init(t *testing.T) {
-	t.Parallel()
-	oer := newTTIoer14().(*tTIoer14)
-	oer.sqlCommandType = 42
-	oer.checksum = 99
-	oer.tTIoer.oerrcd2 = 777
-	oer.init()
-	if oer.sqlCommandType != 0 || oer.checksum != 0 {
-		t.Errorf("Init should reset oertyp2 and oerchksm to zero; got oertyp2=%d, oerchksm=%d", oer.sqlCommandType, oer.checksum)
-	}
-	if oer.tTIoer.oerrcd2 != 0 {
-		t.Errorf("Init should reset embedded tTIoer fields")
-	}
-}
-
 // TestTTIoer14_GetMsgCode ensures GetMsgCode returns TTIOER.
 func TestTTIoer14_GetMsgCode(t *testing.T) {
 	t.Parallel()

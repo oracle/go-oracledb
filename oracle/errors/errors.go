@@ -178,6 +178,17 @@ const (
 	InvalidIdentifier ErrorCode = "OGD-00162"
 	// NetworkInternalError indicates an unexpected network-driver state.
 	NetworkInternalError ErrorCode = "OGD-00163"
+	// ImplicitResultMessageCreationFailed indicates that the driver could not
+	// create the TTC message used to decode implicit results.
+	ImplicitResultMessageCreationFailed ErrorCode = "OGD-00169"
+	// RefCursorConnectionMismatch indicates that a REF CURSOR is being fetched
+	// using a connection other than the one that opened it.
+	RefCursorConnectionMismatch ErrorCode = "OGD-00170"
+	// InvalidRefCursorOutParameter indicates a REF CURSOR OUT bind does not use
+	// datatype.Cursor.
+	InvalidRefCursorOutParameter ErrorCode = "OGD-00171"
+	// InvalidRefCursorArgument indicates an internal REF CURSOR executor received an invalid argument.
+	InvalidRefCursorArgument ErrorCode = "OGD-00172"
 
 	// Driver Internal Error
 	InternalError ErrorCode = "OGD-00062"

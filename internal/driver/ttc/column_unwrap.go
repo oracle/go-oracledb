@@ -73,7 +73,8 @@ func (p columnPayload) clone() columnPayload {
 	return p
 }
 
-// columnUnwrapContext carries column metadata, position and session character sets.
+// columnUnwrapContext carries the dependencies and metadata required to unwrap
+// one RXD column.
 // Handlers must consume exactly one column, and must not modify row storage.
 type columnUnwrapContext struct {
 	column       columnContext    // Metadata for the column being unwrapped.
@@ -105,6 +106,52 @@ Errors:
   - Implementations propagate or wrap wire-reading errors and return an empty payload.
 */
 type columnUnwrapFunc func(context.Context, driverCommon.Marshaller, columnUnwrapContext) (columnPayload, error)
+
+// unwrapRefCursorColumn decodes a REF CURSOR using the protocol-specific DCB
+// supplied by its registered versioned unwrap handler.
+func unwrapRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext, dcb *tTIdcb) (columnPayload, error) {
+	if err := dcb.unmarshalFromRefCursor(ctx, mar); err != nil {
+		return columnPayload{}, err
+	}
+	cursorID, err := mar.UnmarshalUB4(ctx)
+	if err != nil {
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if dcb.numUDS == 0 {
+		if cursorID != 0 {
+			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[TTIRXD])
+		}
+		return columnPayload{}, nil
+	}
+	if cursorID == 0 {
+		return columnPayload{}, nil
+	}
+	columns, err := dcb.getColumnContexts()
+	if err != nil {
+		return columnPayload{}, err
+	}
+	return columnPayload{data: newRefCursorRows(driverCommon.SB4(cursorID), columns)}, nil
+}
+
+// unwrapRefCursorColumn12 decodes REF CURSOR metadata for TTC versions 12-16.
+func unwrapRefCursorColumn12(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
+	return unwrapRefCursorColumn(ctx, mar, env, newTTIdcb().(*tTIdcb))
+}
+
+// unwrapRefCursorColumn17 decodes REF CURSOR metadata for TTC versions 17-19.
+func unwrapRefCursorColumn17(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
+	return unwrapRefCursorColumn(ctx, mar, env, newTTIdcb17().(*tTIdcb))
+}
+
+// unwrapRefCursorColumn20 decodes REF CURSOR metadata for TTC versions 20-23.
+func unwrapRefCursorColumn20(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
+	return unwrapRefCursorColumn(ctx, mar, env, newTTIdcb20().(*tTIdcb))
+}
+
+// unwrapRefCursorColumn24 decodes REF CURSOR metadata for TTC version 24 and later.
+func unwrapRefCursorColumn24(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
+	return unwrapRefCursorColumn(ctx, mar, env, newTTIdcb24().(*tTIdcb))
+}
 
 /*
 unwrapCLRColumn reads a column encoded using TTC CLR framing.

@@ -41,14 +41,39 @@ package ttc
 import (
 	"container/list"
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
 )
+
+// TestIsRefCursorDestination verifies that only *datatype.Cursor is accepted as
+// a REF CURSOR OUT-bind destination, while driver.Rows remains internal-only.
+func TestIsRefCursorDestination(t *testing.T) {
+	t.Parallel()
+
+	var raw driver.Rows
+	if isRefCursorDestination(&raw) {
+		t.Fatal("*driver.Rows must not be accepted as a REF CURSOR OUT destination")
+	}
+	if !isRefCursorDestination(&datatype.Cursor{}) {
+		t.Fatal("*datatype.Cursor must be accepted as a REF CURSOR OUT destination")
+	}
+	if err := checkNamedValue(&driver.NamedValue{Value: sql.Out{Dest: &raw}}); err == nil {
+		t.Fatal("sql.Out{Dest: &driver.Rows} unexpectedly passed validation")
+	} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.InvalidRefCursorOutParameter) {
+		t.Fatalf("sql.Out{Dest: &driver.Rows} error = %v, want %s", err, oracleErrors.InvalidRefCursorOutParameter)
+	}
+	if err := checkNamedValue(&driver.NamedValue{Value: newTTCRows(nil)}); err != nil {
+		t.Fatalf("internal REF CURSOR rows: %v", err)
+	}
+}
 
 func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 	t.Parallel()

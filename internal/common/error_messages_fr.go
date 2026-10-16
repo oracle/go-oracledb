@@ -198,6 +198,11 @@ func initMessagesFr() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "clé privée de jeton signé non valide"},
 		{oracleErrors.ExpiredToken, "le jeton d'accès a expiré"},
 		{oracleErrors.ProviderNotFound, "aucun fournisseur du type demandé n'a été trouvé"},
+		{oracleErrors.ImplicitResultMessageCreationFailed, "échec de création du message de résultat implicite"},
+		{oracleErrors.RefCursorConnectionMismatch, "le REF CURSOR doit être récupéré à l’aide de la connexion sur laquelle il a été ouvert"},
+		{oracleErrors.InvalidRefCursorOutParameter, "les liaisons OUT REF CURSOR nécessitent *datatype.Cursor"},
+		{oracleErrors.InvalidRefCursorArgument, "argument REF CURSOR non valide"},
+		{oracleErrors.MissingReadPrivilege, "privilège READ manquant"},
 	}
 
 	for _, translation := range translations {
