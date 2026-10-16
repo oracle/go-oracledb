@@ -262,9 +262,7 @@ unwrapBlobColumn reads a prefetched binary LOB payload.
 Description:
 
 	Reads the LOB length, prefetch metadata, prefetched bytes, and locator. A zero
-	LOB length returns NULL data with its LOB context. This reader also supplies
-	the binary LOB portion of JSON values; unwrapJSONColumn consumes their
-	additional trailing indicators.
+	LOB length returns NULL data with its LOB context.
 
 Parameters:
   - ctx: Request context used while reading from the wire.
@@ -337,69 +335,71 @@ func unwrapBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 }
 
 /*
-unwrapJSONIndicator consumes the trailing indicators of a JSON column.
+unwrapJSONColumn reads a prefetched OSON payload and its LOB metadata.
 
 Description:
 
-	Reads and discards the SB2 indicator followed by the UB2 indicator. Both fields
-	must be consumed even for a NULL JSON value to preserve alignment with the next
-	wire field. These are separate from the outer PL/SQL indicator.
-
-Parameters:
-  - ctx: Request context used while reading from the wire.
-  - mar: Marshaller positioned immediately after the JSON LOB payload.
-  - env: Column context providing the position used in diagnostics.
-
-Returns:
-  - error: Non-nil if either indicator cannot be read.
-
-Errors:
-  - Returns FailUnmarshal with the underlying indicator read error.
-*/
-func unwrapJSONIndicator(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) error {
-	var err error
-	if _, err = mar.UnmarshalSB2(ctx); err != nil {
-		common.Odl.Error("unwrapJSONIndicator: failed to read JSON indicator 1",
-			"error", err, "stage", "json-indicator-1", "index", env.index)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
-	}
-	if _, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Error("unwrapJSONIndicator: failed to read JSON indicator 2",
-			"error", err, "stage", "json-indicator-2", "index", env.index)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
-	}
-	return nil
-}
-
-/*
-unwrapJSONColumn reads a JSON LOB payload and its trailing indicators.
-
-Description:
-
-	Delegates binary LOB parsing to unwrapBlobColumn, then consumes both JSON
-	indicators, including for NULL values. The completed payload is returned only
-	after all fields have been read successfully.
+	Reads the LOB length, prefetch metadata, OSON bytes, and locator independently
+	of the BLOB reader. A zero LOB length returns NULL data with its LOB context.
+	The native JSON fetch path has no trailing JSON indicators.
 
 Parameters:
   - ctx: Request context used while reading from the wire.
   - mar: Marshaller positioned at the JSON LOB length field.
-  - env: Column context forwarded to the LOB and indicator readers.
+  - env: Column context providing the position used in diagnostics.
 
 Returns:
   - columnPayload: Prefetched JSON bytes and LOB metadata, or nil data for SQL NULL.
-  - error: Non-nil if the LOB payload or trailing indicators cannot be read.
+  - error: Non-nil if any required JSON field cannot be read.
 
 Errors:
-  - Propagates errors from the delegated readers and returns an empty payload.
+  - Returns FailUnmarshal with the underlying read error and an empty payload.
 */
 func unwrapJSONColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
-	payload, err := unwrapBlobColumn(ctx, mar, env)
+	var payload columnPayload
+	lob := &lobColumnContext{}
+	var err error
+
+	if lob.LobLength, err = mar.UnmarshalUB4(ctx); err != nil {
+		common.Odl.Error("unwrapJSONColumn: failed to read LOB length",
+			"error", err, "stage", "lob-length", "index", env.index)
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if lob.LobLength == 0 {
+		payload.lob = lob
+		return payload, nil
+	}
+
+	if lob.PrefetchLength, err = mar.UnmarshalUB8(ctx); err != nil {
+		common.Odl.Error("unwrapJSONColumn: failed to read prefetch length",
+			"error", err, "stage", "prefetch-length", "index", env.index)
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if lob.PrefetchChunkSize, err = mar.UnmarshalUB4(ctx); err != nil {
+		common.Odl.Error("unwrapJSONColumn: failed to read prefetch chunk size",
+			"error", err, "stage", "prefetch-chunk-size", "index", env.index)
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+
+	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
 	if err != nil {
-		return columnPayload{}, err
+		common.Odl.Error("unwrapJSONColumn: failed to read prefetched column data",
+			"error", err, "stage", "prefetched-data", "index", env.index)
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
-	if err = unwrapJSONIndicator(ctx, mar, env); err != nil {
-		return columnPayload{}, err
+	common.Odl.Fine("RXD Unwrap: JSON column data decoded",
+		"col", env.index,
+		"length", length,
+		"data", colData)
+	payload = byteColumnPayload(colData)
+
+	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
+		common.Odl.Error("unwrapJSONColumn: failed to read LOB locator",
+			"error", err, "stage", "lob-locator", "index", env.index)
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
+
+	payload.lob = lob
 	return payload, nil
 }
 

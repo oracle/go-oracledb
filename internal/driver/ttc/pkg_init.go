@@ -900,7 +900,7 @@ func init() {
 	}
 
 	if err := DecoderRegistry.Register(DtyJSON, MinTTCProtocolVersion,
-		newTypeDecoder(DecodeJSON, GetScanTypeForJSONColumn, unwrapJSONColumn)); err != nil {
+		newTypeDecoder(DecodeJSON, GetScanTypeForJsonColumn, unwrapJSONColumn)); err != nil {
 		common.Odl.Warn("Failed to register JSON decoder", "error", err)
 	}
 
@@ -970,7 +970,6 @@ func init() {
 	}
 
 	// Register default define OAC makers.
-	// JSON currently uses a BLOB-based define OAC with max length 4000.
 	if err := DefineOacRegistry.Register(DtyJSON, MinTTCProtocolVersion, newTTIOacJSONDefine); err != nil {
 		common.Odl.Warn("Failed to register JSON define OAC", "error", err)
 	}

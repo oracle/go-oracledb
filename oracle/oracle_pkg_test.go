@@ -267,6 +267,14 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestIssue_ColumnTypePrecisionScale", Categories: "functional", Exclusive: false, Fn: TestIssue_ColumnTypePrecisionScale},
 	{Name: "TestIssue_DecodeBinaryColumnType", Categories: "functional", Exclusive: false, Fn: TestIssue_DecodeBinaryColumnType},
 	{Name: "TestServerError", Categories: "functional", Exclusive: false, Fn: TestServerError},
+	{Name: "TestDriver_OSON_RebindFetchedDocument", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_RebindFetchedDocument},
+	{Name: "TestDriver_OSON_ContainerTypes", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_ContainerTypes},
+	{Name: "TestDriver_OSON_Scalar", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_Scalar},
+	{Name: "TestDriver_OSON_TimeTypes", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_TimeTypes},
+	{Name: "TestDriver_OSON_Number", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_Number},
+	{Name: "TestDriver_OSON_Accessors", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_Accessors},
+	{Name: "TestDriver_OSON_ZeroValue", Categories: "unitary", Exclusive: false, Fn: TestDriver_OSON_ZeroValue},
+	{Name: "TestDriver_OSON_NullDistinction", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NullDistinction},
 }
 
 func TestCategoryExecutor(t *testing.T) {

@@ -166,8 +166,8 @@ func TestColumnUnwrapWire(t *testing.T) {
 		{"clob-null", DtyClob, []byte{0}, nil, true, 0},
 		{"blob", DtyBlob, blob, driverCommon.B1Array{42}, true, 0},
 		{"blob-null", DtyBlob, []byte{0}, nil, true, 0},
-		{"json", DtyJSON, append(append([]byte{}, blob...), 0, 0), driverCommon.B1Array{42}, true, 0},
-		{"json-null", DtyJSON, []byte{0, 0, 0}, nil, true, 0},
+		{"json", DtyJSON, []byte{1, 1, 1, 1, 1, 1, 1, 42, 1, 7}, driverCommon.B1Array{42}, true, 0},
+		{"json-null", DtyJSON, []byte{0}, nil, true, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			decoder, err := factory.getDecoder(tc.dty)
@@ -238,11 +238,16 @@ func TestColumnUnwrapDispatch(t *testing.T) {
 	rxd.setCodecFactory(factory)
 	rxd.setNumberofReturningArgs(1)
 	rxd.setColumnContexts([]columnContext{{DataType: DtyJSON}})
-	if err := rxd.UnmarshalFrom(ctx, createMarshaller([]byte{0, 0, 0, 0}, 0, 0)); err != nil {
+	// Native JSON has no inner indicators; only the outer PL/SQL indicator follows.
+	mar := createMarshaller([]byte{0, 0, 0x55}, 0, 0)
+	if err := rxd.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatal(err)
 	}
 	if len(rxd.row) != 1 || rxd.row[0].data != nil || rxd.row[0].lob == nil {
 		t.Fatalf("NULL JSON: %#v", rxd.row)
+	}
+	if next, err := mar.UnmarshalUB1(ctx); err != nil || next != 0x55 {
+		t.Fatalf("next field corrupted: %d %v", next, err)
 	}
 }
 
