@@ -92,6 +92,11 @@ func newConnection(
 	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
 		return nil, err
 	}
+	// push begin request when the connection is created
+	if err := conn.pushSessionStateRequest(ctx, sessionStateExplBound|sessionStateRequestBegin); err != nil {
+		return nil, err
+	}
+
 	return conn, nil
 }
 

@@ -43,6 +43,8 @@ import (
 	"database/sql/driver"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // ResetSession implements driver.SessionResetter.
@@ -64,6 +66,15 @@ func (c *connection) ResetSession(ctx context.Context) error {
 		}
 	}
 
+	// push end-request for previous request and begin request for current request
+	if err := c.pushSessionStateRequest(ctx, sessionStateExplBound|sessionStateRequestEnd); err != nil {
+		common.Odl.Warn("An error occurred when pushing end request", "error", err)
+		return driver.ErrBadConn
+	}
+	if err := c.pushSessionStateRequest(ctx, sessionStateExplBound|sessionStateRequestBegin); err != nil {
+		common.Odl.Warn("An error occurred when pushing begin request", "error", err)
+		return driver.ErrBadConn
+	}
 	c.sessCtx.GetSessionProperties().Reset()
 	err := c.shelf.GetMessageStreamer().Flush(ctx)
 	if err != nil {
@@ -71,5 +82,29 @@ func (c *connection) ResetSession(ctx context.Context) error {
 		return driver.ErrBadConn
 	}
 
+	return nil
+}
+
+// pushSessionStateRequest queues an OSESSSTATE request-boundary piggyback when
+// the server advertises support for session-state operations.
+func (c *connection) pushSessionStateRequest(ctx context.Context, flags sessionState) error {
+	capability, ok := c.shelf.GetCapabilities()[kpccapRtbTtcSessstateops]
+	if !ok || !capability.IsSet {
+		return nil
+	}
+
+	msg, err := c.shelf.GetMessageFactory().GetMessageForFunction(TTIPFN, oSessState)
+	if err != nil {
+		common.Odl.Warn("Error creating OSESSSTATE message", "error", err)
+		return common.NewOracleError(oracleErrors.InternalError, err)
+	}
+
+	request, _ := msg.(*tTIOsessstate)
+	request.flags = driverCommon.UB8(flags)
+
+	if err := c.shelf.GetMessageStreamer().Push(ctx, msg); err != nil {
+		common.Odl.Warn("Error pushing OSESSSTATE message", "error", err)
+		return common.NewOracleError(oracleErrors.StreamerWriteError, err)
+	}
 	return nil
 }
