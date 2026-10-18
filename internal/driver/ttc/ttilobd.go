@@ -91,7 +91,7 @@ func (p *tTIlobd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller
 
 	bytesRead, err := mar.UnmarshalCLR(ctx, p.buffer, len(p.buffer))
 	if err != nil {
-		common.Odl.Error("TTILobd.UnmarshalFrom: read error", "error", err)
+		common.Odl.Error("TTILobd.UnmarshalFrom: unmarshal failed", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
@@ -117,7 +117,7 @@ func (p *tTIlobd) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) er
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
-	if common.Odl.Enabled(context.TODO(), slog.LevelDebug) {
+	if common.Odl.Enabled(ctx, slog.LevelDebug) {
 		common.Odl.Debug("TTILobd.MarshalTo: completed", "bytes_written", len(p.buffer))
 	}
 	return nil
