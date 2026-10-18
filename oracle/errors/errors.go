@@ -271,6 +271,10 @@ const (
 	JSONRenderingError ErrorCode = "OGD-00306"
 	// JSONObjectKeyNotFoundError indicates an object lookup requested an absent key.
 	JSONObjectKeyNotFoundError ErrorCode = "OGD-00307"
+
+	// UnsupportedLobOperation indicates the operation is not supported for the selected LOB
+	// family or access mode.
+	UnsupportedLobOperation ErrorCode = "OGD-00308"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error
