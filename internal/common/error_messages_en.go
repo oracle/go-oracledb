@@ -606,4 +606,10 @@ func initMessagesEn() {
 
 	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider of the requested type was found")
 
+	// Document: No
+	// Cause:    The driver performed an invalid operation on an internal buffer.
+	// Action:   Enable FINEST logging to see the failing buffer operation.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidBufferOperation), "invalid buffer operation")
+
 }

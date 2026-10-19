@@ -89,6 +89,7 @@ func initMessagesEs() {
 		{oracleErrors.FailMarshal, "no se pudo serializar el mensaje: %s"},
 		{oracleErrors.FailUnmarshal, "no se pudo deserializar el mensaje: %s"},
 		{oracleErrors.InvalidLOBBuffer, "configuración no válida del búfer LOB durante %s (%s): %s"},
+		{oracleErrors.InvalidBufferOperation, "operación de búfer no válida"},
 		{oracleErrors.LobExecError, "no se pudo realizar la operación LOB durante %s."},
 		{oracleErrors.UnsupportedCharacterSet, "conjunto de caracteres no compatible: %d"},
 		{oracleErrors.InvalidNetworkValue, "valor no válido para %s: %v"},

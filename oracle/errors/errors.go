@@ -240,6 +240,9 @@ const (
 	// ProviderNotFound indicates that no provider was found in the registry for
 	// the wanted provider type
 	ProviderNotFound ErrorCode = "OGD-00206"
+
+	// InvalidBufferOperation indicates an invalid read or write on an internal driver buffer.
+	InvalidBufferOperation ErrorCode = "OGD-00500"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error
