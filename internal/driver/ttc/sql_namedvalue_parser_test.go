@@ -164,6 +164,41 @@ func TestParseAndOrder_Named_Error_ExtraName(t *testing.T) {
 	}
 }
 
+func TestParseAndOrder_Named_Error_MissingValue(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name  string
+		query string
+		args  []driver.NamedValue
+	}{
+		{
+			name:  "no arguments",
+			query: "select :id from dual",
+		},
+		{
+			name:  "one repeated name supplied but another name is missing",
+			query: "select :id from dual where :id = :other",
+			args:  []driver.NamedValue{{Name: "id", Value: 1}},
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			ph, err := parsePlaceholders(test.query)
+			if err != nil {
+				t.Fatalf("parsePlaceholders returned error: %v", err)
+			}
+			_, err = extractInputBindValues(ph, test.args)
+			if err == nil {
+				t.Fatal("expected missing-bind error, got nil")
+			}
+			if code := getErrCode(t, err); code != oracleErrors.StatementParsingMissingValue {
+				t.Fatalf("error code = %s, want %s", code, oracleErrors.StatementParsingMissingValue)
+			}
+		})
+	}
+}
+
 func TestParsePlaceholders_Error_DanglingColon(t *testing.T) {
 	t.Parallel()
 	_, err := parsePlaceholders("select :")
@@ -235,6 +270,42 @@ func TestParsePlaceholders_IgnoreInSingleQuotedStringWithEscape(t *testing.T) {
 	}
 	if len(ph.bindNames) != 1 || ph.bindNames[0] != "1" {
 		t.Fatalf("expected one placeholder '1', got %v", ph.bindNames)
+	}
+}
+
+func TestParsePlaceholders_IgnoreOracleAlternativeQuotedStrings(t *testing.T) {
+	t.Parallel()
+	query := `select q'[text :not_a_bind]' as a, Q'<text :also_not_a_bind>' as b, :actual from dual`
+	ph, err := parsePlaceholders(query)
+	if err != nil {
+		t.Fatalf("parsePlaceholders returned error: %v", err)
+	}
+	if len(ph.bindNames) != 1 || ph.bindNames[0] != "actual" {
+		t.Fatalf("binds = %v, want [actual]", ph.bindNames)
+	}
+}
+
+func TestParsePlaceholders_IgnoreTriggerPseudoRecords(t *testing.T) {
+	t.Parallel()
+	query := `CREATE OR REPLACE TRIGGER change_log BEFORE UPDATE ON t FOR EACH ROW BEGIN :NEW.x := :OLD.x; :PARENT.x := :NEW.x; END;`
+	ph, err := parsePlaceholders(query)
+	if err != nil {
+		t.Fatalf("parsePlaceholders returned error: %v", err)
+	}
+	if len(ph.bindNames) != 0 {
+		t.Fatalf("binds = %v, want no bind placeholders", ph.bindNames)
+	}
+}
+
+func TestParsePlaceholders_JSONConstructorColonAfterQuotedKey(t *testing.T) {
+	t.Parallel()
+	query := `select json { '_id':any_value("DUMMY"), :bind value count(1) } from dual group by 1`
+	ph, err := parsePlaceholders(query)
+	if err != nil {
+		t.Fatalf("parsePlaceholders returned error: %v", err)
+	}
+	if len(ph.bindNames) != 1 || ph.bindNames[0] != "bind" {
+		t.Fatalf("binds = %v, want [bind]", ph.bindNames)
 	}
 }
 
@@ -381,22 +452,36 @@ func TestPlSqlNamedValues_Error_DuplicateName(t *testing.T) {
 	}
 }
 
-func TestPlSqlNamedValues_LaterNamedBindWithoutEarlierBind(t *testing.T) {
+func TestPlSqlNamedValues_Error_MissingValue(t *testing.T) {
 	t.Parallel()
-	q := "begin p(:first, :second); end;"
-	args := []driver.NamedValue{
-		{Name: "second", Value: 2},
+	testCases := []struct {
+		name string
+		args []driver.NamedValue
+	}{
+		{
+			name: "later named bind without earlier bind",
+			args: []driver.NamedValue{{Name: "second", Value: 2}},
+		},
+		{
+			name: "earlier ordinal bind without later bind",
+			args: []driver.NamedValue{{Ordinal: 1, Value: 1}},
+		},
 	}
-	ph, err := parsePlaceholders(q)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out, err := extractInputBindValuesForPlSql(ph, args)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(out) != 1 || out[0] != 2 {
-		t.Fatalf("unexpected values: %v", out)
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			ph, err := parsePlaceholders("begin p(:first, :second); end;")
+			if err != nil {
+				t.Fatalf("parsePlaceholders returned error: %v", err)
+			}
+			_, err = extractInputBindValuesForPlSql(ph, test.args)
+			if err == nil {
+				t.Fatal("expected missing-bind error, got nil")
+			}
+			if code := getErrCode(t, err); code != oracleErrors.StatementParsingMissingValue {
+				t.Fatalf("error code = %s, want %s", code, oracleErrors.StatementParsingMissingValue)
+			}
+		})
 	}
 }
 

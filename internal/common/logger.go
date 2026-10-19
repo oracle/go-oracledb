@@ -48,7 +48,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 )
 
@@ -282,20 +282,39 @@ var Odl = OracleLogger{
 	sensitiveEnabled: false,
 }
 
-// keep track if InitLoggingWithConfig has been called once.
-var ready atomic.Bool
+// configured reports whether a logging configuration has been applied.
+// It is protected by loggingConfigMu.
+var configured bool
 var currentLogCloser io.Closer
+var loggingConfigMu sync.Mutex
 
 func InitLoggingWithConfig(config LoggingConfig) {
+	loggingConfigMu.Lock()
+	defer loggingConfigMu.Unlock()
+
 	if config == nil {
-		if !ready.CompareAndSwap(false, true) {
-			return
-		}
 		return
 	}
 
-	ready.Store(true)
+	configured = true
+	applyLoggingConfig(config)
+}
 
+// InitLoggingWithConfigIfNotSet initializes logging only if no logging
+// configuration has been applied yet. Explicit calls to InitLoggingWithConfig
+// continue to replace the current configuration.
+func InitLoggingWithConfigIfNotSet(config LoggingConfig) {
+	loggingConfigMu.Lock()
+	defer loggingConfigMu.Unlock()
+
+	if configured || config == nil {
+		return
+	}
+	configured = true
+	applyLoggingConfig(config)
+}
+
+func applyLoggingConfig(config LoggingConfig) {
 	config.AssignFromFlags()
 	config.AssignFromEnv()
 

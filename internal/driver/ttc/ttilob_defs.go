@@ -265,7 +265,7 @@ func (def *lobDefinition) String() string {
 	)
 }
 
-// NewLobDefinitionForReadOperation initializes a lobDefinition for a kplobRead request.
+// newLobDefinitionForReadOperation initializes a lobDefinition for a kplobRead request.
 //
 // Parameters:
 //   - sourceLocator: locator for the LOB to read from; must reference the source LOB instance.
@@ -274,7 +274,7 @@ func (def *lobDefinition) String() string {
 // Returns:
 //   - *lobDefinition: structure ready to marshal a read request with lobAmt serialized
 //     and operation set to kplobRead.
-func NewLobDefinitionForReadOperation(
+func newLobDefinitionForReadOperation(
 	sourceLocator *locator,
 	numBytes common.UB8,
 ) *lobDefinition {
@@ -286,7 +286,7 @@ func NewLobDefinitionForReadOperation(
 	}
 }
 
-// NewLobDefinitionForWriteOperation prepares a lobDefinition for kplobWrite requests,
+// newLobDefinitionForWriteOperation prepares a lobDefinition for kplobWrite requests,
 // enabling callers to stream user buffers into a server-side LOB.
 //
 // Parameters:
@@ -295,7 +295,7 @@ func NewLobDefinitionForReadOperation(
 //
 // Returns:
 //   - *lobDefinition: structure populated with buffer metadata and a kplobWrite operation.
-func NewLobDefinitionForWriteOperation(
+func newLobDefinitionForWriteOperation(
 	sourceLocator *locator,
 	lobAmt common.UB8,
 ) *lobDefinition {
@@ -307,7 +307,7 @@ func NewLobDefinitionForWriteOperation(
 	}
 }
 
-// NewLobDefinitionForGetLengthOperation crafts a lobDefinition that issues kplobGetLength,
+// newLobDefinitionForGetLengthOperation crafts a lobDefinition that issues kplobGetLength,
 // allowing callers to query the total length of a LOB pointed to by a locator.
 //
 // Parameters:
@@ -315,7 +315,7 @@ func NewLobDefinitionForWriteOperation(
 //
 // Returns:
 //   - *lobDefinition: structure configured to marshal a length request with kplobGetLength.
-func NewLobDefinitionForGetLengthOperation(sourceLocator *locator) *lobDefinition {
+func newLobDefinitionForGetLengthOperation(sourceLocator *locator) *lobDefinition {
 	return &lobDefinition{
 		sourceLocator: sourceLocator,
 		sendLobAmt:    true,
@@ -323,7 +323,7 @@ func NewLobDefinitionForGetLengthOperation(sourceLocator *locator) *lobDefinitio
 	}
 }
 
-// NewLobDefinitionForGetChunkSizeOperation produces a lobDefinition wired for kplobPageSize
+// newLobDefinitionForGetChunkSizeOperation produces a lobDefinition wired for kplobPageSize
 // so that the driver can determine the server page/chunk size for a given LOB.
 //
 // Parameters:
@@ -331,7 +331,7 @@ func NewLobDefinitionForGetLengthOperation(sourceLocator *locator) *lobDefinitio
 //
 // Returns:
 //   - *lobDefinition: structure that marshals a chunk-size probe using kplobPageSize.
-func NewLobDefinitionForGetChunkSizeOperation(sourceLocator *locator) *lobDefinition {
+func newLobDefinitionForGetChunkSizeOperation(sourceLocator *locator) *lobDefinition {
 	return &lobDefinition{
 		sourceLocator: sourceLocator,
 		sendLobAmt:    true,
@@ -339,7 +339,7 @@ func NewLobDefinitionForGetChunkSizeOperation(sourceLocator *locator) *lobDefini
 	}
 }
 
-// NewLobDefinitionForTrimOperation assembles a lobDefinition for kplobTrim, truncating or
+// newLobDefinitionForTrimOperation assembles a lobDefinition for kplobTrim, truncating or
 // extending a LOB to the length supplied in newLength.
 //
 // Parameters:
@@ -348,7 +348,7 @@ func NewLobDefinitionForGetChunkSizeOperation(sourceLocator *locator) *lobDefini
 //
 // Returns:
 //   - *lobDefinition: structure encoding the trim length and using kplobTrim.
-func NewLobDefinitionForTrimOperation(sourceLocator *locator, newLength common.UB8) *lobDefinition {
+func newLobDefinitionForTrimOperation(sourceLocator *locator, newLength common.UB8) *lobDefinition {
 	return &lobDefinition{
 		sourceLocator: sourceLocator,
 		lobAmt:        newLength,
@@ -357,8 +357,8 @@ func NewLobDefinitionForTrimOperation(sourceLocator *locator, newLength common.U
 	}
 }
 
-// NewLobDefinitionForOpenOperation returns a lobDefinition configured for either kplobOpen or
-// related operations that rely on the LobOpenMode as their payload.
+// newLobDefinitionForOpenOperation returns a lobDefinition configured for either kplobOpen or
+// related operations that rely on the lobOpenMode as their payload.
 //
 // Parameters:
 //   - sourceLocator: locator to open or otherwise operate on.
@@ -366,9 +366,9 @@ func NewLobDefinitionForTrimOperation(sourceLocator *locator, newLength common.U
 //   - operation: specific opcode to issue (e.g., kplobOpen or array variants).
 //
 // Returns:
-//   - *lobDefinition: structure whose lobAmt encodes the LobOpenMode and uses
+//   - *lobDefinition: structure whose lobAmt encodes the lobOpenMode and uses
 //     the supplied operation code.
-func NewLobDefinitionForOpenOperation(sourceLocator *locator, mode LobOpenMode, operation lobOperationCode) *lobDefinition {
+func newLobDefinitionForOpenOperation(sourceLocator *locator, mode lobOpenMode, operation lobOperationCode) *lobDefinition {
 	return &lobDefinition{
 		sourceLocator: sourceLocator,
 		lobAmt:        common.UB8(mode),
@@ -377,7 +377,7 @@ func NewLobDefinitionForOpenOperation(sourceLocator *locator, mode LobOpenMode, 
 	}
 }
 
-// NewLobDefinitionForCloseOperation prepares a lobDefinition for LOB close-style commands
+// newLobDefinitionForCloseOperation prepares a lobDefinition for LOB close-style commands
 // such as kplobClose. These commands only require the locator and opcode; no amount is sent.
 //
 // Parameters:
@@ -386,7 +386,7 @@ func NewLobDefinitionForOpenOperation(sourceLocator *locator, mode LobOpenMode, 
 //
 // Returns:
 //   - *lobDefinition: structure that references the locator and uses the provided opcode.
-func NewLobDefinitionForCloseOperation(sourceLocator *locator, operation lobOperationCode) *lobDefinition {
+func newLobDefinitionForCloseOperation(sourceLocator *locator, operation lobOperationCode) *lobDefinition {
 	return &lobDefinition{
 		sourceLocator: sourceLocator,
 		sendLobAmt:    false,
@@ -394,7 +394,7 @@ func NewLobDefinitionForCloseOperation(sourceLocator *locator, operation lobOper
 	}
 }
 
-// NewLobDefinitionForIsOpenOperation builds a lobDefinition for kplobIsOpen-style probes that
+// newLobDefinitionForIsOpenOperation builds a lobDefinition for kplobIsOpen-style probes that
 // verify whether a server-side LOB remains open.
 //
 // Parameters:
@@ -404,7 +404,7 @@ func NewLobDefinitionForCloseOperation(sourceLocator *locator, operation lobOper
 // Returns:
 //   - *lobDefinition: structure with nullO2U enabled so NULL locators round-trip correctly
 //     while the provided operation is executed.
-func NewLobDefinitionForIsOpenOperation(sourceLocator *locator, operation lobOperationCode) *lobDefinition {
+func newLobDefinitionForIsOpenOperation(sourceLocator *locator, operation lobOperationCode) *lobDefinition {
 	return &lobDefinition{
 		sourceLocator: sourceLocator,
 		nullO2U:       true,
@@ -412,7 +412,7 @@ func NewLobDefinitionForIsOpenOperation(sourceLocator *locator, operation lobOpe
 	}
 }
 
-// NewLobDefinitionForTemporaryCreate constructs a lobDefinition ready for kplobTmpCreate,
+// newLobDefinitionForTemporaryCreate constructs a lobDefinition ready for kplobTmpCreate,
 // allowing clients to request server-managed temporary LOBs with fine-grained options.
 //
 // Parameters:
@@ -421,7 +421,9 @@ func NewLobDefinitionForIsOpenOperation(sourceLocator *locator, operation lobOpe
 //   - lobType: indicates the kind of temporary LOB (BLOB/CLOB/NCLOB) via destinationOffset.
 //   - duration: life span of the temporary LOB, marshaled both in destinationLength and lobAmt.
 //   - cache: whether the temporary LOB should be cached on the server (affects lobscn).
-//   - charsetID: character set identifier to apply when dealing with text payloads.
+//   - charsetID: character set identifier for text LOBs, or a non-zero protocol
+//     placeholder when OLOBOPS requires a charset pointer for a binary LOB. A
+//     zero value omits the charset pointer.
 //
 // Returns:
 //   - *lobDefinition: structure that provisions temporary-locator buffers and encodes
@@ -429,7 +431,7 @@ func NewLobDefinitionForIsOpenOperation(sourceLocator *locator, operation lobOpe
 //
 // The function preallocates the locator, encodes cache flags inside lobscn, and initializes the
 // KOLBLLENB length header when the buffer is sufficiently large.
-func NewLobDefinitionForTemporaryCreate(
+func newLobDefinitionForTemporaryCreate(
 	tempLocatorSize int,
 	formOfUse common.UB2,
 	lobType common.UB8,
@@ -493,9 +495,38 @@ func (l *locator) length() int {
 	return len(l.locatorBytes)
 }
 
+// lengthForLog returns a locator's byte length for diagnostic logging.
+func (l *locator) lengthForLog() int {
+	if l == nil {
+		return 0
+	}
+	return len(l.locatorBytes)
+}
+
+// offsetForLog returns a locator's offset for diagnostic logging.
+func (l *locator) offsetForLog() common.UB8 {
+	if l == nil {
+		return 0
+	}
+	return l.offset
+}
+
 // hasBytes reports whether the locator contains a byte slice.
 func (l *locator) hasBytes() bool {
 	return l.locatorBytes != nil
+}
+
+// markReleased clears all local temporary-locator state: abstract, initialized,
+// temporary, open, and read/write flags. Call it only after
+// lobReferenceRegistry.release succeeds. The registry schedules a server free only
+// when the final local owner is released.
+func (l *locator) markReleased() {
+	if l == nil || len(l.locatorBytes) <= koll4FlagOffset {
+		return
+	}
+	l.locatorBytes[koll1FlagOffset] &^= kolblAbstractLocatorFlag
+	l.locatorBytes[koll2FlagOffset] &^= kolblInitializedFlag
+	l.locatorBytes[koll4FlagOffset] &^= kolblTemporaryFlagByte | kolblOpenFlagByte | kolblReadWriteFlagByte
 }
 
 // isTemporaryLocator reports whether the provided locator references a temporary
@@ -554,7 +585,7 @@ func (l *locator) isQuasiLocator() bool {
 //	for the kolblVaryingWidthFlag bit to determine if the LOB is stored using a variable-width
 //	character set representation.
 //
-// Outputs:
+// Returns:
 //   - bool: true when the kolblVaryingWidthFlag is set, false otherwise.
 func (l *locator) isLobCharsetVariableWidth() bool {
 	if len(l.locatorBytes) <= koll3FlagOffset {
@@ -571,7 +602,7 @@ func (l *locator) isLobCharsetVariableWidth() bool {
 //	detect AL16UTF16LE storage so downstream conversions can emit or consume bytes in the proper
 //	order.
 //
-// Outputs:
+// Returns:
 //   - bool: true when little-endian encoding is advertised, false otherwise.
 func (l *locator) isLobCharsetLittleEndian() bool {
 	if len(l.locatorBytes) <= koll4FlagOffset {
@@ -590,13 +621,13 @@ func (l *locator) setOpenState() {
 }
 
 // setAccessMode updates the locator's read/write semantics according to the provided
-// LobOpenMode by toggling the kolblReadWriteFlagByte bit.
-func (l *locator) setAccessMode(mode LobOpenMode) {
+// lobOpenMode by toggling the kolblReadWriteFlagByte bit.
+func (l *locator) setAccessMode(mode lobOpenMode) {
 	if len(l.locatorBytes) <= koll4FlagOffset {
 		return
 	}
 
-	if mode == LobOpenModeReadWrite {
+	if mode == lobOpenModeReadWrite {
 		l.locatorBytes[koll4FlagOffset] |= kolblReadWriteFlagByte
 	}
 }

@@ -51,7 +51,7 @@ import (
 // decoder; constructed values pass through unchanged. Handlers normalize NULL to nil.
 type columnPayload struct {
 	data any               // Raw B1Array bytes or a constructed value; nil represents SQL NULL.
-	lob  *lobColumnContext // Optional LOB metadata, shared unchanged when the payload is cloned.
+	lob  *lobColumnContext // Optional LOB metadata accompanying the value.
 }
 
 /*
@@ -59,24 +59,29 @@ clone copies a column payload for row buffering or BVC carry.
 
 Description:
 
-	Copies raw B1Array bytes into an independent buffer while retaining the identity
-	of constructed values such as cursor rows. LOB metadata is immutable after
-	unwrapping and remains shared with the source payload.
+	Copies raw B1Array bytes and LOB locator bytes into independent buffers while
+	retaining the identity of constructed values such as cursor rows. A row may
+	outlive the RXD message and its marshaller buffer, so locator bytes must be
+	owned by the copy as well.
 
 Returns:
-  - columnPayload: A payload with detached raw bytes and shared constructed values and LOB metadata.
+  - columnPayload: A payload with detached raw and locator bytes and shared constructed values.
 */
 func (p columnPayload) clone() columnPayload {
 	if data, ok := p.data.(driverCommon.B1Array); ok {
 		p.data = append(driverCommon.B1Array(nil), data...)
 	}
+	if p.lob != nil {
+		lob := *p.lob
+		lob.LobLocator = append(driverCommon.B1Array(nil), lob.LobLocator...)
+		p.lob = &lob
+	}
 	return p
 }
 
-// columnUnwrapContext carries column metadata, position and session character sets.
+// columnUnwrapContext carries the column position and session character sets.
 // Handlers must consume exactly one column, and must not modify row storage.
 type columnUnwrapContext struct {
-	column       columnContext    // Metadata for the column being unwrapped.
 	index        int              // Zero-based column position used in diagnostics.
 	sessCharSet  driverCommon.UB2 // Session database character set used when the LOB omits its charset ID.
 	sessNCharSet driverCommon.UB2 // Session national character set used for the NCLOB charset fallback.
@@ -148,10 +153,10 @@ unwrapClobColumn reads a prefetched CLOB or NCLOB column.
 
 Description:
 
-	Reads the LOB length, prefetch metadata, character set information, prefetched
-	bytes, and locator. When the server omits the charset ID, charset form selects
-	the session database or national character set. A zero LOB length returns NULL
-	data with its LOB context without reading the remaining fields.
+	Reads the locator length, 64-bit logical LOB length, prefetch size, character
+	set information, prefetched bytes, and locator. When the server omits the
+	charset ID, charset form selects the session database or national character
+	set. A zero locator length returns NULL data with its LOB context.
 
 Parameters:
   - ctx: Request context used while reading from the wire.
@@ -171,12 +176,12 @@ func unwrapClobColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 	// length
 	lob := &lobColumnContext{}
 	var err error
-	if lob.LobLength, err = mar.UnmarshalUB4(ctx); err != nil {
+	if lob.LocatorByteLength, err = mar.UnmarshalUB4(ctx); err != nil {
 		common.Odl.Error("unwrapClobColumn: failed to read LOB length",
 			"error", err, "stage", "lob-length", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
-	if lob.LobLength == 0 {
+	if lob.LocatorByteLength == 0 {
 		payload.data = nil
 		payload.lob = lob
 		return payload, nil
@@ -184,27 +189,25 @@ func unwrapClobColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 
 	// prefetched: always for V1
 	// ------------------------------------------
-	// prefetched length
-	if lob.PrefetchLength, err = mar.UnmarshalUB8(ctx); err != nil {
+	// total logical LOB length
+	if lob.TotalLobLength, err = mar.UnmarshalUB8(ctx); err != nil {
 		common.Odl.Error("unwrapClobColumn: failed to read prefetch length",
 			"error", err, "stage", "prefetch-length", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	// prefetched chunk size
-	if lob.PrefetchChunkSize, err = mar.UnmarshalUB4(ctx); err != nil {
+	if _, err = mar.UnmarshalUB4(ctx); err != nil {
 		common.Odl.Error("unwrapClobColumn: failed to read prefetch chunk size",
 			"error", err, "stage", "prefetch-chunk-size", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
-	var dbVary bool
-	var ub1 driverCommon.UB1
-	if ub1, err = mar.UnmarshalUB1(ctx); err != nil {
+	dbVary, err := mar.UnmarshalUB1(ctx)
+	if err != nil {
 		common.Odl.Error("unwrapClobColumn: failed to read dbVary flag",
 			"error", err, "stage", "db-vary", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
-	dbVary = byte(ub1) == 0x1
-	if dbVary {
+	if dbVary == 1 {
 		// characterset
 		if lob.CharsetID, err = mar.UnmarshalUB2(ctx); err != nil {
 			common.Odl.Error("unwrapClobColumn: failed to read charset ID",
@@ -261,8 +264,9 @@ unwrapBlobColumn reads a prefetched binary LOB payload.
 
 Description:
 
-	Reads the LOB length, prefetch metadata, prefetched bytes, and locator. A zero
-	LOB length returns NULL data with its LOB context. This reader also supplies
+	Reads the locator length, 64-bit logical LOB length, prefetch size, prefetched
+	bytes, and locator. A zero locator length returns NULL data with its LOB
+	context. This reader also supplies
 	the binary LOB portion of JSON values; unwrapJSONColumn consumes their
 	additional trailing indicators.
 
@@ -284,12 +288,12 @@ func unwrapBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 	// length
 	lob := &lobColumnContext{}
 	var err error
-	if lob.LobLength, err = mar.UnmarshalUB4(ctx); err != nil {
+	if lob.LocatorByteLength, err = mar.UnmarshalUB4(ctx); err != nil {
 		common.Odl.Error("unwrapBlobColumn: failed to read LOB length",
 			"error", err, "stage", "lob-length", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
-	if lob.LobLength == 0 {
+	if lob.LocatorByteLength == 0 {
 		payload.data = nil
 		payload.lob = lob
 		return payload, nil
@@ -297,14 +301,14 @@ func unwrapBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 
 	// prefetched: always for V1
 	// ------------------------------------------
-	// prefetched length
-	if lob.PrefetchLength, err = mar.UnmarshalUB8(ctx); err != nil {
+	// total logical LOB length
+	if lob.TotalLobLength, err = mar.UnmarshalUB8(ctx); err != nil {
 		common.Odl.Error("unwrapBlobColumn: failed to read prefetch length",
 			"error", err, "stage", "prefetch-length", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	// prefetched chunk size
-	if lob.PrefetchChunkSize, err = mar.UnmarshalUB4(ctx); err != nil {
+	if _, err = mar.UnmarshalUB4(ctx); err != nil {
 		common.Odl.Error("unwrapBlobColumn: failed to read prefetch chunk size",
 			"error", err, "stage", "prefetch-chunk-size", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])

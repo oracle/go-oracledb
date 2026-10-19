@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"sync"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -100,6 +101,7 @@ func (r *RegisteredItem) String() string {
 // This struct manages registration and lookup for all TTC messages and functions,
 // tracking their supported protocol version ranges and association with function Response types.
 type Registry[K comparable] struct {
+	mu      sync.RWMutex
 	entries map[K][]RegisteredItem
 }
 
@@ -134,6 +136,8 @@ func (r *Registry[K]) Register(key K,
 			return common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	item := RegisteredItem{f, minTTCProtocolVersion, nil}
 	// Check if a message has already been registered for that key, min and max version.
 	foundIndex := -1
@@ -211,8 +215,10 @@ func isSameCapabilityCondition(c1 capabilityConditionFunc, c2 capabilityConditio
 
 // getCandidates retrieves all registered candidates for a given message type.
 func (r *Registry[K]) getCandidates(key K) []RegisteredItem {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if candidates, ok := r.entries[key]; ok {
-		return candidates
+		return append([]RegisteredItem(nil), candidates...)
 	}
 	// No candidates found for the given message type, so return nil.
 	return nil

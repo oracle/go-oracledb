@@ -301,11 +301,13 @@ func TestColumnPayloadConstructedValues(t *testing.T) {
 		t.Fatal("OUT cursor identity lost")
 	}
 	wire := driverCommon.B1Array{42}
-	lob := &lobColumnContext{CharsetID: 873}
+	locator := driverCommon.B1Array{9}
+	lob := &lobColumnContext{CharsetID: 873, LobLocator: locator}
 	copy := (columnPayload{data: wire, lob: lob}).clone()
 	wire[0] = 7
-	if copy.data.(driverCommon.B1Array)[0] != 42 || copy.lob != lob {
-		t.Fatal("byte copy or LOB identity lost")
+	locator[0] = 8
+	if copy.data.(driverCommon.B1Array)[0] != 42 || copy.lob == lob || copy.lob.LobLocator[0] != 9 {
+		t.Fatal("row copy did not detach value and locator bytes")
 	}
 	if (columnPayload{}).clone().data != nil {
 		t.Fatal("NULL clone changed")
@@ -333,22 +335,20 @@ func TestColumnPayloadDecode(t *testing.T) {
 	rows := newTTCRows([]columnContext{{DataType: DtyVCS}})
 	rows.SetShelf(shelf)
 	rows.rowData = [][]columnPayload{{{data: driverCommon.B1Array{42}}}, {{}}}
-	value, err := rows.decodeColumnValue(0)
+	value, err := rows.decodeColumnPayload(rows.rowData[0], 0)
 	if err != nil || value != "decoded" {
 		t.Fatalf("raw: %v %v", value, err)
 	}
-	rows.currentRowIdx = 0
 	shelf.RegisterCodecFactory(factory)
-	if _, err = rows.decodeColumnValue(0); err == nil {
+	if _, err = rows.decodeColumnPayload(rows.rowData[0], 0); err == nil {
 		t.Fatal("expected row decoder error")
 	}
 	rows.columnContexts[0].DataType = DtyNum
-	value, err = rows.decodeColumnValue(0)
+	value, err = rows.decodeColumnPayload(rows.rowData[0], 0)
 	if err != nil || !reflect.DeepEqual(value, driverCommon.B1Array{42}) {
 		t.Fatalf("unknown decoder fallback: %v %v", value, err)
 	}
-	rows.currentRowIdx = 1
-	value, err = rows.decodeColumnValue(0)
+	value, err = rows.decodeColumnPayload(rows.rowData[1], 0)
 	if err != nil || value != nil {
 		t.Fatalf("NULL: %v %v", value, err)
 	}

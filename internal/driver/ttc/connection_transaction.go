@@ -87,14 +87,16 @@ func (c *connection) BeginTx(ctx context.Context, opts driver.TxOptions) (driver
 	}
 
 	tx := newTransaction(c, ctx)
-	c.shelf.registerTransaction(tx)
+	if !c.shelf.registerTransaction(tx) {
+		return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.AlreadyInTransaction, nil, nil))
+	}
 
 	// Set transaction isolation level
 	if isolationLevelStmt != "" {
 		_, err := c.ExecContext(ctx, isolationLevelStmt, nil)
 		if err != nil {
-			c.shelf.unregisterTransaction()
-			return nil, common.NewOracleError(oracleErrors.ConfigureTransactionError, err, nil)
+			c.shelf.unregisterTransaction(tx)
+			return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.ConfigureTransactionError, err, nil))
 		}
 	}
 
@@ -102,7 +104,7 @@ func (c *connection) BeginTx(ctx context.Context, opts driver.TxOptions) (driver
 	if opts.ReadOnly {
 		_, err := c.ExecContext(ctx, _transactionReadOnly, nil)
 		if err != nil {
-			c.shelf.unregisterTransaction()
+			c.shelf.unregisterTransaction(tx)
 			return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.ConfigureTransactionError, err, nil))
 		}
 	}

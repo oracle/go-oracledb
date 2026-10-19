@@ -42,6 +42,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,17 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+// requireErrorCode checks that err or one of its wrapped errors exposes the
+// expected stable Oracle error code.
+func requireErrorCode(t testing.TB, err error, want oracleErrors.ErrorCode) {
+	t.Helper()
+	var sqlErr oracleErrors.SQLError
+	ok := errors.As(err, &sqlErr)
+	if !ok || sqlErr.ErrorCode() != string(want) {
+		t.Fatalf("error = %T %v, want driver error code %s", err, err, want)
+	}
+}
 
 // makeLobPayloadFromDump converts a TTC hex dump emitted in tests into a raw
 // byte slice so TTC marshaling assertions can compare against captured traces.
@@ -232,6 +244,102 @@ func TestClobExecutor_Write(t *testing.T) {
 	}
 }
 
+// TestClobExecutor_CLOBAndNCLOBAmountsUseUCS2Units verifies Oracle CLOB and NCLOB
+// operations count supplementary characters as two UCS-2 units.
+func TestClobExecutor_CLOBAndNCLOBAmountsUseUCS2Units(t *testing.T) {
+	t.Parallel()
+
+	const want = 3 // A (one UCS-2 unit) + 🙂 (surrogate pair)
+	got := lobCharacterUnits([]rune("A🙂"))
+	if got != want {
+		t.Fatalf("lobCharacterUnits(A🙂) = %d, want %d UCS-2 units", got, want)
+	}
+	if got == len([]rune("A🙂")) {
+		t.Fatalf("lobCharacterUnits used rune/code-point count %d instead of UCS-2 units", got)
+	}
+}
+
+// TestClobExecutor_SupplementaryWriteMarshalsUCS2AmountAndNextOffset verifies
+// that the production TTC write path marshals a supplementary character as two
+// UCS-2 units and uses the resulting 1-based offset for the following write.
+func TestClobExecutor_SupplementaryWriteMarshalsUCS2AmountAndNextOffset(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	stageWriteResponse := func(amount driverCommon.UB8) (
+		*driverCommon.Shelf[driverCommon.MessageType],
+		*ArrayBasedDataBuffer,
+	) {
+		shelf, streamer, dbuf := newLobTestShelf(8192)
+		if err := dbuf.WriteByteWithContext(ctx, byte(TTIRPA)); err != nil {
+			t.Fatalf("stage TTIRPA header: %v", err)
+		}
+		if err := dbuf.WriteBytesWithContext(ctx, makeLobPayloadFromDump(clobWriteRPAGoldenPayload)); err != nil {
+			t.Fatalf("stage TTIRPA payload: %v", err)
+		}
+		streamer.RegisterPostUnmarshallCallback(TTIRPA, func(message driverCommon.Message[driverCommon.MessageType], unmarshalErr error) (bool, error) {
+			if unmarshalErr != nil {
+				return true, unmarshalErr
+			}
+			rpa, ok := message.(*ttiLobRpa)
+			if !ok {
+				return true, errors.New("unexpected message in TTIRPA callback")
+			}
+			rpa.lobDefinition.lobAmt = amount
+			streamer.incomingMessages.PushBack(&incomingElement{message: &mockOer{}})
+			return true, nil
+		})
+		return shelf, dbuf
+	}
+
+	shelf, dbuf := stageWriteResponse(3)
+
+	executor := newClobExecutor(shelf, newTestSessionContext())
+	loc := newLocator(newSrcLocator(), 1)
+	firstMarshalStart := dbuf.currentWritePosition
+	firstText := []rune("A🙂")
+	firstWrite, err := executor.write(ctx, loc, false, firstText, len(firstText))
+	if err != nil {
+		t.Fatalf("write supplementary CLOB text: %v", err)
+	}
+	if firstWrite != 3 {
+		t.Fatalf("first write amount = %d, want 3 UCS-2 units", firstWrite)
+	}
+	firstMarshal := append([]byte(nil), dbuf.bytes[firstMarshalStart:dbuf.currentWritePosition]...)
+	wantFirstSuffix := []byte{0x01, 0x03, byte(TTILOBD), 0x06, 0x00, 0x41, 0xD8, 0x3D, 0xDE, 0x42}
+	if !bytes.HasSuffix(firstMarshal, wantFirstSuffix) {
+		t.Fatalf("supplementary CLOB request = % X, want trailing amount 3 and UTF-16 payload % X", firstMarshal, wantFirstSuffix)
+	}
+
+	loc.offset += firstWrite
+	if loc.offset != 4 {
+		t.Fatalf("next 1-based locator offset = %d, want 4", loc.offset)
+	}
+
+	// Send a subsequent write through a fresh TTC fixture using the offset
+	// advanced by the acknowledged first write.
+	nextShelf, nextDBuf := stageWriteResponse(1)
+	nextExecutor := newClobExecutor(nextShelf, newTestSessionContext())
+	nextLocator := newLocator(newSrcLocator(), loc.offset)
+	nextMarshalStart := nextDBuf.currentWritePosition
+	nextWrite, err := nextExecutor.write(ctx, nextLocator, false, []rune("B"), 1)
+	if err != nil {
+		t.Fatalf("write following CLOB text: %v", err)
+	}
+	if nextWrite != 1 {
+		t.Fatalf("following write amount = %d, want 1 UCS-2 unit", nextWrite)
+	}
+	nextMarshal := nextDBuf.bytes[nextMarshalStart:nextDBuf.currentWritePosition]
+	wantNextOffset := []byte{0x01, 0x40, 0x00, 0x00, 0x01, 0x04, 0x00, 0x01}
+	if !bytes.Contains(nextMarshal, wantNextOffset) {
+		t.Fatalf("following CLOB request = % X, want source offset 4 in OLOBOPS fields % X", nextMarshal, wantNextOffset)
+	}
+	wantNextSuffix := []byte{0x01, 0x01, byte(TTILOBD), 0x02, 0x00, 0x42}
+	if !bytes.HasSuffix(nextMarshal, wantNextSuffix) {
+		t.Fatalf("following CLOB request = % X, want amount 1 followed by UTF-16 payload % X", nextMarshal, wantNextSuffix)
+	}
+}
+
 const (
 	clobReadOffset   driverCommon.UB8 = 6
 	clobReadNumChars driverCommon.UB8 = 32523
@@ -248,25 +356,374 @@ func TestClobExecutor_Read(t *testing.T) {
 	wantMarshal, shelf, dbuf, marshalWritePosition := setUpReadScenario(t, clobReadMarshalGoldenPayload, clobReadResponseGoldenPayload, 131072)
 
 	lobExec := newClobExecutor(shelf, newTestSessionContext())
-	totalRuneCapacity := int(clobReadNumChars)
-	charOutBuffer := make([]rune, totalRuneCapacity)
-
-	readAmt, err := lobExec.read(ctx, newLocator(clobReadLocator, clobReadOffset), clobReadNumChars, clobReadIsNCLOB, charOutBuffer)
+	payload, logical, err := lobExec.read(ctx, newLocator(clobReadLocator, clobReadOffset), clobReadNumChars, clobReadIsNCLOB, 0)
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
-	if readAmt == 0 {
+	if logical == 0 {
 		t.Fatalf("expected read to return a positive amount")
 	}
-	decoded := string(charOutBuffer[:int(readAmt)])
+	decoded := string(payload)
 	expected := strings.Repeat("This is a large text example. ", 20)[5:]
 	if decoded != expected {
 		t.Fatalf("decoded payload mismatch:\n got: %q\nwant: %q", decoded, expected)
+	}
+	if wantLogical := driverCommon.UB8(lobCharacterUnits([]rune(expected))); logical != wantLogical {
+		t.Fatalf("logical units = %d, want %d", logical, wantLogical)
 	}
 
 	gotMarshal := dbuf.bytes[marshalWritePosition:dbuf.currentWritePosition]
 	if !bytes.Equal(gotMarshal, wantMarshal) {
 		t.Fatalf("marshal payload mismatch:\n got: % X\nwant: % X", gotMarshal, wantMarshal)
+	}
+}
+
+// TestClobExecutor_ReadRejectsResponseBeyondRequest verifies that a CLOB
+// response cannot advance the locator by more UTF-16 units than requested.
+func TestClobExecutor_ReadRejectsResponseBeyondRequest(t *testing.T) {
+	t.Parallel()
+
+	shelf, _, _ := newLobTestShelf(8192)
+	streamer := &fakeStreamer{
+		events: []driverCommon.Message[driverCommon.MessageType]{
+			newTTIlobd(),
+			newTTILobRPA(),
+			&mockOer{},
+		},
+		preHooks:      make(map[driverCommon.MessageType]StreamerPreUnmarshallCallback),
+		postHooks:     make(map[driverCommon.MessageType]StreamerPostUnmarshallCallback),
+		lobdPayloads:  [][]byte{[]byte("🙂")},
+		lobRpaAmounts: []driverCommon.UB8{2},
+	}
+	shelf.RegisterMessageStreamer(streamer)
+
+	executor := newClobExecutor(shelf, newTestSessionContext())
+	_, _, err := executor.read(context.Background(), newLocator(newTestLocator(false), 1), 1, false, 0)
+	requireErrorCode(t, err, oracleErrors.InvalidLOBBuffer)
+}
+
+// TestClobExecutor_DecodeReadPayloadRejectsIncompleteCharacter verifies
+// incomplete CLOB characters are rejected instead of decoded as U+FFFD.
+func TestClobExecutor_DecodeReadPayloadRejectsIncompleteCharacter(t *testing.T) {
+	t.Parallel()
+
+	executor := newClobExecutor(newShelf[driverCommon.MessageType]().Shelf, newTestSessionContext())
+	loc := newLocator(make(driverCommon.B1Array, koll4FlagOffset+1), 1)
+
+	_, _, _, err := executor.decodeReadPayload(loc, false, []byte{0xF0, 0x9F, 0x99}, 0, false)
+	requireErrorCode(t, err, oracleErrors.InvalidLOBBuffer)
+
+	_, _, _, err = executor.decodeReadPayload(loc, true, []byte{0xD8, 0x3D}, 0, false)
+	requireErrorCode(t, err, oracleErrors.InvalidLOBBuffer)
+
+	if payload, logical, _, err := executor.decodeReadPayload(loc, false, nil, 0, false); err != nil || payload != nil || logical != 0 {
+		t.Fatalf("empty decodeReadPayload = (%q, %d, %v), want (nil, 0, nil)", payload, logical, err)
+	}
+}
+
+// TestClobExecutor_DecodeReadPayloadJoinsPrefetchSurrogate verifies that a
+// high surrogate at the end of an inline CLOB prefix is joined with the low
+// surrogate returned by the first locator read.
+func TestClobExecutor_DecodeReadPayloadJoinsPrefetchSurrogate(t *testing.T) {
+	t.Parallel()
+
+	executor := newClobExecutor(newShelf[driverCommon.MessageType]().Shelf, newTestSessionContext())
+	loc := newLocator(newTestLocator(true), 1)
+	highSurrogate := uint16(0xD83D)
+
+	prefix, prefixUnits, carry, err := executor.decodeReadPayload(
+		loc,
+		false,
+		[]byte{0xD8, 0x3D},
+		0,
+		true,
+	)
+	if err != nil {
+		t.Fatalf("decodeReadPayload for prefix returned error: %v", err)
+	}
+	if len(prefix) != 0 || prefixUnits != 1 || carry != highSurrogate {
+		t.Fatalf("prefix result = (%q, %d, %#04x), want (empty, 1, %#04x)", prefix, prefixUnits, carry, highSurrogate)
+	}
+
+	decoded, locatorUnits, nextCarry, err := executor.decodeReadPayload(
+		loc,
+		false,
+		[]byte{0xDE, 0x42},
+		carry,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("decode locator remainder returned error: %v", err)
+	}
+	if string(decoded) != "🙂" || locatorUnits != 1 || nextCarry != 0 {
+		t.Fatalf("locator result = (%q, %d, %#04x), want (🙂, 1, 0)", decoded, locatorUnits, nextCarry)
+	}
+}
+
+// TestClobExecutor_CharacterConversionHelpers verifies both byte orders,
+// surrogate handling, and destination validation without a TTC exchange.
+func TestClobExecutor_CharacterConversionHelpers(t *testing.T) {
+	t.Parallel()
+
+	executor := newClobExecutor(newShelf[driverCommon.MessageType]().Shelf, newTestSessionContext())
+	runes := []rune("A🙂")
+	bigEndian := []byte{0x00, 0x41, 0xD8, 0x3D, 0xDE, 0x42}
+	littleEndian := []byte{0x41, 0x00, 0x3D, 0xD8, 0x42, 0xDE}
+
+	for _, test := range []struct {
+		name     string
+		variable bool
+		little   bool
+		want     []byte
+	}{
+		{name: "fixed big endian", want: bigEndian},
+		{name: "fixed little endian", little: true, want: littleEndian},
+		{name: "variable big endian", variable: true, want: bigEndian},
+		{name: "variable little endian", variable: true, little: true, want: littleEndian},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			encoded := make([]byte, len(test.want))
+			bytesWritten, units, processed := executor.encodeLobCharPayload(runes, 0, len(runes), encoded, test.variable, test.little)
+			if bytesWritten != len(test.want) || units != 3 || processed != len(runes) || !bytes.Equal(encoded, test.want) {
+				t.Fatalf("encoded = (%d, %d, %d, % X), want (%d, 3, 2, % X)", bytesWritten, units, processed, encoded, len(test.want), test.want)
+			}
+
+			decoded := make([]rune, 3)
+			decoded[0] = 'x'
+			count, err := executor.decodeVariableWidthCharSet(test.want, decoded, 1, test.little)
+			if err != nil || count != 2 || string(decoded) != "xA🙂" {
+				t.Fatalf("decoded = (%q, %d, %v), want (xA🙂, 2, nil)", string(decoded), count, err)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name string
+		call func() (int, int, int)
+	}{
+		{
+			name: "empty source window",
+			call: func() (int, int, int) {
+				return executor.encodeLobCharPayload(runes, len(runes), 1, make([]byte, 4), false, false)
+			},
+		},
+		{
+			name: "variable buffer too small",
+			call: func() (int, int, int) {
+				return executor.encodeLobCharPayload(runes, 0, len(runes), make([]byte, 1), true, false)
+			},
+		},
+		{
+			name: "fixed buffer too small",
+			call: func() (int, int, int) {
+				return executor.encodeLobCharPayload(runes, 0, len(runes), make([]byte, 1), false, false)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			bytesWritten, units, processed := test.call()
+			if test.name == "empty source window" {
+				if bytesWritten != 0 || units != 0 || processed != 0 {
+					t.Fatalf("empty window result = (%d, %d, %d), want zeros", bytesWritten, units, processed)
+				}
+				return
+			}
+			if bytesWritten != -1 || units != -1 || processed != len(runes) {
+				t.Fatalf("short buffer result = (%d, %d, %d), want (-1, -1, 2)", bytesWritten, units, processed)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name   string
+		data   []byte
+		little bool
+		want   []uint16
+	}{
+		{name: "big endian", data: bigEndian, want: []uint16{0x41, 0xD83D, 0xDE42}},
+		{name: "little endian", data: littleEndian, little: true, want: []uint16{0x41, 0xD83D, 0xDE42}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			units, err := readUTF16CodeUnits(test.data, test.little)
+			if err != nil || !reflect.DeepEqual(units, test.want) {
+				t.Fatalf("readUTF16CodeUnits = (%v, %v), want (%v, nil)", units, err, test.want)
+			}
+			encoded := make([]byte, len(test.data))
+			if written := writeUTF16ToBuffer(test.want, encoded, test.little); written != len(encoded) || !bytes.Equal(encoded, test.data) {
+				t.Fatalf("writeUTF16ToBuffer = (%d, % X), want (%d, % X)", written, encoded, len(encoded), test.data)
+			}
+		})
+	}
+
+	if got := getByteBufferSizeForConversion(false, 0); got != 0 {
+		t.Fatalf("zero-character buffer size = %d, want 0", got)
+	}
+	if got := getByteBufferSizeForConversion(true, -1); got != 0 {
+		t.Fatalf("negative-character buffer size = %d, want 0", got)
+	}
+	if got, err := executor.logicalAmount(runes); err != nil || got != 3 {
+		t.Fatalf("logicalAmount = (%d, %v), want (3, nil)", got, err)
+	}
+
+	for _, test := range []struct {
+		name string
+		data []byte
+		want []rune
+	}{
+		{name: "fixed UTF-8", data: []byte("A🙂"), want: []rune("A🙂")},
+		{name: "fixed malformed UTF-8", data: []byte{0xFF}, want: []rune(string([]byte{0xEF, 0xBF, 0xBD}))},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			out := make([]rune, len(test.want))
+			count, err := executor.decodeFixedWidthCharSet(test.data, out, 0, false, false)
+			if err != nil || count != len(test.want) || !reflect.DeepEqual(out, test.want) {
+				t.Fatalf("decodeFixedWidthCharSet = (%q, %d, %v), want (%q, %d, nil)", string(out), count, err, string(test.want), len(test.want))
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "unpaired high surrogate", data: []byte{0xD8, 0x3D}},
+		{name: "unpaired low surrogate", data: []byte{0xDE, 0x42}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateCompleteUTF16Payload(test.data, false); err == nil {
+				t.Fatal("validateCompleteUTF16Payload unexpectedly accepted an unpaired surrogate")
+			} else {
+				requireErrorCode(t, err, oracleErrors.InvalidLOBBuffer)
+			}
+		})
+	}
+
+	if _, err := executor.decodeVariableWidthCharSet(bigEndian, make([]rune, 1), 0, false); err == nil {
+		t.Fatal("decodeVariableWidthCharSet accepted an undersized output buffer")
+	} else {
+		requireErrorCode(t, err, oracleErrors.InvalidLOBBuffer)
+	}
+	if _, err := executor.decodeVariableWidthCharSet([]byte{0x00}, make([]rune, 1), 0, false); err == nil {
+		t.Fatal("decodeVariableWidthCharSet accepted an odd UTF-16 payload")
+	} else {
+		requireErrorCode(t, err, oracleErrors.InvalidLOBBuffer)
+	}
+	if _, err := executor.decodeFixedWidthCharSet([]byte("A🙂"), make([]rune, 1), 0, false, false); err == nil {
+		t.Fatal("decodeFixedWidthCharSet accepted an undersized output buffer")
+	} else {
+		requireErrorCode(t, err, oracleErrors.InvalidLOBBuffer)
+	}
+	if got := writeUTF16ToBuffer([]uint16{1}, make([]byte, 1), false); got != -1 {
+		t.Fatalf("short UTF-16 write = %d, want -1", got)
+	}
+}
+
+// TestClobExecutor_OpenRejectsBFileMode verifies CLOB executors reject the
+// BFILE-only open mode before touching the TTC stream.
+func TestClobExecutor_OpenRejectsBFileMode(t *testing.T) {
+	t.Parallel()
+
+	executor := newClobExecutor(newShelf[driverCommon.MessageType]().Shelf, newTestSessionContext())
+	if opened, err := executor.open(context.Background(), newLocator(newTestLocator(false), 1), bfileOpenModeReadOnly); opened || err == nil {
+		t.Fatalf("open result = (%t, %v), want UnsupportedLobOperation", opened, err)
+	} else {
+		requireErrorCode(t, err, oracleErrors.UnsupportedLobOperation)
+	}
+}
+
+// TestClobExecutor_ReadRejectsLogicalAmountMismatch verifies a decoded payload
+// cannot contradict the server-reported UTF-16 amount.
+func TestClobExecutor_ReadRejectsLogicalAmountMismatch(t *testing.T) {
+	t.Parallel()
+
+	setup := newClobExecutorWithStub(lobExecutorScenario{
+		events: []driverCommon.Message[driverCommon.MessageType]{newTTIlobd(), newTTILobRPA(), &mockOer{}},
+	})
+	setup.stub.lobdPayloads = [][]byte{[]byte("a")}
+	setup.stub.lobRpaAmounts = []driverCommon.UB8{2}
+	_, _, err := setup.clob.read(context.Background(), newLocator(newTestLocator(false), 1), 2, false, 0)
+	if err == nil {
+		t.Fatal("read unexpectedly accepted a mismatched logical amount")
+	}
+	requireErrorCode(t, err, oracleErrors.InvalidLOBBuffer)
+}
+
+// TestClobExecutor_Open verifies that opening a persistent CLOB in read/write
+// mode produces the OLOBOPS/KPLOB_OPEN request captured from an Oracle JDBC
+// trace and treats the returned nonzero lobamt as a successful open.
+//
+// The captured request uses TTC function 96 (OLOBOPS), operation 0x8000
+// (KPLOB_OPEN), and lobamt 2 (KOKL_ORDWR). The staged TTIRPA payload contains
+// the unchanged 114-byte locator followed by lobamt 2. The test shelf supplies
+// the successful TTIOER completion through its mock callback. In particular,
+// this test verifies that the sequence number is generated by the test stream,
+// while the operation, locator, and read/write mode remain byte-for-byte
+// compatible with the trace.
+func TestClobExecutor_Open(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	shelf, _, dbuf := newLobTestShelf(8192)
+	locator := make(driverCommon.B1Array, len(clobOpenCloseSourceLocator))
+	copy(locator, clobOpenCloseSourceLocator)
+	if err := dbuf.WriteByteWithContext(ctx, byte(TTIRPA)); err != nil {
+		t.Fatalf("write TTIRPA header failed: %v", err)
+	}
+	if err := dbuf.WriteBytesWithContext(ctx, makeLobPayloadFromDump(clobOpenRPAGoldenPayload)); err != nil {
+		t.Fatalf("write OLOBOPS open response failed: %v", err)
+	}
+	marshalWritePosition := dbuf.currentWritePosition
+	wantMarshal, err := ExtractBytesFromDump(clobOpenMarshalGoldenPayload)
+	if err != nil {
+		t.Fatalf("failed to build expected open marshal payload: %v", err)
+	}
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
+	didOpen, err := lobExec.open(ctx, newLocator(locator, 0), lobOpenModeReadWrite)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	if !didOpen {
+		t.Fatal("Open reported false, want true for server lobamt 2")
+	}
+	gotMarshal := dbuf.bytes[marshalWritePosition:dbuf.currentWritePosition]
+	if !bytes.Equal(gotMarshal, wantMarshal) {
+		t.Fatalf("open marshal payload mismatch:\n got: % X\nwant: % X", gotMarshal, wantMarshal)
+	}
+}
+
+// TestClobExecutor_Close verifies that closing a persistent CLOB produces the
+// OLOBOPS/KPLOB_CLOSE request captured from an Oracle JDBC trace and consumes
+// the TTIRPA response followed by the successful mock TTIOER completion from
+// the test shelf.
+//
+// The request uses TTC function 96 (OLOBOPS) and operation 0x010000
+// (KPLOB_CLOSE). Unlike OPEN, CLOSE sends neither a lobamt pointer nor a mode
+// value after the locator. The response returns the 114-byte locator and then
+// immediately transitions to TTIOER; it contains no TTILOBD data record and
+// no returned lobamt.
+func TestClobExecutor_Close(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	shelf, _, dbuf := newLobTestShelf(8192)
+	locator := make(driverCommon.B1Array, len(clobOpenCloseSourceLocator))
+	copy(locator, clobOpenCloseSourceLocator)
+	if err := dbuf.WriteByteWithContext(ctx, byte(TTIRPA)); err != nil {
+		t.Fatalf("write TTIRPA header failed: %v", err)
+	}
+	if err := dbuf.WriteBytesWithContext(ctx, makeLobPayloadFromDump(clobCloseRPAGoldenPayload)); err != nil {
+		t.Fatalf("write OLOBOPS close response failed: %v", err)
+	}
+	marshalWritePosition := dbuf.currentWritePosition
+	wantMarshal, err := ExtractBytesFromDump(clobCloseMarshalGoldenPayload)
+	if err != nil {
+		t.Fatalf("failed to build expected close marshal payload: %v", err)
+	}
+	lobExec := newClobExecutor(shelf, newTestSessionContext())
+	if err := lobExec.close(ctx, newLocator(locator, 0)); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+	gotMarshal := dbuf.bytes[marshalWritePosition:dbuf.currentWritePosition]
+	if !bytes.Equal(gotMarshal, wantMarshal) {
+		t.Fatalf("close marshal payload mismatch:\n got: % X\nwant: % X", gotMarshal, wantMarshal)
 	}
 }
 
@@ -440,8 +897,8 @@ func TestClobExecutor_ReadErrors(t *testing.T) {
 				locator := newTestLocator(true)
 				ts := newClobExecutorWithStub(lobExecutorScenario{
 					locator: locator,
-					onFlush: func(e *lobExecutor) {
-						e.lastBytesTransferred = 1
+					onFlush: func(def *lobDefinition) {
+						def.bytesTransferred = 1
 					},
 				})
 				return ts.clob, locator, 0, numChars, false, make([]rune, 2), 0
@@ -452,15 +909,13 @@ func TestClobExecutor_ReadErrors(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			exec, locator, offset, numChars, isNCLOB, charBuf, _ := tc.setup()
-			_, err := exec.read(ctx, newLocator(locator, offset), numChars, isNCLOB, charBuf)
+			exec, locator, offset, numChars, isNCLOB, _, _ := tc.setup()
+			_, _, err := exec.read(ctx, newLocator(locator, offset), numChars, isNCLOB, 0)
 			if err == nil {
 				t.Fatalf("expected error")
 			}
 			if tc.expectErrCode != "" {
-				if code := getErrorCode(err); code != tc.expectErrCode {
-					t.Fatalf("unexpected error code: got %q want %q", code, tc.expectErrCode)
-				}
+				requireErrorCode(t, err, oracleErrors.ErrorCode(tc.expectErrCode))
 			}
 			if tc.expectErrContains != "" && !strings.Contains(err.Error(), tc.expectErrContains) {
 				t.Fatalf("unexpected error: %v", err)
@@ -522,9 +977,7 @@ func TestClobExecutor_WriteErrors(t *testing.T) {
 				t.Fatalf("expected error")
 			}
 			if tc.expectErrCode != "" {
-				if code := getErrorCode(err); code != tc.expectErrCode {
-					t.Fatalf("unexpected error code: got %q want %q", code, tc.expectErrCode)
-				}
+				requireErrorCode(t, err, oracleErrors.ErrorCode(tc.expectErrCode))
 			}
 			if tc.expectErrContains != "" && !strings.Contains(err.Error(), tc.expectErrContains) {
 				t.Fatalf("unexpected error: %v", err)
@@ -562,9 +1015,7 @@ func TestClobExecutor_CreateTemporaryLobErrors(t *testing.T) {
 				t.Fatalf("expected error")
 			}
 			if tc.expectErrCode != "" {
-				if code := getErrorCode(err); code != tc.expectErrCode {
-					t.Fatalf("unexpected error code: got %q want %q", code, tc.expectErrCode)
-				}
+				requireErrorCode(t, err, oracleErrors.ErrorCode(tc.expectErrCode))
 			}
 			if tc.expectErrContains != "" && !strings.Contains(err.Error(), tc.expectErrContains) {
 				t.Fatalf("unexpected error: %v", err)
@@ -573,6 +1024,8 @@ func TestClobExecutor_CreateTemporaryLobErrors(t *testing.T) {
 	}
 }
 
+// TestClobExecutor_GetLengthErrors verifies CLOB length execution errors are
+// returned with the expected driver code.
 func TestClobExecutor_GetLengthErrors(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -600,9 +1053,7 @@ func TestClobExecutor_GetLengthErrors(t *testing.T) {
 				t.Fatalf("expected error")
 			}
 			if tc.expectErrCode != "" {
-				if code := getErrorCode(err); code != tc.expectErrCode {
-					t.Fatalf("unexpected error code: got %q want %q", code, tc.expectErrCode)
-				}
+				requireErrorCode(t, err, oracleErrors.ErrorCode(tc.expectErrCode))
 			}
 			if tc.expectErrContains != "" && !strings.Contains(err.Error(), tc.expectErrContains) {
 				t.Fatalf("unexpected error: %v", err)
@@ -611,6 +1062,8 @@ func TestClobExecutor_GetLengthErrors(t *testing.T) {
 	}
 }
 
+// TestClobExecutor_IsOpenErrors verifies CLOB open-state execution errors are
+// returned with the expected driver code.
 func TestClobExecutor_IsOpenErrors(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -639,9 +1092,7 @@ func TestClobExecutor_IsOpenErrors(t *testing.T) {
 				t.Fatalf("expected error")
 			}
 			if tc.expectErrCode != "" {
-				if code := getErrorCode(err); code != tc.expectErrCode {
-					t.Fatalf("unexpected error code: got %q want %q", code, tc.expectErrCode)
-				}
+				requireErrorCode(t, err, oracleErrors.ErrorCode(tc.expectErrCode))
 			}
 			if tc.expectErrContains != "" && !strings.Contains(err.Error(), tc.expectErrContains) {
 				t.Fatalf("unexpected error: %v", err)
@@ -650,6 +1101,8 @@ func TestClobExecutor_IsOpenErrors(t *testing.T) {
 	}
 }
 
+// TestClobExecutor_TrimErrors verifies CLOB trim validation and execution
+// errors are returned with the expected driver code.
 func TestClobExecutor_TrimErrors(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -700,9 +1153,7 @@ func TestClobExecutor_TrimErrors(t *testing.T) {
 				t.Fatalf("expected error")
 			}
 			if tc.expectErrCode != "" {
-				if code := getErrorCode(err); code != tc.expectErrCode {
-					t.Fatalf("unexpected error code: got %q want %q", code, tc.expectErrCode)
-				}
+				requireErrorCode(t, err, oracleErrors.ErrorCode(tc.expectErrCode))
 			}
 			if tc.expectErrContains != "" && !strings.Contains(err.Error(), tc.expectErrContains) {
 				t.Fatalf("unexpected error: %v", err)
@@ -711,6 +1162,8 @@ func TestClobExecutor_TrimErrors(t *testing.T) {
 	}
 }
 
+// TestClobExecutor_GetChunkSizeErrors verifies CLOB chunk-size execution
+// errors are returned with the expected driver code.
 func TestClobExecutor_GetChunkSizeErrors(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -738,9 +1191,7 @@ func TestClobExecutor_GetChunkSizeErrors(t *testing.T) {
 				t.Fatalf("expected error")
 			}
 			if tc.expectErrCode != "" {
-				if code := getErrorCode(err); code != tc.expectErrCode {
-					t.Fatalf("unexpected error code: got %q want %q", code, tc.expectErrCode)
-				}
+				requireErrorCode(t, err, oracleErrors.ErrorCode(tc.expectErrCode))
 			}
 			if tc.expectErrContains != "" && !strings.Contains(err.Error(), tc.expectErrContains) {
 				t.Fatalf("unexpected error: %v", err)
@@ -881,27 +1332,13 @@ func TestLobExecutor_ConsumeLobResponses_PullError(t *testing.T) {
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected Pull error %v, got %v", wantErr, err)
 	}
-	if code := getErrorCode(err); code != string(oracleErrors.LobExecError) {
-		t.Fatalf("unexpected error code: got %q want %q", code, oracleErrors.LobExecError)
-	}
+	requireErrorCode(t, err, oracleErrors.LobExecError)
 	if len(st.stub.events) != 0 {
 		t.Fatalf("LOB response handling left %d stale message(s)", len(st.stub.events))
 	}
 }
 
 // -------------------------------------------- Helpers for test ---------------------------------------------------------
-
-// getErrorCode extracts the SQLError code from the provided error, returning an
-// empty string for non-driver errors.
-func getErrorCode(err error) string {
-	if err == nil {
-		return ""
-	}
-	if sqlErr, ok := err.(oracleErrors.SQLError); ok {
-		return sqlErr.ErrorCode()
-	}
-	return ""
-}
 
 // newClobExecutorWithStub constructs a CLOB executor backed by a fake
 // streamer, allowing unit tests to simulate TTC failures deterministically.
@@ -919,7 +1356,6 @@ func newClobExecutorWithStub(s lobExecutorScenario) testSetup {
 	}
 	shelf.RegisterMessageStreamer(stub)
 	clob := newClobExecutor(shelf, newTestSessionContext())
-	stub.executor = clob.lobExecutor
 
 	if len(s.events) == 0 {
 		msg, err := shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIRPA, oLobOps)
@@ -931,7 +1367,7 @@ func newClobExecutorWithStub(s lobExecutorScenario) testSetup {
 	stub.events = append(stub.events, s.events...)
 
 	if s.onFlush != nil {
-		stub.onFlush = func() { s.onFlush(clob.lobExecutor) }
+		stub.onFlush = func() { s.onFlush(stub.definition) }
 	}
 
 	return testSetup{clob: clob, stub: stub, shelf: shelf}
@@ -952,7 +1388,7 @@ type lobExecutorScenario struct {
 	pullErr  error
 	events   []driverCommon.Message[driverCommon.MessageType]
 	locator  driverCommon.B1Array
-	onFlush  func(*lobExecutor)
+	onFlush  func(*lobDefinition)
 	pullHook func(context.Context, ...driverCommon.MessageType) (driverCommon.Message[driverCommon.MessageType], error)
 }
 
@@ -967,20 +1403,34 @@ func newTestLocator(variableWidth bool) driverCommon.B1Array {
 }
 
 type fakeStreamer struct {
-	pushErr   error
-	flushErr  error
-	pullErr   error
-	events    []driverCommon.Message[driverCommon.MessageType]
-	preHooks  map[driverCommon.MessageType]StreamerPreUnmarshallCallback
-	postHooks map[driverCommon.MessageType]StreamerPostUnmarshallCallback
-	pullHook  func(context.Context, ...driverCommon.MessageType) (driverCommon.Message[driverCommon.MessageType], error)
-	executor  *lobExecutor
-	onFlush   func()
-	locator   driverCommon.B1Array
+	pushErr       error
+	pushed        []driverCommon.Message[driverCommon.MessageType]
+	flushErr      error
+	pullErr       error
+	events        []driverCommon.Message[driverCommon.MessageType]
+	preHooks      map[driverCommon.MessageType]StreamerPreUnmarshallCallback
+	postHooks     map[driverCommon.MessageType]StreamerPostUnmarshallCallback
+	pullHook      func(context.Context, ...driverCommon.MessageType) (driverCommon.Message[driverCommon.MessageType], error)
+	definition    *lobDefinition
+	lobdPayloads  [][]byte
+	lobRpaAmounts []driverCommon.UB8
+	onPush        func(*lobDefinition)
+	onFlush       func()
+	locator       driverCommon.B1Array
 }
 
-func (s *fakeStreamer) Push(context.Context, driverCommon.Message[driverCommon.MessageType]) error {
-	return s.pushErr
+func (s *fakeStreamer) Push(_ context.Context, msg driverCommon.Message[driverCommon.MessageType]) error {
+	if s.pushErr != nil {
+		return s.pushErr
+	}
+	if lob, ok := msg.(*tTIlob); ok {
+		s.definition = lob.lobPayloadDefinition
+		if s.onPush != nil {
+			s.onPush(s.definition)
+		}
+	}
+	s.pushed = append(s.pushed, msg)
+	return nil
 }
 
 func (s *fakeStreamer) Pull(ctx context.Context, expected ...driverCommon.MessageType) (driverCommon.Message[driverCommon.MessageType], error) {
@@ -1006,6 +1456,16 @@ func (s *fakeStreamer) Pull(ctx context.Context, expected ...driverCommon.Messag
 		if allocated != nil {
 			msg = allocated
 		}
+	}
+	if lobd, ok := msg.(*tTIlobd); ok && len(s.lobdPayloads) > 0 {
+		payload := s.lobdPayloads[0]
+		s.lobdPayloads = s.lobdPayloads[1:]
+		copy(lobd.buffer, payload)
+		lobd.lastBytesRead = driverCommon.UB8(len(payload))
+	}
+	if rpa, ok := msg.(*ttiLobRpa); ok && len(s.lobRpaAmounts) > 0 {
+		rpa.lobDefinition.lobAmt = s.lobRpaAmounts[0]
+		s.lobRpaAmounts = s.lobRpaAmounts[1:]
 	}
 	if cb := s.postHooks[msg.GetMsgCode()]; cb != nil {
 		if _, err := cb(msg, nil); err != nil {
@@ -1491,6 +1951,70 @@ var clobReadLocator = driverCommon.B1Array{
 	0, 0, 0, 0, 0, 0, 222, 173, 190, 239, 0, 1, 0, 34, 0, 0,
 	0, 0, 0, 38, 239, 226, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 1, 56, 78, 0, 64, 139, 39, 0, 0,
+}
+
+// clobOpenCloseSourceLocator is the persistent CLOB locator shared by the Open
+// and Close unit tests. Keeping one fixture focuses the tests on each operation's
+// message layout rather than unrelated opaque locator bytes.
+var clobOpenCloseSourceLocator = driverCommon.B1Array{
+	0x00, 0x70, 0x00, 0x02, 0x02, 0x0C, 0x82, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+	0x00, 0x26, 0xFA, 0xE9, 0x00, 0x01, 0x2B, 0xE3, 0x00, 0x01, 0x2B, 0xE2, 0x00, 0x03, 0x00, 0x03,
+	0x03, 0x69, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x6A, 0x6A, 0xF5, 0x9A,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x93, 0xFC, 0x2B, 0xEC,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x00, 0x22, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x19, 0x63, 0xBE, 0x00, 0x08, 0x00, 0x05, 0x00, 0x00, 0x07, 0x49, 0x00, 0x40, 0x14,
+	0xD8, 0x01, 0x98, 0x10, 0x00, 0x00, 0x00, 0x00, 0x01, 0x2B, 0xE2, 0x00, 0x40, 0x8C, 0xC4, 0x00,
+	0x00, 0x00,
+}
+
+var clobOpenMarshalGoldenPayload = []string{
+	`"03 60 01 00 01 01 72 00 00 00 00 00 00 00 02 80"`,
+	`"00 00 00 00 00 01 00 00 00 00 00 00 00 70 00 02"`,
+	`"02 0C 82 00 00 02 00 00 00 01 00 00 00 26 FA E9"`,
+	`"00 01 2B E3 00 01 2B E2 00 03 00 03 03 69 00 00"`,
+	`"00 00 00 00 00 00 00 06 6A 6A F5 9A 00 00 00 00"`,
+	`"00 00 00 00 00 00 00 00 93 FC 2B EC 00 00 00 00"`,
+	`"00 DE AD BE EF 00 01 00 22 00 00 00 00 00 19 63"`,
+	`"BE 00 08 00 05 00 00 07 49 00 40 14 D8 01 98 10"`,
+	`"00 00 00 00 01 2B E2 00 40 8C C4 00 00 00 01 02"`,
+}
+
+var clobOpenRPAGoldenPayload = []string{
+	`"00 70 00 02 02 0C 82 00 00 02 00 00 00 01 00 00"`,
+	`"00 26 FA E9 00 01 2B E3 00 01 2B E2 00 03 00 03"`,
+	`"03 69 00 00 00 00 00 00 00 00 00 06 6A 6A F5 9A"`,
+	`"00 00 00 00 00 00 00 00 00 00 00 00 93 FC 2B EC"`,
+	`"00 00 00 00 00 DE AD BE EF 00 01 00 22 00 00 00"`,
+	`"00 00 19 63 BE 00 08 00 05 00 00 07 49 00 40 14"`,
+	`"D8 01 98 10 00 00 00 00 01 2B E2 00 40 8C C4 00"`,
+	`"00 00 01 02 04 01 02 01 15 00 00 00 00 00 00 00"`,
+	`"00 00 00 00 00 03 01 2B E2 01 01 00 02 8C C4 00"`,
+	`"00 00 0E 00 00 00 00 00 00 00 00 00 00"`,
+}
+
+var clobCloseMarshalGoldenPayload = []string{
+	`"03 60 01 00 01 01 72 00 00 00 00 00 00 00 03 01"`,
+	`"00 00 00 00 00 00 00 00 00 00 00 00 00 00 70 00"`,
+	`"02 02 0C 82 00 00 02 00 00 00 01 00 00 00 26 FA"`,
+	`"E9 00 01 2B E3 00 01 2B E2 00 03 00 03 03 69 00"`,
+	`"00 00 00 00 00 00 00 00 06 6A 6A F5 9A 00 00 00"`,
+	`"00 00 00 00 00 00 00 00 00 93 FC 2B EC 00 00 00"`,
+	`"00 00 DE AD BE EF 00 01 00 22 00 00 00 00 00 19"`,
+	`"63 BE 00 08 00 05 00 00 07 49 00 40 14 D8 01 98"`,
+	`"10 00 00 00 00 01 2B E2 00 40 8C C4 00 00 00"`,
+}
+
+var clobCloseRPAGoldenPayload = []string{
+	`"00 70 00 02 02 0C 82 00 00 02 00 00 00 01 00 00"`,
+	`"00 26 FA E9 00 01 2B E3 00 01 2B E2 00 03 00 03"`,
+	`"03 69 00 00 00 00 00 00 00 00 00 06 6A 6A F5 9A"`,
+	`"00 00 00 00 00 00 00 00 00 00 00 00 93 FC 2B EC"`,
+	`"00 00 00 00 00 DE AD BE EF 00 01 00 22 00 00 00"`,
+	`"00 00 19 63 BE 00 08 00 05 00 00 07 49 00 40 14"`,
+	`"D8 01 98 10 00 00 00 00 01 2B E2 00 40 8C C4 00"`,
+	`"00 00 04 01 02 01 1B 00 00 00 00 00 00 00 00 00"`,
+	`"00 00 00 03 01 2B E2 01 01 00 02 8C C4 00 00 00"`,
+	`"14 00 00 00 00 00 00 00 00 00 00 00"`,
 }
 
 var clobIsOpenSourceLocator = driverCommon.B1Array{

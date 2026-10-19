@@ -38,7 +38,11 @@
 
 package ttc
 
-import "github.com/oracle/go-oracledb/v26/internal/common"
+import (
+	"sync"
+
+	"github.com/oracle/go-oracledb/v26/internal/common"
+)
 
 type eventType int
 
@@ -50,6 +54,7 @@ const (
 )
 
 type eventService struct {
+	mu        sync.RWMutex
 	listeners map[eventType][]eventListener
 }
 
@@ -89,6 +94,8 @@ func (s *eventService) register(listener eventListener, event eventType) {
 		common.Odl.Warn("Event listener is nil")
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.listeners[event] = append(s.listeners[event], listener)
 }
 
@@ -99,7 +106,10 @@ func (s *eventService) register(listener eventListener, event eventType) {
 //
 // Returns: none.
 func (s *eventService) post(event eventType) {
-	for _, listener := range s.listeners[event] {
+	s.mu.RLock()
+	listeners := append([]eventListener(nil), s.listeners[event]...)
+	s.mu.RUnlock()
+	for _, listener := range listeners {
 		listener.notify(event)
 	}
 }

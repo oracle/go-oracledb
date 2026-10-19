@@ -220,6 +220,25 @@ const (
 	NoAuthenticatorError    ErrorCode = "OGD-00099"
 	ServerTimeZoneError     ErrorCode = "OGD-00110"
 
+	// UnsupportedLobOperation indicates the operation is not supported for the selected LOB
+	// family or access mode.
+	UnsupportedLobOperation ErrorCode = "OGD-00111"
+	// LobValueClosed indicates an operation was attempted after a locator-backed LOB value was closed.
+	LobValueClosed ErrorCode = "OGD-00112"
+	// LobValueInvalidated indicates the Rows, statement, transaction, or
+	// connection that owns a locator-backed LOB is no longer usable.
+	LobValueInvalidated ErrorCode = "OGD-00113"
+	// InvalidLobSource indicates a value is not a driver-provided, locator-backed LOB source.
+	InvalidLobSource ErrorCode = "OGD-00114"
+	// NullLobValue indicates an operation was requested for a NULL LOB value.
+	NullLobValue ErrorCode = "OGD-00115"
+	// InvalidLobInput indicates streamed LOB bind input is malformed.
+	InvalidLobInput ErrorCode = "OGD-00116"
+	// LobOpenStateUnknown indicates a persistent LOB open/close RPC failed after
+	// it was attempted, so callers must query IsOpenContext before retrying or
+	// releasing the local handle.
+	LobOpenStateUnknown ErrorCode = "OGD-00117"
+
 	ProtocolViolationLimitExceeded ErrorCode = "OGD-00200"
 
 	// EmptyTokenError indicates that the configured token value is empty after

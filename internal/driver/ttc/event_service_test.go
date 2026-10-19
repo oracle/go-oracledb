@@ -38,7 +38,10 @@
 
 package ttc
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
 
 // testEventListener records received events for event service tests.
 type testEventListener struct {
@@ -53,6 +56,27 @@ type testEventListener struct {
 // Returns: none.
 func (l *testEventListener) notify(event eventType) {
 	l.events = append(l.events, event)
+}
+
+type eventListenerFunc func(eventType)
+
+func (f eventListenerFunc) notify(event eventType) {
+	f(event)
+}
+
+type chainingEventListener struct {
+	service      *eventService
+	once         sync.Once
+	nestedPosted chan struct{}
+}
+
+func (l *chainingEventListener) notify(eventType) {
+	l.once.Do(func() {
+		l.service.register(eventListenerFunc(func(eventType) {
+			close(l.nestedPosted)
+		}), connectionClosedEvent)
+		l.service.post(connectionClosedEvent)
+	})
 }
 
 // TestEventServiceRegisterAndPost verifies that the event service notifies only
@@ -77,5 +101,37 @@ func TestEventServiceRegisterAndPost(t *testing.T) {
 	service.post(connectionInvalidatedEvent)
 	if len(listener.events) != 1 || listener.events[0] != connectionInvalidatedEvent {
 		t.Fatalf("listener events = %v, want [%v]", listener.events, connectionInvalidatedEvent)
+	}
+}
+
+// TestEventService_ConcurrentRegisterAndPost verifies concurrent registration
+// and dispatch, including dispatch initiated by a listener callback.
+func TestEventService_ConcurrentRegisterAndPost(t *testing.T) {
+	t.Parallel()
+
+	service := newEventService()
+	listener := &chainingEventListener{
+		service:      service,
+		nestedPosted: make(chan struct{}),
+	}
+	service.register(listener, connectionInvalidatedEvent)
+
+	var waitGroup sync.WaitGroup
+	for range 8 {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			for range 32 {
+				service.register(eventListenerFunc(func(eventType) {}), connectionInvalidatedEvent)
+				service.post(connectionInvalidatedEvent)
+			}
+		}()
+	}
+	waitGroup.Wait()
+
+	select {
+	case <-listener.nestedPosted:
+	default:
+		t.Fatal("listener callback did not safely register and post a nested event")
 	}
 }

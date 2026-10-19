@@ -58,11 +58,17 @@ import (
 // configuration root node name
 const configurationRootName = "oracle.go"
 
+// DefaultLobPrefetchSize is the default amount of LOB data, in bytes, fetched
+// inline when reading LOB columns.
+const DefaultLobPrefetchSize = 32 * 1024 * 1024
+
 // OracleDriverProperties defines driver-level configuration options that affect
 // how Oracle driver behavior upon request exchanges with the remote database.
 type OracleDriverProperties struct {
 	// When enabled, SQL NULL values are returned as nil. When disabled, legacy
 	// or type-specific zero-value handling may be used depending on the decoder.
+	// SQL NULL LOB columns remain nil in either mode so typed LOB scanners can
+	// distinguish NULL from a non-NULL empty LOB.
 	StrictNullValueHandling bool `default:"true" help:"if true, NULLs column values are returned as nil"`
 	// DefaultLobPrefetchSize sets the default amount of LOB data, in bytes, to
 	// prefetch when reading LOB columns.

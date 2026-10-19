@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -516,6 +517,54 @@ func TestCodecFactory_getDefineOac(t *testing.T) {
 				t.Fatalf("expected dataType %d, got %d", tc.wantDataType, got.dataType)
 			}
 		})
+	}
+}
+
+// TestCodecFactory_GetDefineOacUsesConnectionLobPrefetch verifies that BLOB
+// define metadata uses DefaultLobPrefetchSize from connection properties.
+func TestCodecFactory_GetDefineOacUsesConnectionLobPrefetch(t *testing.T) {
+	t.Parallel()
+
+	defineReg := newCodecRegistry[DtyType, defineOacFunc]()
+	if err := defineReg.Register(DtyBlob, MinTTCProtocolVersion, newTTIOacBlobDefine); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+	factory := &CodecFactoryImpl{
+		ttcVersion: MinTTCProtocolVersion,
+		defineOacs: defineReg,
+	}
+	const configuredPrefetchSize = 12345
+	properties := &oracleconfig.OracleDriverProperties{DefaultLobPrefetchSize: configuredPrefetchSize}
+	column := columnContext{DataType: DtyBlob}
+
+	define := factory.getDefineOac(
+		DtyBlob,
+		column,
+		properties,
+	).(*tTIoac)
+	if got, want := define.codepointLengthLimit, common.UB4(properties.DefaultLobPrefetchSize); got != want {
+		t.Fatalf("prefetch = %d, want connection default %d", got, want)
+	}
+}
+
+// TestCodecFactory_GetDefineOacUsesDefaultLobPrefetchWithoutProperties
+// verifies that LOB define metadata uses the package default when connection
+// properties are unavailable.
+func TestCodecFactory_GetDefineOacUsesDefaultLobPrefetchWithoutProperties(t *testing.T) {
+	t.Parallel()
+
+	defineReg := newCodecRegistry[DtyType, defineOacFunc]()
+	if err := defineReg.Register(DtyBlob, MinTTCProtocolVersion, newTTIOacBlobDefine); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+	factory := &CodecFactoryImpl{
+		ttcVersion: MinTTCProtocolVersion,
+		defineOacs: defineReg,
+	}
+
+	define := factory.getDefineOac(DtyBlob, columnContext{DataType: DtyBlob}, nil).(*tTIoac)
+	if got, want := define.codepointLengthLimit, common.UB4(oracleconfig.DefaultLobPrefetchSize); got != want {
+		t.Fatalf("prefetch = %d, want default %d", got, want)
 	}
 }
 

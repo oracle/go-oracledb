@@ -68,7 +68,11 @@ func TestConnectionResetter_Reset(t *testing.T) {
 
 	connection := newTestConnection(shelf, sessionCtx, mockNs)
 
-	connection.PrepareContext(context.Background(), "SELECT * FROM DUAL")
+	driverStmt, err := connection.PrepareContext(context.Background(), "SELECT * FROM DUAL")
+	if err != nil {
+		t.Fatalf("prepare statement: %v", err)
+	}
+	stmt := driverStmt.(*Statement)
 
 	if len(connection.shelf.GetStatements(false)) != 1 {
 		t.Errorf("list of statements should not be empty, got [%v]", connection.shelf.GetStatements(false))
@@ -76,9 +80,15 @@ func TestConnectionResetter_Reset(t *testing.T) {
 
 	sessionCtx.GetSessionProperties().SetProperty("pasta", "carbonara")
 
-	connection.ResetSession(context.Background())
-	if len(connection.shelf.GetStatements(false)) != 0 {
-		t.Errorf("list of statements should be empty, got [%v]", connection.shelf.GetStatements(false))
+	if err := connection.ResetSession(context.Background()); err != nil {
+		t.Fatalf("reset session: %v", err)
+	}
+	statements := connection.shelf.GetStatements(false)
+	if len(statements) != 1 || statements[0] != stmt {
+		t.Errorf("prepared statement should remain registered after reset, got [%v]", statements)
+	}
+	if stmt.closed {
+		t.Error("prepared statement should remain open after reset")
 	}
 
 	if v := sessionCtx.GetSessionProperties().GetProperty("pasta"); v != nil {

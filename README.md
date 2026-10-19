@@ -18,6 +18,7 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
   - JSON support returning JSON as `string`
   - BLOB support using prefetch and returning `[]byte`
   - CLOB support using prefetch and returning `string`
+  - Locator-backed streaming and direct BLOB/CLOB/NCLOB APIs ([LOB documentation](docs/lob/))
 
 ## Installation
 Run:
@@ -244,8 +245,8 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 | `VARCHAR2`   | `string`             |
 | `NVARCHAR2`  | `string`             |
 | `LONG`       | `string` or `[]byte` |
-| `CLOB`       | `string` or `[]byte` |
-| `NCLOB`      | `string`             |
+| `CLOB`       | `string` or `[]byte` (materialized; see [LOB streaming APIs](docs/lob/)) |
+| `NCLOB`      | `string` (materialized; see [LOB streaming APIs](docs/lob/)) |
 | `XMLTYPE`    | `string`             |
 
 
@@ -285,7 +286,7 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 |-------------|----------------|
 | `RAW`       | `[]byte`       |
 | `LONG RAW`  | `[]byte`       |
-| `BLOB`      | `[]byte`       |
+| `BLOB`      | `[]byte` (materialized; see [LOB streaming APIs](docs/lob/)) |
 | `BFILE`     | `[]byte`       |
 
 ---
