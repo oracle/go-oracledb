@@ -42,6 +42,7 @@ import (
 	"context"
 
 	"maps"
+	"sort"
 	"weak"
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
@@ -75,6 +76,62 @@ type ttiShelf[T any] struct {
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
 	_validatorRegistry       internalCommon.Registry[stateValidator]
+	_cursorCache             *internalCommon.LRUCache[*Statement]
+	_cursorUseSequence       uint64
+}
+
+func (s *ttiShelf[T]) initializeCursorCache(maxSize int) {
+	if maxSize <= 0 {
+		s._cursorCache = nil
+		return
+	}
+	s._cursorCache = internalCommon.NewLRUCache[*Statement](maxSize)
+}
+
+// cacheCursors records the connection's live cursors in least-recently-used
+// order and returns the cursors that no longer fit in the cache.
+func (s *ttiShelf[T]) cacheCursors() []*Statement {
+	statements := s.GetStatements(false)
+	if s._cursorCache == nil {
+		return statements
+	}
+
+	sort.Slice(statements, func(i, j int) bool {
+		return statements[i].cursorLastUsed < statements[j].cursorLastUsed
+	})
+
+	var evicted []*Statement
+	for _, statement := range statements {
+		if statement.qualifiedQuery.cursorID == 0 || statement.cursorCachedAt == statement.cursorLastUsed {
+			continue
+		}
+		_, _, displaced, evictedOK := s._cursorCache.PutAndEvict(statement.cursorCacheKey(), statement)
+		statement.cursorCachedAt = statement.cursorLastUsed
+		if evictedOK && displaced != statement {
+			displaced.cursorCachedAt = 0
+			evicted = append(evicted, displaced)
+		}
+	}
+	return evicted
+}
+
+func (s *ttiShelf[T]) removeCachedCursor(statement *Statement) {
+	if s._cursorCache == nil || statement.qualifiedQuery.cursorID == 0 {
+		return
+	}
+	s._cursorCache.Remove(statement.cursorCacheKey())
+	statement.cursorCachedAt = 0
+}
+
+func (s *ttiShelf[T]) clearCachedCursors() {
+	if s._cursorCache != nil {
+		s._cursorCache.Clear()
+	}
+}
+
+func (s *ttiShelf[T]) nextCursorUseSequence() uint64 {
+	s._cursorUseSequence++
+	return s._cursorUseSequence
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].

@@ -69,6 +69,9 @@ type OracleDriverProperties struct {
 	//
 	// The default is 32 MiB.
 	DefaultLobPrefetchSize int `default:"33554432" validator:"validateZeroOrPositive"  help:"default prefetch size"`
+	// CursorCacheSize limits the number of server cursors retained by each
+	// pooled connection for reuse.
+	CursorCacheSize int `default:"10" validator:"validateZeroOrPositive" help:"maximum cached cursors per connection"`
 }
 
 func (config OracleDriverProperties) String() string {
@@ -81,6 +84,10 @@ func (config OracleDriverProperties) IsStrictNullValueHandling() bool {
 
 func (config OracleDriverProperties) GetDefaultLobPrefetchSize() int {
 	return config.DefaultLobPrefetchSize
+}
+
+func (config OracleDriverProperties) GetCursorCacheSize() int {
+	return config.CursorCacheSize
 }
 
 // OracleConnectionProperties contains Oracle Net connection properties used to

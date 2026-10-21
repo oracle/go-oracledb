@@ -41,12 +41,74 @@ package ttc
 import (
 	"context"
 	"database/sql/driver"
+	"strconv"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
+const resetStateLevel2 = 0x02
+
+// addCursorLifecycleCallbacks configures cursor cleanup before the end-request
+// marker, so any required OCCA messages remain part of the completed request.
+func addCursorLifecycleCallbacks(callbacks *requestCallbacks, c *connection) {
+	cacheSize := 10
+	if properties := c.shelf.GetConnectionProperties(); properties != nil {
+		cacheSize = properties.GetCursorCacheSize()
+	}
+	c.shelf.initializeCursorCache(cacheSize)
+
+	if c.resetStateEnabled() {
+		callbacks.appendRequestEndCallback(&requestBoundaryCallback{
+			description: "Invalidate cursors after reset state",
+			function:    c.invalidateCursors,
+		})
+		return
+	}
+	callbacks.appendRequestEndCallback(&requestBoundaryCallback{
+		description: "Cache idle cursors",
+		function:    c.cacheCursors,
+	})
+}
+
+func (c *connection) resetStateEnabled() bool {
+	if c.sessCtx == nil {
+		return false
+	}
+	value := c.sessCtx.GetSessionProperties().GetProperty(authResetState)
+	var resetState string
+	switch value := value.(type) {
+	case driverCommon.B1Array:
+		resetState = driverCommon.B1ArrayToString(value)
+	case *driverCommon.KeyValue:
+		resetState = driverCommon.B1ArrayToString(value.Value)
+	case string:
+		resetState = value
+	default:
+		return false
+	}
+	level, err := strconv.Atoi(resetState)
+	return err == nil && level&resetStateLevel2 != 0
+}
+
+func (c *connection) cacheCursors(context.Context) error {
+	for _, statement := range c.shelf.cacheCursors() {
+		if err := statement._closeCursor(); err != nil {
+			return driver.ErrBadConn
+		}
+	}
+	return nil
+}
+
+func (c *connection) invalidateCursors(context.Context) error {
+	for _, statement := range c.shelf.GetStatements(false) {
+		statement.markCursorClosed()
+	}
+	c.shelf.clearCachedCursors()
+	return nil
+}
+
 // ResetSession implements driver.SessionResetter.
-// - Closes statements that have been left open
 // - Runs request-start callbacks when the connection is borrowed from the pool
 // - Resets session properties
 // - Flushes piggyback messages
@@ -56,15 +118,6 @@ func (c *connection) ResetSession(ctx context.Context) error {
 	if c._isClosed || !c._isValid {
 		return driver.ErrBadConn
 	}
-	statements := c.shelf.GetStatements(true)
-	for _, statement := range statements {
-		if err := statement.Close(); err != nil {
-			common.Odl.Warn("Stale statement left in connection cannot be closed", "error", err)
-			c._isValid = false
-			return driver.ErrBadConn
-		}
-	}
-
 	// Run request-start callbacks. Return if a callback marks the connection bad.
 	common.Odl.Finest("Running request-start callbacks on ResetSession")
 	if err := runRequestBoundaryCallbacks(ctx, c._requestStartCallbacks); err != nil {
