@@ -45,74 +45,171 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-type transaction struct {
-	_underlyingConnection *connection
-	// the current transaction context
-	_transactionContext context.Context
+// oracleTx is the common transaction contract used by TTC transaction
+// lifecycle and message code.
+type oracleTx interface {
+	// transactionContext returns the context associated with the transaction.
+	transactionContext() context.Context
+	// underlyingConnection returns the connection associated with the transaction.
+	underlyingConnection() *connection
+	// transactionState changes the local state and returns the previous state.
+	transactionState(transactionState) transactionState
+	// currentTransactionState returns the current lifecycle state.
+	currentTransactionState() transactionState
+	// endTransaction records that the server has ended the transaction and
+	// applies any transaction-specific local cleanup.
+	endTransaction()
 }
 
-// newTransaction creates a new transaction with the given context
+// transactionState tracks the local and server-visible lifecycle of a
+// transaction. The server-started and server-ended states are set by the
+// server acknowledgment path: End-of-Call status for standard transactions
+// and SESSIONLESS_GTRID session-property changes for sessionless transactions.
+type transactionState uint8
+
+const (
+	// transactionPrepared means that the transaction has been prepared but not
+	// yet started (or resumed)
+	transactionPrepared transactionState = iota
+	// transactionStartedClient means the client has requested the transaction,
+	// but the server has not acknowledged it yet.
+	transactionStartedClient
+	// transactionStartedServer means the server has acknowledged the start.
+	transactionStartedServer
+	// transactionEndedClient means a client-side ending operation is in progress.
+	transactionEndedClient
+	// transactionEndedServer means the server has acknowledged the end.
+	transactionEndedServer
+)
+
+type transaction struct {
+	// _underlyingConnection is the connection that owns this transaction.
+	_underlyingConnection *connection
+	// _transactionContext is the context supplied when the transaction began.
+	_transactionContext context.Context
+	// _transactionState is the local lifecycle state and server acknowledgment.
+	_transactionState transactionState
+}
+
+// newTransaction creates a new transaction with the given connection and context.
 //
-// Parameters
-//   - ctx: the transaction context
+// Parameters:
+//   - conn: Connection associated with the transaction.
+//   - ctx: Context associated with the transaction.
+//
+// Returns:
+//   - *transaction: Initialized transaction.
 func newTransaction(conn *connection, ctx context.Context) *transaction {
 	return &transaction{
 		_underlyingConnection: conn,
 		_transactionContext:   ctx,
+		_transactionState:     transactionPrepared,
 	}
 }
 
-// getTransactionContext returns the current transaction context. This function
+// transactionContext returns the current transaction context. This function
 // can be used by statements to register after functions on the context in case
 // the context is cancelled during the execution.
-func (t *transaction) getTransactionContext() context.Context {
+//
+// Returns:
+//   - context.Context: Transaction context.
+func (t *transaction) transactionContext() context.Context {
 	return t._transactionContext
 }
 
-// Commit commits the transaction
+// underlyingConnection returns the connection associated with the transaction.
+//
+// Returns:
+//   - *connection: Transaction connection.
+func (t *transaction) underlyingConnection() *connection {
+	return t._underlyingConnection
+}
+
+// transactionState stores a lifecycle state and returns the previous one. It
+// is not synchronized; connection operations must be serialized.
+func (t *transaction) transactionState(state transactionState) transactionState {
+	previousState := t._transactionState
+	t._transactionState = state
+	return previousState
+}
+
+// currentTransactionState returns the current lifecycle state. Access relies
+// on serialized connection operations; concurrent use of a connection is not
+// supported.
+func (t *transaction) currentTransactionState() transactionState {
+	return t._transactionState
+}
+
+// endTransaction records the server-confirmed end of a standard transaction.
+func (t *transaction) endTransaction() {
+	t.transactionState(transactionEndedServer)
+	t.underlyingConnection().shelf.unregisterTransaction()
+}
+
+// Commit commits the transaction. The client-ended state is set before the
+// TTC operation begins; a failed operation restores the previous state, while
+// the server acknowledgment path records the server-ended state.
+//
+// Returns:
+//   - error: Error if no transaction is active or the commit fails.
 func (t *transaction) Commit() error {
+	return commitTransaction(t)
+}
+
+// commitTransaction commits the current transaction and updates local state
+// from the server response.
+func commitTransaction(t oracleTx) error {
 	common.Odl.Fine("Transaction commit")
-	if !t._underlyingConnection.shelf.isInTransaction() {
-		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
-	}
 
-	ctx := t._underlyingConnection.shelf.getTransaction().getTransactionContext()
-	readFuncError := t._underlyingConnection.runFunctionWithFunHeader(ctx, commit)
+	// get the current transaction, its context and execute commit
+	currentTransaction := t.underlyingConnection().shelf.getTransaction()
+	ctx := t.transactionContext()
+	previousState := t.transactionState(transactionEndedClient)
+	readFuncError := t.underlyingConnection().runTransactionEndingOperation(ctx, otxenCommit, currentTransaction)
 
-	if err := t._underlyingConnection.shelf.checkCurrentState(ctx); err != nil {
-		return err
-	}
-
+	// check for errors during the commit round-trip
 	if readFuncError != nil {
-		return t._underlyingConnection.shelf.LocalizeError(common.NewOracleError(oracleErrors.ErrorInTransaction, readFuncError, "Commit"))
+		if t.currentTransactionState() != transactionEndedServer {
+			common.Odl.Fine("An error occurred during transaction commit, changing transaction state back to previous state", "transaction state", previousState)
+			t.transactionState(previousState)
+		}
+		return t.underlyingConnection().shelf.LocalizeError(common.NewOracleError(oracleErrors.ErrorInTransaction, readFuncError, "Commit"))
 	}
 
-	t._underlyingConnection.shelf.unregisterTransaction()
 	return nil
 }
 
-// Rollback rolls back the transaction
+// Rollback rolls back the transaction. The client-ended state is set before
+// the TTC operation begins; a failed operation restores the previous state
+// unless the server has already acknowledged that the transaction ended.
+//
+// Returns:
+//   - error: Error if no transaction is active or the rollback fails.
 func (t *transaction) Rollback() error {
 	common.Odl.Fine("Transaction rollback")
-	if !t._underlyingConnection.shelf.isInTransaction() {
-		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
-	}
-
-	runFuncErr := t._underlyingConnection.runFunctionWithFunHeader(common.BackgroundContext, rollback)
-
-	if err := t._underlyingConnection.shelf.checkCurrentState(common.BackgroundContext); err != nil {
-		return err
-	}
-
-	if runFuncErr != nil {
-		return t._underlyingConnection.shelf.LocalizeError(common.NewOracleError(oracleErrors.ErrorInTransaction, runFuncErr, "Rollback"))
-	}
-
-	t._underlyingConnection.shelf.unregisterTransaction()
-	return nil
+	return endTransaction(t, common.BackgroundContext, t.rollback)
 }
 
-// newNotInTransactionError return a not in transaction error
-func newNotInTransactionError() error {
-	return common.NewOracleError(oracleErrors.NotInTransaction, nil, nil)
+// rollback sends the transaction abort operation using ctx.
+func (t *transaction) rollback(ctx context.Context) error {
+	return t.underlyingConnection().runTransactionEndingOperation(ctx, otxenAbort, t)
+}
+
+// endTransaction runs a transaction-ending operation and reconciles local
+// state with the server response.
+func endTransaction(t oracleTx, ctx context.Context, transactionEndingFunc func(context.Context) error) error {
+	// get the current transaction and execute rollback
+	previousState := t.transactionState(transactionEndedClient)
+	runFuncErr := transactionEndingFunc(ctx)
+
+	// check for errors during the rollback round-trip
+	if runFuncErr != nil {
+		if t.currentTransactionState() != transactionEndedServer {
+			common.Odl.Fine("An error occurred during transaction commit, changing transaction state back to previous state", "transaction state", previousState)
+			t.transactionState(previousState)
+		}
+		return t.underlyingConnection().shelf.LocalizeError(common.NewOracleError(oracleErrors.ErrorInTransaction, runFuncErr, "Rollback"))
+	}
+
+	return nil
 }

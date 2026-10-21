@@ -42,8 +42,10 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -73,6 +75,16 @@ type connection struct {
 
 // newConnection constructs a new Oracle connection wrapping negotiated state.
 // It returns an error when the server timezone cannot be initialized.
+//
+// Parameters:
+//   - ctx: Context used while initializing the connection.
+//   - shelf: TTC message, capability, and event state for the connection.
+//   - sessCtx: Session context negotiated with the server.
+//   - ns: Network session used by the connection.
+//
+// Returns:
+//   - *connection: Initialized connection.
+//   - error: Error if connection initialization fails.
 func newConnection(
 	ctx context.Context,
 	shelf *ttiShelf[driverCommon.MessageType],
@@ -87,7 +99,7 @@ func newConnection(
 		_isValid:  true,
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
-	_registerHandleConnectionShouldBeDropped(shelf, conn)
+	_registerHandleEndOfCallStatus(shelf, conn)
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
 		return nil, err
@@ -178,49 +190,126 @@ func (c *connection) cancelCurrentExecution(ctx context.Context) error {
 	return nil
 }
 
-// Handle invalidating connections when connectionStatusReceiver is received in
-// TTIOER or TTISTA due to planned-down.
-
-// connectionStatusProvider implemented by messages that may received end of
-// call status like TTIOER and TTISTA
+// connectionStatusProvider is implemented by messages that may receive
+// end-of-call status, such as TTIOER and TTISTA.
+//
+// An end-of-call status message contains information about the current
+// connection, such as whether it is being drained or has an active
+// transaction. Messages that implement this interface are handled by the
+// connection to update its status.
 type connectionStatusProvider interface {
-	// isBeingDrainned returns true if the connection should be dropped due to a
-	// planned-down, otherwise false
-	isBeingDrainned() bool
+	// isBeingDrained returns true if the connection should be dropped due to a
+	// planned-down; otherwise, it returns false.
+	//
+	// Returns:
+	//   - bool: Whether the connection should be dropped.
+	isBeingDrained() bool
+	// transactionState returns the End-of-Call transaction status reported by the server
+	//
+	// Returns:
+	//   - endOfCallStatusTransactionState: the status reported by the server
+	transactionState() endOfCallStatusTransactionState
 }
 
-// _registerHandleConnectionShouldBeDropped registers post unmarshal callbacks
-// that invalidates connections that should be dropped due to a planned-down
-func _registerHandleConnectionShouldBeDropped(shelf *ttiShelf[driverCommon.MessageType], connection *connection) {
+// _registerHandleEndOfCallStatus registers post-unmarshal callbacks that
+// handle end-of-call status messages.
+//
+// Parameters:
+//   - shelf: TTC shelf whose message streamer receives the callbacks.
+//   - connection: Connection whose validity is updated by the callbacks.
+//
+// Returns:
+//   - None. The callbacks are registered on the message streamer.
+func _registerHandleEndOfCallStatus(shelf *ttiShelf[driverCommon.MessageType], connection *connection) {
 	messageStreamer := shelf.GetMessageStreamer().(MessageStreamerInterface)
-	messageStreamer.RegisterPostUnmarshallCallback(TTIOER, connection._handleConnectionShouldBeDropped)
-	messageStreamer.RegisterPostUnmarshallCallback(TTISTA, connection._handleConnectionShouldBeDropped)
+	messageStreamer.RegisterPostUnmarshallCallback(TTIOER, connection._handleEndOfCallStatus)
+	messageStreamer.RegisterPostUnmarshallCallback(TTISTA, connection._handleEndOfCallStatus)
 }
 
-// _handleConnectionShouldBeDropped post unmarshal callback that invalidates
-// connections that should be dropped. Messages are kept in the queue to be
-// handled by the caller
-func (c *connection) _handleConnectionShouldBeDropped(msg driverCommon.Message[driverCommon.MessageType], _ error) (bool, error) {
-	// if connectionSouldBeDropped flag was received in TTISTA or TTIOER, it means
-	// that the connection is being drainned and it should be closed and not
+// _handleEndOfCallStatus is a post-unmarshal callback that handles end-of-call
+// messages. It can invalidate connections that should be dropped, or update the
+// connection's active transaction status. Messages are kept in the queue to be
+// handled by the caller.
+//
+// Parameters:
+//   - msg: Message containing end-of-call status.
+//   - _: Previous unmarshalling error, ignored by this callback.
+//
+// Returns:
+//   - bool: Always true so the message remains available to the caller.
+//   - error: Always nil.
+func (c *connection) _handleEndOfCallStatus(msg driverCommon.Message[driverCommon.MessageType], _ error) (bool, error) {
+	// If the connectionShouldBeDropped flag was received in TTISTA or TTIOER, it means
+	// that the connection is being drained and it should be closed and not
 	// released to the connection pool
-	c._isValid = !msg.(connectionStatusProvider).isBeingDrainned()
+	c._isValid = !msg.(connectionStatusProvider).isBeingDrained()
+	// check for active transaction
+	transactionState := msg.(connectionStatusProvider).transactionState()
+	currentTransaction := c.shelf.getTransaction()
+	switch transactionState {
+	case active:
+		if currentTransaction == nil {
+			// This should never happen. By default the driver is in auto-commit mode
+			// so no transaction is created.
+			common.Odl.Debug("The server has reported an active transaction and there is no active transaction in the client")
+		} else {
+			// The state is received on all round-trips, the state is only
+			// updated if it is still at transactionStartedClient.
+			if currentTransaction.currentTransactionState() == transactionStartedClient {
+				common.Odl.Fine("Transaction started on server")
+				// Standard transactions are acknowledged through End-of-Call
+				// status. Sessionless transactions use the SESSIONLESS_GTRID
+				// session-property event instead.
+				currentTransaction.transactionState(transactionStartedServer)
+			}
+		}
+	case inactive:
+		if currentTransaction != nil {
+			common.Odl.Fine("Transaction ended on server")
+			// The server no longer has a standard transaction that was
+			// registered locally.
+			currentTransaction.endTransaction()
+		} else {
+			// If this is a sessionless transaction, this happens if the
+			// transaction is a sessionless transaction. The GTRID update
+			// message is received before and unregisters the transaction
+			common.Odl.Fine("The server has reported the end of a transaction")
+		}
+	}
 	// return always true, the incoming message should be kept
 	return true, nil
 }
 
-// String implements the Stringer interface
+// String implements the Stringer interface.
+//
+// Returns:
+//   - string: Human-readable connection state.
 func (c *connection) String() string {
 	return fmt.Sprintf("Connection { isOpen: %v, isValid: %v }", !c._isClosed, c._isValid)
 }
 
+// registerEventListeners registers connection handlers for connection and
+// session-property events.
+//
+// Parameters:
+//   - service: Event service receiving the connection handlers.
+//
+// Returns:
+//   - None. The listeners are registered on service.
 func (c *connection) registerEventListeners(service *eventService) {
 	service.register(c, streamerStaleEvent)
 	service.register(c, streamerOverFlowEvent)
+	service.register(c, sessionPropertiesUpdateEvent)
 }
 
 // notify implements eventListener.
-func (c *connection) notify(event eventType) {
+//
+// Parameters:
+//   - event: Event received by the connection.
+//
+// Returns:
+//   - None. Connection state and transaction state may be updated in place.
+func (c *connection) notify(event eventType, e eventData) {
 	var wasValid = c._isValid == true
 	switch event {
 	case streamerStaleEvent:
@@ -229,11 +318,14 @@ func (c *connection) notify(event eventType) {
 	case streamerOverFlowEvent:
 		common.Odl.Fine("Connection.notify: streamer overflow received")
 		c._isValid = false
+	case sessionPropertiesUpdateEvent:
+		common.Odl.Debug("Connection.notify: session properties changed")
+		c.handleSessionPropertyChange(e)
 	default:
 		common.Odl.Fine("Connection.notify: received", "evt", event)
 	}
 	if wasValid == true && c._isValid == false {
-		c.shelf.getEventService().post(connectionInvalidatedEvent)
+		c.shelf.getEventService().post(connectionInvalidatedEvent, nil)
 	}
 }
 
@@ -332,4 +424,53 @@ func parseTimeZone(timezone string) (int, int, error) {
 	}
 
 	return sign * TZH, sign * TZM, nil
+}
+
+// handleSessionPropertyChange applies a sessionless transaction state change
+// reported through the SESSIONLESS_GTRID session property.
+func (c *connection) handleSessionPropertyChange(eventData eventData) {
+	updateEventData, _ := eventData.(sessionPropertiesUpdateEventData)
+	newValue := updateEventData.sessionProperties().GetProperty(sessionlessGlobalTransactionIDProperty)
+	sync, ok := newValue.(*sessionlessGlobalTransactionIDSync)
+	if !ok || sync == nil {
+		return
+	}
+
+	switch {
+	case sync.isSet() && sync.isStartSuspendClient():
+		// the client transaction has started on the server
+		common.Odl.Fine("Client transaction started", "global transaction ID", hex.EncodeToString(sync.globalTransactionID))
+		if sessionlessTx, ok := c.shelf.getTransaction().(*sessionlessTransaction); ok {
+			if !slices.Equal(sessionlessTx.globalTransactionID, sync.GlobalTransactionID()) {
+				sessionlessTx.globalTransactionID = sync.GlobalTransactionID()
+			}
+			sessionlessTx.transactionState(transactionStartedServer)
+		} else {
+			// This should never happen as this message indicates that the client
+			// started the transaction.
+			common.Odl.Debug("Got client sync message and no current sessionless transaction is registered")
+		}
+	case sync.isUnset() && sync.isStartSuspendClient():
+		// the client transaction has ended on the server
+		common.Odl.Fine("Client transaction suspended", "global transaction ID", hex.EncodeToString(sync.globalTransactionID))
+		if sessionlessTx, ok := c.shelf.getTransaction().(*sessionlessTransaction); ok {
+			sessionlessTx.endTransaction()
+		} else {
+			// This should never happen as this message indicates that the client
+			// started the transaction.
+			common.Odl.Debug("Got client sync message and no current sessionless transaction is registered")
+		}
+	case sync.isUnset() && sync.isEnded():
+		// the client transaction has ended on the server
+		common.Odl.Fine("Transaction ended", "global transaction ID", hex.EncodeToString(sync.globalTransactionID))
+		if sessionlessTx, ok := c.shelf.getTransaction().(*sessionlessTransaction); ok {
+			sessionlessTx.endTransaction()
+		} else {
+			common.Odl.Finest("Server initiated sessionless transaction ended on server.")
+		}
+	case sync.isSet() && sync.isStartSuspendServer():
+		common.Odl.Finest("Server transaction started, starting implicit transaction", "global transaction ID", hex.EncodeToString(sync.globalTransactionID))
+	case sync.isUnset() && sync.isStartSuspendServer():
+		common.Odl.Finest("Server transaction suspended, ending implicit transaction", "global transaction ID", hex.EncodeToString(sync.globalTransactionID))
+	}
 }

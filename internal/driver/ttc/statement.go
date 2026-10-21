@@ -211,7 +211,7 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 		// if in a transaction, add an after function on the transaction context
 		// that will cancel the statements context if the transaction context is
 		// cancelled triggering the break/reset protocol
-		stopTransAfterFunction := context.AfterFunc(s.shelf.getTransaction().getTransactionContext(), func() {
+		stopTransAfterFunction := context.AfterFunc(s.shelf.getTransaction().transactionContext(), func() {
 			cancelSubContext()
 		})
 		defer stopTransAfterFunction()
@@ -314,7 +314,7 @@ func (s *Statement) ExecContext(ctx context.Context, args []driver.NamedValue) (
 		// if in a transaction, add an after function on the transaction context
 		// that will cancel the statements context if the transaction context is
 		// cancelled triggering the break/reset protocol
-		stopTransAfterFunction := context.AfterFunc(s.shelf.getTransaction().getTransactionContext(), func() {
+		stopTransAfterFunction := context.AfterFunc(s.shelf.getTransaction().transactionContext(), func() {
 			cancelSubContext()
 		})
 		defer stopTransAfterFunction()

@@ -38,18 +38,51 @@
 
 package ttc
 
-import "github.com/oracle/go-oracledb/v26/internal/common"
+import (
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+)
 
+// eventType identifies an event dispatched to registered listeners.
 type eventType int
 
 const (
+	// connectionInvalidatedEvent signals that the connection has become unusable.
 	connectionInvalidatedEvent eventType = iota
+	// connectionClosedEvent signals that the connection has been closed.
 	connectionClosedEvent
-	streamerOverFlowEvent // too many incoming messages
-	streamerStaleEvent    // messages left unread
+	// streamerOverFlowEvent signals that the streamer received too many messages.
+	streamerOverFlowEvent
+	// streamerStaleEvent signals that unread messages remain in the streamer.
+	streamerStaleEvent
+	// sessionPropertiesUpdateEvent signals that session properties have changed.
+	sessionPropertiesUpdateEvent
 )
 
+// eventData carries the optional payload associated with a dispatched event.
+type eventData interface{}
+
+// sessionPropertiesUpdateEventData exposes the properties carried by a
+// sessionPropertiesUpdateEvent.
+type sessionPropertiesUpdateEventData interface {
+	eventData
+	sessionProperties() *driverCommon.Properties[string]
+}
+
+// propertiesEventData carries the updated session properties for an event.
+type propertiesEventData struct {
+	// properties contains the values to apply to the session.
+	properties *driverCommon.Properties[string]
+}
+
+// sessionProperties returns the properties carried by this event.
+func (p propertiesEventData) sessionProperties() *driverCommon.Properties[string] {
+	return p.properties
+}
+
+// eventService dispatches events to listeners registered for each event type.
 type eventService struct {
+	// listeners maps event types to their registered listeners.
 	listeners map[eventType][]eventListener
 }
 
@@ -61,7 +94,7 @@ type eventListener interface {
 	//   - event: the event type that was posted.
 	//
 	// Returns: none.
-	notify(event eventType)
+	notify(event eventType, data eventData)
 }
 
 // newEventService creates an event dispatcher with no registered listeners.
@@ -98,8 +131,8 @@ func (s *eventService) register(listener eventListener, event eventType) {
 //   - event: the event type to dispatch.
 //
 // Returns: none.
-func (s *eventService) post(event eventType) {
+func (s *eventService) post(event eventType, data eventData) {
 	for _, listener := range s.listeners[event] {
-		listener.notify(event)
+		listener.notify(event, data)
 	}
 }

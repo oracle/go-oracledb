@@ -177,10 +177,12 @@ func initMessagesFr() {
 		{oracleErrors.InvalidSqlOutParameter, "paramètre sql.Out non valide : %s"},
 		{oracleErrors.InvalidFileConfig, "échec du chargement de la configuration"},
 		{oracleErrors.NotInTransaction, "aucune transaction en cours"},
+		{oracleErrors.NotCurrentTransaction, "la transaction n'est pas la transaction courante"},
 		{oracleErrors.IsolationLevelNotSupported, "niveau d'isolation non pris en charge"},
 		{oracleErrors.AlreadyInTransaction, "niveau d'isolation non pris en charge"},
 		{oracleErrors.ErrorInTransaction, "une erreur s'est produite pendant l'opération de transaction %s"},
 		{oracleErrors.ConfigureTransactionError, "échec de la configuration de la transaction"},
+		{oracleErrors.StartResumeTransactionFailure, "échec du démarrage ou de la reprise de la transaction"},
 		{oracleErrors.AuthenticatorError, "une erreur s'est produite pendant l'authentification"},
 		{oracleErrors.NegotiatorError, "une erreur s'est produite pendant la négociation de la connexion"},
 		{oracleErrors.MarshalEngineError, "une erreur s'est produite pendant la sérialisation ou la désérialisation d'une valeur de type %s"},
@@ -198,6 +200,8 @@ func initMessagesFr() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "clé privée de jeton signé non valide"},
 		{oracleErrors.ExpiredToken, "le jeton d'accès a expiré"},
 		{oracleErrors.ProviderNotFound, "aucun fournisseur du type demandé n'a été trouvé"},
+		{oracleErrors.InvalidGlobalTransactionIDValue, "valeur non valide de l'identifiant global de transaction"},
+		{oracleErrors.InvalidSessionlessTransactionTimeout, "le délai de démarrage de la transaction sans session doit être supérieur à zéro"},
 	}
 
 	for _, translation := range translations {

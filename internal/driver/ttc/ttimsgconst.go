@@ -208,10 +208,6 @@ const (
 	/* back to what it was for the logon call */
 	owewnivc = 0x04 // null values not used in an
 	oerwcper = 0x20 // Pkg/proc created with - /* Where; set by parse */
-	// TtiEocEct : elapsed call time follows
-	TtiEocEct = 0x08
-	// TtiEocfDropWhenReturned indicates this connection is affected by a planned-down
-	TtiEocfDropWhenReturned common.UB4 = 0x00000800
 
 	// Piggyback/session property key for elastic pool LDR flag
 	al8kwPdbElasticPoolLdrStr = "AL8KW_PDB_ELASTIC_POOL_LDR"
