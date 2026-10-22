@@ -309,6 +309,8 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 	conf.ConnectionProperties.HttpsProxyPort = 9000
 	conf.ConnectionProperties.RetryDelay = 7
 	conf.ConnectionProperties.Compression = true
+	conf.ConnectionProperties.TokenAuth = "OCI_TOKEN"
+	conf.ConnectionProperties.TokenLocation = "/token/location"
 
 	params := conf.ToNSConnectionParameters()
 	if len(params) == 0 {
@@ -318,6 +320,8 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 		"ssl_server_cert_dn=\"CN=test\"": false,
 		"ssl_server_dn_match=false":      false,
 		"ssl_allow_weak_dn_match=false":  false,
+		"token_auth=OCI_TOKEN":           false,
+		"token_location=/token/location": false,
 		"https_proxy_port=9000":          false,
 		"connect_timeout=0":              false,
 		"expire_time=0":                  false,
