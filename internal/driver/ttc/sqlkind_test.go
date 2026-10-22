@@ -64,7 +64,6 @@ func TestClassifySQL_AllKinds(t *testing.T) {
 		{in: "alter session set nls_language='AMERICAN'", expect: other},
 		{in: "truncate table t", expect: other},
 	}
-
 	for i, tc := range cases {
 		got, err := newQualifiedSQLStatement(tc.in)
 		if err != nil {
@@ -79,6 +78,33 @@ func TestClassifySQL_AllKinds(t *testing.T) {
 	got, err := newQualifiedSQLStatement(" \n\t SeLeCt 1 from dual")
 	if err != nil || got.kind != select_ || strings.ToUpper(got.kind.String()) != "SELECT" {
 		t.Fatalf("whitespace/case-insensitive classification failed; got %q (%v)", got.kind.String(), got)
+	}
+}
+
+// TestClassifySQL_LeadingComments verifies SELECT classification after SQL
+// comments at the start of the statement.
+func TestClassifySQL_LeadingComments(t *testing.T) {
+	t.Parallel()
+	for _, query := range []string{
+		"/* leading block comment */ select 1 from dual",
+		"-- leading line comment\nselect 1 from dual",
+		" /* block */ -- line\nselect 1 from dual",
+	} {
+		got, err := newQualifiedSQLStatement(query)
+		if err != nil || got.kind != select_ {
+			t.Errorf("kind=%v err=%v for %q; want SELECT", got, err, query)
+		}
+	}
+}
+
+// TestClassifySQL_CTE verifies a SELECT that begins with a WITH clause is
+// classified as a query.
+func TestClassifySQL_CTE(t *testing.T) {
+	t.Parallel()
+	query := "WITH values_cte AS (SELECT 1 AS value FROM dual) SELECT value FROM values_cte"
+	got, err := newQualifiedSQLStatement(query)
+	if err != nil || got.kind != select_ {
+		t.Fatalf("kind=%v err=%v for %q; want SELECT", got, err, query)
 	}
 }
 
