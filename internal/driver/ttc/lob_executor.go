@@ -106,7 +106,7 @@ func (e *lobExecutor) SetShelf(shelf *driverCommon.Shelf[driverCommon.MessageTyp
 //   - LobExecError("read") wrapping TTC, protocol, or network failures raised while exchanging
 //     TTIRPA/TTILOBD messages to satisfy the read.
 func (e *lobExecutor) read(ctx context.Context, lobLocator *locator, numBytes driverCommon.UB8, outBuffer driverCommon.B1Array) (driverCommon.UB8, error) {
-	common.Odl.Debug("lobExecutor.read: begin", "offset", lobLocator.offset, "numBytes", numBytes)
+	common.Odl.Fine("lobExecutor.read: begin", "offset", lobLocator.offset, "numBytes", numBytes)
 	def := NewLobDefinitionForReadOperation(lobLocator, numBytes)
 
 	// updated during TTILOBD post unmarshal callback
@@ -117,7 +117,7 @@ func (e *lobExecutor) read(ctx context.Context, lobLocator *locator, numBytes dr
 		return 0, common.NewOracleError(oracleErrors.LobExecError, err, "read")
 	}
 
-	common.Odl.Debug("lobExecutor.read: completed", "bytesRead", e.lastBytesTransferred)
+	common.Odl.Fine("lobExecutor.read: completed", "bytesRead", e.lastBytesTransferred)
 	return e.lastBytesTransferred, nil
 }
 
@@ -139,7 +139,7 @@ func (e *lobExecutor) read(ctx context.Context, lobLocator *locator, numBytes dr
 //   - LobExecError("write") wraps TTC/protocol/network failures raised while executing OLOBOPS.
 func (e *lobExecutor) write(ctx context.Context, lobLocator *locator, inBuffer driverCommon.B1Array,
 	numBytes driverCommon.UB8) (driverCommon.UB8, error) {
-	common.Odl.Debug("lobExecutor.write: begin", "offset", lobLocator.offset, "numBytes", numBytes)
+	common.Odl.Fine("lobExecutor.write: begin", "offset", lobLocator.offset, "numBytes", numBytes)
 	// validateLobOperation ensures mutating operations honor locator capabilities.
 	if err := validateLobOperation(lobLocator, kplobWrite); err != nil {
 		common.Odl.Error("lobExecutor.write: validate failed", "error", err)
@@ -153,7 +153,7 @@ func (e *lobExecutor) write(ctx context.Context, lobLocator *locator, inBuffer d
 		return 0, common.NewOracleError(oracleErrors.LobExecError, err, "write")
 	}
 
-	common.Odl.Debug("lobExecutor.write: completed", "bytesWritten", def.lobAmt)
+	common.Odl.Fine("lobExecutor.write: completed", "bytesWritten", def.lobAmt)
 	return def.lobAmt, nil
 }
 
@@ -170,7 +170,7 @@ func (e *lobExecutor) write(ctx context.Context, lobLocator *locator, inBuffer d
 //   - LobExecError("get-length") wraps TTC/protocol/network failures raised while exchanging
 //     TTIRPA messages required to obtain the length.
 func (e *lobExecutor) GetLength(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
-	common.Odl.Debug("lobExecutor.getLength: begin")
+	common.Odl.Fine("lobExecutor.getLength: begin")
 	def := NewLobDefinitionForGetLengthOperation(lobLocator)
 
 	if err := e.execute(ctx, def); err != nil {
@@ -178,7 +178,7 @@ func (e *lobExecutor) GetLength(ctx context.Context, lobLocator *locator) (drive
 		return 0, common.NewOracleError(oracleErrors.LobExecError, err, "get-length")
 	}
 
-	common.Odl.Debug("lobExecutor.getLength: completed", "length", def.lobAmt)
+	common.Odl.Fine("lobExecutor.getLength: completed", "length", def.lobAmt)
 	return def.lobAmt, nil
 }
 
@@ -195,7 +195,7 @@ func (e *lobExecutor) GetLength(ctx context.Context, lobLocator *locator) (drive
 //   - LobExecError("get-chunk-size") wraps TTC/protocol/network failures raised while exchanging
 //     TTIRPA messages required to obtain the chunk size.
 func (e *lobExecutor) GetChunkSize(ctx context.Context, lobLocator *locator) (driverCommon.UB8, error) {
-	common.Odl.Debug("lobExecutor.getChunkSize: begin")
+	common.Odl.Fine("lobExecutor.getChunkSize: begin")
 	def := NewLobDefinitionForGetChunkSizeOperation(lobLocator)
 
 	if err := e.execute(ctx, def); err != nil {
@@ -203,7 +203,7 @@ func (e *lobExecutor) GetChunkSize(ctx context.Context, lobLocator *locator) (dr
 		return 0, common.NewOracleError(oracleErrors.LobExecError, err, "get-chunk-size")
 	}
 
-	common.Odl.Debug("lobExecutor.getChunkSize: completed", "chunkSize", def.lobAmt)
+	common.Odl.Fine("lobExecutor.getChunkSize: completed", "chunkSize", def.lobAmt)
 	return def.lobAmt, nil
 }
 
@@ -221,7 +221,7 @@ func (e *lobExecutor) GetChunkSize(ctx context.Context, lobLocator *locator) (dr
 //   - LobExecError("trim") wraps TTC/protocol/network failures raised while exchanging TTIRPA
 //     messages required to perform the Trim.
 func (e *lobExecutor) Trim(ctx context.Context, lobLocator *locator, newLength driverCommon.UB8) (driverCommon.UB8, error) {
-	common.Odl.Debug("lobExecutor.trim: begin", "newLength", newLength)
+	common.Odl.Fine("lobExecutor.trim: begin", "newLength", newLength)
 	if err := validateLobOperation(lobLocator, kplobTrim); err != nil {
 		common.Odl.Error("lobExecutor.trim: validate failed", "error", err)
 		return 0, err
@@ -233,7 +233,7 @@ func (e *lobExecutor) Trim(ctx context.Context, lobLocator *locator, newLength d
 		return 0, common.NewOracleError(oracleErrors.LobExecError, err, "trim")
 	}
 
-	common.Odl.Debug("lobExecutor.trim: completed", "resultLength", def.lobAmt)
+	common.Odl.Fine("lobExecutor.trim: completed", "resultLength", def.lobAmt)
 	return def.lobAmt, nil
 }
 
@@ -263,7 +263,7 @@ func (e *lobExecutor) Trim(ctx context.Context, lobLocator *locator, newLength d
 
 func (e *lobExecutor) open(ctx context.Context, lobLocator *locator, mode LobOpenMode) (bool, error) {
 	didOpen := false
-	common.Odl.Debug("lobExecutor.open: begin", "mode", mode, "operation", e.openOperation)
+	common.Odl.Fine("lobExecutor.open: begin", "mode", mode, "operation", e.openOperation)
 	if lobLocator.isQuasiLocator() {
 		return didOpen, nil
 	}
@@ -301,7 +301,7 @@ func (e *lobExecutor) open(ctx context.Context, lobLocator *locator, mode LobOpe
 		didOpen = true
 	}
 
-	common.Odl.Debug("lobExecutor.open: completed", "serverReportedOpen", didOpen)
+	common.Odl.Fine("lobExecutor.open: completed", "serverReportedOpen", didOpen)
 	return didOpen, nil
 }
 
@@ -316,7 +316,7 @@ func (e *lobExecutor) open(ctx context.Context, lobLocator *locator, mode LobOpe
 //   - InvalidLOBBuffer when the locator is already closed for local-only operations.
 //   - LobExecError("close") wrapping TTC/protocol/network failures raised while executing OLOBOPS.
 func (e *lobExecutor) close(ctx context.Context, lobLocator *locator) error {
-	common.Odl.Debug("lobExecutor.close: begin", "operation", e.closeOperation)
+	common.Odl.Fine("lobExecutor.close: begin", "operation", e.closeOperation)
 	if lobLocator.isQuasiLocator() {
 		return nil
 	}
@@ -345,7 +345,7 @@ func (e *lobExecutor) close(ctx context.Context, lobLocator *locator) error {
 		return common.NewOracleError(oracleErrors.LobExecError, err, "close")
 	}
 
-	common.Odl.Debug("lobExecutor.close: completed")
+	common.Odl.Fine("lobExecutor.close: completed")
 	return nil
 }
 
@@ -360,7 +360,7 @@ func (e *lobExecutor) close(ctx context.Context, lobLocator *locator) error {
 // Errors:
 //   - LobExecError("is-open") wrapping TTC/protocol/network failures raised while executing OLOBOPS.
 func (e *lobExecutor) IsOpen(ctx context.Context, lobLocator *locator) (bool, error) {
-	common.Odl.Debug("lobExecutor.isOpen: begin", "operation", e.isOpenOperation)
+	common.Odl.Fine("lobExecutor.isOpen: begin", "operation", e.isOpenOperation)
 	if lobLocator.isQuasiLocator() {
 		return false, nil
 	}
@@ -381,7 +381,7 @@ func (e *lobExecutor) IsOpen(ctx context.Context, lobLocator *locator) (bool, er
 		return false, common.NewOracleError(oracleErrors.LobExecError, err, "is-open")
 	}
 
-	common.Odl.Debug("lobExecutor.isOpen: completed", "isOpen", def.lobNull)
+	common.Odl.Fine("lobExecutor.isOpen: completed", "isOpen", def.lobNull)
 	return def.lobNull, nil
 }
 
@@ -431,25 +431,25 @@ func validateLobOperation(lobLocator *locator, operation lobOperationCode) error
 // operations. It registers only the TTIRPA unmarshalling callback, pushes the request, flushes the
 // streamer, and drains TTC responses until completion or failure.
 func (e *lobExecutor) execute(ctx context.Context, lobDefinition *lobDefinition) error {
-	common.Odl.Debug("lobExecutor.execute: start", "operation", lobDefinition.operation, "definition", lobDefinition)
+	common.Odl.Fine("lobExecutor.execute: start", "operation", lobDefinition.operation, "definition", lobDefinition)
 
 	stmr, _ := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
 	e._registerLobRPACallback(lobDefinition)
-	common.Odl.Debug("lobExecutor.execute: registered RPA callback")
+	common.Odl.Fine("lobExecutor.execute: registered RPA callback")
 	defer stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
 
 	if err := e._pushLobRequest(ctx, lobDefinition); err != nil {
 		common.Odl.Error("lobExecutor.execute: push lob request failed", "error", err)
 		return err
 	}
-	common.Odl.Debug("lobExecutor.execute: pushed lob request")
+	common.Odl.Fine("lobExecutor.execute: pushed lob request")
 
 	if err := stmr.Flush(ctx); err != nil {
 		common.Odl.Error("lobExecutor.execute: Flush failed", "error", err)
 		return common.NewOracleError(oracleErrors.LobExecError, err, "flush")
 	}
-	common.Odl.Debug("lobExecutor.execute: flush completed")
+	common.Odl.Fine("lobExecutor.execute: flush completed")
 
 	return e._consumeLobResponses(ctx)
 }
@@ -462,7 +462,7 @@ func (e *lobExecutor) execute(ctx context.Context, lobDefinition *lobDefinition)
 // verbs, pushes the request, flushes the streamer, and then drains TTC responses until completion
 // or failure.
 func (e *lobExecutor) executeRead(ctx context.Context, lobDefinition *lobDefinition, buffer driverCommon.B1Array) error {
-	common.Odl.Debug("lobExecutor.executeRead: start", "operation", lobDefinition.operation, "definition", lobDefinition)
+	common.Odl.Fine("lobExecutor.executeRead: start", "operation", lobDefinition.operation, "definition", lobDefinition)
 
 	stmr, _ := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
@@ -472,25 +472,25 @@ func (e *lobExecutor) executeRead(ctx context.Context, lobDefinition *lobDefinit
 		common.Odl.Error("lobExecutor.executeRead: register LOBD callback failed", "error", err)
 		return err
 	}
-	common.Odl.Debug("lobExecutor.executeRead: registered LOBD callbacks")
+	common.Odl.Fine("lobExecutor.executeRead: registered LOBD callbacks")
 	defer stmr.UnRegisterPreUnmarshallCallback(TTILOBD)
 	defer stmr.UnRegisterPostUnmarshallCallback(TTILOBD)
 
 	e._registerLobRPACallback(lobDefinition)
-	common.Odl.Debug("lobExecutor.executeRead: registered RPA callback")
+	common.Odl.Fine("lobExecutor.executeRead: registered RPA callback")
 	defer stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
 
 	if err := e._pushLobRequest(ctx, lobDefinition); err != nil {
 		common.Odl.Error("lobExecutor.executeRead: push lob request failed", "error", err)
 		return err
 	}
-	common.Odl.Debug("lobExecutor.executeRead: pushed lob request")
+	common.Odl.Fine("lobExecutor.executeRead: pushed lob request")
 
 	if err := stmr.Flush(ctx); err != nil {
 		common.Odl.Error("lobExecutor.executeRead: Flush failed", "error", err)
 		return common.NewOracleError(oracleErrors.LobExecError, err, "flush")
 	}
-	common.Odl.Debug("lobExecutor.executeRead: flush completed")
+	common.Odl.Fine("lobExecutor.executeRead: flush completed")
 
 	return e._consumeLobResponses(ctx)
 }
@@ -502,19 +502,19 @@ func (e *lobExecutor) executeRead(ctx context.Context, lobDefinition *lobDefinit
 // request followed by the write payload, flushes the streamer, and then drains TTC responses until
 // completion or failure.
 func (e *lobExecutor) executeWrite(ctx context.Context, lobDefinition *lobDefinition, buffer driverCommon.B1Array) error {
-	common.Odl.Debug("lobExecutor.executeWrite: start", "operation", lobDefinition.operation, "definition", lobDefinition)
+	common.Odl.Fine("lobExecutor.executeWrite: start", "operation", lobDefinition.operation, "definition", lobDefinition)
 
 	stmr, _ := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
 	e._registerLobRPACallback(lobDefinition)
-	common.Odl.Debug("lobExecutor.executeWrite: registered RPA callback")
+	common.Odl.Fine("lobExecutor.executeWrite: registered RPA callback")
 	defer stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
 
 	if err := e._pushLobRequest(ctx, lobDefinition); err != nil {
 		common.Odl.Error("lobExecutor.executeWrite: push lob request failed", "error", err)
 		return err
 	}
-	common.Odl.Debug("lobExecutor.executeWrite: pushed lob request")
+	common.Odl.Fine("lobExecutor.executeWrite: pushed lob request")
 
 	// Write operations send client bytes inside a TTILOBD payload flushed immediately after the request.
 	// Non-write verbs (read/metadata) bypass this path because no client data needs to be transmitted.
@@ -522,13 +522,13 @@ func (e *lobExecutor) executeWrite(ctx context.Context, lobDefinition *lobDefini
 		common.Odl.Error("lobExecutor.executeWrite: push write payload failed", "error", err)
 		return err
 	}
-	common.Odl.Debug("lobExecutor.executeWrite: pushed write payload")
+	common.Odl.Fine("lobExecutor.executeWrite: pushed write payload")
 
 	if err := stmr.Flush(ctx); err != nil {
 		common.Odl.Error("lobExecutor.executeWrite: Flush failed", "error", err)
 		return common.NewOracleError(oracleErrors.LobExecError, err, "flush")
 	}
-	common.Odl.Debug("lobExecutor.executeWrite: flush completed")
+	common.Odl.Fine("lobExecutor.executeWrite: flush completed")
 
 	return e._consumeLobResponses(ctx)
 }
@@ -615,21 +615,21 @@ func (e *lobExecutor) _consumeLobResponses(ctx context.Context) error {
 
 		switch msg.GetMsgCode() {
 		case TTILOBD:
-			common.Odl.Debug("lobExecutor.consumeLobResponses: TTILOBD received")
+			common.Odl.Fine("lobExecutor.consumeLobResponses: TTILOBD received")
 		case TTIRPA:
-			common.Odl.Debug("lobExecutor.consumeLobResponses: TTIRPA received")
+			common.Odl.Fine("lobExecutor.consumeLobResponses: TTIRPA received")
 		case TTIOER:
-			common.Odl.Debug("lobExecutor.consumeLobResponses: TTIOER received")
+			common.Odl.Fine("lobExecutor.consumeLobResponses: TTIOER received")
 			oer := msg.(tTIOerIface)
 			if lobErr := oer.getError(); lobErr != nil {
 				common.Odl.Error("lobExecutor.consumeLobResponses: TTIOER error", "error", lobErr)
 				return lobErr
 			}
-			common.Odl.Debug("lobExecutor.consumeLobResponses: completed with TTIOER")
+			common.Odl.Fine("lobExecutor.consumeLobResponses: completed with TTIOER")
 			return nil
 		case TTISTA:
 			// TODO: nothing to do with this information for now
-			common.Odl.Debug("lobExecutor.consumeLobResponses: completed with TTISTA")
+			common.Odl.Fine("lobExecutor.consumeLobResponses: completed with TTISTA")
 			return nil
 		}
 	}
@@ -651,7 +651,7 @@ func (e *lobExecutor) _consumeLobResponses(ctx context.Context) error {
 // //   - Copies the locators into the buffer so doFreeLobPiggyback can transmit them during the next
 // //     database call.
 // func (e *lobExecutor) copyTemporaryLobToFree(lobLocators common.B1Array) {
-// 	common.Odl.Debug("lobExecutor.copyTemporaryLobToFree: queue", "locatorsLen", len(lobLocators))
+// 	common.Odl.Fine("lobExecutor.copyTemporaryLobToFree: queue", "locatorsLen", len(lobLocators))
 
 // 	needed := int(e.tempLobFreeOffset) + len(lobLocators)
 // 	if len(e.tempLobsToFree) < needed {
@@ -668,7 +668,7 @@ func (e *lobExecutor) _consumeLobResponses(ctx context.Context) error {
 
 // // setTempLobFreeState installs the piggyback buffer state used to defer temporary LOB frees.
 // func (e *lobExecutor) setTempLobFreeState(offset common.UB4, locators common.B1Array) {
-// 	common.Odl.Debug("lobExecutor.setTempLobFreeState", "offset", offset, "locatorsLen", len(locators))
+// 	common.Odl.Fine("lobExecutor.setTempLobFreeState", "offset", offset, "locatorsLen", len(locators))
 // 	e.tempLobFreeOffset = offset
 // 	e.tempLobsToFree = locators
 // 	e.tempLobFreeCount = 0

@@ -129,7 +129,7 @@ type Statement struct {
 	stmtCancellation       statemementCancellationFunction
 	queryStatementExecutor QueryWithContext
 	execStatementExecutor  ExecWithContext
-	_rows                  *ttcRows // reference on created Rows.
+	_rows                  driver.Rows // reference on created Rows.
 }
 
 /*
@@ -218,7 +218,7 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 	}
 	selectedRows, e := s.queryStatementExecutor.QueryContext(subContext, s.qualifiedQuery, args)
 	if e == nil {
-		s._rows = selectedRows.(*ttcRows)
+		s._rows = selectedRows
 	}
 
 	if err := s.shelf.checkCurrentState(ctx); err != nil {
@@ -230,20 +230,18 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 
 // _closeCursor closes the statement cursorID if not 0
 func (s *Statement) _closeCursor() error {
-	if s.qualifiedQuery.cursorId == 0 {
+	if s.qualifiedQuery.cursorID == 0 {
 		return nil
 	}
-	// Build OCCA from factory.
-	factory := s.shelf.GetMessageFactory()
-	msg, err := factory.GetMessageForFunction(TTIPFN, occa)
+	msg, err := s.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
 	if err != nil {
 		common.Odl.Error("Statement.Close: GetMessageForFunction(TTIPFN,occa) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
 
-	common.Odl.Debug("Closing cursorId", "ID", s.qualifiedQuery.cursorId)
+	common.Odl.Debug("Closing cursorID", "ID", s.qualifiedQuery.cursorID)
 	occaMsg := msg.(*tTIOcca)
-	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(s.qualifiedQuery.cursorId)})
+	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(s.qualifiedQuery.cursorID)})
 
 	// Push (no flush; keep existing previous behavior).
 	stmr := s.shelf.GetMessageStreamer().(MessageStreamerInterface)
@@ -251,7 +249,7 @@ func (s *Statement) _closeCursor() error {
 		common.Odl.Error("Statement.Close: Push(OCCA) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
-	s.qualifiedQuery.cursorId = 0
+	s.qualifiedQuery.cursorID = 0
 	return nil
 }
 

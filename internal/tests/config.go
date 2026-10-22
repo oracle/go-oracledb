@@ -96,13 +96,15 @@ type TestConfig struct {
 	}
 
 	Database struct {
-		ServiceName  string
-		SIDName      string `json:",omitempty"`
-		InstanceName string `json:",omitempty"`
-		Port         int16
-		Host         string
-		Protocol     string
-		ServerType   string `json:",omitempty"`
+		ServiceName    string
+		SIDName        string `json:",omitempty"`
+		InstanceName   string `json:",omitempty"`
+		Port           int16
+		Host           string
+		Protocol       string
+		ServerType     string `json:",omitempty"`
+		HTTPSProxy     string `json:",omitempty"`
+		HTTPSProxyPort int16  `json:",omitempty"`
 	}
 
 	Credentials struct {
@@ -345,6 +347,8 @@ func (t *TestConfig) Clone() *TestConfig {
 	newOne.Database.Port = t.Database.Port
 	newOne.Database.Protocol = t.Database.Protocol
 	newOne.Database.ServerType = t.Database.ServerType
+	newOne.Database.HTTPSProxy = t.Database.HTTPSProxy
+	newOne.Database.HTTPSProxyPort = t.Database.HTTPSProxyPort
 
 	newOne.Credentials.Username = t.Credentials.Username
 	newOne.Credentials.Password = t.Credentials.Password
@@ -380,6 +384,8 @@ func (t *TestConfig) MergeWith(from *TestConfig) {
 	assignIntIfNeeded(&(t.Database.Port), from.Database.Port)
 	assignStringIfNeeded(&(t.Database.Host), from.Database.Protocol)
 	assignStringIfNeeded(&(t.Database.Protocol), from.Database.Protocol)
+	assignStringIfNeeded(&(t.Database.HTTPSProxy), from.Database.HTTPSProxy)
+	assignIntIfNeeded(&(t.Database.HTTPSProxyPort), from.Database.HTTPSProxyPort)
 
 	assignStringIfNeeded(&(t.Credentials.Username), from.Credentials.Username)
 	assignStringIfNeeded(&(t.Credentials.Password), from.Credentials.Password)
@@ -408,7 +414,7 @@ func (t *TestConfig) GetConnectionStringWithProperties(properties map[string]str
 			b.WriteString(fmt.Sprintf("(%s=%s)", k, v))
 		}
 	}
-	res := fmt.Sprintf("%s/%s@(description=%s(address=(protocol=%s)(host=%s)(port=%d))(connect_data=",
+	res := fmt.Sprintf("%s/%s@(description=%s(address=(protocol=%s)(host=%s)(port=%d)",
 		t.Credentials.Username,
 		t.Credentials.Password,
 		b.String(),
@@ -418,6 +424,13 @@ func (t *TestConfig) GetConnectionStringWithProperties(properties map[string]str
 
 	var resC strings.Builder
 	resC.WriteString(res)
+	if t.Database.HTTPSProxy != "" {
+		resC.WriteString(fmt.Sprintf("(https_proxy=%s)", t.Database.HTTPSProxy))
+		if t.Database.HTTPSProxyPort != 0 {
+			resC.WriteString(fmt.Sprintf("(https_proxy_port=%d)", t.Database.HTTPSProxyPort))
+		}
+	}
+	resC.WriteString(")(connect_data=")
 	if len(t.Database.ServiceName) > 0 {
 		resC.WriteString(fmt.Sprintf("(service_name=%s)", t.Database.ServiceName))
 		if len(t.Database.InstanceName) > 0 {
@@ -485,7 +498,7 @@ func NewTestingEnvironment(fileName string) (TestingEnvironment, error) {
 
 	_, err := os.Stat(fileName)
 	if os.IsNotExist(err) {
-		return TestingEnvironment{}, fmt.Errorf("specified configuration file %s do not exists", fileName)
+		return TestingEnvironment{}, fmt.Errorf("specified configuration file %s does not exist", fileName)
 	}
 
 	f, err := os.Open(fileName)
@@ -521,7 +534,7 @@ func NewTestingEnvironment(fileName string) (TestingEnvironment, error) {
 // Error: config is not found or disabled
 func (e *TestingEnvironment) GetConfig(name string) (*TestConfig, error) {
 	if e.driverConfigs == nil {
-		return nil, fmt.Errorf("attempt to get a configuration but not configuration available")
+		return nil, fmt.Errorf("attempted to get a configuration, but no configurations are available")
 	}
 	for _, config := range e.driverConfigs {
 		if config.ConfigName == name {

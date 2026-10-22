@@ -57,13 +57,13 @@ const (
 // method from blocking indefinitely
 func (c *connection) Close() error {
 	var nsDisconnectErr error
-	common.Odl.Debug("Closing connection")
+	common.Odl.Fine("Closing connection")
 	// Create a context with timeout, this context will prevent this action from
 	// blocking indefinitely
 	ctx, cancel := context.WithTimeout(context.Background(), _connCloseTimeout)
 	defer cancel()
 
-	common.Odl.Debug("Closing statements")
+	common.Odl.Fine("Closing statements")
 	// We do close opened statements as they are automatically closed by the
 	// server. So we just drain the list of statements
 	_ = c.shelf.GetStatements(true)
@@ -75,7 +75,7 @@ func (c *connection) Close() error {
 	// the context, we are checking it here.
 	disconnect := make(chan error)
 	go func() {
-		common.Odl.Debug("Closing network connection")
+		common.Odl.Fine("Closing network connection")
 		disconnect <- c.ns.Disconnect(ctx, _disconnectFlag)
 	}()
 

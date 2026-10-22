@@ -41,13 +41,10 @@ package ttc
 import (
 	"bytes"
 	"context"
-	"io"
-	"log/slog"
 	"strings"
 	"testing"
 	"unicode/utf16"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
@@ -68,9 +65,7 @@ const nclobReadIsNCLOB = true
 // data by rune boundaries.
 func TestClobExecutor_ReadNCLOB(t *testing.T) {
 	t.Parallel()
-	originalLogger := common.Odl
-	common.Odl = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	t.Cleanup(func() { common.Odl = originalLogger })
+
 	ctx := context.Background()
 	wantMarshal, shelf, dbuf, marshalWritePosition := setUpReadScenario(t, nclobReadMarshalGoldenPayload, nclobReadResponseGoldenPayload, 131072)
 
@@ -106,9 +101,7 @@ func TestClobExecutor_ReadNCLOB(t *testing.T) {
 // multilingual input.
 func TestClobExecutor_WriteNCLOB(t *testing.T) {
 	t.Parallel()
-	originalLogger := common.Odl
-	common.Odl = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	t.Cleanup(func() { common.Odl = originalLogger })
+
 	ctx := context.Background()
 	shelf, _, dbuf := newLobTestShelf(65536)
 	locator := make(driverCommon.B1Array, len(nclobWriteLocator))

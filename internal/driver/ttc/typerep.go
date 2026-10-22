@@ -159,7 +159,7 @@ const (
 	DtyK2Rpc    DtyType = 99 + DtyExpBase  // RPC between transaction managers
 	DtyIbFloat  DtyType = 100              // Canonical representation of IEEE754 Float
 	DtyIbDouble DtyType = 101              // Canonical representation of IEEE754 Double
-	DtyCur      DtyType = 102              // ref cursorId type SQLT_CUR // Operating system dependent data types -- for user->oracle conversions
+	DtyCur      DtyType = 102              // REF CURSOR type (SQLT_CUR); OS-dependent data type for user-to-Oracle conversions
 	DtyXdp      DtyType = 103 + DtyExpBase // direct path Export
 	DtyRdd      DtyType = 104              // rowid descriptor
 	DtyArr      DtyType = Dty70            // array column type (recycled) %TEMPORARY%
@@ -321,7 +321,7 @@ const (
 	DtyMss           DtyType = 514 // migration session state
 	DtyAbs           DtyType = 515 // abstract type
 	DtyKpc           DtyType = 516 // KPS Component Union ///
-	DtyCrs           DtyType = 517 // cursorId state
+	DtyCrs           DtyType = 517 // cursor ID state
 	DtyKks           DtyType = 518 // KKS state
 	DtyKsp           DtyType = 519 // parameter marshal for tsm
 	DtyKspTop        DtyType = 520 // top level parameter marshal for tsm
@@ -421,6 +421,7 @@ const (
 	DtyPlbgn         DtyType = 661              // Pipeline Begin piggyback
 	DtyUds           DtyType = 663              // version 23 udsdef
 	DtyPlopn         DtyType = 665              // Pipeline Operatiion piggyback
+	DtyKve           DtyType = 669              // Key value pair element with name
 )
 
 const (
@@ -502,8 +503,7 @@ type representationTable struct {
 	representations  []int16
 	conversionFlags  byte
 	serverConversion bool
-	// keep track of native types being wether UNIVERSAL
-	// or NATIVE
+	// Keep track of whether native types are UNIVERSAL or NATIVE.
 	nativeTypesRepresentation [5]byte
 }
 
@@ -548,8 +548,8 @@ func (t *representationTable) MarshalTo(ctx context.Context, mar driverCommon.Ma
 	return nil
 }
 
-// UnMarshalFrom unmarshal the type representations.
-func (t *representationTable) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+// UnmarshalFrom unmarshal the type representations.
+func (t *representationTable) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	var b driverCommon.UB2
 	var err error
 

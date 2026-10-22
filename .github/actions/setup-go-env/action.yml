@@ -4,7 +4,7 @@ description: Shared Go environment setup
 inputs:
   go-version:
     required: false
-    default: '1.26.6'
+    default: '1.26.9'
 
 runs:
   using: composite

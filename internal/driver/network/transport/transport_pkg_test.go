@@ -71,6 +71,9 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestConfigureSocketBuffers", Categories: "unitary", Exclusive: false, Fn: TestConfigureSocketBuffers},
+	{Name: "TestConfigureSocketBuffersErrors", Categories: "unitary", Exclusive: false, Fn: TestConfigureSocketBuffersErrors},
+	{Name: "TestNormalizeDialError_PreservesDNSTimeout", Categories: "unitary", Exclusive: false, Fn: TestNormalizeDialError_PreservesDNSTimeout},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_HappyPath", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_HappyPath},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_NilBlock", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_NilBlock},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_WrongBlockType", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_WrongBlockType},
@@ -97,8 +100,16 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestVerifyDNWithMultiValuedRDN", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNWithMultiValuedRDN},
 	{Name: "TestVerifyDNAllowsAliases", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNAllowsAliases},
 	{Name: "TestVerifyDNAllowsRepeatedAttributeAcrossRDNs", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNAllowsRepeatedAttributeAcrossRDNs},
+	{Name: "TestParseDNAttributeDecodesEscapedValues", Categories: "unitary", Exclusive: false, Fn: TestParseDNAttributeDecodesEscapedValues},
 	{Name: "TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSDisconnectPreservesProcessedWalletForRedirectReuse},
 	{Name: "TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse},
+	{Name: "TestNTTCPConnectThroughHTTPSProxy", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxy},
+	{Name: "TestNTTCPConnectThroughHTTPSProxyRejectsNonSuccess", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyRejectsNonSuccess},
+	{Name: "TestNTTCPConnectThroughHTTPSProxyMalformedResponse", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyMalformedResponse},
+	{Name: "TestNTTCPConnectThroughHTTPSProxyConnectionClosed", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyConnectionClosed},
+	{Name: "TestNTTCPConnectThroughHTTPSProxyTimeout", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyTimeout},
+	{Name: "TestHTTPSProxyPortOrDefault", Categories: "unitary", Exclusive: false, Fn: TestHTTPSProxyPortOrDefault},
+	{Name: "TestNTTCPConnectThroughHTTPSProxyDialFailure", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectThroughHTTPSProxyDialFailure},
 	{Name: "TestDecrypt_UnsupportedOID", Categories: "unitary", Exclusive: false, Fn: TestDecrypt_UnsupportedOID},
 	{Name: "TestNTTCPSProcessWalletRejectsWalletWithoutCertificatesEvenWithSystemTrust", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSProcessWalletRejectsWalletWithoutCertificatesEvenWithSystemTrust},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength},

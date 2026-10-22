@@ -192,17 +192,34 @@ func TestVerifyDNWithMultiValuedRDN(t *testing.T) {
 	}
 }
 
-// TestVerifyDNAllowsAliases verifies that S and E use the same OIDs as ST and emailAddress.
+// TestVerifyDNAllowsAliases verifies that S and the PKCS #9 email aliases use
+// the same OIDs as ST and emailAddress, while MAIL uses the LDAP mail OID.
 func TestVerifyDNAllowsAliases(t *testing.T) {
 	t.Parallel()
-	cert := testCertificateWithSubject(t, pkix.RDNSequence{
-		{{Type: asn1.ObjectIdentifier{2, 5, 4, 6}, Value: "US"}},
-		{{Type: asn1.ObjectIdentifier{2, 5, 4, 8}, Value: "California"}},
-		{{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "admin@example.com"}},
-	})
 
-	if err := verifyDN(cert, `E=admin@example.com,S=California,C=US`); err != nil {
-		t.Fatalf("verifyDN with S and E aliases failed: %v", err)
+	tests := []struct {
+		name string
+		oid  asn1.ObjectIdentifier
+	}{
+		{name: "E", oid: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}},
+		{name: "EMAIL", oid: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}},
+		{name: "EmailAddress", oid: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}},
+		{name: "MAIL", oid: asn1.ObjectIdentifier{0, 9, 2342, 19200300, 100, 1, 3}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cert := testCertificateWithSubject(t, pkix.RDNSequence{
+				{{Type: asn1.ObjectIdentifier{2, 5, 4, 6}, Value: "US"}},
+				{{Type: asn1.ObjectIdentifier{2, 5, 4, 8}, Value: "California"}},
+				{{Type: tt.oid, Value: "admin@example.com"}},
+			})
+			dn := tt.name + `=admin@example.com,S=California,C=US`
+			if err := verifyDN(cert, dn); err != nil {
+				t.Fatalf("verifyDN with S and %s failed: %v", tt.name, err)
+			}
+		})
 	}
 }
 
@@ -218,6 +235,47 @@ func TestVerifyDNAllowsRepeatedAttributeAcrossRDNs(t *testing.T) {
 
 	if err := verifyDN(cert, `CN=db.example.com,CN=parent.example.com,C=US`); err != nil {
 		t.Fatalf("verifyDN with repeated CN across RDNs failed: %v", err)
+	}
+}
+
+// TestParseDNAttributeDecodesEscapedValues verifies that configured DN
+// attributes preserve escaped separators, decode hexadecimal escapes, and
+// retain an explicitly escaped space inside the value.
+func TestParseDNAttributeDecodesEscapedValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "escaped separator and hexadecimal comma",
+			input: `CN=db\=primary\2Cnode`,
+			want:  "db=primary,node",
+		},
+		{
+			name:  "escaped space is part of the value",
+			input: `CN=service\ name`,
+			want:  "service name",
+		},
+		{
+			name:  "unescaped trailing spaces are trimmed",
+			input: "CN=service   ",
+			want:  "service",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attribute, err := parseDNAttribute(tt.input)
+			if err != nil {
+				t.Fatalf("parseDNAttribute(%q) failed: %v", tt.input, err)
+			}
+			if got, ok := attribute.Value.(string); !ok || got != tt.want {
+				t.Fatalf("attribute value = %#v, want %q", attribute.Value, tt.want)
+			}
+		})
 	}
 }
 

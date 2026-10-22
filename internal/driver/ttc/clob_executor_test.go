@@ -42,13 +42,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -161,9 +158,7 @@ func TestLobExecutor_GetChunkSize(t *testing.T) {
 func TestClobExecutor_CreateTemporaryLob(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	originalLogger := common.Odl
-	common.Odl = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	t.Cleanup(func() { common.Odl = originalLogger })
+
 	shelf, _, dbuf := newLobTestShelf(8192)
 	expectedLocator := newSrcLocator()
 
@@ -200,9 +195,7 @@ func TestClobExecutor_CreateTemporaryLob(t *testing.T) {
 // report the number of runes persisted.
 func TestClobExecutor_Write(t *testing.T) {
 	t.Parallel()
-	originalLogger := common.Odl
-	common.Odl = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	t.Cleanup(func() { common.Odl = originalLogger })
+
 	ctx := context.Background()
 	shelf, _, dbuf := newLobTestShelf(65536)
 	locator := newSrcLocator()
@@ -250,9 +243,7 @@ const clobReadIsNCLOB = false
 // tracks marshaled bytes exactly as captured from TTC traces.
 func TestClobExecutor_Read(t *testing.T) {
 	t.Parallel()
-	originalLogger := common.Odl
-	common.Odl = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	t.Cleanup(func() { common.Odl = originalLogger })
+
 	ctx := context.Background()
 	wantMarshal, shelf, dbuf, marshalWritePosition := setUpReadScenario(t, clobReadMarshalGoldenPayload, clobReadResponseGoldenPayload, 131072)
 

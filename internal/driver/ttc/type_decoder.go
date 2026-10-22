@@ -46,6 +46,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype/json"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -79,7 +80,11 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded for the given metadata.
 */
-func DecodeNumberColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeNumberColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	// Prefer int64 for integer values; fallback to decimal string otherwise.
 	if columnContext.Scale == 0 {
 		v, err := converters.DecodeInt(data)
@@ -146,7 +151,11 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeVarcharColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeVarcharColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	if columnContext.CharsetForm == 2 {
 		switch columnContext.CharsetID {
 		case uint16(al16Utf16CharSet):
@@ -192,7 +201,11 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeCharColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeCharColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	if columnContext.CharsetForm == 2 {
 		switch columnContext.CharsetID {
 		case uint16(al16Utf16CharSet):
@@ -235,7 +248,11 @@ Returns:
 Errors:
   - None.
 */
-func DecodeBooleanColumn(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBooleanColumn(_ columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	return data[0] != 0, nil
 }
 
@@ -258,7 +275,11 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeBinaryFloatColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBinaryFloatColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	fv, err := converters.DecodeBinaryFloat(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "BINARY_FLOAT")
@@ -285,7 +306,11 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeBinaryDoubleColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBinaryDoubleColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	fv, err := converters.DecodeBinaryDouble(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "BINARY_DOUBLE")
@@ -312,7 +337,11 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeIntervalYearToMonthColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeIntervalYearToMonthColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	s, err := converters.DecodeIntervalYearToMonth(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "INTERVAL YEAR TO MONTH")
@@ -339,7 +368,11 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeIntervalDayToSecondColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeIntervalDayToSecondColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	s, err := converters.DecodeIntervalDayToSecond(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "INTERVAL DAY TO SECOND")
@@ -367,8 +400,12 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeDateColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
-	tm, err := converters.DecodeDate(driverCommon.B1Array(data))
+func DecodeDateColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
+	tm, err := converters.DecodeDate(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "DATE")
 	}
@@ -394,8 +431,12 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeTimestampColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
-	tm, err := converters.DecodeTimestamp(driverCommon.B1Array(data))
+func DecodeTimestampColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
+	tm, err := converters.DecodeTimestamp(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "TIMESTAMP")
 	}
@@ -421,8 +462,12 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeTimestampWithTimeZoneColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
-	tm, err := converters.DecodeTimestampWithTimeZone(driverCommon.B1Array(data))
+func DecodeTimestampWithTimeZoneColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
+	tm, err := converters.DecodeTimestampWithTimeZone(data)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "TIMESTAMP WITH TIME ZONE")
 	}
@@ -448,8 +493,12 @@ Errors:
   - Returns a common.OracleError with code common.RowDecodeError via rowDecodeError when the payload
     cannot be decoded.
 */
-func DecodeTimestampWithLocalTimeZoneColumn(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
-	tm, err := converters.DecodeTimestampWithLocalTimeZone(driverCommon.B1Array(data), columnContext.serverTimeZoneOffset)
+func DecodeTimestampWithLocalTimeZoneColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
+	tm, err := converters.DecodeTimestampWithLocalTimeZone(data, columnContext.serverTimeZoneOffset)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "TIMESTAMP WITH LOCAL TIME ZONE")
 	}
@@ -476,7 +525,11 @@ Returns:
 Errors:
   - None.
 */
-func DecodeClob(columnContext columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeClob(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	// LOB columns supply their own charset metadata via LobContext.
 	if columnContext.LobContext.CharsetID == al16Utf16CharSet {
 		return converters.DecodeUTF16BEToString(data)
@@ -486,29 +539,27 @@ func DecodeClob(columnContext columnContext, data driverCommon.B1Array) (driver.
 }
 
 /*
-DecodeJson decodes a TTC JSON payload into a Go string. In V1, we are requesting BLOB
-for JSON. As a result, the server sends it as utf-8 string. Hence, no decoding is
-necessary.
-
-Description:
-
-	The current JSON fetch path provides prefetched JSON data as text-compatible bytes.
-	This helper converts that payload directly into a Go string.
+DecodeJSON returns the underlying JSON payload as a driver.Value.
 
 Parameters:
   - _: Unused column metadata (present for a uniform decode function signature).
-  - data: Raw TTC payload bytes for the JSON column.
+  - value: Raw TTC payload bytes for the JSON column. The shared decoder
+    contract supplies this as any; rawColumnData validates the expected wire type.
 
 Returns:
-  - driver.Value: A Go string containing the decoded JSON document.
-  - error: Always nil.
+  - driver.Value: raw OSON bytes.
+  - error: always nil.
 
 Errors:
-  - None.
+  - None
 */
-func DecodeJson(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeJSON(_ columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	// Default path: assume payload is UTF-8 compatible.
-	return string(data), nil
+	return []byte(data), nil
 }
 
 /*
@@ -530,7 +581,11 @@ Returns:
 Errors:
   - None.
 */
-func DecodeBlob(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBlob(_ columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	// LOB columns supply their own charset metadata via LobContext.
 	return data, nil
 }
@@ -571,8 +626,34 @@ Returns:
 Errors:
 - None
 */
-func DecodeBinaryColumn(_ columnContext, data driverCommon.B1Array) (driver.Value, error) {
+func DecodeBinaryColumn(_ columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
 	return []byte(data), nil
+}
+
+// rawColumnData returns the raw TTC payload required by scalar decoders.
+func rawColumnData(value any) (driverCommon.B1Array, error) {
+	data, ok := value.(driverCommon.B1Array)
+	if !ok {
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+	}
+	return data, nil
+}
+
+// DecodeRefCursorColumn returns the REF CURSOR decoded from the RXD column
+// value. A nil value represents a NULL REF CURSOR.
+func DecodeRefCursorColumn(_ columnContext, value any) (driver.Value, error) {
+	if value == nil {
+		return nil, nil
+	}
+	rows, ok := value.(driver.Rows)
+	if !ok {
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+	}
+	return rows, nil
 }
 
 func GetScanTypeForVarcharColumn(_ columnContext) reflect.Type {
@@ -624,7 +705,7 @@ func GetScanTypeForIntervalYearToMonthColumn(_ columnContext) reflect.Type {
 }
 
 func GetScanTypeForJsonColumn(_ columnContext) reflect.Type {
-	return reflect.TypeFor[string]()
+	return reflect.TypeFor[json.JSON]()
 }
 
 func GetScanTypeForCLOBColumn(_ columnContext) reflect.Type {
@@ -633,4 +714,10 @@ func GetScanTypeForCLOBColumn(_ columnContext) reflect.Type {
 
 func GetScanTypeForBLOBColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[[]byte]()
+}
+
+// GetScanTypeForRefCursorColumn reports driver.Rows as the scan type for a
+// REF CURSOR column.
+func GetScanTypeForRefCursorColumn(_ columnContext) reflect.Type {
+	return reflect.TypeFor[driver.Rows]()
 }

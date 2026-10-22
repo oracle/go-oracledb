@@ -863,6 +863,41 @@ func TestParseEzConnect_HTTPSProxyWithoutPort(t *testing.T) {
 	}
 }
 
+// TestParseEzConnect_HTTPSProxyPortBounds verifies that proxy port zero is
+// accepted as unspecified/default, while values above the TCP port limit fail
+// during parsing.
+func TestParseEzConnect_HTTPSProxyPortBounds(t *testing.T) {
+	t.Parallel()
+
+	for _, port := range []string{"0", "65535"} {
+		convResult, err := parseEzConnect("host:1521/mydb?https_proxy=proxy.example.com&https_proxy_port=" + port)
+		if err == nil {
+			var root *Node
+			root, err = Parse(convResult.tns)
+			if err == nil {
+				_, err = ExtractConnectionContext(root)
+			}
+		}
+		if err != nil {
+			t.Errorf("expected proxy port %s to be accepted, got %v", port, err)
+		}
+	}
+
+	for _, port := range []string{"-1", "65536"} {
+		convResult, err := parseEzConnect("host:1521/mydb?https_proxy=proxy.example.com&https_proxy_port=" + port)
+		if err == nil {
+			var root *Node
+			root, err = Parse(convResult.tns)
+			if err == nil {
+				_, err = ExtractConnectionContext(root)
+			}
+		}
+		if err == nil {
+			t.Errorf("expected proxy port %s to be rejected", port)
+		}
+	}
+}
+
 // TestSplitAndParseExtendedParams_ParensBeforeParams ensures '?' inside parentheses is ignored
 func TestSplitAndParseExtendedParams_ParensBeforeParams(t *testing.T) {
 	t.Parallel()

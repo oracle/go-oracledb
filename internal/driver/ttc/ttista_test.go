@@ -80,14 +80,14 @@ func Test_newTTISTAWithEndOfCallStatusSupport(t *testing.T) {
 
 // Creates a ttiSTA without eoc support and checks that the ECID sequence number
 // is unmarshalled correctly
-func Test_ttiSTA_UnMarshalFrom_WithoutSupport(t *testing.T) {
+func Test_ttiSTA_UnmarshalFrom_WithoutSupport(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: false}
 	buffer := []byte{
 		0x01, 0x2A, // endToEndECIDSequenceNumber = 42
 	}
 	mockEngine := createMarshaller(buffer, 0, 0)
-	err := sta.UnMarshalFrom(context.Background(), mockEngine)
+	err := sta.UnmarshalFrom(context.Background(), mockEngine)
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -102,7 +102,7 @@ func Test_ttiSTA_UnMarshalFrom_WithoutSupport(t *testing.T) {
 // Creates a ttiSTA with eoc support and checks that the ECID sequence number
 // containing the elapsed time and checks that values for elapsed time and ECID
 // sequence number are unmarshalled correctly
-func Test_ttiSTA_UnMarshalFrom_WithSupport(t *testing.T) {
+func Test_ttiSTA_UnmarshalFrom_WithSupport(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: true}
 	buffer := []byte{
@@ -111,7 +111,7 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport(t *testing.T) {
 		0x01, 0x2A, // UB2 endToEndECIDSequenceNumber = 42
 	}
 	mockEngine := createMarshaller(buffer, 0, 0)
-	err := sta.UnMarshalFrom(context.Background(), mockEngine)
+	err := sta.UnmarshalFrom(context.Background(), mockEngine)
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -132,7 +132,7 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport(t *testing.T) {
 // Creates a ttiSTA with eoc support and checks that the ECID sequence number
 // containing the elapsed time and checks that values for elapsed time and ECID
 // sequence number and drop are unmarshalled correctly
-func Test_ttiSTA_UnMarshalFrom_WithSupport_DropFlag(t *testing.T) {
+func Test_ttiSTA_UnmarshalFrom_WithSupport_DropFlag(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: true}
 	buffer := []byte{
@@ -141,7 +141,7 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport_DropFlag(t *testing.T) {
 		0x01, 0x2A, // UB2 endToEndECIDSequenceNumber = 42
 	}
 	mockEngine := createMarshaller(buffer, 0, 0)
-	err := sta.UnMarshalFrom(context.Background(), mockEngine)
+	err := sta.UnmarshalFrom(context.Background(), mockEngine)
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -161,14 +161,14 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport_DropFlag(t *testing.T) {
 
 // Creates a ttiSTA without eoc support and checks that an error is returned when
 // unmarshalling fails
-func Test_ttiSTA_UnMarshalFrom_ErrorInUB2(t *testing.T) {
+func Test_ttiSTA_UnmarshalFrom_ErrorInUB2(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: false}
 	buffer := []byte{
 		0x01, 0x2A, // UB2 endToEndECIDSequenceNumber = 42
 	}
 	mockEngine := createMarshaller(buffer, 1, 1)
-	err := sta.UnMarshalFrom(context.Background(), mockEngine)
+	err := sta.UnmarshalFrom(context.Background(), mockEngine)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
@@ -176,7 +176,7 @@ func Test_ttiSTA_UnMarshalFrom_ErrorInUB2(t *testing.T) {
 
 // Creates a ttiSTA with eoc support and checks that an error is returned when
 // unmarshalling the flag fails
-func Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInEOCS(t *testing.T) {
+func Test_ttiSTA_UnmarshalFrom_WithSupport_ErrorInEOCS(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: true}
 	buffer := []byte{
@@ -185,7 +185,7 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInEOCS(t *testing.T) {
 		0x01, 0x2A, // UB2 endToEndECIDSequenceNumber = 42
 	}
 	mockEngine := createMarshaller(buffer, 1, 1)
-	err := sta.UnMarshalFrom(context.Background(), mockEngine)
+	err := sta.UnmarshalFrom(context.Background(), mockEngine)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
@@ -193,7 +193,7 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInEOCS(t *testing.T) {
 
 // Creates a ttiSTA without eoc support and checks that an error is returned when
 // unmarshalling elapsed time fails
-func Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInElapsedTime(t *testing.T) {
+func Test_ttiSTA_UnmarshalFrom_WithSupport_ErrorInElapsedTime(t *testing.T) {
 	t.Parallel()
 	sta := &ttiSTA{_supportsEndOfCallStatus: true}
 	buffer := []byte{
@@ -202,7 +202,7 @@ func Test_ttiSTA_UnMarshalFrom_WithSupport_ErrorInElapsedTime(t *testing.T) {
 		0x01, 0x2A, // UB2 endToEndECIDSequenceNumber = 42
 	}
 	mockEngine := createMarshaller(buffer, 1, 2)
-	err := sta.UnMarshalFrom(context.Background(), mockEngine)
+	err := sta.UnmarshalFrom(context.Background(), mockEngine)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}

@@ -206,7 +206,7 @@ func (dp *dataPacket) ReadByte() (byte, error) {
 		dp.offset++
 		return retByte, nil
 	}
-	common.Odl.Debug("dataPacket.ReadByte EOF")
+	common.Odl.Finest("dataPacket.ReadByte EOF")
 	return 0, io.EOF
 }
 
@@ -320,7 +320,13 @@ func (ap *acceptPacket) unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header
 		}
 		ap.cflag = buffer[NSPACCFL]
 		if ap.cflag&NSPACCFON != 0 {
-			sAtts.negotiatedNetworkCompressionScheme = int((ap.cflag & 0x3c) >> 2)
+			// Bit 0 confirms compression; bits 2-5 select the negotiated scheme.
+			compressionScheme := int((ap.cflag & 0x3c) >> 2)
+			if compressionScheme != NETWORK_COMPRESSION_ZLIB {
+				common.Odl.Error("unsupported server network compression scheme", "scheme", compressionScheme)
+				return common.NewOracleError(oracleErrors.InvalidNetworkValue, nil, "network compression scheme", compressionScheme)
+			}
+			sAtts.negotiatedNetworkCompressionScheme = compressionScheme
 			sAtts.networkCompressionEnabled = true
 			sAtts.firstRecvCompressedPacket = true
 			sAtts.firstSendCompressedPacket = true

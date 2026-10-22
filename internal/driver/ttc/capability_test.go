@@ -46,6 +46,24 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
+// assumedSrvRtCaps is Server's Run time capability for 23.4 which clients should assume.
+var assumedSrvRtCaps = []byte{
+	0x02, 0x01, 0x00, 0x01, 0x18, 0x00,
+	0x7f, 0x01, 0x00, 0x00, 0x00, 0x00,
+}
+
+// assumedSrvCtCaps is Server's Compile time capability for 23.4 which clients should assume
+var assumedSrvCtCaps = []byte{
+	0x06, 0x01, 0x01, 0x01, 0xef, 0x0f, 0x01,
+	ttcFldVsn231, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+	0x01, 0x7f, 0xff, 0x03, 0x10, 0x03, 0x03,
+	0x01, 0x01, 0xff, 0x01, 0xff, 0xff, 0x01,
+	0x0c, 0x01, 0x01, 0xff, 0x01, 0x06, 0x0c,
+	0xf6, 0x01, 0x7f, 0x05, 0x0f, 0xff, 0x0d,
+	0x0b, 0x00, 0x27, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00,
+}
+
 // Helper functions for capabilities test data
 func testCompileCaps() []byte {
 	compile := make([]byte, 38)
@@ -159,8 +177,8 @@ func TestCapabilityMarshalTo_Fail(t *testing.T) {
 	}
 }
 
-// TestCapabilityUnMarshalFrom_Success checks success path unmarshal.
-func TestCapabilityUnMarshalFrom_Success(t *testing.T) {
+// TestCapabilityUnmarshalFrom_Success checks success path unmarshal.
+func TestCapabilityUnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	payload := makeTestPayload(testCompileCaps(), testRunCaps())
 	buf := NewArrayDataBuffer(1024)
@@ -168,7 +186,7 @@ func TestCapabilityUnMarshalFrom_Success(t *testing.T) {
 
 	cap := newCapability()
 	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-	err := cap.UnMarshalFrom(context.Background(), engine)
+	err := cap.UnmarshalFrom(context.Background(), engine)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -180,8 +198,8 @@ func TestCapabilityUnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-// TestCapabilityUnMarshalFrom_Fail checks error unmarshal.
-func TestCapabilityUnMarshalFrom_Fail(t *testing.T) {
+// TestCapabilityUnmarshalFrom_Fail checks error unmarshal.
+func TestCapabilityUnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	errorCases := []struct {
 		name    string
@@ -201,7 +219,7 @@ func TestCapabilityUnMarshalFrom_Fail(t *testing.T) {
 			buf = &FaultyArrayBasedDataBuffer{ArrayBasedDataBuffer: dbuf, FailOnReadByteCall: ec.failPos}
 			cap := newCapability()
 			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-			err := cap.UnMarshalFrom(context.Background(), engine)
+			err := cap.UnmarshalFrom(context.Background(), engine)
 			if err == nil {
 				t.Error("Expected error but got none")
 			}

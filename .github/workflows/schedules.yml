@@ -43,6 +43,8 @@ jobs:
           - rdbms: autonomous-transaction-processing-serverless-26ai
           - rdbms: base-database-service-26ai-rac
     timeout-minutes: 30
+    env:
+      TEST_CATEGORY: ${{ case(github.event.inputs.test_category == '', 'functional', github.event.inputs.test_category) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1r
       - uses: ./.github/actions/setup-go-env
@@ -68,7 +70,7 @@ jobs:
       - run: |
           mkdir -p ${{ github.workspace }}/coverage/full_func
       - run: |
-          go test -parallel=10  -shuffle=on -v ${{ steps.go-packages.outputs.packages }} -coverpkg=./... -cover -run TestCategoryExecutor -test.gocoverdir=${{ github.workspace }}/coverage/full_func -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity" -test.category="${{ github.event.inputs.test_category }}"
+          go test -parallel=10  -shuffle=on -v ${{ steps.go-packages.outputs.packages }} -coverpkg=./... -cover -run TestCategoryExecutor -test.gocoverdir=${{ github.workspace }}/coverage/full_func -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity" -test.category="${{ env.TEST_CATEGORY }}"
       - uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # 1.0.31
         if: always()
         with:

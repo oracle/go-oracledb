@@ -93,13 +93,13 @@ func initMessagesEn() {
 	// Action   : Check the logs of the database instance to identify
 	//            the cause and retry the operation.
 	// Comment  : N/A
-	message.SetString(language.English, string(oracleErrors.ChannelReadFailed), "End-of-stream detected. The remote peer has closed the connection.")
+	message.SetString(language.English, string(oracleErrors.ChannelReadFailed), "end-of-stream detected. The remote peer has closed the connection.")
 	// Document : Yes
 	// Cause    : Write operation on the communication channel with the remote server
 	//          : has failed.
 	// Action   : Check the logs to identify the cause and retry the operation.
 	// Comment  : N/A
-	message.SetString(language.English, string(oracleErrors.ChannelWriteFailed), "Write to channel failed.")
+	message.SetString(language.English, string(oracleErrors.ChannelWriteFailed), "write to channel failed.")
 	// Document: No
 	// Cause:    N/A
 	// Action:   N/A
@@ -114,32 +114,32 @@ func initMessagesEn() {
 	// Cause:    The service name specified in the connect descriptor is not registered with the listener.
 	// Action:   Verify the service name in the connect string and ensure it's correctly configured in the listener.
 	// Comment:  Common in multi-node setups or when the database service hasn't started.
-	message.SetString(language.English, string(oracleErrors.InvalidServiceName), "Cannot connect to database. Service %s is not registered with the listener at host %s port %d. (CONNECTION_ID=%s)")
+	message.SetString(language.English, string(oracleErrors.InvalidServiceName), "cannot connect to database. Service %s is not registered with the listener at host %s port %d. (CONNECTION_ID=%s)")
 	// Document: Yes
 	// Cause:    No available processes or handlers for the requested server type (e.g., shared vs dedicated).
 	// Action:   Check database process limits or switch to a different server type in the connect string.
 	// Comment:  Often occurs under high load or misconfiguration of shared servers.
-	message.SetString(language.English, string(oracleErrors.NoAvailableHandler), "Cannot connect to database. No available %s handler for requested service %s at host %s port %d. (CONNECTION_ID=%s)")
+	message.SetString(language.English, string(oracleErrors.NoAvailableHandler), "cannot connect to database. No available %s handler for requested service %s at host %s port %d. (CONNECTION_ID=%s)")
 	// Document: Yes
 	// Cause:    The instance name specified in the connection string is not registered with the listener.
 	// Action:   Verify the instance name and service name in the connect descriptor. Ensure the listener is configured correctly for the instance.
 	// Comment:  This error occurs when trying to connect to a non-existent database instance.
-	message.SetString(language.English, string(oracleErrors.UnknownInstance), "Cannot connect to database. Instance %s for service %s not known by listener at host %s port %d. (CONNECTION_ID=%s)")
+	message.SetString(language.English, string(oracleErrors.UnknownInstance), "cannot connect to database. Instance %s for service %s not known by listener at host %s port %d. (CONNECTION_ID=%s)")
 	// Document: Yes
 	// Cause:    The connection alias (e.g., from tnsnames.ora or Easy Connect string) could not be resolved due to syntax errors or invalid format.
 	// Action:   Check the syntax of the Easy Connect string or tnsnames.ora entry for correctness.
 	// Comment:  This is specific to alias resolution failures in naming methods.
-	message.SetString(language.English, string(oracleErrors.UnresolvedAlias), "Cannot resolve connection alias due to errors in Easy Connect syntax %s")
+	message.SetString(language.English, string(oracleErrors.UnresolvedAlias), "cannot resolve connection alias due to errors in Easy Connect syntax %s")
 	// Document: Yes
 	// Cause:    The SID specified in the connect descriptor is not recognized by the listener.
 	// Action:   Verify the SID in the connect string matches a valid database SID registered with the listener.
 	// Comment:  Common when using legacy SID-based connections instead of service names.
-	message.SetString(language.English, string(oracleErrors.InvalidSID), "Cannot connect to database. SID %s is not registered with the listener at host %s port %d. (CONNECTION_ID=%s)")
+	message.SetString(language.English, string(oracleErrors.InvalidSID), "cannot connect to database. SID %s is not registered with the listener at host %s port %d. (CONNECTION_ID=%s)")
 	// Document: Yes
 	// Cause:    The listener did not receive the client's request within the allowed time.
 	// Action:   Check for network delays or increase the listener timeout.
 	// Comment:  Often due to slow networks or client-side delays.
-	message.SetString(language.English, string(oracleErrors.ListenerRequestTimeout), `Listener has not received client's request in time allowed`)
+	message.SetString(language.English, string(oracleErrors.ListenerRequestTimeout), `the listener did not receive the client's request within the allowed time`)
 	// Document: No
 	// Cause:    N/A
 	// Action:   N/A
@@ -149,7 +149,7 @@ func initMessagesEn() {
 	// Cause:    The context deadline was exceeded during an operation such as send or receive.
 	// Action:   Increase the context timeout, check for network latency, or optimize the operation.
 	// Comment:  This is a custom driver error (OGD-00002) for handling context timeouts in network operations.
-	message.SetString(language.English, string(oracleErrors.CtxTimeout), "context timed out during %s for %s.(CONNECTION_ID=%s) ")
+	message.SetString(language.English, string(oracleErrors.CtxTimeout), "context timed out during %s for %s (CONNECTION_ID=%s)")
 	// Document: Yes
 	// Cause:    A timeout occurred while closing the connection. A timeout is used
 	//           to prevent the close operation from blocking indefinetely. This
@@ -163,7 +163,7 @@ func initMessagesEn() {
 	//           know.
 	// Action:   Update the client version.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.UnknownSPFFunction), "unknown server to client function code received: %d")
+	message.SetString(language.English, string(oracleErrors.UnknownSPFFunction), "received unknown server-to-client function code: %d")
 	// Document: No
 	// Cause:    The SPF message does not implement the Function interface.
 	// Action:   This error should never happen in production.
@@ -179,19 +179,19 @@ func initMessagesEn() {
 	// Cause:    A parameter set in the connection string is invalid
 	// Action:   Check connection string parameter
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.InvalidConnectionParameter), "invalid connection parameter value [%s] for [%s], accepted values [%s]")
+	message.SetString(language.English, string(oracleErrors.InvalidConnectionParameter), "invalid connection parameter value [%s] for [%s]; accepted values are [%s]")
 
 	// Document: No
 	// Cause:    A parameter set in more than one source is not allowed.
 	// Action:   Check connection string parameter
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.ConflictingConnectionParameterSource), "parameter [%s] Can't be specified in more than one source")
+	message.SetString(language.English, string(oracleErrors.ConflictingConnectionParameterSource), "parameter [%s] can't be specified in more than one source")
 
 	// Document: Yes
 	// Cause:    DSN string is syntactically invalid.
 	// Action:   Fix the DSN format.
 	// Comment:  Arg[0]=component
-	message.SetString(language.English, string(oracleErrors.NamingDSNInvalid), "Can't parse %s from DSN")
+	message.SetString(language.English, string(oracleErrors.NamingDSNInvalid), "can't parse %s from DSN")
 
 	// Document: Yes
 	// Cause:    Connection string syntax is invalid.
@@ -221,19 +221,19 @@ func initMessagesEn() {
 	// Cause:    A failure occurred while marshalling TTC Message.
 	// Action:   Inspect the cause and message name in args[0].
 	// Comment:  Arg[0]: operation ()
-	message.SetString(language.English, string(oracleErrors.FailMarshal), "Failed to marshal message: %s")
+	message.SetString(language.English, string(oracleErrors.FailMarshal), "failed to marshal message: %s")
 
 	// Document: No
 	// Cause:    A failure occurred while unmarshalling TTC Message.
 	// Action:   Inspect the cause and message name/description in args[0].
 	// Comment:  Arg[0]: operation (TTIOER)
-	message.SetString(language.English, string(oracleErrors.FailUnmarshal), "Failed to unmarshal message: %s")
+	message.SetString(language.English, string(oracleErrors.FailUnmarshal), "failed to unmarshal message: %s")
 
 	// Document: No
 	// Cause:    LOB buffer configuration is invalid for the requested operation.
 	// Action:   Ensure offset and length are within buffer bounds and greater than zero.
 	// Comment:  Arg[0]: operation (marshal/unmarshal); Arg[1]: message name; Arg[2]: reason keyword
-	message.SetString(language.English, string(oracleErrors.InvalidLOBBuffer), "Invalid LOB buffer configuration during %s (%s): %s")
+	message.SetString(language.English, string(oracleErrors.InvalidLOBBuffer), "invalid LOB buffer configuration during %s (%s): %s")
 
 	// Document: No
 	// Cause:    A failure occurred while executing an OLOBOPS LOB operation.
@@ -245,16 +245,16 @@ func initMessagesEn() {
 	// Cause:    The negotiated character set is not supported by the Go driver.
 	// Action:   Reconnect using AL32UTF8 or AL16UTF16 character sets.
 	// Comment:  Arg[0]: unsupported character set identifier.
-	message.SetString(language.English, string(oracleErrors.UnsupportedCharacterSet), "Unsupported character set: %d")
-	message.SetString(language.English, string(oracleErrors.InvalidNetworkValue), "Invalid value for %s: %v")
-	message.SetString(language.English, string(oracleErrors.InvalidNetworkExpectedValue), "Invalid value for %s: got %v, expected %v")
-	message.SetString(language.English, string(oracleErrors.InvalidNetworkContextValue), "Invalid value for %s (%s): %v")
-	message.SetString(language.English, string(oracleErrors.InvalidNetworkContextExpectedValue), "Invalid value for %s (%s): got %v, expected %v")
-	message.SetString(language.English, string(oracleErrors.InvalidNetworkLength), "Invalid length for %s: %d")
-	message.SetString(language.English, string(oracleErrors.InvalidNetworkExpectedLength), "Invalid length for %s: got %d, expected %d")
-	message.SetString(language.English, string(oracleErrors.InvalidNetworkContextExpectedLength), "Invalid length for %s (%s): got %d, expected %d")
+	message.SetString(language.English, string(oracleErrors.UnsupportedCharacterSet), "unsupported character set: %d")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkValue), "invalid value for %s: %v")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkExpectedValue), "invalid value for %s: got %v, expected %v")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkContextValue), "invalid value for %s (%s): %v")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkContextExpectedValue), "invalid value for %s (%s): got %v, expected %v")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkLength), "invalid length for %s: %d")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkExpectedLength), "invalid length for %s: got %d, expected %d")
+	message.SetString(language.English, string(oracleErrors.InvalidNetworkContextExpectedLength), "invalid length for %s (%s): got %d, expected %d")
 	message.SetString(language.English, string(oracleErrors.ErrConnectionInband), "server error received in-band")
-	message.SetString(language.English, string(oracleErrors.NetworkDataReadFailed), "Failed to read network data")
+	message.SetString(language.English, string(oracleErrors.NetworkDataReadFailed), "failed to read network data")
 	message.SetString(language.English, string(oracleErrors.ConnectionRefusedDetail), "connection refused: ORA-%s, user reason %d, system reason %d")
 	message.SetString(language.English, string(oracleErrors.NetworkServerErrorCode), "%s-%s")
 	message.SetString(language.English, string(oracleErrors.BreakPacketReceived), "break packet received")
@@ -294,21 +294,33 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.WalletCACertificatesMissing), "wallet contains no CA certificates")
 	message.SetString(language.English, string(oracleErrors.WalletCACertificatesParseFailed), "failed to parse wallet CA certificates")
 
+	// Document: No
+	// Cause:    A network packet could not be compressed with the negotiated codec.
+	// Action:   Inspect the cause and the compression codec in args[0].
+	// Comment:  Arg[0]: compression codec (zlib)
+	message.SetString(language.English, string(oracleErrors.NetworkCompressionFailed), "failed to compress network packet using %s")
+
+	// Document: No
+	// Cause:    A compressed network packet could not be decompressed with the negotiated codec.
+	// Action:   Inspect the cause and the compression codec in args[0].
+	// Comment:  Arg[0]: compression codec (zlib)
+	message.SetString(language.English, string(oracleErrors.NetworkDecompressionFailed), "failed to decompress network packet using %s")
+
 	message.SetString(language.English, string(oracleErrors.ConnectTimeout), "%s Timeout of %d for %s.(CONNECTION_ID=%s)")
 
 	// Document: Yes
 	// Cause:    The listener was unable to start a dedicated server process for the connection request.
 	// Action:   Increase the PROCESSES parameter in the database initialization file or check for resource constraints on the server.
 	// Comment:  Often due to insufficient processes or memory on the database server.
-	message.SetString(language.English, string(oracleErrors.ListenerFailed), "ORA-12500: TNS:listener failed to start a dedicated server process")
+	message.SetString(language.English, string(oracleErrors.ListenerFailed), "TNS:listener failed to start a dedicated server process")
 
 	// Document: Yes
 	// Cause:    The listener could not find an available handler (dispatcher) for the requested protocol stack in shared server mode.
 	// Action:   Increase dispatchers or check for high load on the database.
 	// Comment:  Common in shared server configurations with insufficient resources.
-	message.SetString(language.English, string(oracleErrors.NoDispatcherAvailable), "ORA-12516: TNS:listener could not find available handler with matching protocol stack")
+	message.SetString(language.English, string(oracleErrors.NoDispatcherAvailable), "TNS:listener could not find available handler with matching protocol stack")
 
-	message.SetString(language.English, string(oracleErrors.ConnectFailed), "Cannot connect")
+	message.SetString(language.English, string(oracleErrors.ConnectFailed), "cannot connect")
 
 	// Table/Object access errors
 	// Document: Yes
@@ -339,31 +351,31 @@ func initMessagesEn() {
 	// Cause:    Empty input encountered in a converter operation.
 	// Action:   Provide a non-empty value or handle NULL semantics.
 	// Comment:  Arg[0]: converter type (e.g., CHAR, VARCHAR2, INTERVAL YEAR TO MONTH); Arg[1]: operation ("encode" or "decode")
-	message.SetString(language.English, string(oracleErrors.ConverterEmptyInput), "Converter %s %s: empty input")
+	message.SetString(language.English, string(oracleErrors.ConverterEmptyInput), "converter %s %s: empty input")
 
 	// Document: No
 	// Cause:    A converter value was outside the allowed range.
 	// Action:   Inspect the reason in args[2] and correct the input bounds.
 	// Comment:  Arg[0]: converter type (e.g., INTERVAL YEAR TO MONTH); Arg[1]: operation ("Encode" or "Decode"); Arg[2]: reason; Arg[3]: min; Arg[4]: max
-	message.SetString(language.English, string(oracleErrors.ConverterRange), "Converter %s %s: %s; expected=%v..%v")
+	message.SetString(language.English, string(oracleErrors.ConverterRange), "converter %s %s: %s; expected=%v..%v")
 
 	// Document: No
 	// Cause:    The value did not match the expected format/type/value.
 	// Action:   Inspect the reason in args[2] and the expected value/format in args[3].
 	// Comment:  Arg[0]: converter type (e.g., INTERVAL DAY TO SECOND); Arg[1]: operation ("Encode" or "Decode"); Arg[2]: reason; Arg[3]: expected
-	message.SetString(language.English, string(oracleErrors.ConverterExpectedFormat), "Converter %s %s: %s; expected=%v")
+	message.SetString(language.English, string(oracleErrors.ConverterExpectedFormat), "converter %s %s: %s; expected=%v")
 
 	// Document: No
 	// Cause:    A failure occurred while decoding a column value during row scan.
 	// Action:   Inspect the cause (converter error) and the column name/index.
 	// Comment:  Arg[0]: database type name (e.g., NUMBER, FLOAT, VARCHAR2); Arg[1]: column name; Arg[2]: column index
-	message.SetString(language.English, string(oracleErrors.RowDecodeError), "Decode %s failed for column %s (index %d)")
+	message.SetString(language.English, string(oracleErrors.RowDecodeError), "decode %s failed for column %s (index %d)")
 
 	// Document: No
 	// Cause:    Closing statement rows has failed
 	// Action:
 	// Comment:
-	message.SetString(language.English, string(oracleErrors.RowsCloseFailed), "Closing the statement's rows failed: %s")
+	message.SetString(language.English, string(oracleErrors.RowsCloseFailed), "closing the statement's rows failed: %s")
 
 	// Document: No
 	// Cause:    Failed while preparing or validating a statement for a given SQL kind.
@@ -441,6 +453,23 @@ func initMessagesEn() {
 	// Action:   Use an identifier with a supported length and characters.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidIdentifier), "invalid SQL identifier")
+	// Document: No
+	message.SetString(language.English, string(oracleErrors.ImplicitResultMessageCreationFailed), "failed to create implicit result message")
+	// Document: No
+	// Cause:    A REF CURSOR was fetched using a connection other than the one that opened it.
+	// Action:   Fetch the REF CURSOR using the connection on which it was opened.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.RefCursorConnectionMismatch), "REF CURSOR must be fetched using the connection on which it was opened")
+	// Document: No
+	// Cause:    A REF CURSOR OUT bind used an unsupported destination type.
+	// Action:   Use *datatype.Cursor as the sql.Out destination.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidRefCursorOutParameter), "REF CURSOR OUT binds require *datatype.Cursor")
+	// Document: No
+	// Cause:    The REF CURSOR executor received an unsupported argument value.
+	// Action:   Pass the decoded REF CURSOR rows to the executor.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidRefCursorArgument), "invalid REF CURSOR argument")
 
 	// Document: No
 	message.SetString(language.English, string(oracleErrors.CancelOperationError), "cancel operation failed")
@@ -451,7 +480,7 @@ func initMessagesEn() {
 	// Cause:    An unexpected state was encountered in the network driver.
 	// Action:   Try again or contact Oracle Support if the error persists.
 	// Comment:  Arg[0]: network component
-	message.SetString(language.English, string(oracleErrors.NetworkInternalError), "Internal network error: %s")
+	message.SetString(language.English, string(oracleErrors.NetworkInternalError), "internal network error: %s")
 	// Document: No
 	// Cause:    The shelf was used before a localization service was registered.
 	// Action:   Ensure the connection instantiator registers a localization service before returning the shelf.
@@ -462,14 +491,16 @@ func initMessagesEn() {
 	// Cause:    A requested feature is not implemented by the driver.
 	// Action:   Avoid using the unsupported feature or upgrade to a version that supports it.
 	// Comment:  Arg[0]: feature name
-	message.SetString(language.English, string(oracleErrors.UnsupportedFeature), "Feature not supported by the driver: %s")
+	message.SetString(language.English, string(oracleErrors.UnsupportedFeature), "feature not supported by the driver: %s")
+	message.SetString(language.English, string(oracleErrors.HTTPSProxyRequiresTCPS), "HTTPS proxy requires a TCPS connection")
+	message.SetString(language.English, string(oracleErrors.HTTPSProxyConnectFailed), "HTTPS proxy CONNECT failed for %s")
 
 	// Document: No
 	// Cause:    The destination provided in sql.Out is invalid (nil, non-pointer,
 	//           nil pointer, or pointer-to-pointer).
 	// Action:   Provide a non-nil pointer to a concrete value in sql.Out.Dest.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.InvalidSqlOutParameter), "invalid sql.Out parameter : %s")
+	message.SetString(language.English, string(oracleErrors.InvalidSqlOutParameter), "invalid sql.Out parameter: %s")
 
 	// Document: No
 	// Cause:    The destination provided in sql.Out is invalid (nil, non-pointer,
@@ -483,61 +514,61 @@ func initMessagesEn() {
 	//           transaction.
 	// Action:   Start a transaction befor calling commit or rollback.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.NotInTransaction), "Not in transaction")
+	message.SetString(language.English, string(oracleErrors.NotInTransaction), "not in transaction")
 	// Document: No
 	// Cause:    The provided isolation level is not supported.
 	// Action:   Use one of the following isolation levels: LevelSerializable or
 	//           LevelReadCommitted.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.IsolationLevelNotSupported), "Isolation level not supported")
+	message.SetString(language.English, string(oracleErrors.IsolationLevelNotSupported), "isolation level not supported")
 	// Document: No
 	// Cause:    An attempt was made to begin a transaction while a transaction is
 	//           already started.
 	// Action:   Commit or rollback the current transaction before starting a new
 	//           one.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.AlreadyInTransaction), "Isolation level not supported")
+	message.SetString(language.English, string(oracleErrors.AlreadyInTransaction), "isolation level not supported")
 	// Document: No
 	// Cause:    An error occurred while committing or rolling back the transaction.
-	// Action:   Try agian.
+	// Action:   Try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.ErrorInTransaction), "An error occurred while performing transaction operation %s")
+	message.SetString(language.English, string(oracleErrors.ErrorInTransaction), "an error occurred while performing transaction operation %s")
 	// Document: No
 	// Cause:    An error occurred while executing the ALTER SESSION statement to
 	//           set the transaction ISOLATION LEVEL.
 	// Action:   Verify the cause of the error, and try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.ConfigureTransactionError), "Failed to configure transaction")
+	message.SetString(language.English, string(oracleErrors.ConfigureTransactionError), "failed to configure transaction")
 	// Document: No
 	// Cause:    An error occurred while authenticating.
 	// Action:   Check the credentials and try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.AuthenticatorError), "An error occurred during authentication")
+	message.SetString(language.English, string(oracleErrors.AuthenticatorError), "an error occurred during authentication")
 	// Document: No
 	// Cause:    An error occurred while negotiating the connection.
 	// Action:   Try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.NegotiatorError), "An error occurred while negotiating the connection")
+	message.SetString(language.English, string(oracleErrors.NegotiatorError), "an error occurred while negotiating the connection")
 	// Document: No
 	// Cause:    An error occurred while marshalling or unmarshalling a value.
 	// Action:   Try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.MarshalEngineError), "An error occurred while marshalling or unmarshalling a value of type %s")
+	message.SetString(language.English, string(oracleErrors.MarshalEngineError), "an error occurred while marshalling or unmarshalling a value of type %s")
 	// Document: No
 	// Cause:    An error occurred while flushing data.
 	// Action:   Try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.MarshalEngineFlushError), "An error occurred while flushing data")
+	message.SetString(language.English, string(oracleErrors.MarshalEngineFlushError), "an error occurred while flushing data")
 	// Document: No
 	// Cause:    An error occurred while reading a message.
 	// Action:   Check network connection and try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.StreamerReadError), "An error occurred while reading a message")
+	message.SetString(language.English, string(oracleErrors.StreamerReadError), "an error occurred while reading a message")
 	// Document: No
 	// Cause:    An error occurred while writing a message.
 	// Action:   Check network connection and try again.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.StreamerWriteError), "An error occurred while writing a message")
+	message.SetString(language.English, string(oracleErrors.StreamerWriteError), "an error occurred while writing a message")
 	// Document: No
 	// Cause:    Database is in NOMOUNT state
 	// Action:   ?
@@ -545,7 +576,7 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.DatabaseMountStateError), "database is in NOMOUNT state")
 	// Document: Yes
 	// Cause:    No username was provided
-	// Action:   Provide a username and try agian.
+	// Action:   Provide a username and try again.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.EmptyUsernameError), "empty username not supported")
 	// Document: Yes
@@ -557,17 +588,62 @@ func initMessagesEn() {
 	// Cause:    The server timezone could not be queried, retrieved, or parsed during connection initialization.
 	// Action:   Verify the database connection and the DBTIMEZONE value returned by the server.
 	// Comment:  Arg[0]: operation (query|retrieve|parse)
-	message.SetString(language.English, string(oracleErrors.ServerTimeZoneError), "Failed to %s server timezone")
+	message.SetString(language.English, string(oracleErrors.ServerTimeZoneError), "failed to %s server timezone")
+	// Document: No
+	// Cause:    The OSON document contains a scalar opcode that this driver version cannot decode.
+	// Action:   Check database and driver version compatibility. Upgrade the driver if the document uses a newer OSON scalar type.
+	// Comment:  Arg[0]: opcode byte
+	message.SetString(language.English, string(oracleErrors.OsonUnsupportedScalarError), "OSON document contains unsupported scalar opcode 0x%02x")
+	// Document: No
+	// Cause:    A JSON access request used an invalid access path or mode.
+	// Action:   Verify that the requested JSON access is valid for the value kind.
+	// Comment:  Arg[0]: access descriptor.
+	message.SetString(language.English, string(oracleErrors.JSONAccessError), "invalid JSON access: %s")
+	// Document: No
+	// Cause:    A public oracle/datatype/json method was called on an uninitialized value.
+	// Action:   Initialize the receiver before calling the method.
+	// Comment:  Arg[0]: method name.
+	message.SetString(language.English, string(oracleErrors.JSONUninitializedValue), "JSON method %s called on an uninitialized value")
+	// Document: No
+	// Cause:    oracle/datatype/json Scan received a source type that is not supported by the current API.
+	// Action:   Scan OSON bytes or use a supported source representation.
+	// Comment:  Arg[0]: source type.
+	message.SetString(language.English, string(oracleErrors.JSONScanTypeUnsupportedError), "JSON cannot scan %s")
+	// Document: No
+	// Cause:    The caller requested an array element outside the valid bounds.
+	// Action:   Validate the index against the array length before reading.
+	// Comment:  Arg[0]: array index.
+	message.SetString(language.English, string(oracleErrors.JSONArrayIndexOutOfRangeError), "JSON array index %d out of range")
+	// Document: No
+	// Cause:    A value could not be encoded as OSON.
+	// Action:   Verify the input is supported and enable debug logging for encoding details.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.OsonEncodingError), "failed to encode value as an OSON document")
+	// Document: No
+	// Cause:    An Oracle JSON value could not be represented as JSON text.
+	// Action:   Enable debug logging for rendering details.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.JSONRenderingError), "failed to render Oracle JSON value as JSON text")
+	// Document: No
+	// Cause:    A JSON object lookup requested a key that is absent.
+	// Action:   Check the object's keys before requesting a member.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.JSONObjectKeyNotFoundError), "JSON object key not found")
+	// Document: No
+	// Cause:    The connection provided is not an Oracle connection
+	// Action:   Create a connection using the Oracle driver and try again
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidConnection), "the connection provided is not an Oracle connection")
 
 	// Document: No
 	// Cause:    Token-based authentication resolved an empty token.
 	// Action:   Provide a non-empty token directly with AccessToken or ensure the token file contains a valid token.
-	message.SetString(language.English, string(oracleErrors.EmptyTokenError), "token-based authentication token id empty")
+	message.SetString(language.English, string(oracleErrors.EmptyTokenError), "the token ID for token-based authentication is empty")
 
 	// Document: No
-	// Cause:    An error occured during Token-based authentication
+	// Cause:    An error occurred during Token-based authentication
 	// Action:   Verify that the token provider returns a valid token and private key (for signed token providers)
-	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occured during token authentication")
+	message.SetString(language.English, string(oracleErrors.TokenAuthenticationError), "an error occurred during token authentication")
 
 	// Document: No
 	// Cause:    A required value could not be retrieved or was empty.
@@ -585,6 +661,6 @@ func initMessagesEn() {
 	// Action:   Generate or retrieve a fresh access token and try the connection again.
 	message.SetString(language.English, string(oracleErrors.ExpiredToken), "access token has expired")
 
-	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider found of the requested type")
+	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider of the requested type was found")
 
 }

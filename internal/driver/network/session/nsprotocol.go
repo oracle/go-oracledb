@@ -40,11 +40,16 @@ package session
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/zlib"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"log/slog"
+	"io"
 	"net"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -60,7 +65,6 @@ type networkSession struct {
 	isBreak             bool
 	isReset             bool
 	breakPosted         bool
-	compressionEnabled  bool
 	endOfRequestSupport bool
 	supportsFastAuth    bool
 	redirectCount       int
@@ -79,6 +83,35 @@ type networkSession struct {
 	resetInProgress     bool
 }
 
+// cidSanitizer prevents OS-provided CID values from changing the naming structure.
+var cidSanitizer = strings.NewReplacer("(", "_", ")", "_", "=", "_")
+
+// sanitizeCIDValue returns a value that is safe to serialize in a naming node.
+func sanitizeCIDValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "unknown"
+	}
+	return cidSanitizer.Replace(v)
+}
+
+// buildCIDNode creates the Oracle Net client identifier nested under CONNECT_DATA.
+func buildCIDNode() naming.Node {
+	return naming.Node{
+		Name: "CID",
+		Children: []naming.Node{
+			{Name: "PROGRAM", Value: sanitizeCIDValue(common.ProgramName)},
+			{Name: "HOST", Value: sanitizeCIDValue(common.HostName)},
+			{Name: "USER", Value: sanitizeCIDValue(common.UserName)},
+		},
+	}
+}
+
+// cachedCIDNode is initialized once when this package is loaded from the
+// process metadata initialized by common. Connection attempts reuse this
+// immutable process-level CID node.
+var cachedCIDNode = buildCIDNode()
+
 const (
 	maxRedirectCount = 4
 	maxResendCount   = 4
@@ -87,15 +120,14 @@ const (
 // newNetworkSession creates a new networkSession instance
 func newNetworkSession() *networkSession {
 	return &networkSession{
-		connected:          false,
-		isBreak:            false,
-		isReset:            false,
-		breakPosted:        false,
-		compressionEnabled: false,
-		sndDatapkt:         &dataPacket{},
-		rcvDatapkt:         &dataPacket{},
-		controlPkt:         &controlPacket{},
-		byteOrder:          driverCommon.BIG_ENDIAN,
+		connected:   false,
+		isBreak:     false,
+		isReset:     false,
+		breakPosted: false,
+		sndDatapkt:  &dataPacket{},
+		rcvDatapkt:  &dataPacket{},
+		controlPkt:  &controlPacket{},
+		byteOrder:   driverCommon.BIG_ENDIAN,
 	}
 }
 
@@ -143,8 +175,8 @@ func remoteTCPAddrFromConn(remoteAddr net.Addr) *net.TCPAddr {
 
 // transportConnect establishes the transport-level connection
 func (ns *networkSession) transportConnect(ctx context.Context, address transport.Address) error {
-	if address.Protocol == driverCommon.ProtocolTCP && address.HTTPSProxy != "" {
-		return common.NewOracleError(oracleErrors.UnsupportedFeature, nil, "HTTPS proxy")
+	if address.Protocol == driverCommon.ProtocolTCP && (address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != "") {
+		return common.NewOracleError(oracleErrors.HTTPSProxyRequiresTCPS, nil)
 	}
 	if ns.ntAdapter == nil {
 		if address.Protocol == driverCommon.ProtocolTCP {
@@ -155,6 +187,19 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 	}
 	err := ns.ntAdapter.Connect(ctx, address)
 	if err != nil {
+		// Only transport connection failures can mean that an endpoint is down.
+		// Oracle Net, TLS, and authentication failures happen later and do not
+		// reach this point. When a proxy is configured, the failure may belong
+		// to the proxy rather than the database endpoint, so do not cache the
+		// database address as down.
+		proxyConfigured := address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != ""
+		if !proxyConfigured && isDownHostError(ctx, err) {
+			key := address.ResolvedIP
+			if key == "" {
+				key = address.Host
+			}
+			naming.MarkDownHost(key)
+		}
 		return err
 	}
 	//initializes sndDatapkt with SDU size
@@ -168,6 +213,44 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 	ns.rcvDatapkt = &dataPacket{}
 	return nil
 }
+
+// isDownHostError identifies transport failures that indicate a host or its
+// route is currently unavailable. A refusal is deliberately excluded: it
+// proves that the host responded, even when no listener is available there.
+func isDownHostError(ctx context.Context, err error) bool {
+	// The TCP adapter translates a caller deadline into an Oracle CtxTimeout
+	// error. Check both the context and the error before considering timeout
+	// errors below, so a caller giving up does not penalize a healthy endpoint.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) ||
+		errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return false
+	}
+
+	if errors.Is(err, syscall.EHOSTDOWN) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) {
+		return true
+	}
+
+	var timeoutCause common.CtxTimeoutCauseError
+	if errors.As(err, &timeoutCause) {
+		return true
+	}
+
+	var sqlErr oracleErrors.SQLError
+	if errors.As(err, &sqlErr) && sqlErr.ErrorCode() == string(oracleErrors.CtxTimeout) {
+		return true
+	}
+
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
 func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) error {
 	if ns.sAtts.version < TNS_VERSION_MINIMUM {
 		err := ns.Disconnect(ctx, 0)
@@ -337,13 +420,17 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 		}
 		newAddress := transport.Address{
 			Address: naming.Address{
-				Host:       hostToBeUsed,
-				Port:       redirOption.Address.Port,
-				Protocol:   redirOption.Address.Protocol,
-				OriginHost: oldhostname,
-				ResolvedIP: redirOption.Address.ResolvedIP,
+				Host:           hostToBeUsed,
+				Port:           redirOption.Address.Port,
+				Protocol:       redirOption.Address.Protocol,
+				HTTPSProxy:     address.HTTPSProxy,
+				HTTPSProxyPort: address.HTTPSProxyPort,
+				OriginHost:     oldhostname,
+				ResolvedIP:     redirOption.Address.ResolvedIP,
 			},
-			Hostname: redirOption.Address.Host,
+			Hostname:       redirOption.Address.Host,
+			HTTPSProxy:     address.HTTPSProxy,
+			HTTPSProxyPort: address.HTTPSProxyPort,
 		}
 		ns.ntAdapter.Disconnect()
 		ns.connected = false
@@ -470,7 +557,7 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 
 	portToBeUsed := addressOption.Port
 	if addressOption.Port == 0 {
-		common.Odl.Debug("no port specified, fall-back to default", "port", TCP_DEFAULT_PORT)
+		common.Odl.Fine("no port specified, fall-back to default", "port", TCP_DEFAULT_PORT)
 		portToBeUsed = TCP_DEFAULT_PORT
 	}
 
@@ -489,9 +576,10 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 	}
 	connectData, err := root.GetNode("DESCRIPTION/CONNECT_DATA")
 	if err != nil {
-		connectData = &naming.Node{Name: "CONNECT_DATA"}
-		root.Children = append(root.Children, *connectData)
+		root.Children = append(root.Children, naming.Node{Name: "CONNECT_DATA"})
+		connectData = &root.Children[len(root.Children)-1]
 	}
+	connectData.Children = append(connectData.Children, cachedCIDNode)
 	connIDNode := naming.Node{Name: "CONNECTION_ID", Value: ns.sAtts.nt.Connectionid}
 	connectData.Children = append(connectData.Children, connIDNode)
 	newConnectStr := root.ToString()
@@ -503,12 +591,16 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 	}
 	address := transport.Address{
 		Address: naming.Address{
-			Host:       hostToBeUsed,
-			Port:       portToBeUsed,
-			Protocol:   addressOption.Protocol,
-			ResolvedIP: addressOption.ResolvedIP,
+			Host:           hostToBeUsed,
+			Port:           portToBeUsed,
+			Protocol:       addressOption.Protocol,
+			ResolvedIP:     addressOption.ResolvedIP,
+			HTTPSProxy:     addressOption.HTTPSProxy,
+			HTTPSProxyPort: addressOption.HTTPSProxyPort,
 		},
-		Hostname: addressOption.Host,
+		Hostname:       addressOption.Host,
+		HTTPSProxy:     addressOption.HTTPSProxy,
+		HTTPSProxyPort: addressOption.HTTPSProxyPort,
 	}
 
 	err = ns.connect(ctx, address)
@@ -588,7 +680,8 @@ func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
 		}
 	}
 	buf := ns.rcvBuf[:packetLen]
-	PrintPacket(buf, 0, packetLen)
+
+	common.Odl.PacketDump(buf[0:packetLen])
 
 	hdr := &header{}
 	err = hdr.unmarshal(buf, ns.sAtts, nil)
@@ -602,7 +695,7 @@ func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
 
 	// Handle reset when break is received and reset has not yet been received.
 	if hdr.typ == NSPTMK && ns.isBreak && !ns.isReset {
-		common.Odl.Debug("Received break packet from server")
+		common.Odl.Fine("Received break packet from server")
 		if ns.resetInProgress {
 			// Reset is already draining packets until NIQRMARK is received.
 			// Return this marker to the Reset loop instead of recursively
@@ -634,7 +727,57 @@ func (ns *networkSession) processPacket(buf []byte, hdr *header) (any, error) {
 		packet = &markerPacket{}
 	case NSPTCNL:
 		packet = ns.controlPkt
+	// NSPTDA is an Oracle Net DATA packet; its payload begins at NSPDADAT.
 	case NSPTDA:
+		if int(hdr.packetLength) < NSPDADAT {
+			return nil, common.NewOracleError(oracleErrors.InvalidNetworkContextExpectedLength, nil, "packet", "NSPTDA", hdr.packetLength, NSPDADAT)
+		}
+		flags := binary.BigEndian.Uint16(buf[NSPDAFLG:])
+		if ns.sAtts.networkCompressionEnabled && flags&NSPDAFCMP != 0 {
+			// NSPDAFCMP applies only to the payload; keep the wire header intact.
+			header := append([]byte(nil), buf[:NSPDADAT]...)
+			payload := buf[NSPDADAT:]
+			var r io.ReadCloser
+			var err error
+			PrintPacket(payload, 0, len(payload))
+			if ns.sAtts.firstRecvCompressedPacket {
+				// Oracle Net uses zlib Z_SYNC_FLUSH framing: the first packet has a
+				// zlib wrapper and later packets use raw DEFLATE.
+				r, err = zlib.NewReader(bytes.NewReader(payload))
+				ns.sAtts.firstRecvCompressedPacket = false
+			} else {
+				r = flate.NewReader(bytes.NewReader(payload))
+			}
+			if err != nil {
+				common.Odl.Error("failed to initialize network decompression", "algorithm", "zlib", "error", err, "payload-length", len(payload))
+				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, err, "zlib")
+			}
+			decompressed, err := io.ReadAll(r)
+			closeErr := r.Close()
+			syncFlush := bytes.HasSuffix(payload, []byte{0, 0, 0xff, 0xff})
+			// Oracle Net packets end a continuing zlib/DEFLATE stream with a
+			// SYNC_FLUSH marker, not a final stream marker. Go reports
+			// io.ErrUnexpectedEOF for that valid packet boundary. Any other
+			// unexpected EOF is a truncated packet.
+			if err != nil && (!errors.Is(err, io.ErrUnexpectedEOF) || !syncFlush) {
+				common.Odl.Error("failed to decompress network packet", "algorithm", "zlib", "error", err, "payload-length", len(payload), "sync-flush", syncFlush)
+				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, err, "zlib")
+			}
+			if closeErr != nil && (!errors.Is(closeErr, io.ErrUnexpectedEOF) || !syncFlush) {
+				common.Odl.Error("failed to close network decompressor", "algorithm", "zlib", "error", closeErr, "payload-length", len(payload), "sync-flush", syncFlush)
+				return nil, common.NewOracleError(oracleErrors.NetworkDecompressionFailed, closeErr, "zlib")
+			}
+			buf = append(header, decompressed...)
+			// The payload size changed, so update the packet length and remove its compression flag
+			// before the normal data-packet unmarshal path reads the packet.
+			if ns.sAtts.largeSDU {
+				binary.BigEndian.PutUint32(buf[:4], uint32(len(buf)))
+			} else {
+				binary.BigEndian.PutUint16(buf[:2], uint16(len(buf)))
+			}
+			binary.BigEndian.PutUint16(buf[NSPDAFLG:], flags&^NSPDAFCMP)
+			hdr.unmarshal(buf, ns.sAtts, nil)
+		}
 		packet = ns.rcvDatapkt
 	default:
 		return nil, common.NewOracleError(oracleErrors.InvalidNetworkValue, nil, "packet type", hdr.typ)
@@ -645,7 +788,7 @@ func (ns *networkSession) processPacket(buf []byte, hdr *header) (any, error) {
 	}
 	if hdr.typ == NSPTMK {
 		p := packet.(*markerPacket)
-		common.Odl.Debug("marker packet received", "marker-type", p.markerType, "data", p.data)
+		common.Odl.Finest("marker packet received", "marker-type", p.markerType, "data", p.data)
 		switch p.markerType {
 		case NSPMKTD0:
 			ns.isBreak = true
@@ -664,6 +807,59 @@ func (ns *networkSession) SendPacket(ctx context.Context, buf []byte) error {
 	PrintPacket(buf, 0, len(buf))
 	if len(buf) < PACKET_HEADER_SIZE {
 		return common.NewOracleError(oracleErrors.InvalidNetworkExpectedLength, nil, "packet buffer", len(buf), PACKET_HEADER_SIZE)
+	}
+	if ns.sAtts.networkCompressionEnabled && len(buf) > ns.sAtts.networkCompressionThreshold && buf[4] == NSPTDA {
+		if len(buf) < NSPDADAT {
+			return common.NewOracleError(oracleErrors.InvalidNetworkContextExpectedLength, nil, "packet", "NSPTDA", len(buf), NSPDADAT)
+		}
+		// Only data-packet payloads above the negotiated threshold may be compressed.
+		header := append([]byte(nil), buf[:NSPDADAT]...)
+		payload := buf[NSPDADAT:]
+		var (
+			compressed bytes.Buffer
+			err        error
+		)
+		if ns.sAtts.firstSendCompressedPacket {
+			// Start the stream with zlib framing; later packets use raw DEFLATE.
+			zw, zErr := zlib.NewWriterLevel(&compressed, zlib.DefaultCompression)
+			if zErr != nil {
+				common.Odl.Error("failed to initialize network compression", "algorithm", "zlib", "error", zErr, "payload-length", len(payload))
+				return zErr
+			}
+			if _, err = zw.Write(payload); err == nil {
+				err = zw.Flush()
+			}
+		} else {
+			fw, fErr := flate.NewWriter(&compressed, flate.DefaultCompression)
+			if fErr != nil {
+				common.Odl.Error("failed to initialize network compression", "algorithm", "deflate", "error", fErr, "payload-length", len(payload))
+				return fErr
+			}
+			if _, err = fw.Write(payload); err == nil {
+				err = fw.Flush()
+			}
+		}
+
+		if err != nil {
+			common.Odl.Error("failed to compress network packet", "algorithm", "zlib", "error", err, "payload-length", len(payload))
+			return common.NewOracleError(oracleErrors.NetworkCompressionFailed, err, "zlib")
+		}
+		compressedBytes := compressed.Bytes()
+		if len(compressedBytes) < len(payload) {
+			// Use compression only if it makes the payload smaller.
+			if ns.sAtts.firstSendCompressedPacket {
+				ns.sAtts.firstSendCompressedPacket = false
+			}
+			buf = append(header, compressedBytes...)
+			// Mark the data flags as compressed, then publish the new length.
+			flags := binary.BigEndian.Uint16(buf[NSPDAFLG:])
+			binary.BigEndian.PutUint16(buf[NSPDAFLG:], flags|NSPDAFCMP)
+			if ns.sAtts.largeSDU {
+				binary.BigEndian.PutUint32(buf[:4], uint32(len(buf)))
+			} else {
+				binary.BigEndian.PutUint16(buf[:2], uint16(len(buf)))
+			}
+		}
 	}
 	return ns.ntAdapter.Send(ctx, buf)
 }
@@ -733,7 +929,7 @@ func (ns *networkSession) Reset(ctx context.Context) error {
 		return err
 	}
 	err = ns.SendPacket(ctx, markerPkt.buf)
-	common.Odl.Debug("Reset packet sent")
+	common.Odl.Fine("Reset packet sent")
 	if err != nil {
 		common.Odl.Error("An error occurred while sending reset", "error", err)
 		return err
@@ -744,7 +940,7 @@ func (ns *networkSession) Reset(ctx context.Context) error {
 			common.Odl.Error("An error occurred while receiving packet", "error", err)
 			return err
 		}
-		common.Odl.Debug("Packet received", "isReset", ns.isReset)
+		common.Odl.Fine("Packet received", "isReset", ns.isReset)
 	}
 	//reset sndDatapkt
 	ns.sndDatapkt.Reset()
@@ -753,7 +949,7 @@ func (ns *networkSession) Reset(ctx context.Context) error {
 	//set break/reset as false
 	ns.isBreak = false
 	ns.isReset = false
-	common.Odl.Debug("End of break-reset")
+	common.Odl.Fine("End of break-reset")
 	return nil
 }
 
@@ -852,36 +1048,4 @@ func (ns *networkSession) CheckInbandNotification() bool {
 }
 func PrintPacket(buf []byte, offset, length int) {
 
-	if !common.Opl.Enabled(nil, slog.LevelInfo) {
-		return
-	}
-
-	var line bytes.Buffer
-	var lineL bytes.Buffer
-
-	common.Opl.Info("PrintPacket", "Capacity", len(buf),
-		"Offset", offset, "Data Length", length)
-
-	for i, b := range buf[offset : offset+length] {
-		// Format byte as 2-digit hex with leading 0
-		hexByte := fmt.Sprintf("%02X", b)
-		if line.Len() != 0 {
-			line.WriteString(" ")
-		}
-		line.WriteString(hexByte)
-		if b >= 33 && b <= 126 {
-			// Printable ASCII range
-			lineL.WriteString(fmt.Sprintf("%c", b))
-		} else {
-			// Non-printable, replace with dot
-			lineL.WriteString(".")
-		}
-
-		// If 4 bytes written or it's the last byte, print the line
-		if (i+1)%8 == 0 || i == len(buf)-1 {
-			common.Opl.Info(fmt.Sprintf("%-8s %s", lineL.String(), line.String()))
-			lineL.Reset()
-			line.Reset()
-		}
-	}
 }

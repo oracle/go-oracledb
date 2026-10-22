@@ -43,8 +43,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
 // oall8GoldenPayload extracts the TTC OALL8 function payload (post-header) from hex dump
@@ -57,9 +57,9 @@ func oall8GoldenPayload(lines []string) []byte {
 	return buf[11:]
 }
 
-func newEngine(capacity int) (*ArrayBasedDataBuffer, common.Marshaller) {
+func newEngine(capacity int) (*ArrayBasedDataBuffer, drvCommon.Marshaller) {
 	buf := NewArrayDataBuffer(capacity)
-	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	return buf, engine
 }
 
@@ -101,9 +101,9 @@ func TestOall8_getFuncCode(t *testing.T) {
 // 6: SCN high (0 here)
 // 7: 1 for SELECT, else 0
 // 9: flags: +AL8EX_IMPL_RESULTS_CLIENT if EXE, +AL8EX_GET_PIDMLRC if DML
-// 11: SSS cursorId position (0 here)
-func makeAl8i4Drop() []common.UB4 {
-	al := make([]common.UB4, 13)
+// 11: SSS cursor ID position (0 here)
+func makeAl8i4Drop() []drvCommon.UB4 {
+	al := make([]drvCommon.UB4, 13)
 	al[0] = 1                       // PRS
 	al[1] = 1                       // OTHER => iterations 1
 	al[5] = 0                       // SCN lo
@@ -114,8 +114,8 @@ func makeAl8i4Drop() []common.UB4 {
 	return al
 }
 
-func makeAl8i4Create() []common.UB4 {
-	al := make([]common.UB4, 13)
+func makeAl8i4Create() []drvCommon.UB4 {
+	al := make([]drvCommon.UB4, 13)
 	al[0] = 1
 	al[1] = 1 // OTHER
 	al[5] = 0
@@ -126,8 +126,8 @@ func makeAl8i4Create() []common.UB4 {
 	return al
 }
 
-func makeAl8i4Insert() []common.UB4 {
-	al := make([]common.UB4, 13)
+func makeAl8i4Insert() []drvCommon.UB4 {
+	al := make([]drvCommon.UB4, 13)
 	al[0] = 1
 	al[1] = 1 // DML, no binds => 1
 	al[5] = 0
@@ -138,8 +138,8 @@ func makeAl8i4Insert() []common.UB4 {
 	return al
 }
 
-func makeAl8i4Delete() []common.UB4 {
-	al := make([]common.UB4, 13)
+func makeAl8i4Delete() []drvCommon.UB4 {
+	al := make([]drvCommon.UB4, 13)
 	al[0] = 1
 	al[1] = 1 // DML, no binds => 1
 	al[5] = 0
@@ -150,8 +150,8 @@ func makeAl8i4Delete() []common.UB4 {
 	return al
 }
 
-func makeAl8i4Select(rowsToFetch int) []common.UB4 {
-	al := make([]common.UB4, 13)
+func makeAl8i4Select(rowsToFetch int) []drvCommon.UB4 {
+	al := make([]drvCommon.UB4, 13)
 	al[0] = 1
 	al[1] = 0 // SELECT without fetchRows/describe => 0
 	al[5] = 0
@@ -169,7 +169,7 @@ func TestOall8_MarshalTo_Drop_MatchesGolden(t *testing.T) {
 	// Build message
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	m.setSQL([]byte("DROP TABLE TABLE1"))
 	m.setOall8Options(makeAl8i4Drop())
@@ -186,9 +186,9 @@ func TestOall8_MarshalTo_Drop_MatchesGolden(t *testing.T) {
 
 	if !bytes.Equal(got, want) {
 		t.Logf("Got OALL8 DROP packet:")
-		session.PrintPacket(got, 0, len(got))
+		common.Odl.PacketDump(got)
 		t.Logf("Want OALL8 DROP packet:")
-		session.PrintPacket(want, 0, len(want))
+		common.Odl.PacketDump(want)
 		t.Fatalf("OALL8 DROP mismatch:\n got (%d bytes): % X\nwant (%d bytes): % X", len(got), got, len(want), want)
 	}
 }
@@ -200,7 +200,7 @@ func TestOall8_MarshalTo_Create_MatchesGolden(t *testing.T) {
 
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	m.setSQL([]byte(sql))
 	m.setOall8Options(makeAl8i4Create())
@@ -217,9 +217,9 @@ func TestOall8_MarshalTo_Create_MatchesGolden(t *testing.T) {
 
 	if !bytes.Equal(got, want) {
 		t.Logf("Got OALL8 CREATE packet:")
-		session.PrintPacket(got, 0, len(got))
+		common.Odl.PacketDump(got)
 		t.Logf("Want OALL8 CREATE packet:")
-		session.PrintPacket(want, 0, len(want))
+		common.Odl.PacketDump(want)
 		t.Fatalf("OALL8 CREATE mismatch:\n got (%d bytes): % X\nwant (%d bytes): % X", len(got), got, len(want), want)
 	}
 }
@@ -232,7 +232,7 @@ func TestOall8_MarshalTo_Insert_MatchesGolden(t *testing.T) {
 	m := NewOall18().(*tTIOall)
 	// PRS|EXE|COM|NPL (no BND since SQL uses literals, not binds)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	m.setCurrentRank(1)
 
@@ -252,9 +252,9 @@ func TestOall8_MarshalTo_Insert_MatchesGolden(t *testing.T) {
 
 	if !bytes.Equal(got, want) {
 		t.Logf("Got OALL8 INSERT packet:")
-		session.PrintPacket(got, 0, len(got))
+		common.Odl.PacketDump(got)
 		t.Logf("Want OALL8 INSERT packet:")
-		session.PrintPacket(want, 0, len(want))
+		common.Odl.PacketDump(want)
 		t.Fatalf("OALL8 INSERT mismatch:\n got (%d bytes): % X\nwant (%d bytes): % X", len(got), got, len(want), want)
 	}
 }
@@ -266,7 +266,7 @@ func TestOall8_MarshalTo_Delete_MatchesGolden(t *testing.T) {
 
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	m.setCurrentRank(1)
 	m.setSQL([]byte(sql))
@@ -284,9 +284,9 @@ func TestOall8_MarshalTo_Delete_MatchesGolden(t *testing.T) {
 
 	if !bytes.Equal(got, want) {
 		t.Logf("Got OALL8 DELETE packet:")
-		session.PrintPacket(got, 0, len(got))
+		common.Odl.PacketDump(got)
 		t.Logf("Want OALL8 DELETE packet:")
-		session.PrintPacket(want, 0, len(want))
+		common.Odl.PacketDump(want)
 		t.Fatalf("OALL8 DELETE mismatch:\n got (%d bytes): % X\nwant (%d bytes): % X", len(got), got, len(want), want)
 	}
 }
@@ -299,7 +299,7 @@ func TestOall8_MarshalTo_Select_MatchesGolden(t *testing.T) {
 	m := NewOall18().(*tTIOall)
 	// PRS|EXE only, no FCH. isSelect true and rowsToFetch 10 => max prefetch size, 10 rows.
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	// to match dump values.
 	m.maxClientBuffer = maxValue
@@ -323,9 +323,9 @@ func TestOall8_MarshalTo_Select_MatchesGolden(t *testing.T) {
 
 	if !bytes.Equal(got, want) {
 		t.Logf("Got OALL8 SELECT packet:")
-		session.PrintPacket(got, 0, len(got))
+		common.Odl.PacketDump(got)
 		t.Logf("Want OALL8 SELECT packet:")
-		session.PrintPacket(want, 0, len(want))
+		common.Odl.PacketDump(want)
 		t.Fatalf("OALL8 SELECT mismatch:\n got (%d bytes): % X\nwant (%d bytes): % X", len(got), got, len(want), want)
 	}
 }
@@ -336,7 +336,7 @@ func TestOall8_MarshalTo_Select_MatchesGolden(t *testing.T) {
 func buildOall8DDL(sql string) *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	m.setSQL([]byte(sql))
@@ -347,7 +347,7 @@ func buildOall8DDL(sql string) *tTIOall {
 func buildOall8DML(sql string) *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | commitAfterExecution | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	m.setCurrentRank(1)
@@ -361,7 +361,7 @@ func buildOall8DML(sql string) *tTIOall {
 func buildOall8SELECT(sql string, rowsToFetch int) *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode) // (!FCH) && EXE && PRS && isSelect
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	m.setRowsToFetch()
@@ -430,7 +430,7 @@ func TestOall8_MarshalTo_Fail_DDL(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -449,7 +449,7 @@ func TestOall8_MarshalTo_Fail_DDL(t *testing.T) {
 func buildOall8WithBinds() *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode | bindValuesPresent)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	// Keep SQL and oall8Options empty to reduce unrelated payload noise
@@ -473,7 +473,7 @@ func TestOall8_MarshalTo_Fail_BindPtr(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(4096),
 			FailOnWriteByteCall:  n,
 		}
-		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -502,7 +502,7 @@ func TestOall8_MarshalTo_Fail_BindCount(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(4096),
 			FailOnWriteBytesCall: n,
 		}
-		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -526,7 +526,7 @@ func TestOall8_MarshalTo_Fail_BindCount(t *testing.T) {
 func buildOall8WithDefines() *tTIOall {
 	m := NewOall18().(*tTIOall)
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode | defineColumnsProvided)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	// Keep SQL and oall8Options empty to reduce unrelated payload noise
@@ -552,7 +552,7 @@ func TestOall8_MarshalTo_Fail_DefinePtr(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(4096),
 			FailOnWriteByteCall:  n,
 		}
-		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -582,7 +582,7 @@ func TestOall8_MarshalTo_Fail_DefineCount(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(4096),
 			FailOnWriteBytesCall: n,
 		}
-		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -607,9 +607,9 @@ func TestOall8_MarshalTo_Fail_AL8I4_DataWrite(t *testing.T) {
 	t.Parallel()
 	// Start from a DDL build, but override oall8Options with a large vector
 	m := buildOall8DDL("DROP TABLE TABLE1")
-	big := make([]common.UB4, 256)
+	big := make([]drvCommon.UB4, 256)
 	for i := range big {
-		big[i] = common.UB4(i + 1)
+		big[i] = drvCommon.UB4(i + 1)
 	}
 	m.setOall8Options(big)
 
@@ -622,7 +622,7 @@ func TestOall8_MarshalTo_Fail_AL8I4_DataWrite(t *testing.T) {
 			ArrayBasedDataBuffer: NewArrayDataBuffer(8192),
 			FailOnWriteBytesCall: call,
 		}
-		engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+		engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		err := m.MarshalTo(context.Background(), engine)
 		if err == nil {
 			continue
@@ -645,7 +645,7 @@ func buildOall8Empty() *tTIOall {
 	m := NewOall18().(*tTIOall)
 	// Minimal PRS|EXE path, non-SELECT, non-DML
 	m.setOptions(statementParsedByServer | executeStatement | noPLSQLMode)
-	m.setCursorId(0)
+	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 
 	// Both payloads empty
@@ -663,7 +663,7 @@ func TestOall8_MarshalTo_EmptySQL_EmptyAL8I4_Success(t *testing.T) {
 	t.Parallel()
 	m := buildOall8Empty()
 	buf := NewArrayDataBuffer(2048)
-	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	engine := NewMarshalEngine(buf, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	if err := m.MarshalTo(context.Background(), engine); err != nil {
 		t.Fatalf("MarshalTo (empty sql/oall8Options) failed: %v", err)
@@ -696,7 +696,7 @@ func TestOall8_MarshalTo_EmptySQL_EmptyAL8I4_Failures(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -772,7 +772,7 @@ func TestOall8_MarshalTo_Fail_DML(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -854,7 +854,7 @@ func TestOall8_MarshalTo_Fail_SELECT(t *testing.T) {
 				FailOnWriteByteCall:  tc.failByte,
 				FailOnWriteBytesCall: tc.failBytes,
 			}
-			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+			engine := NewMarshalEngine(faulty, drvCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 			err := m.MarshalTo(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
