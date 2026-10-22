@@ -415,7 +415,7 @@ func TestParseEzConnect_EmptyURL(t *testing.T) {
 // TestParseEzConnect_SecurityParams tests TCPS with security parameters
 func TestParseEzConnect_SecurityParams(t *testing.T) {
 	t.Parallel()
-	convResult, err := parseEzConnect("tcps://host:2484/mydb?ssl_server_dn_match=yes&wallet_location=/wallet")
+	convResult, err := parseEzConnect("tcps://host:2484/mydb?ssl_server_dn_match=yes&wallet_location=/wallet&tls_server_cert_host=db.example.com")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -429,6 +429,9 @@ func TestParseEzConnect_SecurityParams(t *testing.T) {
 	}
 	if !strings.Contains(result, "(SSL_SERVER_DN_MATCH=yes)") {
 		t.Errorf("expected SSL_SERVER_DN_MATCH in SECURITY, got %s", result)
+	}
+	if !strings.Contains(result, "(TLS_SERVER_CERT_HOST=db.example.com)") {
+		t.Errorf("expected TLS_SERVER_CERT_HOST in SECURITY, got %s", result)
 	}
 }
 
@@ -687,9 +690,10 @@ func TestBuildConnectData_EmptyService(t *testing.T) {
 func TestBuildSecurity_AllParams(t *testing.T) {
 	t.Parallel()
 	urlProps := map[string]string{
-		"SSL_SERVER_DN_MATCH": "yes",
-		"SSL_SERVER_CERT_DN":  "CN=server",
-		"WALLET_LOCATION":     "/wallet",
+		"SSL_SERVER_DN_MATCH":  "yes",
+		"SSL_SERVER_CERT_DN":   "CN=server",
+		"TLS_SERVER_CERT_HOST": "db.example.com",
+		"WALLET_LOCATION":      "/wallet",
 	}
 
 	result := buildSecurity(urlProps)
@@ -699,6 +703,9 @@ func TestBuildSecurity_AllParams(t *testing.T) {
 	}
 	if !strings.Contains(result, "(SSL_SERVER_DN_MATCH=yes)") {
 		t.Errorf("expected SSL_SERVER_DN_MATCH in %s", result)
+	}
+	if !strings.Contains(result, "(TLS_SERVER_CERT_HOST=db.example.com)") {
+		t.Errorf("expected TLS_SERVER_CERT_HOST in %s", result)
 	}
 }
 

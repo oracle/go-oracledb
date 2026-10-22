@@ -105,6 +105,7 @@ func (nt *nttcps) Connect(ctx context.Context, address Address) error {
 		Certificates:       certs,
 		RootCAs:            nt.rootCAs,
 		InsecureSkipVerify: true,
+		ServerName:         tlsServerName(nt.hostname, nt.originHost, nt.atts.TLSServerCertHost),
 	}
 
 	// Verify server certificate and do DN match
@@ -194,14 +195,38 @@ func (nt *nttcps) verifyServerDN(cert *x509.Certificate) error {
 		return verifyDN(cert, nt.atts.SSLServerCertDN)
 	}
 
-	err := cert.VerifyHostname(nt.hostname)
-	if err != nil && nt.originHost != "" {
-		err = cert.VerifyHostname(nt.originHost)
+	var err error
+	for _, hostname := range []string{nt.hostname, nt.originHost, nt.atts.TLSServerCertHost} {
+		if hostname == "" {
+			continue
+		}
+		if err = cert.VerifyHostname(hostname); err == nil {
+			return nil
+		}
+	}
+	if err == nil {
+		err = cert.VerifyHostname("")
 	}
 	if err != nil && nt.atts.SSLAllowWeakDNMatch && nt.atts.Servicename == cert.Subject.CommonName {
 		return nil
 	}
 	return err
+}
+
+// tlsServerName returns the hostname sent in SNI. A custom hostname is used
+// for every connection attempt. Otherwise, an IP redirect falls back to the
+// original hostname so that the certificate can still be validated by name.
+func tlsServerName(currentHost, originHost, customHost string) string {
+	if customHost != "" {
+		return customHost
+	}
+	if net.ParseIP(strings.Trim(currentHost, "[]")) == nil && currentHost != "" {
+		return currentHost
+	}
+	if originHost != "" {
+		return originHost
+	}
+	return currentHost
 }
 
 // Perform TLS Handshake to establish a TLS connection
