@@ -102,13 +102,14 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConnectionCloser_Close", Categories: "unitary", Exclusive: false, Fn: TestConnectionCloser_Close},
 	{Name: "TestConnectionCloser_CloseWithTimeout", Categories: "unitary", Exclusive: false, Fn: TestConnectionCloser_CloseWithTimeout},
 	{Name: "TestEventServiceRegisterAndPost", Categories: "unitary", Exclusive: false, Fn: TestEventServiceRegisterAndPost},
-	{Name: "TestAuthencationFactoryWithNilParameters", Categories: "unitary", Exclusive: false, Fn: TestAuthencationFactoryWithNilParameters},
-	{Name: "TestAuthencationFactoryBasic", Categories: "unitary", Exclusive: false, Fn: TestAuthencationFactoryBasic},
+	{Name: "TestAuthenticationFactoryWithNilParameters", Categories: "unitary", Exclusive: false, Fn: TestAuthenticationFactoryWithNilParameters},
+	{Name: "TestAuthenticationFactoryBasic", Categories: "unitary", Exclusive: false, Fn: TestAuthenticationFactoryBasic},
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken},
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForOAuth", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForOAuth},
 	{Name: "TestGetConnection", Categories: "unitary", Exclusive: false, Fn: TestGetConnection},
 	{Name: "TestConnectionPinger_Ping", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_Ping},
 	{Name: "TestConnectionPinger_IsValid", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValid},
+	{Name: "TestConnectionPinger_IsValidPushesRequestEnd", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValidPushesRequestEnd},
 	{Name: "TestConnectionPinger_IsValidWithInband", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValidWithInband},
 	{Name: "TestFactoryCodecInjection", Categories: "unitary", Exclusive: false, Fn: TestFactoryCodecInjection},
 	{Name: "TestFactoryRegistries", Categories: "unitary", Exclusive: false, Fn: TestFactoryRegistries},
@@ -540,7 +541,18 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestAuthRPARejectsOversizedKeyValueListAllocations", Categories: "unitary", Exclusive: false, Fn: TestAuthRPARejectsOversizedKeyValueListAllocations},
 	{Name: "TestCodecFactory_getBindOac", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getBindOac},
 	{Name: "TestCodecFactory_getDefineOac", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getDefineOac},
+	{Name: "TestConnectionPushSessionStateRequest", Categories: "unitary", Exclusive: false, Fn: TestConnectionPushSessionStateRequest},
+	{Name: "TestConnectionPushSessionStateRequestErrors", Categories: "unitary", Exclusive: false, Fn: TestConnectionPushSessionStateRequestErrors},
+	{Name: "TestAddRequestBoundariesRegistersAndRunsCallbacks", Categories: "unitary", Exclusive: false, Fn: TestAddRequestBoundariesRegistersAndRunsCallbacks},
+	{Name: "TestAddRequestBoundariesReturnsBadConnOnPushFailure", Categories: "unitary", Exclusive: false, Fn: TestAddRequestBoundariesReturnsBadConnOnPushFailure},
+	{Name: "TestConnectionInitializeRequestBoundaryCallbacksQueuesInitialBegin", Categories: "unitary", Exclusive: false, Fn: TestConnectionInitializeRequestBoundaryCallbacksQueuesInitialBegin},
 	{Name: "TestConnectionResetter_Reset", Categories: "unitary", Exclusive: false, Fn: TestConnectionResetter_Reset},
+	{Name: "TestConnectionResetSessionPushesRequestBegin", Categories: "unitary", Exclusive: false, Fn: TestConnectionResetSessionPushesRequestBegin},
+	{Name: "TestNewRequestBoundaryCallbacksCreatesEmptyLists", Categories: "unitary", Exclusive: false, Fn: TestNewRequestBoundaryCallbacksCreatesEmptyLists},
+	{Name: "TestRequestCallbacksAppend", Categories: "unitary", Exclusive: false, Fn: TestRequestCallbacksAppend},
+	{Name: "TestRunRequestBoundaryCallbacksVerifiesErrorHandling", Categories: "unitary", Exclusive: false, Fn: TestRunRequestBoundaryCallbacksVerifiesErrorHandling},
+	{Name: "TestSessionStateFunctionRegistrationByProtocol", Categories: "unitary", Exclusive: false, Fn: TestSessionStateFunctionRegistrationByProtocol},
+	{Name: "TestTTIOSessstateMarshalRequestFlags", Categories: "unitary", Exclusive: false, Fn: TestTTIOSessstateMarshalRequestFlags},
 	{Name: "TestConnection_ExecContext_LocalizesError", Categories: "unitary", Exclusive: false, Fn: TestConnection_ExecContext_LocalizesError},
 	{Name: "TestConnection_LocalizationStaysBoundToEachShelf", Categories: "unitary", Exclusive: false, Fn: TestConnection_LocalizationStaysBoundToEachShelf},
 	{Name: "TestConnection_ParseTimeZoneRejectsMalformedValues", Categories: "unitary", Exclusive: false, Fn: TestConnection_ParseTimeZoneRejectsMalformedValues},
@@ -548,6 +560,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConnection_cancelCurrentExecution", Categories: "unitary", Exclusive: false, Fn: TestConnection_cancelCurrentExecution},
 	{Name: "TestEncryptPasswordBufferTooSmall", Categories: "unitary", Exclusive: false, Fn: TestEncryptPasswordBufferTooSmall},
 	{Name: "TestGetConnectionMissingLocalizationService", Categories: "unitary", Exclusive: false, Fn: TestGetConnectionMissingLocalizationService},
+	{Name: "TestGetConnectionQueuesInitialRequestBegin", Categories: "unitary", Exclusive: false, Fn: TestGetConnectionQueuesInitialRequestBegin},
 	{Name: "TestGetMaxLengthForOac_NoPreviousOACs", Categories: "unitary", Exclusive: false, Fn: TestGetMaxLengthForOac_NoPreviousOACs},
 	{Name: "TestGetMaxLengthForOac_PreservesPreviousLarger", Categories: "unitary", Exclusive: true, Fn: TestGetMaxLengthForOac_PreservesPreviousLarger},
 	{Name: "TestGetMaxLengthForOac_UsesCurrentIfLarger", Categories: "unitary", Exclusive: false, Fn: TestGetMaxLengthForOac_UsesCurrentIfLarger},
@@ -1133,7 +1146,7 @@ func newTestConnection(
 		_isClosed: false,
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
-	_registerHandleConnectionShouldBeDropped(shelf, conn)
+	conn._registerHandleConnectionShouldBeDropped()
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	return conn
 }

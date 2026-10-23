@@ -56,7 +56,7 @@ type connectionInstantiator struct {
 	authenticator       Authenticator
 	dataBuffer          driverCommon.DataBuffer
 	ns                  driverCommon.NetworkSession
-	drvierConfig        *oracleconfig.OracleDriverConfig
+	driverConfig        *oracleconfig.OracleDriverConfig
 	newConnectionFunc   func(context.Context, *ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext, driverCommon.NetworkSession) (*connection, error)
 	localizationService common.LocalizationService
 	providerRegistry    common.Registry[oracleProviders.Provider]
@@ -86,7 +86,7 @@ func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns dr
 		authenticator:       authenticator,
 		dataBuffer:          dataBuffer,
 		ns:                  ns,
-		drvierConfig:        config,
+		driverConfig:        config,
 		newConnectionFunc:   newConnection,
 		localizationService: localizationService,
 		providerRegistry:    providerRegistry,
@@ -117,10 +117,10 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 	// by the client for authentication
 	sessCtx.GetClientProperties().SetProperty(driverCommon.RemoteAddress, connInstantiator.ns.GetRemoteAddress())
 	sessCtx.GetClientProperties().SetProperty(driverCommon.RemotePort, connInstantiator.ns.GetRemotePort())
-	sessCtx.GetClientProperties().SetProperty(driverCommon.ConnectDescriptor, connInstantiator.drvierConfig.ConnectDescriptor)
+	sessCtx.GetClientProperties().SetProperty(driverCommon.ConnectDescriptor, connInstantiator.driverConfig.ConnectDescriptor)
 
 	// Add connection properties to shelf for downstream consumers
-	shelf.UpdateConnectionProperties(connInstantiator.drvierConfig.DriverProperties)
+	shelf.UpdateConnectionProperties(connInstantiator.driverConfig.DriverProperties)
 	shelf.RegisterLocalizationService(connInstantiator.localizationService)
 	shelf.registerProviderRegistry(connInstantiator.providerRegistry)
 
@@ -144,8 +144,35 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 	// snapshot session
 	sessCtx.GetSessionProperties().Snapshot()
 
+	common.Odl.Finest("Create the connection")
+	conn, err := connInstantiator.newConnectionFunc(ctx, shelf, sessCtx, connInstantiator.ns)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build and register request-boundary callbacks for the connection.
+	common.Odl.Finest("Build and register request-boundary callbacks")
+	callbacks := buildRequestBoundaryCallbacks(conn)
+	conn.initializeRequestBoundaryCallbacks(callbacks.requestStartCallbacks, callbacks.requestEndCallbacks)
+
+	// Run connection-initialization callbacks
+	common.Odl.Finest("Running connection initialization callbacks")
+	if err := runRequestBoundaryCallbacks(ctx, callbacks.newConnectionCallbacks); err != nil {
+		return nil, err
+	}
+
 	common.Odl.Debug("Connect end")
-	return connInstantiator.newConnectionFunc(ctx, shelf, sessCtx, connInstantiator.ns)
+	return conn, nil
+}
+
+// buildRequestBoundaryCallbacks builds request-boundary callbacks for the connection.
+func buildRequestBoundaryCallbacks(conn *connection) *requestCallbacks {
+	callbacks := newRequestBoundaryCallbacks()
+
+	// Add begin-request and end-request callbacks.
+	addBeginEndRequestCallbacks(callbacks, conn)
+
+	return callbacks
 }
 
 // *** Authenticator Factory ***
