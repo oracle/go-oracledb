@@ -79,8 +79,8 @@ func TestTTIoac_NewTTIoac(t *testing.T) {
 	}
 }
 
-// TestTTIoac_UnMarshalFrom_Success tests that UnMarshalFrom succeeds on a valid TTC payload.
-func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
+// TestTTIoac_UnmarshalFrom_Success tests that UnmarshalFrom succeeds on a valid TTC payload.
+func TestTTIoac_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -95,23 +95,23 @@ func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
 			payload := makeTtioacUnmarshalPayload(tc.dump)
 			mar := createMarshaller(payload, 0, 0)
 			obj := &tTIoac{}
-			err := obj.UnMarshalFrom(context.Background(), mar)
+			err := obj.UnmarshalFrom(context.Background(), mar)
 			if err != nil {
-				t.Fatalf("UnMarshalFrom failed: %v", err)
+				t.Fatalf("UnmarshalFrom failed: %v", err)
 			}
 			switch tc.name {
 			case "valid chr unmarshal":
-				// Check selected fields for validTtioacChrUnmarshalDump (should decode to common.DtyChr)
+				// Check selected fields for validTtioacChrUnmarshalDump (should decode to typeCommon.DtyChr)
 				if obj.dataType != common.UB1(typeCommon.DtyChr) {
-					t.Errorf("expected dataType common.DtyChr (%d), got %d", typeCommon.DtyChr, obj.dataType)
+					t.Errorf("expected dataType typeCommon.DtyChr (%d), got %d", typeCommon.DtyChr, obj.dataType)
 				}
 				if obj.maxLength != 4000 {
 					t.Errorf("expected maxLength 40000, got %d", obj.maxLength)
 				}
 			case "valid num unmarshal":
-				// Check selected fields for validTtioacNumUnmarshalDump (should decode to common.DtyNum)
+				// Check selected fields for validTtioacNumUnmarshalDump (should decode to typeCommon.DtyNum)
 				if obj.dataType != common.UB1(typeCommon.DtyNum) {
-					t.Errorf("expected dataType common.DtyNum (%d), got %d", typeCommon.DtyNum, obj.dataType)
+					t.Errorf("expected dataType typeCommon.DtyNum (%d), got %d", typeCommon.DtyNum, obj.dataType)
 				}
 				if obj.scale != common.SB1(NumberScaleFloatSentinel) {
 					t.Errorf("expected scale %d, got %d", NumberScaleFloatSentinel, obj.scale)
@@ -124,8 +124,8 @@ func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-// TestTTIoac_UnMarshalFrom_Fail covers error scenarios using a faulty data buffer
-func TestTTIoac_UnMarshalFrom_Fail(t *testing.T) {
+// TestTTIoac_UnmarshalFrom_Fail covers error scenarios using a faulty data buffer
+func TestTTIoac_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	type faultyTest struct {
 		name      string
@@ -152,7 +152,7 @@ func TestTTIoac_UnMarshalFrom_Fail(t *testing.T) {
 			payload := makeTtioacUnmarshalPayload(validTtioacChrUnmarshalDump)
 			mar := createMarshaller(payload, failOnReadByte, tc.failCount)
 			obj := &tTIoac{}
-			err := obj.UnMarshalFrom(ctx, mar)
+			err := obj.UnmarshalFrom(ctx, mar)
 			if err == nil {
 				t.Errorf("expected error, got nil for case: %s", tc.name)
 			} else {
@@ -259,8 +259,8 @@ func TestTTIoac_SignedArrayElementCount(t *testing.T) {
 	}
 	dataBuffer.currentReadPosition = 0
 	decoded := &tTIoac{}
-	if err := decoded.UnMarshalFrom(ctx, mar); err != nil {
-		t.Fatalf("UnMarshalFrom failed for negative oacmal: %v", err)
+	if err := decoded.UnmarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("UnmarshalFrom failed for negative oacmal: %v", err)
 	}
 	if decoded.nbArrayElements != -1 {
 		t.Fatalf("nbArrayElements = %d, want -1", decoded.nbArrayElements)
@@ -308,7 +308,7 @@ func testTTIoacUnmarshalLengthNormalization(t *testing.T, typ typeCommon.DtyType
 	}
 	dataBuffer.currentReadPosition = 0
 	decoded := &tTIoac{}
-	if err := decoded.UnMarshalFrom(ctx, mar); err != nil {
+	if err := decoded.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatalf("unmarshal OAC: %v", err)
 	}
 	if decoded.maxLength != want {
@@ -353,8 +353,8 @@ func TestTTIoac_MarshalTo_Fail(t *testing.T) {
 		{"Fail on Write characterSetForm", 6, failOnWriteByte},
 		{"Fail on Write codepointLengthLimit", 8, failOnWriteBytes},
 		{"Fail on Write collationId", 9, failOnWriteBytes},
-		// Explicitly fail on UB2(p.scale) for common.DtyNum
-		{"Fail on MarshalUB2 scale common.DtyNum", 1, failOnWriteBytes},
+		// Explicitly fail on UB2(p.scale) for typeCommon.DtyNum
+		{"Fail on MarshalUB2 scale typeCommon.DtyNum", 1, failOnWriteBytes},
 	}
 
 	for _, tc := range cases {
@@ -362,8 +362,8 @@ func TestTTIoac_MarshalTo_Fail(t *testing.T) {
 			payload := make([]byte, 2048)
 			mar := createMarshaller(payload, tc.failType, tc.failCount)
 			var err error
-			if tc.name == "Fail on MarshalUB2 scale common.DtyNum" {
-				// common.DtyNum config to enter MarshalUB2 scale block
+			if tc.name == "Fail on MarshalUB2 scale typeCommon.DtyNum" {
+				// typeCommon.DtyNum config to enter MarshalUB2 scale block
 				dtyNum := newTTIoac(typeCommon.DtyNum, 22)
 				dtyNum.scale = common.SB1(7)
 				err = dtyNum.MarshalTo(ctx, mar)

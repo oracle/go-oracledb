@@ -176,9 +176,9 @@ type Marshaller interface {
 	//  - An error if the marshaling operation fails.
 	UnmarshalUB4(context.Context) (UB4, error)
 
-	// UnmarshalUB8 Reads a eight unsigned bytes long value
+	// UnmarshalUB8 reads an eight-byte unsigned value.
 	// Returns:
-	//  - The four unsigned bytes long value
+	//  - The decoded eight-byte unsigned value.
 	//  - An error if the marshaling operation fails.
 	UnmarshalUB8(context.Context) (UB8, error)
 

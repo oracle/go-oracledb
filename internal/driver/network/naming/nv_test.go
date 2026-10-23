@@ -386,12 +386,12 @@ func TestGetNodeRootPath(t *testing.T) {
 	}
 }
 
-// Tests for resolveConnectStringUrl
+// Tests for resolveConnectStringURL
 
-func TestResolveConnectStringUrl_EZConnect(t *testing.T) {
+func TestResolveConnectStringURL_EZConnect(t *testing.T) {
 	t.Parallel()
 	input := "localhost:1521/mydb"
-	result, err := resolveConnectStringUrl(input)
+	result, err := resolveConnectStringURL(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -404,10 +404,10 @@ func TestResolveConnectStringUrl_EZConnect(t *testing.T) {
 	}
 }
 
-func TestResolveConnectStringUrl_TNS(t *testing.T) {
+func TestResolveConnectStringURL_TNS(t *testing.T) {
 	t.Parallel()
 	input := "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=mydb)))"
-	result, err := resolveConnectStringUrl(input)
+	result, err := resolveConnectStringURL(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -419,12 +419,12 @@ func TestResolveConnectStringUrl_TNS(t *testing.T) {
 	}
 }
 
-// TestResolveConnectStringUrl_Invalid tests handling of non-matching format
+// TestResolveConnectStringURL_Invalid tests handling of non-matching format
 // TODO enable this test after adding support for alias from tnsnames
 // invalid should become an alias
-/* func TestResolveConnectStringUrl_Invalid(t *testing.T) {
+/* func TestResolveConnectStringURL_Invalid(t *testing.T) {
 	input := "invalid"
-	result, err := resolveConnectStringUrl(input)
+	result, err := resolveConnectStringURL(input)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}

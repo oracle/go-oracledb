@@ -44,12 +44,14 @@ import (
 )
 
 // RefCursorQuery is the private statement text used to expose an already
-// fetched REF CURSOR through database/sql. Applications should use GetRows
-// rather than invoking it directly.
+// fetched REF CURSOR through database/sql. Applications should use
+// oracle.NewConnectionWrapper(conn).Fetch(ctx, &cursor) rather than invoking
+// it directly.
 const RefCursorQuery = "refcursor"
 
 // Cursor is an Oracle REF CURSOR OUT-bind value. Use
-// oracle.NewConnectionWrapper(conn).GetRows to expose it as *sql.Rows.
+// oracle.NewConnectionWrapper(conn).Fetch(ctx, &cursor) to expose it as
+// *sql.Rows.
 type Cursor struct {
 	rows driver.Rows
 }
@@ -61,7 +63,8 @@ func (r *Cursor) setDriverRows(rows driver.Rows) {
 
 // DriverRows returns the decoded driver cursor held by this OUT bind. It is
 // intended for connection-wrapper integration; applications should use
-// connectionWrapper.GetRows to obtain standard database/sql rows.
+// oracle.NewConnectionWrapper(conn).Fetch(ctx, &cursor) to obtain standard
+// database/sql rows.
 func (r *Cursor) DriverRows() driver.Rows {
 	return r.rows
 }

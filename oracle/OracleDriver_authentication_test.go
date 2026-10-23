@@ -195,7 +195,9 @@ func TestDriver_Authentication_TTIWRN(t *testing.T) {
 	//  should be changed
 	var logOutput bytes.Buffer
 	previousLogger := common.Odl
-	common.Odl = slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	common.Odl = common.OracleLogger{
+		Logger: *slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelWarn})),
+	}
 	defer func() { common.Odl = previousLogger }()
 
 	warningDB, err := sql.Open(warningConfig.Driver.Name, warningConfig.GetConnectionString())

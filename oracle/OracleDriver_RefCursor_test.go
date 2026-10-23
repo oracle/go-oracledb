@@ -438,3 +438,164 @@ END;`,
 		t.Fatalf("REF CURSOR rows: %v", err)
 	}
 }
+
+// TestDriver_RefCursorConnectionOwnership verifies that a REF CURSOR can only
+// be fetched through the connection that received it as an OUT bind.
+func TestDriver_RefCursorConnectionOwnership(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx := context.Background()
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(2)
+
+	conn1, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire first dedicated connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn1.Close() })
+	conn2, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire second dedicated connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn2.Close() })
+
+	wrapper1, err := NewConnectionWrapper(conn1)
+	if err != nil {
+		t.Fatalf("wrap first dedicated connection: %v", err)
+	}
+	wrapper2, err := NewConnectionWrapper(conn2)
+	if err != nil {
+		t.Fatalf("wrap second dedicated connection: %v", err)
+	}
+
+	var cursor1 datatype.Cursor
+	_, err = conn1.ExecContext(ctx, `
+BEGIN
+  OPEN :1 FOR SELECT 101 AS n, 'first' AS label FROM dual;
+END;`, sql.Out{Dest: &cursor1})
+	if err != nil {
+		t.Fatalf("open first REF CURSOR: %v", err)
+	}
+
+	var cursor2 datatype.Cursor
+	_, err = conn2.ExecContext(ctx, `
+BEGIN
+  OPEN :1 FOR SELECT 202 AS n, 'second' AS label FROM dual;
+END;`, sql.Out{Dest: &cursor2})
+	if err != nil {
+		t.Fatalf("open second REF CURSOR: %v", err)
+	}
+
+	checkCrossFetch := func(name string, wrapper *connectionWrapper, cursor *datatype.Cursor, passedNumber int64, passedLabel string, connectionNumber int64, connectionLabel string) bool {
+		t.Helper()
+		rows, err := wrapper.Fetch(ctx, cursor)
+		if err != nil {
+			return false
+		}
+		if rows == nil {
+			t.Errorf("%s accepted a cross-connection REF CURSOR and returned nil rows", name)
+			return true
+		}
+		defer rows.Close()
+
+		if !rows.Next() {
+			t.Errorf("%s accepted a cross-connection REF CURSOR but returned no row: %v", name, rows.Err())
+			return true
+		}
+		var number int64
+		var label string
+		if err = rows.Scan(&number, &label); err != nil {
+			t.Errorf("%s accepted a cross-connection REF CURSOR but row scan failed: %v", name, err)
+			return true
+		}
+		t.Errorf("%s accepted a cross-connection REF CURSOR and returned (%d, %q); passed cursor row is (%d, %q), cursor opened on the wrapper connection is (%d, %q)", name, number, label, passedNumber, passedLabel, connectionNumber, connectionLabel)
+		return true
+	}
+	crossConnectionFetchAccepted := false
+	crossConnectionFetchAccepted = checkCrossFetch("first connection with second cursor", wrapper1, &cursor2, 202, "second", 101, "first") || crossConnectionFetchAccepted
+	crossConnectionFetchAccepted = checkCrossFetch("second connection with first cursor", wrapper2, &cursor1, 101, "first", 202, "second") || crossConnectionFetchAccepted
+	if crossConnectionFetchAccepted {
+		return
+	}
+
+	verifyFetch := func(name string, wrapper *connectionWrapper, cursor *datatype.Cursor, wantNumber int64, wantLabel string) {
+		t.Helper()
+		rows, err := wrapper.Fetch(ctx, cursor)
+		if err != nil {
+			t.Fatalf("%s fetch: %v", name, err)
+		}
+		if rows == nil {
+			t.Fatalf("%s fetch returned nil rows", name)
+		}
+		defer rows.Close()
+		if !rows.Next() {
+			t.Fatalf("%s fetch row: %v", name, rows.Err())
+		}
+		var number int64
+		var label string
+		if err = rows.Scan(&number, &label); err != nil {
+			t.Fatalf("%s scan: %v", name, err)
+		}
+		if number != wantNumber || label != wantLabel {
+			t.Fatalf("%s row = (%d, %q), want (%d, %q)", name, number, label, wantNumber, wantLabel)
+		}
+		if rows.Next() {
+			t.Fatalf("%s returned an unexpected second row", name)
+		}
+		if err = rows.Err(); err != nil {
+			t.Fatalf("%s rows: %v", name, err)
+		}
+	}
+	verifyFetch("first connection", wrapper1, &cursor1, 101, "first")
+	verifyFetch("second connection", wrapper2, &cursor2, 202, "second")
+}
+
+// TestDriver_RefCursorNullOutClearsDestination verifies that a NULL REF CURSOR
+// OUT bind clears a destination that previously held a non-NULL cursor.
+func TestDriver_RefCursorNullOutClearsDestination(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx := context.Background()
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire dedicated connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	var raw datatype.Cursor
+	_, err = conn.ExecContext(ctx, `
+BEGIN
+  OPEN :1 FOR SELECT 42 AS n FROM dual;
+END;`, sql.Out{Dest: &raw})
+	if err != nil {
+		t.Fatalf("open non-NULL REF CURSOR: %v", err)
+	}
+	if raw.DriverRows() == nil {
+		t.Fatal("non-NULL REF CURSOR did not populate the destination")
+	}
+
+	_, err = conn.ExecContext(ctx, `
+BEGIN
+  :1 := NULL;
+END;`, sql.Out{Dest: &raw})
+	if err != nil {
+		t.Fatalf("return NULL REF CURSOR: %v", err)
+	}
+	if raw.DriverRows() != nil {
+		t.Fatal("NULL REF CURSOR left the previously returned cursor in the reused destination")
+	}
+}

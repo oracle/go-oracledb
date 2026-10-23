@@ -67,11 +67,11 @@ func newTTILobRPA() driverCommon.Message[driverCommon.MessageType] {
 	return &ttiLobRpa{}
 }
 
-// UnMarshalFrom decodes the LOB RPA core payload.
+// UnmarshalFrom decodes the LOB RPA core payload.
 // It reads:
 //   - UB2 al8o4l (length), then al8o4l times UB4 values into al8o4
 //   - Builds SCN from al8o4[0] (low) and al8o4[1]&^KSCNFVB (high)
-//   - Sets cursorId from al8o4[2]
+//   - Sets the cursor ID from al8o4[2]
 //   - Reads transaction context length (UB2) and bytes (ignored)
 //   - Reads keyword-values length (UB2); decoding of pairs is deferred
 //
@@ -81,8 +81,8 @@ func newTTILobRPA() driverCommon.Message[driverCommon.MessageType] {
 //
 // Returns:
 //   - error: FailUnmarshal oracleError when unmarshalling fails; nil on success or when the definition is nil.
-func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Debug("TTILobRpa.UnmarshalFrom: begin", "operation", p.lobDefinition.operation)
+func (p *ttiLobRpa) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+	common.Odl.Finest("TTILobRpa.UnmarshalFrom: begin", "operation", p.lobDefinition.operation)
 
 	var err error
 	// (1) retrieve source Lob Locator if necessary
@@ -90,7 +90,7 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 	if sourceLocator != nil && sourceLocator.hasBytes() {
 		sourceLocatorBytes := sourceLocator.locatorBytes
 		if p.lobDefinition.operation == kplobTmpCreate {
-			common.Odl.Debug("TTILobRpa.UnmarshalFrom: reading temporary locator header")
+			common.Odl.Finest("TTILobRpa.UnmarshalFrom: reading temporary locator header")
 			header, err := mar.UnmarshalB1Array(ctx, 2)
 			if err != nil {
 				common.Odl.Error("TTILobRpa.UnmarshalFrom: temporary locator header unmarshal failed",
@@ -101,7 +101,7 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 			}
 
 			locatorLen := int(header[0])<<8 | int(header[1])
-			common.Odl.Debug("TTILobRpa.UnmarshalFrom: temporary locator header processed",
+			common.Odl.Finest("TTILobRpa.UnmarshalFrom: temporary locator header processed",
 				"raw_len", locatorLen,
 				"allocated_len", len(sourceLocatorBytes))
 			expectedLen := locatorLen + 2
@@ -127,7 +127,7 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 					return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 				}
 				copy(sourceLocatorBytes[2:], body)
-				common.Odl.Debug("TTILobRpa.UnmarshalFrom: temporary locator body populated",
+				common.Odl.Finest("TTILobRpa.UnmarshalFrom: temporary locator body populated",
 					"locator_length", len(sourceLocatorBytes),
 					"source_locator", append([]byte(nil), []byte(sourceLocatorBytes)...))
 			}
@@ -141,7 +141,7 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 					)
 					return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 				}
-				common.Odl.Debug("TTILobRpa.UnmarshalFrom: discarded unused locator bytes",
+				common.Odl.Finest("TTILobRpa.UnmarshalFrom: discarded unused locator bytes",
 					"discarded", extraUnused,
 					"bytes", eu)
 			}
@@ -159,7 +159,7 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 					return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 				}
 				copy(sourceLocatorBytes, bytes)
-				common.Odl.Debug("TTILobRpa.UnmarshalFrom: locator bytes populated",
+				common.Odl.Finest("TTILobRpa.UnmarshalFrom: locator bytes populated",
 					"locator_length", len(sourceLocatorBytes),
 					"source_locator", append([]byte(nil), []byte(sourceLocatorBytes)...))
 			}
@@ -185,7 +185,7 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 			)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
-		common.Odl.Debug("TTILobRpa.UnmarshalFrom: destination locator populated",
+		common.Odl.Finest("TTILobRpa.UnmarshalFrom: destination locator populated",
 			"locator_length", len(destinationLocator.locatorBytes),
 			"destination_locator", append([]byte(nil), []byte(destinationLocator.locatorBytes)...))
 	}
@@ -199,7 +199,7 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 			)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
-		common.Odl.Debug("TTILobRpa.UnmarshalFrom: charset ID unmarshalled", "charset_id", p.lobDefinition.charsetID)
+		common.Odl.Finest("TTILobRpa.UnmarshalFrom: charset ID unmarshalled", "charset_id", p.lobDefinition.charsetID)
 	}
 
 	// (4) retrieve lobamt
@@ -211,7 +211,7 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 			)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 		}
-		common.Odl.Debug("TTILobRpa.UnmarshalFrom: lob amount unmarshalled", "lob_amount", p.lobDefinition.lobAmt)
+		common.Odl.Finest("TTILobRpa.UnmarshalFrom: lob amount unmarshalled", "lob_amount", p.lobDefinition.lobAmt)
 	}
 
 	// (5) retrieve NULL value -- only retrieve if null value is expected
@@ -229,10 +229,10 @@ func (p *ttiLobRpa) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshall
 		}
 
 		p.lobDefinition.lobNull = isNull != 0
-		common.Odl.Debug("TTILobRpa.UnmarshalFrom: lob null flag unmarshalled", "is_null", p.lobDefinition.lobNull)
+		common.Odl.Finest("TTILobRpa.UnmarshalFrom: lob null flag unmarshalled", "is_null", p.lobDefinition.lobNull)
 	}
 
-	common.Odl.Debug("TTILobRpa.UnmarshalFrom: completed", "operation", p.lobDefinition.operation)
+	common.Odl.Finest("TTILobRpa.UnmarshalFrom: completed", "operation", p.lobDefinition.operation)
 	return nil
 }
 

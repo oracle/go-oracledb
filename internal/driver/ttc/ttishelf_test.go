@@ -77,6 +77,30 @@ func TestTTIShelf_NewShelf(t *testing.T) {
 	}
 }
 
+// TestTTIShelf_RefCursors verifies that a shelf tracks currently open REF
+// CURSOR instances by object identity rather than session-scoped cursor ID.
+func TestTTIShelf_RefCursors(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[driverCommon.MessageType]()
+	cursor := newRefCursorResultRows(newTTCRows(nil), 42)
+	if shelf.hasRefCursor(cursor) {
+		t.Fatal("new shelf unexpectedly owns REF CURSOR")
+	}
+	shelf.addRefCursor(cursor)
+	if !shelf.hasRefCursor(cursor) {
+		t.Fatal("shelf did not record REF CURSOR")
+	}
+	otherCursorWithSameID := newRefCursorResultRows(newTTCRows(nil), 42)
+	if shelf.hasRefCursor(otherCursorWithSameID) {
+		t.Fatal("shelf accepted another cursor instance with the same cursor ID")
+	}
+	shelf.removeRefCursor(cursor)
+	if shelf.hasRefCursor(cursor) {
+		t.Fatal("shelf retained closed REF CURSOR")
+	}
+}
+
 // TestNewMessageStreamerRegistersConnectionValidator verifies that a newly
 // created message streamer participates in shelf connection validation.
 func TestNewMessageStreamerRegistersConnectionValidator(t *testing.T) {
@@ -232,7 +256,7 @@ func TestTTIShelf_LocalizedStatementExecError(t *testing.T) {
 	} else if sqle.ErrorCode() != string(oracleErrors.InternalError) {
 		t.Fatalf("expected error code %s, got %s", oracleErrors.InternalError, sqle.ErrorCode())
 	}
-	if got, want := err.Error(), "OGD-00062 - erreur interne factice."; got != want {
+	if got, want := err.Error(), "OGD-00062 - une erreur interne s'est produite."; got != want {
 		t.Fatalf("unexpected localized error %q, want %q", got, want)
 	}
 }
@@ -279,13 +303,15 @@ type testCodecFactory struct {
 func (t *testCodecFactory) getEncoder(_ normalizedBindValue) (encoderFunc, error) {
 	return func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }, nil
 }
-func (t *testCodecFactory) getDecoder(_ internalCommon.DtyType) (*typeDecoder, error) {
-	return newTypeDecoder(func(columnContext, driverCommon.B1Array) (driver.Value, error) {
-		return t.decode, nil
-	}, nil), nil
-}
+
 func (t *testCodecFactory) getCollectionEncoder(_ internalCommon.DtyType) (encoderFunc, error) {
-	return nil, internalCommon.NewOracleError(oracleErrors.InternalError, nil)
+	return func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }, nil
+}
+
+func (t *testCodecFactory) getDecoder(_ internalCommon.DtyType) (*typeDecoder, error) {
+	return newTypeDecoder(func(columnContext, any) (driver.Value, error) {
+		return t.decode, nil
+	}, nil, unwrapCLRColumn), nil
 }
 func (t *testCodecFactory) getBindOac(_ normalizedBindValue, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
 	return t.bindOac, nil

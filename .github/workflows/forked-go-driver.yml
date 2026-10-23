@@ -9,11 +9,6 @@ on:
         description: Branch name
         required: true
         type: string
-      test_category:
-        description: The test category to run
-        required: false
-        type: string
-        default: functional
 env:
   VALIDATION_USER_NAME: ogd_test_user
   ORACLE_DRIVER_MODULE: "github.com/oracle/go-oracledb/v26/oracle"

@@ -193,7 +193,7 @@ func parseAuthPacketDump(t *testing.T, payload []byte) authPacketDump {
 	}
 	engineKV := NewMarshalEngine(payloadBuf, common.BIG_ENDIAN, defaultAuthMarshallerTypes)
 	list := newPreallocatedKeyValueList(keyValueCount)
-	if err := list.UnMarshalFrom(ctx, engineKV); err != nil {
+	if err := list.UnmarshalFrom(ctx, engineKV); err != nil {
 		t.Fatalf("unmarshal key-value list failed: %v", err)
 	}
 	if payloadBuf.currentReadPosition != payloadBuf.currentWritePosition {

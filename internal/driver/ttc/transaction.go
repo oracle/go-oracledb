@@ -71,7 +71,7 @@ func (t *transaction) getTransactionContext() context.Context {
 
 // Commit commits the transaction
 func (t *transaction) Commit() error {
-	common.Odl.Debug("Transaction commit")
+	common.Odl.Fine("Transaction commit")
 	if !t._underlyingConnection.shelf.isInTransaction() {
 		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
 	}
@@ -93,7 +93,7 @@ func (t *transaction) Commit() error {
 
 // Rollback rolls back the transaction
 func (t *transaction) Rollback() error {
-	common.Odl.Debug("Transaction rollback")
+	common.Odl.Fine("Transaction rollback")
 	if !t._underlyingConnection.shelf.isInTransaction() {
 		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
 	}

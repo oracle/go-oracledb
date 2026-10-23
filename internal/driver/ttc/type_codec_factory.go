@@ -83,7 +83,7 @@ Description:
 		_ = oac // e.g. used to describe bind metadata (type/length) in TTC messages
 
 		// Row/scan path: resolve a decoder for an Oracle database type id.
-		decoder, _ := f.getDecoder(DtyVCS)
+		decoder, _ := f.getDecoder(common.DtyVCS)
 		v, _ := decoder.decodeToType(columnContext{Name: "C1", Index: 0}, wireBytes)
 		_ = v // decoded driver.Value (string, number, time.Time, etc.)
 */
@@ -103,7 +103,7 @@ type encoderFunc func(driver.Value) (driverCommon.B1Array, error)
 // decoderFunc defines the signature for TTC decoder implementors registered with the
 // codec factory. The function receives the column context and raw TTC data bytes and is
 // expected to return the decoded database value or an error.
-type decoderFunc func(columnContext, driverCommon.B1Array) (driver.Value, error)
+type decoderFunc func(columnContext, any) (driver.Value, error)
 
 // bindOacFunc defines the signature for bind OAC constructor functions registered
 // with the codec factory. The function receives the requested maximum bind length
@@ -126,16 +126,18 @@ type defineOacFunc func(columnContext, driverCommon.UB4) driverCommon.Marshallab
 
 type scanTypeFunc func(columnContext) reflect.Type
 
+// typeDecoder groups wire reading, value decoding, and scan metadata for one TTC version.
 type typeDecoder struct {
+	unwrapColumn columnUnwrapFunc
 	decodeToType decoderFunc
 	getScanType  scanTypeFunc
 }
 
-func newTypeDecoder(f decoderFunc, sf scanTypeFunc) *typeDecoder {
-	_n := &typeDecoder{}
-	_n.decodeToType = f
-	_n.getScanType = sf
-	return _n
+// newTypeDecoder associates a datatype decoder with its explicit wire reader.
+// Every registered decoder accepts the common decoderFunc input contract. A
+// decoder that requires raw wire bytes validates them with rawColumnData.
+func newTypeDecoder(decode decoderFunc, sf scanTypeFunc, unwrap columnUnwrapFunc) *typeDecoder {
+	return &typeDecoder{decodeToType: decode, getScanType: sf, unwrapColumn: unwrap}
 }
 
 /*
@@ -377,9 +379,9 @@ func (r *codecRegistry[K, F]) getCandidates(key K) []codecRegistryEntry[F] {
 // Populate it during package init of encoder implementors.
 var EncoderRegistry = newCodecRegistry[reflect.Type, encoderFunc]()
 
-// CollectionEncoderRegistry contains encoders selected by the declared
-// Oracle collection element type. This is distinct from EncoderRegistry,
-// whose key is the Go value type (for example float32 normally maps to NUMBER).
+// CollectionEncoderRegistry resolves scalar collection elements by their
+// declared Oracle type. A collection's element type, rather than its Go value
+// type, determines the wire representation.
 var CollectionEncoderRegistry = newCodecRegistry[common.DtyType, encoderFunc]()
 
 // DecoderRegistry is the global registry for decoders keyed by Oracle database type.
@@ -440,8 +442,8 @@ func NewCodecFactoryForProtocol(protocolVersion int8) codecFactory {
 	}
 }
 
-// getCollectionEncoder resolves an encoder using the Oracle-declared element
-// type. Registry version selection remains encapsulated by the codec factory.
+// getCollectionEncoder resolves an encoder for an Oracle collection element
+// type while keeping registry version selection inside the codec factory.
 func (f *CodecFactoryImpl) getCollectionEncoder(elementType common.DtyType) (encoderFunc, error) {
 	registry := f.collectionEncoders
 	if registry == nil {
@@ -477,12 +479,12 @@ func (f *CodecFactoryImpl) getEncoder(normalized normalizedBindValue) (encoderFu
 	if normalized.isOutOnly || normalized.value == nil {
 		return converters.EncodeNull, nil
 	}
-	common.Odl.Debug("New encoder requested", "goType", normalized.goType)
+	common.Odl.Finest("New encoder requested", "goType", normalized.goType)
 
 	candidates := f.encoders.getCandidates(normalized.goType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
-		common.Odl.Debug("Encoder returned", "candidate", bestCandidate)
+		common.Odl.Finest("Encoder returned", "candidate", bestCandidate)
 		return bestCandidate.makeFunc, nil
 	}
 
@@ -511,7 +513,7 @@ Errors:
   - Returns a common.OracleError with code common.InternalError when no decoder candidate exists for dbType.
 */
 func (f *CodecFactoryImpl) getDecoder(dbType common.DtyType) (*typeDecoder, error) {
-	common.Odl.Debug("New decoder requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
+	common.Odl.Finest("New decoder requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
 
 	candidates := f.decoders.getCandidates(dbType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
@@ -521,7 +523,7 @@ func (f *CodecFactoryImpl) getDecoder(dbType common.DtyType) (*typeDecoder, erro
 		return nil, err
 	}
 
-	common.Odl.Debug("Decoder returned", "candidate", bestCandidate)
+	common.Odl.Finest("Decoder returned", "candidate", bestCandidate)
 	return bestCandidate.makeFunc, nil
 }
 
@@ -569,14 +571,14 @@ Parameters:
   - maxLength: Maximum length to apply when constructing the bind OAC.
 
 Returns:
-  - driverCommon.Marshallable: The selected bind OAC instance.
+  - common.Marshallable: The selected bind OAC instance.
   - error: Non-nil if no compatible bind OAC constructor is registered.
 
 Errors:
   - Returns a common.OracleError with code common.InternalError when no OAC candidate exists for the bind type.
 */
 func (f *CodecFactoryImpl) getBindOac(normalized normalizedBindValue, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
-	common.Odl.Debug("New bind OAC requested", "goType", normalized.goType, "maxLength", maxLength)
+	common.Odl.Finest("New bind OAC requested", "goType", normalized.goType, "maxLength", maxLength)
 
 	candidates := f.bindOacs.getCandidates(normalized.goType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
@@ -593,7 +595,7 @@ func (f *CodecFactoryImpl) getBindOac(normalized normalizedBindValue, maxLength 
 			oac.(*tTIoac).maxLength = bindOacTypeObj.maxLength
 			oac.(*tTIoac).scale = bindOacTypeObj.scale
 		}
-		common.Odl.Debug("Bind OAC returned", "candidate", bestCandidate)
+		common.Odl.Finest("Bind OAC returned", "candidate", bestCandidate)
 		return oac, nil
 	}
 
@@ -617,14 +619,14 @@ Parameters:
   - connectionProperties: Connection properties used to derive define settings such as LOB prefetch size.
 
 Returns:
-  - driverCommon.Marshallable: The selected define OAC instance.
+  - common.Marshallable: The selected define OAC instance.
 */
 func (f *CodecFactoryImpl) getDefineOac(
 	dbType common.DtyType,
 	columnContext columnContext,
 	connectionProperties driverCommon.DriverProperties,
 ) driverCommon.Marshallable {
-	common.Odl.Debug("New define OAC requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
+	common.Odl.Finest("New define OAC requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
 
 	candidates := f.defineOacs.getCandidates(dbType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
@@ -635,7 +637,7 @@ func (f *CodecFactoryImpl) getDefineOac(
 
 	if bestCandidate != nil {
 		oac := bestCandidate.makeFunc(columnContext, lobPrefetchSize)
-		common.Odl.Debug("Define OAC returned", "candidate", bestCandidate)
+		common.Odl.Finest("Define OAC returned", "candidate", bestCandidate)
 		return oac
 	}
 

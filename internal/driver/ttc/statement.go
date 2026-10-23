@@ -230,7 +230,7 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 
 // _closeCursor closes the statement cursorID if not 0
 func (s *Statement) _closeCursor() error {
-	if s.qualifiedQuery.cursorId == 0 {
+	if s.qualifiedQuery.cursorID == 0 {
 		return nil
 	}
 	msg, err := s.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
@@ -238,12 +238,12 @@ func (s *Statement) _closeCursor() error {
 		return s.shelf.LocalizeError(err)
 	}
 	occaMsg := msg.(*tTIOcca)
-	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(s.qualifiedQuery.cursorId)})
+	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(s.qualifiedQuery.cursorID)})
 	streamer := s.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	if err := streamer.Push(context.Background(), occaMsg); err != nil {
 		return s.shelf.LocalizeError(err)
 	}
-	s.qualifiedQuery.cursorId = 0
+	s.qualifiedQuery.cursorID = 0
 	return nil
 }
 

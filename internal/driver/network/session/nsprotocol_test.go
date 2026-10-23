@@ -49,7 +49,9 @@ import (
 	"io"
 	"net"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -74,6 +76,12 @@ type mockNTAdapter struct {
 	receiveCalls  int
 	lastAddress   transport.Address
 }
+
+type timeoutTestError struct{}
+
+func (timeoutTestError) Error() string   { return "timeout" }
+func (timeoutTestError) Timeout() bool   { return true }
+func (timeoutTestError) Temporary() bool { return true }
 
 func TestHandleAcceptRequiredANO(t *testing.T) {
 	ns := newNetworkSession()
@@ -281,6 +289,86 @@ func TestTransportConnect(t *testing.T) {
 	}
 }
 
+// TestIsDownHostError verifies that only transport failures that indicate an
+// unreachable endpoint are cached, while DNS failures, connection refusals,
+// and caller deadline expiry are excluded.
+func TestIsDownHostError(t *testing.T) {
+	t.Parallel()
+
+	expiredCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	tests := []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want bool
+	}{
+		{
+			name: "network unreachable",
+			ctx:  context.Background(),
+			err:  syscall.ENETUNREACH,
+			want: true,
+		},
+		{
+			name: "driver transport timeout",
+			ctx:  context.Background(),
+			err:  common.NewCtxTimeoutCauseError("TransportConnectTimeout", 1000, "test"),
+			want: true,
+		},
+		{
+			name: "network timeout",
+			ctx:  context.Background(),
+			err:  &net.OpError{Op: "dial", Err: timeoutTestError{}},
+			want: true,
+		},
+		{
+			name: "dns failure",
+			ctx:  context.Background(),
+			err:  &net.DNSError{Err: "no such host", Name: "missing.example.com"},
+			want: false,
+		},
+		{
+			name: "dns timeout",
+			ctx:  context.Background(),
+			err:  &net.OpError{Op: "dial", Err: &net.DNSError{Err: "i/o timeout", Name: "missing.example.com", IsTimeout: true}},
+			want: false,
+		},
+		{
+			name: "connection refused",
+			ctx:  context.Background(),
+			err:  &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED},
+			want: false,
+		},
+		{
+			name: "unrelated error",
+			ctx:  context.Background(),
+			err:  errors.New("authentication failed"),
+			want: false,
+		},
+		{
+			name: "caller deadline error",
+			ctx:  context.Background(),
+			err:  context.DeadlineExceeded,
+			want: false,
+		},
+		{
+			name: "caller deadline translated by transport",
+			ctx:  expiredCtx,
+			err:  common.NewOracleError(oracleErrors.CtxTimeout, nil, "CONNECT", "test", "test-id"),
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isDownHostError(test.ctx, test.err); got != test.want {
+				t.Fatalf("isDownHostError(%v) = %t, want %t", test.err, got, test.want)
+			}
+		})
+	}
+}
+
 // TestConnectToOption tests the ConnectToOption function
 func TestConnectToOption(t *testing.T) {
 	t.Parallel()
@@ -440,7 +528,7 @@ func TestConnectSubtests(t *testing.T) {
 		ns.ntAdapter = mock
 		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
 		// mock redirect packet from server without overflow
-		redirectData := []byte("(ADDRESS=(PROTOCOL=tcp)(HOST=redirecthost)(PORT=1522))")
+		redirectData := []byte("(ADDRESS=(PROTOCOL=tcps)(HOST=redirecthost)(PORT=1522))")
 		dataLen := len(redirectData)
 		packetLen := 8 + 2 + dataLen
 		fullPacket := make([]byte, packetLen)
@@ -455,8 +543,16 @@ func TestConnectSubtests(t *testing.T) {
 		mock.receivedData = append(mock.receivedData, acceptpacket...)
 		mock.recvPos = 0
 		err := ns.connect(context.Background(), transport.Address{
-			Address:  naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
-			Hostname: "originalhost",
+			Address: naming.Address{
+				Protocol:       driverCommon.ProtocolTCPS,
+				Host:           "localhost",
+				Port:           1521,
+				HTTPSProxy:     "proxy.example.com",
+				HTTPSProxyPort: 8080,
+			},
+			Hostname:       "originalhost",
+			HTTPSProxy:     "proxy.example.com",
+			HTTPSProxyPort: 8080,
 		})
 		if err != nil {
 			t.Errorf("Unexpected redirect packet error without overflow: %v", err)
@@ -466,6 +562,9 @@ func TestConnectSubtests(t *testing.T) {
 		}
 		if mock.lastAddress.OriginHost != "originalhost" {
 			t.Errorf("Expected original host to be preserved as fallback, got %q", mock.lastAddress.OriginHost)
+		}
+		if mock.lastAddress.HTTPSProxy != "proxy.example.com" || mock.lastAddress.HTTPSProxyPort != 8080 {
+			t.Errorf("Expected proxy settings to be preserved, got %q:%d", mock.lastAddress.HTTPSProxy, mock.lastAddress.HTTPSProxyPort)
 		}
 		ns.Disconnect(context.Background(), 0)
 	})
@@ -1836,7 +1935,6 @@ func TestHandleResend(t *testing.T) {
 		connectPkt.marshal([]byte("(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=orcl)))"), ns.sAtts, NO_HEADER_FLAGS)
 		p := &resendPacket{hdr: &header{flags: 0}}
 		err := ns.handleResend(context.Background(), p, connectPkt)
-		fmt.Println(err)
 		if err == nil || !strings.Contains(err.Error(), "send error") {
 			t.Errorf("Expected send error, got %v", err)
 		}

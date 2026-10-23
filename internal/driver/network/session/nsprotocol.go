@@ -47,9 +47,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -175,8 +175,8 @@ func remoteTCPAddrFromConn(remoteAddr net.Addr) *net.TCPAddr {
 
 // transportConnect establishes the transport-level connection
 func (ns *networkSession) transportConnect(ctx context.Context, address transport.Address) error {
-	if address.Protocol == driverCommon.ProtocolTCP && address.HTTPSProxy != "" {
-		return common.NewOracleError(oracleErrors.UnsupportedFeature, nil, "HTTPS proxy")
+	if address.Protocol == driverCommon.ProtocolTCP && (address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != "") {
+		return common.NewOracleError(oracleErrors.HTTPSProxyRequiresTCPS, nil)
 	}
 	if ns.ntAdapter == nil {
 		if address.Protocol == driverCommon.ProtocolTCP {
@@ -187,6 +187,19 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 	}
 	err := ns.ntAdapter.Connect(ctx, address)
 	if err != nil {
+		// Only transport connection failures can mean that an endpoint is down.
+		// Oracle Net, TLS, and authentication failures happen later and do not
+		// reach this point. When a proxy is configured, the failure may belong
+		// to the proxy rather than the database endpoint, so do not cache the
+		// database address as down.
+		proxyConfigured := address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != ""
+		if !proxyConfigured && isDownHostError(ctx, err) {
+			key := address.ResolvedIP
+			if key == "" {
+				key = address.Host
+			}
+			naming.MarkDownHost(key)
+		}
 		return err
 	}
 	//initializes sndDatapkt with SDU size
@@ -200,6 +213,44 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 	ns.rcvDatapkt = &dataPacket{}
 	return nil
 }
+
+// isDownHostError identifies transport failures that indicate a host or its
+// route is currently unavailable. A refusal is deliberately excluded: it
+// proves that the host responded, even when no listener is available there.
+func isDownHostError(ctx context.Context, err error) bool {
+	// The TCP adapter translates a caller deadline into an Oracle CtxTimeout
+	// error. Check both the context and the error before considering timeout
+	// errors below, so a caller giving up does not penalize a healthy endpoint.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) ||
+		errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return false
+	}
+
+	if errors.Is(err, syscall.EHOSTDOWN) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) {
+		return true
+	}
+
+	var timeoutCause common.CtxTimeoutCauseError
+	if errors.As(err, &timeoutCause) {
+		return true
+	}
+
+	var sqlErr oracleErrors.SQLError
+	if errors.As(err, &sqlErr) && sqlErr.ErrorCode() == string(oracleErrors.CtxTimeout) {
+		return true
+	}
+
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
 func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) error {
 	if ns.sAtts.version < TNS_VERSION_MINIMUM {
 		err := ns.Disconnect(ctx, 0)
@@ -369,13 +420,17 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 		}
 		newAddress := transport.Address{
 			Address: naming.Address{
-				Host:       hostToBeUsed,
-				Port:       redirOption.Address.Port,
-				Protocol:   redirOption.Address.Protocol,
-				OriginHost: oldhostname,
-				ResolvedIP: redirOption.Address.ResolvedIP,
+				Host:           hostToBeUsed,
+				Port:           redirOption.Address.Port,
+				Protocol:       redirOption.Address.Protocol,
+				HTTPSProxy:     address.HTTPSProxy,
+				HTTPSProxyPort: address.HTTPSProxyPort,
+				OriginHost:     oldhostname,
+				ResolvedIP:     redirOption.Address.ResolvedIP,
 			},
-			Hostname: redirOption.Address.Host,
+			Hostname:       redirOption.Address.Host,
+			HTTPSProxy:     address.HTTPSProxy,
+			HTTPSProxyPort: address.HTTPSProxyPort,
 		}
 		ns.ntAdapter.Disconnect()
 		ns.connected = false
@@ -502,7 +557,7 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 
 	portToBeUsed := addressOption.Port
 	if addressOption.Port == 0 {
-		common.Odl.Debug("no port specified, fall-back to default", "port", TCP_DEFAULT_PORT)
+		common.Odl.Fine("no port specified, fall-back to default", "port", TCP_DEFAULT_PORT)
 		portToBeUsed = TCP_DEFAULT_PORT
 	}
 
@@ -536,12 +591,16 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 	}
 	address := transport.Address{
 		Address: naming.Address{
-			Host:       hostToBeUsed,
-			Port:       portToBeUsed,
-			Protocol:   addressOption.Protocol,
-			ResolvedIP: addressOption.ResolvedIP,
+			Host:           hostToBeUsed,
+			Port:           portToBeUsed,
+			Protocol:       addressOption.Protocol,
+			ResolvedIP:     addressOption.ResolvedIP,
+			HTTPSProxy:     addressOption.HTTPSProxy,
+			HTTPSProxyPort: addressOption.HTTPSProxyPort,
 		},
-		Hostname: addressOption.Host,
+		Hostname:       addressOption.Host,
+		HTTPSProxy:     addressOption.HTTPSProxy,
+		HTTPSProxyPort: addressOption.HTTPSProxyPort,
 	}
 
 	err = ns.connect(ctx, address)
@@ -621,7 +680,8 @@ func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
 		}
 	}
 	buf := ns.rcvBuf[:packetLen]
-	PrintPacket(buf, 0, packetLen)
+
+	common.Odl.PacketDump(buf[0:packetLen])
 
 	hdr := &header{}
 	err = hdr.unmarshal(buf, ns.sAtts, nil)
@@ -635,7 +695,7 @@ func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
 
 	// Handle reset when break is received and reset has not yet been received.
 	if hdr.typ == NSPTMK && ns.isBreak && !ns.isReset {
-		common.Odl.Debug("Received break packet from server")
+		common.Odl.Fine("Received break packet from server")
 		if ns.resetInProgress {
 			// Reset is already draining packets until NIQRMARK is received.
 			// Return this marker to the Reset loop instead of recursively
@@ -728,7 +788,7 @@ func (ns *networkSession) processPacket(buf []byte, hdr *header) (any, error) {
 	}
 	if hdr.typ == NSPTMK {
 		p := packet.(*markerPacket)
-		common.Odl.Debug("marker packet received", "marker-type", p.markerType, "data", p.data)
+		common.Odl.Finest("marker packet received", "marker-type", p.markerType, "data", p.data)
 		switch p.markerType {
 		case NSPMKTD0:
 			ns.isBreak = true
@@ -869,7 +929,7 @@ func (ns *networkSession) Reset(ctx context.Context) error {
 		return err
 	}
 	err = ns.SendPacket(ctx, markerPkt.buf)
-	common.Odl.Debug("Reset packet sent")
+	common.Odl.Fine("Reset packet sent")
 	if err != nil {
 		common.Odl.Error("An error occurred while sending reset", "error", err)
 		return err
@@ -880,7 +940,7 @@ func (ns *networkSession) Reset(ctx context.Context) error {
 			common.Odl.Error("An error occurred while receiving packet", "error", err)
 			return err
 		}
-		common.Odl.Debug("Packet received", "isReset", ns.isReset)
+		common.Odl.Fine("Packet received", "isReset", ns.isReset)
 	}
 	//reset sndDatapkt
 	ns.sndDatapkt.Reset()
@@ -889,7 +949,7 @@ func (ns *networkSession) Reset(ctx context.Context) error {
 	//set break/reset as false
 	ns.isBreak = false
 	ns.isReset = false
-	common.Odl.Debug("End of break-reset")
+	common.Odl.Fine("End of break-reset")
 	return nil
 }
 
@@ -988,36 +1048,4 @@ func (ns *networkSession) CheckInbandNotification() bool {
 }
 func PrintPacket(buf []byte, offset, length int) {
 
-	if !common.Opl.Enabled(nil, slog.LevelInfo) {
-		return
-	}
-
-	var line bytes.Buffer
-	var lineL bytes.Buffer
-
-	common.Opl.Info("PrintPacket", "Capacity", len(buf),
-		"Offset", offset, "Data Length", length)
-
-	for i, b := range buf[offset : offset+length] {
-		// Format byte as 2-digit hex with leading 0
-		hexByte := fmt.Sprintf("%02X", b)
-		if line.Len() != 0 {
-			line.WriteString(" ")
-		}
-		line.WriteString(hexByte)
-		if b >= 33 && b <= 126 {
-			// Printable ASCII range
-			lineL.WriteString(fmt.Sprintf("%c", b))
-		} else {
-			// Non-printable, replace with dot
-			lineL.WriteString(".")
-		}
-
-		// If 4 bytes written or it's the last byte, print the line
-		if (i+1)%8 == 0 || i == len(buf)-1 {
-			common.Opl.Info(fmt.Sprintf("%-8s %s", lineL.String(), line.String()))
-			lineL.Reset()
-			line.Reset()
-		}
-	}
 }

@@ -77,7 +77,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestErrorBasic3113Fr", Categories: "unitary", Exclusive: false, Fn: TestErrorBasic3113Fr},
 	{Name: "TestError3113", Categories: "unitary", Exclusive: false, Fn: TestError3113},
 	{Name: "TestError3113Fr", Categories: "unitary", Exclusive: false, Fn: TestError3113Fr},
-	{Name: "TestError3113pt", Categories: "unitary", Exclusive: false, Fn: TestError3113pt},
 	{Name: "TestError3113NoLanguage", Categories: "unitary", Exclusive: false, Fn: TestError3113NoLanguage},
 	{Name: "TestErrorUnwrap", Categories: "unitary", Exclusive: false, Fn: TestErrorUnwrap},
 	{Name: "TestError3113InvalidLanguage", Categories: "unitary", Exclusive: false, Fn: TestError3113InvalidLanguage},
@@ -105,4 +104,9 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestRegistryGetAllReturnsSnapshotInRegistrationOrder", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetAllReturnsSnapshotInRegistrationOrder},
 	{Name: "TestRegistryGetAllReturnsEmptySnapshotWhenUninitialized", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetAllReturnsEmptySnapshotWhenUninitialized},
 	{Name: "TestRegistryGetSkipsNilItems", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetSkipsNilItems},
+	{Name: "TestPacketDumpHandlerFormatsPacket", Categories: "unitary", Exclusive: false, Fn: TestPacketDumpHandlerFormatsPacket},
+	{Name: "TestOracleLoggerWithReturnsLoggerWithAttrs", Categories: "unitary", Exclusive: false, Fn: TestOracleLoggerWithReturnsLoggerWithAttrs},
+	{Name: "TestOdlTReturnsTaggedLogger", Categories: "unitary", Exclusive: false, Fn: TestOdlTReturnsTaggedLogger},
+	{Name: "TestOracleLoggerFineAndFinestLogCustomLevels", Categories: "unitary", Exclusive: false, Fn: TestOracleLoggerFineAndFinestLogCustomLevels},
+	{Name: "TestParseOracleLogLevel", Categories: "unitary", Exclusive: false, Fn: TestParseOracleLogLevel},
 }

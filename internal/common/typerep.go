@@ -412,4 +412,5 @@ const (
 	DtyPlbgn         DtyType = 661              // Pipeline Begin piggyback
 	DtyUds           DtyType = 663              // version 23 udsdef
 	DtyPlopn         DtyType = 665              // Pipeline Operatiion piggyback
+	DtyKve           DtyType = 669              // Key value pair element with name
 )

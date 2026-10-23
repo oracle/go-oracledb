@@ -167,8 +167,8 @@ func TestObjectCollectionNullBind(t *testing.T) {
 
 func TestRefCursorOutBindUsesCursorOAC(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	var rows sqldriver.Rows
-	normalized := normalizeBindValue(sql.Out{Dest: &rows})
+	var cursor datatype.Cursor
+	normalized := normalizeBindValue(sql.Out{Dest: &cursor})
 	oac, err := factory.getBindOac(normalized, 0)
 	if err != nil {
 		t.Fatal(err)

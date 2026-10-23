@@ -106,7 +106,7 @@ func (p *tTIdty) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) err
 
 	}
 
-	// Convert to Little Endian format for TTC protocol compatability
+	// Convert to Little Endian format for TTC protocol compatibility
 	// This message is used during protocol negotiation. At that stage, we assume that the marshaller
 	// we are using is BIG ENDIAN (the default one used until negotiation is completed.)
 	// By design, the cliRIN field is always encoded in LITTLE ENDIAN. We then have to change
@@ -117,7 +117,7 @@ func (p *tTIdty) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) err
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
-	// Convert to Little Endian format for TTC protocol compatability
+	// Convert to Little Endian format for TTC protocol compatibility
 	// This message is used during protocol negotiation. At that stage, we assume that the marshaller
 	// we are using is BIG ENDIAN (the default one used until negotiation is completed.)
 	// By design, the cliROUT field is always encoded in LITTLE ENDIAN. We then have to change
@@ -162,10 +162,10 @@ func (p *tTIdty) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) err
 	return typeRepresentationTable.MarshalTo(ctx, mar)
 }
 
-// UnMarshalFrom unmarshal's the response packet for type negotiation.
-func (p *tTIdty) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+// UnmarshalFrom unmarshal's the response packet for type negotiation.
+func (p *tTIdty) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	var err error
-	common.Odl.Debug("tTIdty.UnMarshalFrom: Start Unmarshalling dty message")
+	common.Odl.Debug("tTIdty.UnmarshalFrom: Start Unmarshalling dty message")
 	if p.negotiatedCaps == nil {
 		common.Odl.Warn("Can't unmarshal,  capabilities not set")
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
@@ -195,7 +195,7 @@ func (p *tTIdty) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 
 	}
 
-	err = typeRepresentationTable.UnMarshalFrom(ctx, mar)
+	err = typeRepresentationTable.UnmarshalFrom(ctx, mar)
 	if err != nil {
 		common.Odl.Warn("Server data type representations unmarshal failed", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])

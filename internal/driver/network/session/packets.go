@@ -206,7 +206,7 @@ func (dp *dataPacket) ReadByte() (byte, error) {
 		dp.offset++
 		return retByte, nil
 	}
-	common.Odl.Debug("dataPacket.ReadByte EOF")
+	common.Odl.Finest("dataPacket.ReadByte EOF")
 	return 0, io.EOF
 }
 

@@ -53,8 +53,7 @@ import (
 
 // TestNewOAuth_Success tests the NewOAuth constructor.
 func TestNewOAuth_Success(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	oAuth := NewOAuth().(*oAuth)
 	if oAuth == nil {
 		t.Fatal("NewOAuth returned nil")
@@ -237,9 +236,9 @@ func TestOAuth_MarshalTo_WithOSESSKEYRPA_Success(t *testing.T) {
 	rpaBuf := NewArrayDataBuffer(8192)
 	_ = rpaBuf.WriteBytesWithContext(context.Background(), payload)
 	rpaEngine := NewMarshalEngine(rpaBuf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-	unmarshallable, _ := rpa.(common.UnMarshallable)
-	if err := unmarshallable.UnMarshalFrom(context.Background(), rpaEngine); err != nil {
-		t.Fatalf("UnMarshalFrom oSesskeyRPA failed: %v", err)
+	unmarshallable, _ := rpa.(common.Unmarshallable)
+	if err := unmarshallable.UnmarshalFrom(context.Background(), rpaEngine); err != nil {
+		t.Fatalf("UnmarshalFrom oSesskeyRPA failed: %v", err)
 	}
 
 	// 2) Build oAuth and set fields as in _doOAuth (o5logon_authenticator._doOAuth)
@@ -292,8 +291,7 @@ func TestOAuth_MarshalTo_WithOSESSKEYRPA_Success(t *testing.T) {
 }
 
 func TestOAuthMarshalTo_Fail(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	cases := []struct {
 		name      string
 		failByte  int
@@ -584,8 +582,7 @@ func TestOAuth_setAlterSessionKeyValsForOAUTH(t *testing.T) {
 
 // TestOAuth_validateKeySizeForOAUTH_Success tests successful key size validation.
 func TestOAuth_validateKeySizeForOAUTH_Success(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	cases := []struct {
 		name        string
 		encryptedSK []byte
@@ -685,8 +682,7 @@ func TestPasswordAuthenticatorValidatePasswordLength(t *testing.T) {
 
 // TestOAuth_validateO5VerifierType_Success tests successful verifier type validation.
 func TestOAuth_validateO5VerifierType_Success(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+	t.Parallel()
 	validTypes := []int{ZtvtOrcl7, ZtvtMd5, ZtvtSmd5, ZtvtSh1, ZtvtSSH1, ZtvtSha512}
 
 	for _, vt := range validTypes {
@@ -773,9 +769,8 @@ func TestOAuthRPA_NewOAuthRPA(t *testing.T) {
 	}
 }
 
-func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+func TestOAuthRPA_UnmarshalFrom_Golden(t *testing.T) {
+	t.Parallel()
 	payload := makeOauthRPAPayload()
 	if len(payload) == 0 {
 		t.Fatal("golden oAuth RPA payload decode returned empty")
@@ -786,13 +781,13 @@ func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
 	_ = buf.WriteBytesWithContext(context.Background(), payload)
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	unmarshallable, _ := rpa.(common.UnMarshallable)
-	if err := unmarshallable.UnMarshalFrom(context.Background(), engine); err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+	unmarshallable, _ := rpa.(common.Unmarshallable)
+	if err := unmarshallable.UnmarshalFrom(context.Background(), engine); err != nil {
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	cv := rpa.(*OAuthRPA).connectionValues
-	// Required by UnMarshalFrom; presence indicates success parsing
+	// Required by UnmarshalFrom; presence indicates success parsing
 	if !cv.ContainsKey(authDbMountID) {
 		t.Errorf("missing key %s", authDbMountID)
 	}
@@ -811,9 +806,8 @@ func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
 	}
 }
 
-func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
-	// TODO : move it back to "parallel when race is fixed
-	// t.Parallel()
+func TestOAuthRPAUnmarshalFrom_Fail(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name         string
 		payload      []byte
@@ -825,8 +819,8 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 		{"Error Reading Number of Pairs (ReadByte)", []byte{0x00}, 1, 0, "simulated read error"},
 		{"Error Reading Key Value List (ReadBytes)", makeOauthRPAPayload(), 0, 2, "simulated read error"},
 		// Logical failures based on content
-		{"Missing AUTH_DB_MOUNT_ID", []byte{0x00}, 0, 0, "Failed to unmarshal message"},
-		{"Invalid AUTH_DB_MOUNT_ID (parse error)", nil, 0, 0, "Failed to unmarshal message"},
+		{"Missing AUTH_DB_MOUNT_ID", []byte{0x00}, 0, 0, "failed to unmarshal message"},
+		{"Invalid AUTH_DB_MOUNT_ID (parse error)", nil, 0, 0, "failed to unmarshal message"},
 		{"NOMOUNT AUTH_DB_MOUNT_ID == 0", nil, 0, 0, "NOMOUNT"},
 	}
 
@@ -871,8 +865,8 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 			}
 			session.PrintPacket(payload, 0, len(payload))
 			rpa := NewOAuthRPA()
-			unmarshallable, _ := rpa.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := rpa.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -884,8 +878,8 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 	}
 }
 
-// TestOAuthRPA_UnMarshalFrom_Fail tests failed unmarshaling.
-func TestOAuthRPA_UnMarshalFrom_Fail(t *testing.T) {
+// TestOAuthRPA_UnmarshalFrom_Fail tests failed unmarshaling.
+func TestOAuthRPA_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	rpa := NewOAuthRPA().(*OAuthRPA)
 	buf := NewArrayDataBuffer(1024)
@@ -896,14 +890,14 @@ func TestOAuthRPA_UnMarshalFrom_Fail(t *testing.T) {
 
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	err := rpa.UnMarshalFrom(context.Background(), engine)
+	err := rpa.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
 		t.Error("Expected Error")
 	}
 }
 
-// TestOAuthRPA_UnMarshalFrom_Failure tests unmarshaling failure.
-func TestOAuthRPA_UnMarshalFrom_Failure(t *testing.T) {
+// TestOAuthRPA_UnmarshalFrom_Failure tests unmarshaling failure.
+func TestOAuthRPA_UnmarshalFrom_Failure(t *testing.T) {
 	t.Parallel()
 	rpa := NewOAuthRPA().(*OAuthRPA)
 	buf := NewArrayDataBuffer(10)
@@ -914,7 +908,7 @@ func TestOAuthRPA_UnMarshalFrom_Failure(t *testing.T) {
 
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	err := rpa.UnMarshalFrom(context.Background(), engine)
+	err := rpa.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
 		t.Error("Expected error for invalid data")
 	}

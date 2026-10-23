@@ -44,15 +44,15 @@ import (
 	"testing"
 )
 
-func TestTTIuds20_UnMarshalFrom_Success(t *testing.T) {
+func TestTTIuds20_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	payload := makeTtiudsUnmarshalPayload(validTtiudsUnmarshalDump)
 	mar := createMarshaller(payload, 0, 0)
 	obj := newTTIuds20()
-	err := obj.UnMarshalFrom(ctx, mar)
+	err := obj.UnmarshalFrom(ctx, mar)
 	if err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 	// Only check annotations field
 	typed := obj.(*tTIuds20)
@@ -73,7 +73,7 @@ func TestTTIuds20_UnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-func TestTTIuds20_UnMarshalFrom_Fail(t *testing.T) {
+func TestTTIuds20_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	type faultyTest struct {
 		name      string
@@ -95,7 +95,7 @@ func TestTTIuds20_UnMarshalFrom_Fail(t *testing.T) {
 			ctx := context.Background()
 			mar := createMarshaller(payload, failOnReadByte, tc.failCount)
 			obj := newTTIuds20()
-			err := obj.UnMarshalFrom(ctx, mar)
+			err := obj.UnmarshalFrom(ctx, mar)
 			if err == nil {
 				t.Errorf("expected error, got nil for case: %s", tc.name)
 			} else {
