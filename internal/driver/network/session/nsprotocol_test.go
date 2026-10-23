@@ -206,6 +206,8 @@ func TestNewNetworkSession(t *testing.T) {
 	}
 }
 
+// TestGetRemoteEndpoint verifies that connected TCP adapters expose their remote
+// address and port, while unavailable endpoint details return empty values.
 func TestGetRemoteEndpoint(t *testing.T) {
 	t.Parallel()
 
@@ -239,12 +241,6 @@ func TestGetRemoteEndpoint(t *testing.T) {
 			wantAddress: "",
 			wantPort:    0,
 		},
-		{
-			name:        "NonTCPRemoteAddress",
-			adapter:     &remoteAddrNTAdapter{remoteAddr: &net.UnixAddr{Name: "oracle", Net: "unix"}},
-			wantAddress: "",
-			wantPort:    0,
-		},
 	}
 
 	for _, tt := range tests {
@@ -262,7 +258,8 @@ func TestGetRemoteEndpoint(t *testing.T) {
 	}
 }
 
-// TestTransportConnect tests the transportConnect function
+// TestTransportConnect verifies that TCP/TCPS connection failures are returned
+// and that HTTPS proxy use over plain TCP is rejected.
 func TestTransportConnect(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()

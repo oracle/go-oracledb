@@ -1,8 +1,6 @@
 /*
 ** Copyright (c) 2026 Oracle and/or its affiliates.
 **
-** SPDX-License-Identifier: UPL-1.0
-**
 ** The Universal Permissive License (UPL), Version 1.0
 **
 ** Subject to the condition set forth below, permission is hereby granted to any
