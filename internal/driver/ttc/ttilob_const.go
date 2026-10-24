@@ -42,6 +42,11 @@ package ttc
 // follows the lifecycle of a locator: binary layout, flag semantics, high-level modes,
 // character-set hints, and finally temporary LOB handling constants.
 
+// DefaultCharacterLobChunkChars is the bounded text chunk capacity used by
+// CLOB/NCLOB reads and streamed character binds. Locator amounts for character
+// LOBs remain measured in UTF-16 code units.
+const DefaultCharacterLobChunkChars = 32 * 1024
+
 // -----------------------------------------------------------------------------
 // Locator layout and structural limits
 // -----------------------------------------------------------------------------
@@ -52,7 +57,6 @@ const (
 	kolbLocatorLengthHeaderBytes = 2
 	// kolbVersionOffset is the byte offset of the locator version (KOLBLVSNB).
 	kolbVersionOffset = 2
-
 	// Offset of the flags in the locator (KOLL* values mirror koll.h definitions).
 	koll1FlagOffset = 0x04
 	koll2FlagOffset = koll1FlagOffset + 1
@@ -112,24 +116,24 @@ const (
 // LOB open modes
 // -----------------------------------------------------------------------------
 
-// LobOpenMode indicates the open mode requested while marshaling a locator.
-type LobOpenMode uint8
+// lobOpenMode indicates the open mode requested while marshaling a locator.
+type lobOpenMode uint8
 
 const (
-	// LobOpenModeInvalid marks a zero-value or otherwise unsupported mode.
-	LobOpenModeInvalid LobOpenMode = 0
-	// LobOpenModeReadOnly opens the locator in read-only mode (KOKLORDONLY).
-	LobOpenModeReadOnly LobOpenMode = 1
-	// LobOpenModeReadWrite opens the locator in read-write mode (KOKLORDWR).
-	LobOpenModeReadWrite LobOpenMode = 2
-	// BfileOpenModeReadOnly opens a BFILE locator in read-only mode (KOLFORDONLY).
-	BfileOpenModeReadOnly LobOpenMode = 11
+	// lobOpenModeInvalid marks a zero-value or otherwise unsupported mode.
+	lobOpenModeInvalid lobOpenMode = 0
+	// lobOpenModeReadOnly opens the locator in read-only mode (KOKLORDONLY).
+	lobOpenModeReadOnly lobOpenMode = 1
+	// lobOpenModeReadWrite opens the locator in read-write mode (KOKLORDWR).
+	lobOpenModeReadWrite lobOpenMode = 2
+	// bfileOpenModeReadOnly opens a BFILE locator in read-only mode (KOLFORDONLY).
+	bfileOpenModeReadOnly lobOpenMode = 11
 )
 
 // IsValid reports whether the mode is one of the supported LOB/BFILE open modes.
-func (m LobOpenMode) IsValid() bool {
+func (m lobOpenMode) IsValid() bool {
 	switch m {
-	case LobOpenModeReadOnly, LobOpenModeReadWrite, BfileOpenModeReadOnly:
+	case lobOpenModeReadOnly, lobOpenModeReadWrite, bfileOpenModeReadOnly:
 		return true
 	default:
 		return false

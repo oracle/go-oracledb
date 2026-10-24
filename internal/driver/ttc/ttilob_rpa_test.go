@@ -523,7 +523,7 @@ func TestTTILobRpa_SetDefinition_NilDefinition(t *testing.T) {
 
 	sqlErr, ok := err.(oracleErrors.SQLError)
 	if !ok {
-		t.Fatalf("expected common.SQLError, got %T", err)
+		t.Fatalf("expected oracleErrors.SQLError, got %T", err)
 	}
 
 	if got, want := sqlErr.ErrorCode(), string(oracleErrors.InvalidLOBBuffer); got != want {

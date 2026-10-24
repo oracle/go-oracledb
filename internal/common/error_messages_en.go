@@ -472,6 +472,12 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.InvalidRefCursorArgument), "invalid REF CURSOR argument")
 
 	// Document: No
+	// Cause:    The requested operation is not supported for this LOB locator or access mode.
+	// Action:   Use an operation supported by the selected LOB family.
+	// Comment:  Arg[0]: compact operation and LOB-family detail.
+	message.SetString(language.English, string(oracleErrors.UnsupportedLobOperation), "LOB operation is not supported: %s")
+
+	// Document: No
 	message.SetString(language.English, string(oracleErrors.CancelOperationError), "cancel operation failed")
 
 	// Document: No

@@ -231,6 +231,10 @@ const (
 	NoAuthenticatorError    ErrorCode = "OGD-00099"
 	ServerTimeZoneError     ErrorCode = "OGD-00110"
 
+	// UnsupportedLobOperation indicates the operation is not supported for the selected LOB
+	// family or access mode.
+	UnsupportedLobOperation ErrorCode = "OGD-00111"
+
 	ProtocolViolationLimitExceeded ErrorCode = "OGD-00200"
 
 	// EmptyTokenError indicates that the configured token value is empty after
