@@ -40,9 +40,12 @@ package tests
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Version stores a database version as three numeric parts.
@@ -86,6 +89,7 @@ type TestConfig struct {
 	ConfigName      string  `json:"config_name"`
 	DatabaseVersion Version `json:"database_version"`
 	Enabled         bool
+	Stress          *StressConfig `json:"stress,omitempty"`
 
 	Driver struct {
 		Name string
@@ -121,6 +125,206 @@ type TestConfig struct {
 	}
 }
 
+// StressConfig is optional so existing database configurations remain valid.
+type StressConfig struct {
+	ResourceRetention   *ResourceRetentionConfig   `json:"resource_retention,omitempty"`
+	ConnectionLifecycle *ConnectionLifecycleConfig `json:"connection_lifecycle,omitempty"`
+}
+
+// ConnectionLifecycleConfig describes one manual direct-connection stress run.
+// Each cycle constructs a fresh connector. Choose a fixed count for smoke
+// validation or a duration for a continuous network soak.
+type ConnectionLifecycleConfig struct {
+	Workers            int    `json:"workers"`
+	CyclesPerWorker    int    `json:"cycles_per_worker,omitempty"`
+	Duration           string `json:"duration,omitempty"`
+	Timeout            string `json:"timeout"`
+	OperationTimeout   string `json:"operation_timeout,omitempty"`
+	SampleInterval     string `json:"sample_interval,omitempty"`
+	OutputDirectory    string `json:"output_directory,omitempty"`
+	DiagnosticProfiles *bool  `json:"diagnostic_profiles,omitempty"`
+}
+
+func (c ConnectionLifecycleConfig) Normalized() ConnectionLifecycleConfig {
+	if c.OperationTimeout == "" {
+		c.OperationTimeout = "2m"
+	}
+	if c.SampleInterval == "" {
+		c.SampleInterval = "1m"
+	}
+	if c.OutputDirectory == "" {
+		c.OutputDirectory = "stress-results"
+	}
+	return c
+}
+
+func (c ConnectionLifecycleConfig) ProfilesEnabled() bool {
+	return c.DiagnosticProfiles == nil || *c.DiagnosticProfiles
+}
+
+func (c ConnectionLifecycleConfig) Validate() error {
+	if c.Workers <= 0 {
+		return fmt.Errorf("workers must be positive")
+	}
+	if c.Duration == "" && c.CyclesPerWorker <= 0 {
+		return fmt.Errorf("cycles_per_worker must be positive")
+	}
+	if c.Duration != "" && c.CyclesPerWorker != 0 {
+		return fmt.Errorf("duration and cycles_per_worker are mutually exclusive")
+	}
+	if c.CyclesPerWorker > 0 && c.Workers > math.MaxInt/c.CyclesPerWorker {
+		return fmt.Errorf("workers multiplied by cycles_per_worker overflows int")
+	}
+	timeout, err := time.ParseDuration(c.Timeout)
+	if err != nil || timeout <= 0 {
+		return fmt.Errorf("timeout must be a positive Go duration, got %q", c.Timeout)
+	}
+	n := c.Normalized()
+	operation, err := time.ParseDuration(n.OperationTimeout)
+	if err != nil || operation <= 0 {
+		return fmt.Errorf("operation_timeout must be a positive Go duration")
+	}
+	if sample, err := time.ParseDuration(n.SampleInterval); err != nil || sample <= 0 {
+		return fmt.Errorf("sample_interval must be a positive Go duration")
+	}
+	if strings.TrimSpace(n.OutputDirectory) == "" {
+		return fmt.Errorf("output_directory must not be blank")
+	}
+	if c.Duration != "" {
+		duration, err := time.ParseDuration(c.Duration)
+		if err != nil || duration <= 0 {
+			return fmt.Errorf("duration must be a positive Go duration")
+		}
+		// The margin covers warm-up, final drain, profiles and external observation.
+		// Subtraction avoids overflow for very large Go durations.
+		if timeout <= duration || timeout-duration <= 15*time.Minute || operation >= timeout-duration-15*time.Minute {
+			return fmt.Errorf("timeout must exceed duration by operation_timeout plus 15m")
+		}
+	}
+	return nil
+}
+
+// ResourceRetentionConfig describes one manual concurrent SELECT workload.
+// Workload fields are required when this section is supplied. Omitting the
+// optional memory target leaves the current Go-runtime setting unchanged.
+// A supplied target is soft, not a hard process-memory cap.
+type ResourceRetentionConfig struct {
+	Workers            int    `json:"workers"`
+	TotalOperations    int    `json:"total_operations"`
+	MaxOpenConnections int    `json:"max_open_connections"`
+	Timeout            string `json:"timeout"`
+	MemoryLimitMiB     *int64 `json:"memory_limit_mib,omitempty"`
+	Workload           string `json:"workload,omitempty"`
+	FixtureSchema      string `json:"fixture_schema,omitempty"`
+	RowsPerQuery       int    `json:"rows_per_query,omitempty"`
+	Duration           string `json:"duration,omitempty"`
+	OperationTimeout   string `json:"operation_timeout,omitempty"`
+	SampleInterval     string `json:"sample_interval,omitempty"`
+	CheckpointInterval string `json:"checkpoint_interval,omitempty"`
+	OutputDirectory    string `json:"output_directory,omitempty"`
+	DiagnosticProfiles bool   `json:"diagnostic_profiles,omitempty"`
+}
+
+// Normalized returns a value copy; it never changes the selected JSON entry.
+func (c ResourceRetentionConfig) Normalized() ResourceRetentionConfig {
+	if c.Workload == "" {
+		c.Workload = "select_dual"
+	}
+	if c.RowsPerQuery == 0 {
+		c.RowsPerQuery = 300
+	}
+	if c.OperationTimeout == "" {
+		c.OperationTimeout = "30m"
+	}
+	if c.SampleInterval == "" {
+		c.SampleInterval = "60s"
+	}
+	if c.CheckpointInterval == "" {
+		c.CheckpointInterval = "1h"
+	}
+	if c.OutputDirectory == "" {
+		c.OutputDirectory = "stress-results"
+	}
+	return c
+}
+
+var stressSchemaIdentifier = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,29}$`)
+
+func (c ResourceRetentionConfig) Validate() error {
+	if c.Workers <= 0 {
+		return fmt.Errorf("workers must be positive")
+	}
+	if c.Duration == "" && c.TotalOperations < c.Workers {
+		return fmt.Errorf("total_operations must be at least workers")
+	}
+	if c.Duration != "" && c.TotalOperations != 0 {
+		return fmt.Errorf("duration and total_operations are mutually exclusive")
+	}
+	if c.MaxOpenConnections <= 0 || c.MaxOpenConnections > c.Workers {
+		return fmt.Errorf("max_open_connections must be positive and no greater than workers")
+	}
+	if duration, err := time.ParseDuration(c.Timeout); err != nil || duration <= 0 {
+		return fmt.Errorf("timeout must be a positive Go duration, got %q", c.Timeout)
+	}
+	if c.MemoryLimitMiB != nil && (*c.MemoryLimitMiB <= 0 || *c.MemoryLimitMiB > math.MaxInt64/(1<<20)) {
+		return fmt.Errorf("memory_limit_mib must be positive and fit in int64 bytes")
+	}
+	n := c.Normalized()
+	switch n.Workload {
+	case "select_dual", "complex_select", "lob_select", "json_select", "prepared_select", "transaction_commit", "transaction_rollback", "connection_checkout", "mixed":
+	default:
+		return fmt.Errorf("unknown workload %q", n.Workload)
+	}
+	if c.FixtureSchema != "" && !stressSchemaIdentifier.MatchString(c.FixtureSchema) {
+		return fmt.Errorf("fixture_schema must be an ordinary Oracle identifier of at most 30 characters")
+	}
+	if n.Workload != "select_dual" && (n.RowsPerQuery < 300 || n.RowsPerQuery > 512) {
+		return fmt.Errorf("rows_per_query must be between 300 and 512")
+	}
+	for name, value := range map[string]string{"operation_timeout": n.OperationTimeout, "sample_interval": n.SampleInterval, "checkpoint_interval": n.CheckpointInterval} {
+		if d, err := time.ParseDuration(value); err != nil || d <= 0 {
+			return fmt.Errorf("%s must be a positive Go duration", name)
+		}
+	}
+	if c.Duration != "" {
+		duration, err := time.ParseDuration(c.Duration)
+		if err != nil || duration <= 0 {
+			return fmt.Errorf("duration must be a positive Go duration")
+		}
+		timeout, _ := time.ParseDuration(c.Timeout)
+		operation, _ := time.ParseDuration(n.OperationTimeout)
+		// Subtraction avoids overflow when very large durations are supplied.
+		if timeout <= duration || timeout-duration < 15*time.Minute || operation > timeout-duration-15*time.Minute {
+			return fmt.Errorf("timeout must exceed duration by operation_timeout plus 15m")
+		}
+	}
+	return nil
+}
+
+func (c *StressConfig) clone() *StressConfig {
+	if c == nil {
+		return nil
+	}
+	copy := *c
+	if c.ResourceRetention != nil {
+		retention := *c.ResourceRetention
+		if retention.MemoryLimitMiB != nil {
+			limit := *retention.MemoryLimitMiB
+			retention.MemoryLimitMiB = &limit
+		}
+		copy.ResourceRetention = &retention
+	}
+	if c.ConnectionLifecycle != nil {
+		lifecycle := *c.ConnectionLifecycle
+		if lifecycle.DiagnosticProfiles != nil {
+			profiles := *lifecycle.DiagnosticProfiles
+			lifecycle.DiagnosticProfiles = &profiles
+		}
+		copy.ConnectionLifecycle = &lifecycle
+	}
+	return &copy
+}
+
 func assignStringIfNeeded(dst *string, src string) {
 	if len(strings.TrimSpace(src)) > 0 {
 		*dst = src
@@ -151,11 +355,26 @@ func (t *TestConfig) Clone() *TestConfig {
 	newOne.Credentials.LogonMode = t.Credentials.LogonMode
 
 	newOne.Security = t.Security
+	newOne.Stress = t.Stress.clone()
 
 	return newOne
 }
 
 func (t *TestConfig) MergeWith(from *TestConfig) {
+	// Merge stress workloads independently so overriding one profile does not
+	// silently discard another. Clone to avoid aliasing source configuration.
+	if from.Stress != nil && (from.Stress.ResourceRetention != nil || from.Stress.ConnectionLifecycle != nil) {
+		copied := from.Stress.clone()
+		if t.Stress == nil {
+			t.Stress = &StressConfig{}
+		}
+		if copied.ResourceRetention != nil {
+			t.Stress.ResourceRetention = copied.ResourceRetention
+		}
+		if copied.ConnectionLifecycle != nil {
+			t.Stress.ConnectionLifecycle = copied.ConnectionLifecycle
+		}
+	}
 	assignStringIfNeeded(&(t.Driver.Name), from.Driver.Name)
 
 	assignStringIfNeeded(&(t.Database.ServiceName), from.Database.ServiceName)
@@ -293,6 +512,18 @@ func NewTestingEnvironment(fileName string) (TestingEnvironment, error) {
 	decoder := json.NewDecoder(f)
 	if err := decoder.Decode(&driverConfigs); err != nil {
 		return TestingEnvironment{}, fmt.Errorf("unable to read configuration %s: %w", fileName, err)
+	}
+	for _, config := range driverConfigs {
+		if config.Stress != nil && config.Stress.ResourceRetention != nil {
+			if err := config.Stress.ResourceRetention.Validate(); err != nil {
+				return TestingEnvironment{}, fmt.Errorf("configuration %q stress.resource_retention: %w", config.ConfigName, err)
+			}
+		}
+		if config.Stress != nil && config.Stress.ConnectionLifecycle != nil {
+			if err := config.Stress.ConnectionLifecycle.Validate(); err != nil {
+				return TestingEnvironment{}, fmt.Errorf("configuration %q stress.connection_lifecycle: %w", config.ConfigName, err)
+			}
+		}
 	}
 
 	return TestingEnvironment{driverConfigs: driverConfigs}, nil
