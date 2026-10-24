@@ -100,7 +100,16 @@ func NewOracleLoggingConfig() *oracleconfig.OracleLoggingConfig {
 // config must not be nil.
 func (drv *Driver) ApplyDriverLoggingConfig(config *oracleconfig.OracleLoggingConfig) {
 	if config != nil {
-		common.InitLoggingWithConfig(config)
+		// Share the lazy initializer so openConnector cannot overwrite an explicit config.
+		// Reapply when initialization already ran to support later reconfiguration.
+		initialized := false
+		_initLoggingOnce.Do(func() {
+			common.InitLoggingWithConfig(config)
+			initialized = true
+		})
+		if !initialized {
+			common.InitLoggingWithConfig(config)
+		}
 	}
 }
 
