@@ -476,7 +476,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestGetZoneFromID_Found", Categories: "unitary", Exclusive: false, Fn: TestGetZoneFromID_Found},
 	{Name: "TestGetZoneFromID_NotFound", Categories: "unitary", Exclusive: false, Fn: TestGetZoneFromID_NotFound},
 	{Name: "TestZoneMaps_Sanity", Categories: "unitary", Exclusive: false, Fn: TestZoneMaps_Sanity},
-	{Name: "TestCodecFactory_getEncoder", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getEncoder},
+	{Name: "TestCodecFactory_getEncoderForGoType", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getEncoderForGoType},
 	{Name: "TestCodecFactory_getDecoder", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getDecoder},
 	{Name: "TestCodecFactory_RegisterEncoderGeneric", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RegisterEncoderGeneric},
 	{Name: "TestTTIShelf_NewShelf", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_NewShelf},

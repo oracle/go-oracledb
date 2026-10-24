@@ -61,7 +61,7 @@ import (
 // - statementProcessor resolves encoders/OAC makers through shelf.GetCodecFactory()
 // - tests that construct statementProcessor directly must provide that wiring explicitly
 func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion int8) {
-	var encoderRegistry = newCodecRegistry[reflect.Type, encoderFunc]()
+	encoderRegistry := newCodecRegistry[encoderKey, *typeEncoder]()
 	maps.Copy(encoderRegistry.entries, EncoderRegistry.entries)
 	var decoderRegistry = newCodecRegistry[DtyType, *typeDecoder]()
 	maps.Copy(decoderRegistry.entries, DecoderRegistry.entries)
@@ -69,24 +69,24 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	maps.Copy(bindOacRegistry.entries, BindOacRegistry.entries)
 	// Register encoders used by prepareBindsAndOAC tests.
 	// (Registration uses "version 2" which is <= any supported protocol version in tests.)
-	_ = encoderRegistry.Register(reflect.TypeOf(int64(0)), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int64(0))}, 2, newCLRBindEncoder(func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeInt(v.(int64))
-	})
-	_ = encoderRegistry.Register(reflect.TypeOf(""), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	}))
+	_ = encoderRegistry.Register(encoderKey{goType: reflect.TypeOf("")}, 2, newCLRBindEncoder(func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeVarchar(v.(string))
-	})
-	_ = encoderRegistry.Register(reflect.TypeOf([]byte(nil)), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	}))
+	_ = encoderRegistry.Register(encoderKey{goType: reflect.TypeOf([]byte(nil))}, 2, newCLRBindEncoder(func(v sqldriver.Value) (common.B1Array, error) {
 		return common.B1Array(v.([]byte)), nil
-	})
-	_ = encoderRegistry.Register(reflect.TypeOf(true), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	}))
+	_ = encoderRegistry.Register(encoderKey{goType: reflect.TypeOf(true)}, 2, newCLRBindEncoder(func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeBoolean(v.(bool))
-	})
-	_ = encoderRegistry.Register(reflect.TypeOf(time.Time{}), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	}))
+	_ = encoderRegistry.Register(encoderKey{goType: reflect.TypeOf(time.Time{})}, 2, newCLRBindEncoder(func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeTimestampWithTimeZone(v.(time.Time))
-	})
-	_ = encoderRegistry.Register(reflect.TypeOf(nil), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	}))
+	_ = encoderRegistry.Register(encoderKey{goType: reflect.TypeOf(nil)}, 2, newCLRBindEncoder(func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeNull(v)
-	})
+	}))
 
 	// Register bind OAC makers used by prepareBindsAndOAC tests.
 	_ = bindOacRegistry.Register(reflect.TypeOf(int64(0)), 2, bindOacType{

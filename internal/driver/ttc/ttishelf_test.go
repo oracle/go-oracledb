@@ -300,8 +300,11 @@ type testCodecFactory struct {
 	defineOac driverCommon.Marshallable
 }
 
-func (t *testCodecFactory) getEncoder(_ normalizedBindValue) (encoderFunc, error) {
-	return func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }, nil
+func (t *testCodecFactory) getEncoderForGoType(_ normalizedBindValue) (*typeEncoder, error) {
+	return newCLRBindEncoder(func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }), nil
+}
+func (t *testCodecFactory) getEncoderForDtyType(_ DtyType, _ normalizedBindValue) (*typeEncoder, error) {
+	return newCLRBindEncoder(func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }), nil
 }
 func (t *testCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
 	return newTypeDecoder(func(columnContext, any) (driver.Value, error) {

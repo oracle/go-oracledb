@@ -39,6 +39,7 @@
 package ttc
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"reflect"
@@ -74,30 +75,45 @@ Description:
 
 		// Bind/encode path: resolve OAC + encoder for a Go value.
 		bindValue := "hello"
+		normalized := normalizeBindValue(bindValue)
 
-		enc, _ := f.getEncoder(bindValue)
-		wireBytes, _ := enc.encodeToType(enc.encodeValue)
-		_ = wireBytes // send over TTC
+		encoder, _ := f.getEncoderForGoType(normalized)
+		payload, _ := encoder.encodeToType(normalized.value)
 
-		oac, _ := f.getBindOac(bindValue, common.UB4(len(wireBytes)))
+		oac, _ := f.getBindOac(normalized, driverCommon.UB4(len(payload)))
 		_ = oac // e.g. used to describe bind metadata (type/length) in TTC messages
 
 		// Row/scan path: resolve a decoder for an Oracle database type id.
 		decoder, _ := f.getDecoder(DtyVCS)
-		v, _ := decoder.decodeToType(columnContext{Name: "C1", Index: 0}, wireBytes)
+		v, _ := decoder.decodeToType(columnContext{Name: "C1", Index: 0}, payload)
 		_ = v // decoded driver.Value (string, number, time.Time, etc.)
 */
 type codecFactory interface {
-	getEncoder(normalizedBindValue) (encoderFunc, error)
+	getEncoderForGoType(normalizedBindValue) (*typeEncoder, error)
+	getEncoderForDtyType(DtyType, normalizedBindValue) (*typeEncoder, error)
 	getDecoder(DtyType) (*typeDecoder, error)
 	getBindOac(normalizedBindValue, driverCommon.UB4) (driverCommon.Marshallable, error)
 	getDefineOac(DtyType, columnContext, driverCommon.DriverProperties) driverCommon.Marshallable
 }
 
-// encoderFunc defines the function signature of encoder functions.
-// This function is used during registration to instantiate new encoders.
-// implementor.
+// encoderFunc encodes a Go bind value into its logical payload bytes.
 type encoderFunc func(driver.Value) (driverCommon.B1Array, error)
+
+// columnWrapFunc writes one encoded bind payload into an outgoing TTIRXD message.
+// The default implementation uses the ordinary TTC CLR representation.
+type columnWrapFunc func(context.Context, driverCommon.Marshaller, driverCommon.B1Array) error
+
+// typeEncoder groups logical value encoding and TTC bind framing for one Go
+// type and TTC protocol version.
+type typeEncoder struct {
+	encodeToType encoderFunc
+	wrapColumn   columnWrapFunc
+}
+
+// newTypeEncoder associates a value encoder with its TTIRXD bind framing.
+func newTypeEncoder(encode encoderFunc, wrap columnWrapFunc) *typeEncoder {
+	return &typeEncoder{encodeToType: encode, wrapColumn: wrap}
+}
 
 // decoderFunc defines the signature for TTC decoder implementors registered with the
 // codec factory. The function receives the column context and raw TTC data bytes and is
@@ -172,7 +188,7 @@ Parameters:
   - bindValue: the raw bind value supplied by statement execution code.
 
 Returns:
-  - normalizedBindValue: the normalized bind metadata used by getEncoder and getBindOac.
+  - normalizedBindValue: the normalized bind metadata used by getEncoderForGoType and getBindOac.
 */
 func normalizeBindValue(bindValue driver.Value) normalizedBindValue {
 	n := normalizedBindValue{
@@ -283,7 +299,7 @@ Description:
 
 	codecRegistry stores one or more candidates per key K (for example, Go reflect.Type or Oracle db type id).
 	Multiple candidates are supported to allow different implementations across TTC protocol versions.
-	Selection is performed by helper functions such as getBestEncoder/getBestDecoder/getBestBindOac/getBestDefineOac.
+	Selection is performed by getEntryFromRegistry using the negotiated TTC protocol version.
 */
 type codecRegistry[K comparable, F any] struct {
 	entries map[K][]codecRegistryEntry[F]
@@ -374,9 +390,17 @@ func (r *codecRegistry[K, F]) getCandidates(key K) []codecRegistryEntry[F] {
 	return nil
 }
 
-// EncoderRegistry is the global registry for encoders keyed by Go type.
-// Populate it during package init of encoder implementors.
-var EncoderRegistry = newCodecRegistry[reflect.Type, encoderFunc]()
+// encoderKey selects a value encoder. A zero dtyType selects the ordinary
+// encoder for goType; a non-zero dtyType is an ADT-specific override.
+type encoderKey struct {
+	dtyType DtyType
+	goType  reflect.Type
+}
+
+// EncoderRegistry is the global registry for bind encoders. Ordinary entries
+// are keyed by Go type. ADT implementations can register an override using
+// both the declared Oracle type and the concrete Go type.
+var EncoderRegistry = newCodecRegistry[encoderKey, *typeEncoder]()
 
 // DecoderRegistry is the global registry for decoders keyed by Oracle database type.
 var DecoderRegistry = newCodecRegistry[DtyType, *typeDecoder]()
@@ -394,14 +418,14 @@ CodecFactoryImpl is the codecFactory implementation used by TTC to resolve encod
 Description:
 
 	Uses the negotiated TTC protocol version to select the "best" registered implementation candidate from:
-	- EncoderRegistry (Go reflect.Type -> encoderFunc)
+	- EncoderRegistry ((optional Oracle DtyType, Go reflect.Type) -> typeEncoder)
 	- DecoderRegistry (Oracle db type id -> decoderFunc)
 	- BindOacRegistry (Go reflect.Type -> bindOacType)
 	- DefineOacRegistry (Oracle db type id -> defineOacFunc)
 */
 type CodecFactoryImpl struct {
 	ttcVersion int8
-	encoders   *codecRegistry[reflect.Type, encoderFunc]
+	encoders   *codecRegistry[encoderKey, *typeEncoder]
 	decoders   *codecRegistry[DtyType, *typeDecoder]
 	bindOacs   *codecRegistry[reflect.Type, bindOacType]
 	defineOacs *codecRegistry[DtyType, defineOacFunc]
@@ -413,7 +437,7 @@ NewCodecFactoryForProtocol constructs a codecFactory for a negotiated TTC protoc
 Description:
 
 	Returns a factory that resolves encoders/decoders/OAC makers using the default global registries
-	(EncoderRegistry, DecoderRegistry, OacRegistry) and the provided TTC protocol version.
+	(EncoderRegistry, DecoderRegistry, BindOacRegistry, and DefineOacRegistry) and the provided TTC protocol version.
 
 Parameters:
   - protocolVersion: Negotiated TTC protocol version.
@@ -435,31 +459,31 @@ func NewCodecFactoryForProtocol(protocolVersion int8) codecFactory {
 }
 
 /*
-getEncoder returns the encoder function for a normalized bind value.
+getEncoderForGoType returns the encoder function for a normalized bind value.
 
 Description:
 
 	Selects the best registered encoder candidate for the bind value type based on the factory's negotiated TTC
-	protocol version. If the bind value is a driver.Out and In is false, NullEncoder is returned. If the bind
-	value is a driver.Out and In is true, encoder lookup is performed using the concrete reflect.Type of Out.Dest.
+	protocol version. OUT-only and nil bind values use the null encoder. For sql.Out values,
+	normalization selects the concrete type of Out.Dest before lookup.
 
 Parameters:
   - normalized: The normalized bind value to encode.
 
 Returns:
-  - encoderFunc: The selected encoder implementation.
+  - *typeEncoder: The selected payload encoder and bind framing implementation.
   - error: Non-nil if no compatible encoder is registered.
 
 Errors:
   - Returns a common.OracleError with code common.InternalError when no encoder candidate exists for the bind type.
 */
-func (f *CodecFactoryImpl) getEncoder(normalized normalizedBindValue) (encoderFunc, error) {
+func (f *CodecFactoryImpl) getEncoderForGoType(normalized normalizedBindValue) (*typeEncoder, error) {
 	if normalized.isOutOnly || normalized.value == nil {
-		return converters.EncodeNull, nil
+		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
 	common.Odl.Finest("New encoder requested", "goType", normalized.goType)
 
-	candidates := f.encoders.getCandidates(normalized.goType)
+	candidates := f.encoders.getCandidates(encoderKey{goType: normalized.goType})
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
 		common.Odl.Finest("Encoder returned", "candidate", bestCandidate)
@@ -469,6 +493,24 @@ func (f *CodecFactoryImpl) getEncoder(normalized normalizedBindValue) (encoderFu
 	err := common.NewOracleError(oracleErrors.InternalError, nil)
 	common.Odl.Error("Encoder candidate missing", "goType", normalized.goType, "error", err)
 	return nil, err
+}
+
+// getEncoderForDtyType returns an ADT-specific encoder when one is registered
+// for the declared Oracle type and Go type. Otherwise it uses the ordinary
+// Go-type encoder.
+func (f *CodecFactoryImpl) getEncoderForDtyType(dty DtyType, normalized normalizedBindValue) (*typeEncoder, error) {
+	if normalized.isOutOnly || normalized.value == nil {
+		return newCLRBindEncoder(converters.EncodeNull), nil
+	}
+
+	candidates := f.encoders.getCandidates(encoderKey{dtyType: dty, goType: normalized.goType})
+	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
+	if bestCandidate != nil {
+		common.Odl.Finest("DtyType encoder returned", "dtyType", dty, "goType", normalized.goType, "candidate", bestCandidate)
+		return bestCandidate.makeFunc, nil
+	}
+
+	return f.getEncoderForGoType(normalized)
 }
 
 /*
@@ -542,10 +584,10 @@ Description:
 
 	Selects the best registered OAC constructor candidate for the bind value type based on the factory's
 	negotiated TTC protocol version, then constructs the bind OAC immediately using the supplied maxLength.
-	If the bind value is a driver.Out, the lookup is performed using the concrete reflect.Type of Out.Dest.
+	For sql.Out values, normalization selects the concrete type of Out.Dest before lookup.
 
 Parameters:
-  - bindValue: The bind value for which a bind OAC is requested.
+  - normalized: The normalized bind value for which a bind OAC is requested.
   - maxLength: Maximum length to apply when constructing the bind OAC.
 
 Returns:

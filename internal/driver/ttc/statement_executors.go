@@ -133,7 +133,8 @@ type statementProcessor struct {
 	opts          driverCommon.UB4                    // OALL8 option bitmask (parse/execute/commit/no-PLSQL/binds-present flags etc).
 	al8i4         []driverCommon.UB4                  // AL8I4 options vector attached to OALL8 (iterations, select flag, extra protocol flags).
 	bindValues    []any                               // Original bind values (ordered by position) for the current execution.
-	encodedValues [][]driverCommon.B1Array            // Wire-encoded bind payloads per iteration (each inner slice is a TTIRXD bind row).
+	encodedValues [][]driverCommon.B1Array            // Encoded bind payloads per iteration (each inner slice is a TTIRXD bind row).
+	wrapColumns   [][]columnWrapFunc                  // TTC bind wrappers per iteration, aligned with encodedValues.
 	currentOacs   []driverCommon.Marshallable         // Per-bind OAC descriptors (type/size metadata) sent alongside bind values.
 	previousOacs  []driverCommon.Marshallable         // Cached OACs from previous execution of the statement
 }
@@ -776,27 +777,31 @@ func (e *statementProcessor) prepareBindsAndOAC(args []sqldriver.Value) error {
 	// TODO : currently, just do it for single row, later when
 	//        batching support is added, make it dynamic.
 	e.encodedValues = make([][]driverCommon.B1Array, 1)
+	e.wrapColumns = make([][]columnWrapFunc, 1)
 	currentRow := 0
 	e.encodedValues[currentRow] = make([]driverCommon.B1Array, n)
+	e.wrapColumns[currentRow] = make([]columnWrapFunc, n)
 	e.currentOacs = make([]driverCommon.Marshallable, n)
 	for i, v := range args {
 		e.bindValues[i] = v
 		// sql.Out{}, int, float, string,time
 		var err error
 		normalized := normalizeBindValue(v)
-		encoder, err := e.shelf.GetCodecFactory().getEncoder(normalized)
+		encoder, err := e.shelf.GetCodecFactory().getEncoderForGoType(normalized)
 		if err != nil {
 			return err
 		}
 
-		e.encodedValues[currentRow][i], err = encoder(normalized.value)
+		payload, err := encoder.encodeToType(normalized.value)
 		if err != nil {
 			return err
 		}
+		e.encodedValues[currentRow][i] = payload
+		e.wrapColumns[currentRow][i] = encoder.wrapColumn
 
 		e.currentOacs[i], err = e.shelf.GetCodecFactory().getBindOac(
 			normalized,
-			e.getMaxLengthForOac(i, len(e.encodedValues[currentRow][i])),
+			e.getMaxLengthForOac(i, len(payload)),
 		)
 		if err != nil {
 			return err
@@ -829,14 +834,17 @@ func (e *statementProcessor) pushBindRows(
 ) error {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	// encode and push RXD rows before flushing
-	for _, row := range e.encodedValues {
+	for rowIndex, row := range e.encodedValues {
+		if rowIndex >= len(e.wrapColumns) {
+			return common.NewOracleError(oracleErrors.InternalError, nil)
+		}
 		msg, gerr := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIRXD)
 		if gerr != nil {
 			common.Odl.Error(caller+": GetMessage(TTIRXD) failed", "error", gerr, "stage", "get-rxd")
 			return common.NewOracleError(errCode, gerr, "push")
 		}
 		rxd := msg.(*tTIrxd)
-		rxd.setBindValues(row)
+		rxd.setBindValues(row, e.wrapColumns[rowIndex])
 		if err := stmr.Push(ctx, rxd); err != nil {
 			common.Odl.Error(caller+": Push RXD failed", "error", err, "stage", "push", "msgCode", rxd.GetMsgCode())
 			return common.NewOracleError(errCode, err, "push")
