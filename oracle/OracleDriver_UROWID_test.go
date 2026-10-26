@@ -59,6 +59,8 @@ import (
 // Project 105286: functional coverage of the Go driver's UROWID handling.
 // Functional tests are numbered consecutively to match the local specification.
 // All fixtures use ORACLE_LOADER, even when the DIRECTORY is DATA_PUMP_DIR.
+// Fixture CSVs are written through UTL_FILE on the database server; their contents
+// are built in Go memory, without creating files on the machine running the tests.
 //
 // Run the basic native-fetch test with the existing private connection config:
 //
@@ -92,8 +94,9 @@ var urowidDumpHeader = regexp.MustCompile(`^Typ=208 Len=([0-9]+):\s*([0-9]+)`)
 var urowidErrorCode = regexp.MustCompile(`(?:ORA|KUP|OGD)-[0-9]{5}`)
 var urowidUnexpectedRow = errors.New("negative UROWID lookup returned a row")
 
-// urowidFixture owns one reserved session and the tables/files created by a test.
-// Ownership is recorded before mutations so cleanup also handles partial setup.
+// urowidFixture groups a test's reserved database connection, timeout and resource names.
+// A fixture is the known environment and data that a test needs before checking behavior.
+// It tracks owned tables and database-server files so cleanup can handle partial setup.
 type urowidFixture struct {
 	db       *sql.DB
 	conn     *sql.Conn
@@ -107,7 +110,9 @@ type urowidFixture struct {
 	files    []string
 }
 
-// urowidRow keeps native locator text alongside its expected application data.
+// urowidRow holds a fetched locator together with the row's ID and payload.
+// Projection checks also keep Oracle-converted text from the same query as a reference,
+// allowing tests to check both the complete locator and the row it identifies.
 type urowidRow struct {
 	rid       string
 	id        int64
@@ -117,7 +122,9 @@ type urowidRow struct {
 
 // Functional tests: native fetch, inputs, outputs and application round trips.
 
-// TestDriver_UROWID_001_BasicFetch checks that one native UROWID can be fetched into a Go string.
+// TestDriver_UROWID_001_BasicFetch checks the simplest native UROWID fetch into a Go string.
+// It creates one row, selects ROWID directly and requires a nonempty result.
+// This isolates basic decoding before other tests check exact text, metadata or bind-back.
 func TestDriver_UROWID_001_BasicFetch(t *testing.T) {
 	f := newUROWIDSession(t)
 	file := f.prefix + "_basic.csv"
@@ -133,8 +140,9 @@ func TestDriver_UROWID_001_BasicFetch(t *testing.T) {
 	}
 }
 
-// TestDriver_UROWID_002_NativeExtended checks native text and metadata, then consumes larger
-// results completely.
+// TestDriver_UROWID_002_NativeExtended checks extended UROWID text, row data and column metadata.
+// It compares native values with Oracle-converted text, then scans 257 ordered rows three times.
+// This adds complete, repeated result-stream checks to the basic single-value fetch.
 func TestDriver_UROWID_002_NativeExtended(t *testing.T) {
 	f := newUROWIDFixture(t)
 	t.Run("four_rows_and_metadata", func(t *testing.T) {
@@ -180,15 +188,17 @@ func TestDriver_UROWID_002_NativeExtended(t *testing.T) {
 	})
 }
 
-// TestDriver_UROWID_003_NativeLegacy checks native legacy locator text against the same returned
-// row.
+// TestDriver_UROWID_003_NativeLegacy checks four rows and metadata using the legacy ROWID format.
+// Each native locator must match Oracle-converted text returned by that same query.
+// This covers the table format without ROWID ACCESS ENABLE, using the shared projection checks.
 func TestDriver_UROWID_003_NativeLegacy(t *testing.T) {
 	f := newUROWIDFixture(t)
 	f.checkProjection(t, f.legacy, false)
 }
 
-// TestDriver_UROWID_004_PositionalAndLiteral checks native locator input as a positional bind
-// and quoted literal.
+// TestDriver_UROWID_004_PositionalAndLiteral checks two ways to use a fetched locator in SQL.
+// A positional :1 bind and an escaped SQL literal must each select exactly row 2 and its payload.
+// A separate lookup using Oracle-converted text provides a control for the native-fetched input.
 func TestDriver_UROWID_004_PositionalAndLiteral(t *testing.T) {
 	f := newUROWIDFixture(t)
 	reference := f.referenceText(t, f.extended, 2)
@@ -211,8 +221,9 @@ func TestDriver_UROWID_004_PositionalAndLiteral(t *testing.T) {
 	})
 }
 
-// TestDriver_UROWID_005_NamedBind checks that a native locator supplied as a named bind selects
-// the right row.
+// TestDriver_UROWID_005_NamedBind checks a fetched locator passed through sql.Named("rid", value).
+// After comparing its complete text with Oracle's reference, the :rid lookup must return row 4.
+// This specifically exercises named input binding alongside the positional and literal tests.
 func TestDriver_UROWID_005_NamedBind(t *testing.T) {
 	f := newUROWIDFixture(t)
 	row := f.fetchNativeRow(t, f.extended, 4)
@@ -220,8 +231,9 @@ func TestDriver_UROWID_005_NamedBind(t *testing.T) {
 	f.checkLookup(t, f.extended, row.rid, 4)
 }
 
-// TestDriver_UROWID_006_PreparedReuse checks that one prepared statement receives new locator
-// values on every execution.
+// TestDriver_UROWID_006_PreparedReuse checks changing locator values on one prepared statement.
+// It binds locators for rows 2, 4 and 2 in sequence and checks each returned ID and payload.
+// Returning to row 2 catches stale bind values that a single statement execution would miss.
 func TestDriver_UROWID_006_PreparedReuse(t *testing.T) {
 	f := newUROWIDFixture(t)
 	row2 := f.fetchNativeRow(t, f.extended, 2)
@@ -243,8 +255,9 @@ func TestDriver_UROWID_006_PreparedReuse(t *testing.T) {
 	urowidRequireNoError(t, "close prepared UROWID lookup", stmt.Close())
 }
 
-// TestDriver_UROWID_007_SavedColumnRoundTrip checks native UROWID-column readback and subsequent
-// input binding.
+// TestDriver_UROWID_007_SavedColumnRoundTrip checks locators stored in an ordinary UROWID column.
+// It saves external-table locators for rows 2 and 4, fetches them natively and binds them back.
+// This covers persisted column values as well as the ROWID pseudocolumn used by other tests.
 func TestDriver_UROWID_007_SavedColumnRoundTrip(t *testing.T) {
 	f := newUROWIDFixture(t)
 	saved := f.createSavedTable(t)
@@ -258,8 +271,9 @@ func TestDriver_UROWID_007_SavedColumnRoundTrip(t *testing.T) {
 	}
 }
 
-// TestDriver_UROWID_008_PLSQLOut checks complete OUT values, bind-back and recovery after an
-// expected conversion error.
+// TestDriver_UROWID_008_PLSQLOut checks locator output through two PL/SQL forms using sql.Out.
+// Both assigning a local UROWID and selecting directly into the OUT bind must return usable text.
+// It also requires ORA-06502 for a small server VARCHAR2 and successful reuse of that same session.
 func TestDriver_UROWID_008_PLSQLOut(t *testing.T) {
 	f := newUROWIDFixture(t)
 	reference := f.referenceText(t, f.extended, 2)
@@ -298,8 +312,9 @@ func TestDriver_UROWID_008_PLSQLOut(t *testing.T) {
 	})
 }
 
-// TestDriver_UROWID_009_PLSQLInOut checks a native locator as input and a different complete
-// locator as output.
+// TestDriver_UROWID_009_PLSQLInOut checks one sql.Out bind with In: true carrying both directions.
+// PL/SQL uses row 4's input locator to fetch its data, then replaces that locator with row 2's.
+// Native-fetched and Oracle-converted inputs must both produce complete, reusable output text.
 func TestDriver_UROWID_009_PLSQLInOut(t *testing.T) {
 	f := newUROWIDFixture(t)
 	for _, name := range []string{"native_input", "database_reference_control"} {
@@ -328,8 +343,9 @@ func TestDriver_UROWID_009_PLSQLInOut(t *testing.T) {
 	}
 }
 
-// TestDriver_UROWID_010_RetainedValueSameSession checks that later fetches do not overwrite a
-// retained Go locator string.
+// TestDriver_UROWID_010_RetainedValueSameSession checks a Go locator retained across later fetches.
+// It keeps row 2's string, scans the four-row table three times and checks the string after each scan.
+// Equality with an independent snapshot and successful bind-back catch receive-buffer reuse issues.
 func TestDriver_UROWID_010_RetainedValueSameSession(t *testing.T) {
 	f := newUROWIDFixture(t)
 	retained := f.fetchNativeRow(t, f.extended, 2)
@@ -343,8 +359,9 @@ func TestDriver_UROWID_010_RetainedValueSameSession(t *testing.T) {
 	}
 }
 
-// TestDriver_UROWID_011_RetainedValueFreshSession checks that application-held text remains
-// usable after its original pool closes.
+// TestDriver_UROWID_011_RetainedValueFreshSession checks a locator kept after its connection closes.
+// It verifies a different physical session, fetches another row and reuses the original row 2 string.
+// This extends retained-value coverage across sessions, checking both unchanged text and bind-back.
 func TestDriver_UROWID_011_RetainedValueFreshSession(t *testing.T) {
 	f := newUROWIDFixture(t)
 	retained := f.fetchNativeRow(t, f.extended, 2)
@@ -366,8 +383,9 @@ func TestDriver_UROWID_011_RetainedValueFreshSession(t *testing.T) {
 	f.checkLookup(t, f.extended, retained.rid, 2)
 }
 
-// TestDriver_UROWID_012_MultipleInputBinds checks that multiple native locator arguments reach
-// the server intact.
+// TestDriver_UROWID_012_MultipleInputBinds checks two native-fetched locators in one SQL execution.
+// It passes row 4's and row 2's values to IN (:1,:2) and requires exactly rows 2 and 4 in ID order.
+// This covers simultaneous locator arguments beyond the single-input and sequential-reuse tests.
 func TestDriver_UROWID_012_MultipleInputBinds(t *testing.T) {
 	f := newUROWIDFixture(t)
 	row2 := f.fetchNativeRow(t, f.extended, 2)
@@ -378,8 +396,9 @@ func TestDriver_UROWID_012_MultipleInputBinds(t *testing.T) {
 		[]int64{2, 4}, row4.rid, row2.rid)
 }
 
-// TestDriver_UROWID_013_VariableLengthAndBoundary checks complete native text and bind-back for
-// genuine length fixtures.
+// TestDriver_UROWID_013_VariableLengthAndBoundary checks decoding and bind-back at real locator lengths.
+// A longer server filename must change the internal length; a supplied file must produce 3950 bytes.
+// Both values must match Oracle's complete text, so coverage depends on measured lengths, not padding.
 func TestDriver_UROWID_013_VariableLengthAndBoundary(t *testing.T) {
 	f := newUROWIDFixture(t)
 	t.Run("genuine_variable_length", func(t *testing.T) {
@@ -416,8 +435,9 @@ func TestDriver_UROWID_013_VariableLengthAndBoundary(t *testing.T) {
 	})
 }
 
-// TestDriver_UROWID_014_MalformedAndNull checks informative input errors, SQL NULL and
-// same-session UROWID recovery.
+// TestDriver_UROWID_014_MalformedAndNull checks invalid locator text, damaged encoding and SQL NULL.
+// Invalid strings must return driver SQL errors with ORA-01410; NULL must yield no matching row.
+// After each invalid string, native fetch and bind-back must succeed on the same connection.
 func TestDriver_UROWID_014_MalformedAndNull(t *testing.T) {
 	f := newUROWIDFixture(t)
 	reference := f.referenceText(t, f.extended, 2)
@@ -443,9 +463,9 @@ func TestDriver_UROWID_014_MalformedAndNull(t *testing.T) {
 	})
 }
 
-// TestDriver_UROWID_015_ConvertedTextRoundTrip checks server-converted locator strings and
-// their reuse as application inputs. This standalone proof of concept runs directly by name;
-// it does not assert native UROWID support or belong to the published test specification.
+// TestDriver_UROWID_015_ConvertedTextRoundTrip checks CAST-to-text fetches without native UROWID decoding.
+// It validates complete strings, then reuses them with positional, named and prepared-statement binds.
+// This standalone proof of concept runs by name, outside the published specification and native coverage.
 func TestDriver_UROWID_015_ConvertedTextRoundTrip(t *testing.T) {
 	f := newUROWIDSession(t)
 	file := f.prefix + "_text.csv"
@@ -507,8 +527,9 @@ func TestDriver_UROWID_015_ConvertedTextRoundTrip(t *testing.T) {
 
 // Compatibility prerequisite: read the live parameter before creating resources.
 
-// TestUROWIDCompatibleVersion checks numeric ordering and rejects malformed live parameter
-// values without a database.
+// TestUROWIDCompatibleVersion checks the version parser using a table of supported and invalid values.
+// Cases cover numeric ordering, omitted components, whitespace, malformed text and numeric overflow.
+// This database-free unit test validates the prerequisite logic used by the functional tests.
 func TestUROWIDCompatibleVersion(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -548,8 +569,9 @@ func TestUROWIDCompatibleVersion(t *testing.T) {
 	}
 }
 
-// urowidCompatibleVersion compares one to five numeric components with the minimum, padding
-// missing components with zeroes.
+// urowidCompatibleVersion parses a COMPATIBLE value and compares it numerically with 23.27.1.0.0.
+// It accepts one to five decimal components, pads missing components with zeroes and rejects bad input.
+// Keeping parsing separate from the database query lets version handling be tested without a session.
 func urowidCompatibleVersion(value string) (bool, error) {
 	components := strings.Split(strings.TrimSpace(value), ".")
 	if len(components) > 5 {
@@ -576,8 +598,9 @@ func urowidCompatibleVersion(value string) (bool, error) {
 	return true, nil
 }
 
-// requireCompatible skips unsupported databases and fails when the live parameter cannot be
-// checked.
+// requireCompatible reads the live COMPATIBLE parameter before the fixture creates any resources.
+// A valid value below the minimum skips the test; unreadable or malformed values fail setup.
+// This applies the version parser to the actual database configuration used by the test session.
 func (f *urowidFixture) requireCompatible(t *testing.T) {
 	t.Helper()
 	var value string
@@ -596,8 +619,9 @@ func (f *urowidFixture) requireCompatible(t *testing.T) {
 
 // Fixture setup and session ownership.
 
-// newUROWIDSession checks common prerequisites and reserves a session with automatic cleanup.
-// It creates no tables or files, so the basic fetch test can prepare just its one-row input.
+// newUROWIDSession checks test selection, configuration, COMPATIBLE, schema and DIRECTORY visibility.
+// It reserves one connection, starts a two-minute timeout and registers cleanup for owned resources.
+// It creates no tables or files, allowing tests to prepare smaller inputs than newUROWIDFixture.
 func newUROWIDSession(t *testing.T) *urowidFixture {
 	t.Helper()
 	if !urowidExplicitlySelected() {
@@ -636,7 +660,9 @@ func newUROWIDSession(t *testing.T) *urowidFixture {
 	return f
 }
 
-// newUROWIDFixture adds the four-row legacy/extended inputs used by the detailed driver tests.
+// newUROWIDFixture adds standard test data to the connection prepared by newUROWIDSession.
+// It writes four known rows to one database-server CSV and creates legacy and extended external tables.
+// Subtype and internal-length checks confirm that both tables supply the intended locator formats.
 func newUROWIDFixture(t *testing.T) *urowidFixture {
 	t.Helper()
 	f := newUROWIDSession(t)
@@ -650,8 +676,9 @@ func newUROWIDFixture(t *testing.T) *urowidFixture {
 	return f
 }
 
-// urowidExplicitlySelected keeps server fixtures opt-in through a test pattern, category or
-// explicit DIRECTORY flag.
+// urowidExplicitlySelected detects a UROWID test pattern, the urowid category or an explicit DIRECTORY flag.
+// Fixture setup skips unless one of these signals is present, keeping database-server writes opt-in.
+// This selection check runs before configuration validation or opening a database connection.
 func urowidExplicitlySelected() bool {
 	for _, category := range strings.Split(flag.Lookup("test.category").Value.String(), ",") {
 		if strings.EqualFold(strings.TrimSpace(category), "urowid") {
@@ -670,8 +697,9 @@ func urowidExplicitlySelected() bool {
 	return directorySupplied
 }
 
-// urowidRandom returns random uppercase hexadecimal text for fixture names that do not collide
-// across runs.
+// urowidRandom converts size random bytes into uppercase hexadecimal text of twice that length.
+// Generated prefixes help avoid table and server-file name collisions across test runs.
+// The length test also uses a larger value to construct a genuinely longer source filename.
 func urowidRandom(t *testing.T, size int) string {
 	t.Helper()
 	b := make([]byte, size)
@@ -681,7 +709,9 @@ func urowidRandom(t *testing.T, size int) string {
 	return strings.ToUpper(hex.EncodeToString(b))
 }
 
-// openUROWIDDB opens the existing test configuration and limits the fixture pool to one connection.
+// openUROWIDDB opens a database pool using the already selected test configuration.
+// It allows at most one open and one idle connection, keeping each fixture's pool small.
+// urowidSession separately reserves the connection that the test will use for its SQL operations.
 func openUROWIDDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := openTestDBWithConfig(TestingConfig)
@@ -691,7 +721,9 @@ func openUROWIDDB(t *testing.T) *sql.DB {
 	return db
 }
 
-// urowidSession reserves the connection used by all operations within a test session.
+// urowidSession reserves a sql.Conn from the supplied pool using the fixture's timeout context.
+// Using that connection keeps successive SQL operations on the same database session.
+// Tests can therefore check same-session recovery; openFreshSession explicitly replaces the session.
 func urowidSession(t *testing.T, db *sql.DB, ctx context.Context) *sql.Conn {
 	t.Helper()
 	conn, err := db.Conn(ctx)
@@ -699,8 +731,9 @@ func urowidSession(t *testing.T, db *sql.DB, ctx context.Context) *sql.Conn {
 	return conn
 }
 
-// openFreshSession closes the previous pool and reserves a session from a new pool for
-// independent subtests or retained-value reuse.
+// openFreshSession closes the current connection and pool, then reserves a connection from a new pool.
+// Independent subtests use it to retire earlier protocol state, and retained-value tests reuse Go data.
+// Existing table/file ownership and the fixture's original timeout remain in effect across the change.
 func (f *urowidFixture) openFreshSession(t *testing.T) {
 	t.Helper()
 	// A failed protocol read can make Close return another protocol error.
@@ -718,15 +751,18 @@ func (f *urowidFixture) openFreshSession(t *testing.T) {
 
 // Server resources: only generated names enter the cleanup ownership lists.
 
-// execSQL executes fixture SQL on the reserved connection and reports a sanitized failure.
+// execSQL runs a statement or PL/SQL block on the fixture's reserved connection.
+// It stops the test on error and reports the operation name with a sanitized error summary.
+// Helpers use it for successful setup and OUT binds; expected-error tests inspect errors directly.
 func (f *urowidFixture) execSQL(t *testing.T, operation, query string, args ...any) {
 	t.Helper()
 	_, err := f.conn.ExecContext(f.ctx, query, args...)
 	urowidRequireNoError(t, operation, err)
 }
 
-// writeFile creates a new server CSV after checking for collisions, and closes the UTL_FILE
-// handle even on errors.
+// writeFile sends in-memory CSV text to PL/SQL, which writes it with UTL_FILE on the database server.
+// It checks for an existing filename before recording ownership, and closes the handle on errors.
+// Ownership permits cleanup of a partial write; no CSV is created on the machine running the test.
 func (f *urowidFixture) writeFile(t *testing.T, name, data string) {
 	t.Helper()
 	// Check before registering ownership: an existing file must never be removed.
@@ -761,8 +797,9 @@ func (f *urowidFixture) writeFile(t *testing.T, name, data string) {
 		END;`, sql.Named("contents", data), sql.Named("dir", f.dir), sql.Named("name", name))
 }
 
-// createTable checks for a name collision and records ownership before DDL so partial setup can
-// be cleaned.
+// createTable checks that the requested name does not already exist in the test schema.
+// It records ownership before issuing CREATE TABLE, so cleanup can handle a lost or failed response.
+// Both external-table and saved-UROWID helpers use this common collision and cleanup bookkeeping.
 func (f *urowidFixture) createTable(t *testing.T, name, ddl string) string {
 	t.Helper()
 	var existing int64
@@ -779,20 +816,24 @@ func (f *urowidFixture) createTable(t *testing.T, name, ddl string) string {
 	return name
 }
 
-// createExternal creates a single-file ORACLE_LOADER table using the requested locator format.
+// createExternal defines an ORACLE_LOADER table over one CSV in the selected database DIRECTORY.
+// The extended flag adds ROWID ACCESS ENABLE; otherwise the table uses the legacy locator format.
+// It creates the table definition and records ownership, while writeFile separately creates CSV data.
 func (f *urowidFixture) createExternal(t *testing.T, suffix, file string, extended bool) string {
 	t.Helper()
 	name := f.prefix + "_" + suffix
 	definition := "TYPE ORACLE_LOADER DEFAULT DIRECTORY \"" + f.dir + "\"\n" + urowidAccessParameters +
 		"\nLOCATION (" + utils.EnquoteLiteral(file) + ")"
 	if extended {
-		definition += "\nWITH EXTENDED ROWID"
+		definition += "\nROWID ACCESS ENABLE"
 	}
 	return f.createTable(t, name, "CREATE TABLE "+name+` (id NUMBER(10), payload VARCHAR2(40))
         ORGANIZATION EXTERNAL (`+definition+") REJECT LIMIT 0")
 }
 
-// createSavedTable persists two genuine locators in an ordinary UROWID column for native readback.
+// createSavedTable creates an ordinary table with a UROWID column and saves locators for rows 2 and 4.
+// INSERT ... SELECT copies the genuine values inside Oracle, and COMMIT persists them for readback.
+// This prepares stored-column fetch coverage independently of Go input binding during setup.
 func (f *urowidFixture) createSavedTable(t *testing.T) string {
 	t.Helper()
 	name := f.prefix + "_SAVED"
@@ -804,8 +845,9 @@ func (f *urowidFixture) createSavedTable(t *testing.T) string {
 
 // Native results and independent database-converted text.
 
-// fetchNativeRow fetches a locator directly into a Go string and checks the accompanying row
-// identity.
+// fetchNativeRow selects ROWID directly into a Go string alongside the requested row's ID and payload.
+// It checks row identity before returning the value for later text comparisons or bind-back.
+// Selecting the native locator exercises driver decoding, whereas referenceText fetches converted text.
 func (f *urowidFixture) fetchNativeRow(t *testing.T, table string, id int64) urowidRow {
 	t.Helper()
 	row := urowidRow{}
@@ -817,8 +859,9 @@ func (f *urowidFixture) fetchNativeRow(t *testing.T, table string, id int64) uro
 	return row
 }
 
-// referenceText reads complete database-converted locator text independently of native ROWID
-// decoding.
+// referenceText converts a row's UROWID to text inside PL/SQL to provide an independent expected value.
+// It fetches 2000-character chunks and checks their total length, preserving every byte of long values.
+// This avoids native ROWID decoding and the SQL VARCHAR2(4000) limit when checking boundary locators.
 func (f *urowidFixture) referenceText(t *testing.T, table string, id int64) string {
 	t.Helper()
 	// A maximum locator can exceed SQL VARCHAR2(4000) after text encoding.
@@ -860,8 +903,9 @@ func (f *urowidFixture) referenceText(t *testing.T, table string, id int64) stri
 	return ""
 }
 
-// checkProjection checks native metadata and all four rows against same-query and complete text
-// references.
+// checkProjection reads all four fixture rows and requires the RID column's metadata to report ROWID.
+// It checks ordered IDs, payloads and native text against CAST text returned by the same query.
+// Extended values also use referenceText; legacy comparisons use the reference from the same execution.
 func (f *urowidFixture) checkProjection(t *testing.T, table string, extended bool) {
 	t.Helper()
 	rows, err := f.conn.QueryContext(f.ctx,
@@ -898,14 +942,18 @@ func (f *urowidFixture) checkProjection(t *testing.T, table string, extended boo
 
 // Application lookups and result assertions.
 
-// checkLookup binds a complete locator and requires exactly the intended fixture row.
+// checkLookup passes a locator as the named :rid argument in a ROWID equality query.
+// It requires exactly one result with the expected fixture ID and payload.
+// This is the common bind-back assertion after native fetches, stored-column reads and PL/SQL output.
 func (f *urowidFixture) checkLookup(t *testing.T, table, rid string, expected int64) {
 	t.Helper()
 	f.checkQueryRows(t, "SELECT id, RTRIM(payload) FROM "+table+" WHERE ROWID = :rid",
 		[]int64{expected}, sql.Named("rid", rid))
 }
 
-// checkQueryRows executes a locator-based query and checks its entire ordered result set.
+// checkQueryRows runs caller-supplied SQL and arguments on the fixture's reserved connection.
+// It delegates result consumption to urowidCheckRows, using the caller's expected ID order.
+// This supports literals, positional binds and multiple-row lookups beyond checkLookup's named bind.
 func (f *urowidFixture) checkQueryRows(t *testing.T, query string, expected []int64, args ...any) {
 	t.Helper()
 	rows, err := f.conn.QueryContext(f.ctx, query, args...)
@@ -913,8 +961,9 @@ func (f *urowidFixture) checkQueryRows(t *testing.T, query string, expected []in
 	urowidCheckRows(t, rows, expected)
 }
 
-// urowidCheckRows consumes and closes an ordinary or prepared result, checking missing and extra
-// rows as well as values.
+// urowidCheckRows consumes an existing result and checks each ID and payload in the expected order.
+// Missing rows, extra rows and scan, fetch or close errors all fail the check.
+// Accepting sql.Rows lets ordinary queries and reused prepared statements share the same assertions.
 func urowidCheckRows(t *testing.T, rows *sql.Rows, expected []int64) {
 	t.Helper()
 	defer rows.Close()
@@ -936,7 +985,9 @@ func urowidCheckRows(t *testing.T, rows *sql.Rows, expected []int64) {
 	}
 }
 
-// urowidCheckIdentity checks the deterministic ID and payload expected for one fixture row.
+// urowidCheckIdentity checks both the ID and its known payload from the four-row base CSV.
+// For example, expected ID 2 must return (2, "beta"), not merely a nonempty result.
+// This confirms that a locator selected the intended application row independently of its text.
 func urowidCheckIdentity(t *testing.T, id int64, payload string, expected int64) {
 	t.Helper()
 	want := map[int64]string{1: "alpha", 2: "beta", 3: "gamma", 4: "delta"}[expected]
@@ -945,7 +996,9 @@ func urowidCheckIdentity(t *testing.T, id int64, payload string, expected int64)
 	}
 }
 
-// urowidCheckText compares complete strings while keeping locator contents out of logs.
+// urowidCheckText requires exact equality between a locator string and its expected text.
+// A mismatch reports only byte lengths, keeping the full locator values out of test logs.
+// Full-string comparison detects changed bytes and truncation even when the lookup result seems valid.
 func urowidCheckText(t *testing.T, actual, expected string) {
 	t.Helper()
 	if actual != expected {
@@ -954,8 +1007,9 @@ func urowidCheckText(t *testing.T, actual, expected string) {
 	}
 }
 
-// fixtureLocatorLength checks that a fixture supplies the intended subtype/length; it is an
-// input prerequisite, not a server feature test.
+// fixtureLocatorLength reads Oracle's DUMP output to check UROWID type 208, subtype and internal length.
+// Legacy kind 4 must occupy 17 bytes; extended kind 6 must occupy more than 17 and at most 3950 bytes.
+// It validates test inputs and returns their measured length, independently of the driver's text decoding.
 func (f *urowidFixture) fixtureLocatorLength(t *testing.T, table string, id int64, expectedKind int) int {
 	t.Helper()
 	var dump string
@@ -979,8 +1033,9 @@ func (f *urowidFixture) fixtureLocatorLength(t *testing.T, table string, id int6
 
 // Error propagation: expected SQL errors remain errors, and details stay private.
 
-// lookupError captures an error returned either when executing a negative query or while
-// fetching its results.
+// lookupError runs a query expected to fail or find no rows, capturing query-time and fetch-time errors.
+// It returns sql.ErrNoRows for an empty result or urowidUnexpectedRow if a row unexpectedly appears.
+// Negative tests can then distinguish malformed-input errors from NULL's valid no-match result.
 func (f *urowidFixture) lookupError(t *testing.T, query string, args ...any) error {
 	t.Helper()
 	rows, err := f.conn.QueryContext(f.ctx, query, args...)
@@ -998,7 +1053,9 @@ func (f *urowidFixture) lookupError(t *testing.T, query string, args ...any) err
 	return sql.ErrNoRows
 }
 
-// urowidExpectError requires the driver SQL-error type and the expected informative Oracle code.
+// urowidExpectError requires both the driver's SQLError type and the expected Oracle error code.
+// It checks the sanitized error summary so the test can verify error propagation without logging inputs.
+// This distinguishes expected database errors from generic failures or an unexpected successful lookup.
 func urowidExpectError(t *testing.T, err error, code string) {
 	t.Helper()
 	var sqlError oracleErrors.SQLError
@@ -1007,7 +1064,9 @@ func urowidExpectError(t *testing.T, err error, code string) {
 	}
 }
 
-// urowidRequireNoError stops a test with an operation name and a sanitized error summary.
+// urowidRequireNoError stops the current test when an operation expected to succeed returns an error.
+// The failure includes the caller's operation description and only a sanitized error summary.
+// Setup and positive assertions use it; negative cases use urowidExpectError to check a required error.
 func urowidRequireNoError(t *testing.T, operation string, err error) {
 	t.Helper()
 	if err != nil {
@@ -1015,8 +1074,9 @@ func urowidRequireNoError(t *testing.T, operation string, err error) {
 	}
 }
 
-// urowidErrorSummary reports error codes without printing credentials, connection descriptors or
-// locator values.
+// urowidErrorSummary reduces errors to Oracle/driver codes, known result states or a generic type name.
+// It also identifies success and context timeouts without exposing the full underlying error message.
+// Shared assertions use this to keep credentials, connection descriptors and locator values out of logs.
 func urowidErrorSummary(err error) string {
 	if err == nil {
 		return "success"
@@ -1039,8 +1099,9 @@ func urowidErrorSummary(err error) string {
 
 // Cleanup: drop owned tables before removing their owned source files.
 
-// cleanup closes the test session and uses a fresh connection to remove only resources recorded
-// as owned.
+// cleanup cancels the timeout, closes the test session and reconnects to remove only owned resources.
+// It drops tables in reverse order before deleting server CSVs, retaining files if table removal fails.
+// A fresh connection permits teardown after protocol errors; the supplied boundary file remains unowned.
 func (f *urowidFixture) cleanup(t *testing.T) {
 	t.Helper()
 	if f.cancel != nil {
