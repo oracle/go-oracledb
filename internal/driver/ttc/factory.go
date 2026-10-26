@@ -238,7 +238,8 @@ func NewMessageFactory() Factory {
 
 // NewMessageFactoryForProtocol creates a factory for a TTC protocol version,
 // using the default message and function registries. It creates a codec factory
-// for the same protocol version and injects it into codecFactoryUser messages.
+// for the same protocol version and injects factory dependencies into messages
+// that request them.
 //
 // Parameters:
 //   - protocolVersion is the negotiated TTC protocol version. A value of -1
@@ -306,8 +307,9 @@ func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, 
 	return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 }
 
-// initializeMessage supplies the factory's protocol-matched codecs to messages
-// implementing codecFactoryUser. Other messages are returned unchanged.
+// initializeMessage supplies factory dependencies to newly-created messages.
+// Codec and message-factory users receive protocol-matched dependencies; other
+// messages are returned unchanged.
 //
 // Parameters:
 //   - msg is the newly constructed message.
@@ -316,6 +318,9 @@ func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, 
 func (f *SimpleFactory) initializeMessage(msg driverCommon.Message[driverCommon.MessageType]) driverCommon.Message[driverCommon.MessageType] {
 	if user, ok := msg.(codecFactoryUser); ok {
 		user.setCodecFactory(f.codecFactory)
+	}
+	if user, ok := msg.(messageFactoryUser); ok {
+		user.setMessageFactory(f)
 	}
 	return msg
 }

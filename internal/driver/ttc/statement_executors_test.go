@@ -74,7 +74,15 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 
 	msgReg := NewRegistry[common.MessageType]()
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	_ = msgReg.Register(TTIRXD, 0, newTTIrxd)
@@ -126,6 +134,8 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 
 	msgReg := NewRegistry[common.MessageType]()
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
@@ -182,7 +192,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil, unwrapCLRColumn),
 	); err != nil {
@@ -229,7 +239,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil, unwrapCLRColumn),
 	); err != nil {

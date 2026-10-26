@@ -58,6 +58,7 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 // ---------------------------------------------------------------------------
@@ -426,6 +427,34 @@ func TestHandleRXDRow_AssignsDecodedValue(t *testing.T) {
 	}
 	if dest != "hello" {
 		t.Errorf("dest: got %q, want %q", dest, "hello")
+	}
+}
+
+// TestHandleRXDRow_NullRefCursorClearsReusedDestination verifies that a NULL
+// REF CURSOR OUT value reaches the Scanner and clears a prior cursor value.
+func TestHandleRXDRow_NullRefCursorClearsReusedDestination(t *testing.T) {
+	t.Parallel()
+	shelf := newShelf[common.MessageType]()
+
+	var dest datatype.Cursor
+	if err := dest.Scan(newTTCRows(nil)); err != nil {
+		t.Fatalf("seed cursor destination: %v", err)
+	}
+	exec := &statementExecutorDML{
+		statementExecutorExec: statementExecutorExec{
+			statementProcessor: statementProcessor{shelf: shelf},
+		},
+	}
+	exec.outDestPtrs = []any{&dest}
+	exec.outColumnContexts = []columnContext{{Index: 0, DataType: DtyCur}}
+
+	rxd := newTTIrxd().(*tTIrxd)
+	rxd.row = testColumnRow([]common.B1Array{nil})
+	if err := exec.handleRXDRow(rxd); err != nil {
+		t.Fatalf("handleRXDRow returned error for NULL REF CURSOR: %v", err)
+	}
+	if dest.DriverRows() != nil {
+		t.Fatal("NULL REF CURSOR left the previously returned cursor in the reused destination")
 	}
 }
 

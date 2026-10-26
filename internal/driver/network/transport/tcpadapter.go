@@ -105,6 +105,27 @@ type ioOperationResult struct {
 	ioerr     error // error of the I/O operation
 }
 
+type socketBufferSetter interface {
+	SetReadBuffer(bytes int) error
+	SetWriteBuffer(bytes int) error
+}
+
+// configureSocketBuffers applies optional Oracle Net socket buffer sizes to a
+// TCP connection. A zero value leaves the operating-system default unchanged.
+func configureSocketBuffers(conn socketBufferSetter, recvBufSize, sendBufSize int) error {
+	if recvBufSize > 0 {
+		if err := conn.SetReadBuffer(recvBufSize); err != nil {
+			return fmt.Errorf("set receive buffer size: %w", err)
+		}
+	}
+	if sendBufSize > 0 {
+		if err := conn.SetWriteBuffer(sendBufSize); err != nil {
+			return fmt.Errorf("set send buffer size: %w", err)
+		}
+	}
+	return nil
+}
+
 // Send send buffer bytes to the underlying stream
 // parameters:
 //   - ctx : context to be used while reading
@@ -369,6 +390,11 @@ func (nt *nttcp) Connect(ctx context.Context, address Address) error {
 			return errors.Join(err, disconnectErr)
 		}
 		return err
+	}
+	if tcpConn, ok := nt.stream.(*net.TCPConn); ok {
+		if err := configureSocketBuffers(tcpConn, nt.atts.RecvBufSize, nt.atts.SendBufSize); err != nil {
+			return cleanupOnError(err)
+		}
 	}
 	if nt.atts.ExpireTime > 0 || nt.atts.EnabledDCD {
 		tcpConn, ok := nt.stream.(*net.TCPConn)

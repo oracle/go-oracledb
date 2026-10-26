@@ -71,7 +71,7 @@ const (
 	authPDKDF2CSKSalt   = "AUTH_PBKDF2_CSK_SALT"
 	authPassword        = "AUTH_PASSWORD"
 	authAlterSession    = "AUTH_ALTER_SESSION"
-	authProxyClientName = "AUTH_PROXY_CLIENT_NAME"
+	authProxyClientName = "PROXY_CLIENT_NAME"
 
 	authServerResponse = "AUTH_SVR_RESPONSE"
 
@@ -652,6 +652,10 @@ func (o *oAuth) setPBKDF2SderCount(count int) {
 
 func (o *oAuth) setUser(username driverCommon.B1Array) {
 	o.user = username
+}
+
+func (o *oAuth) setProxyClient(clientName driverCommon.B1Array) {
+	o.clientName = clientName
 }
 
 func (o *oAuth) setConnectString(connectString string) {

@@ -61,6 +61,8 @@ const (
 	_oacMaxLengthDate driverCommon.UB4 = 7
 	// _oacMaxLengthStampTZ is the fixed max length for TIMESTAMP WITH TIMEZONE columns.
 	_oacMaxLengthStampTZ driverCommon.UB4 = 13
+	// _jsonPrefetchSize is the maximum size of an Oracle JSON value: 32 MB.
+	_jsonPrefetchSize driverCommon.UB4 = 32 * 1024 * 1024
 )
 
 // tTIoac represents the Oracle TTIOAC structure, which holds metadata and state for column binding and definition
@@ -85,8 +87,9 @@ type tTIoac struct {
 	codepointLengthLimit driverCommon.UB4
 	// collationID specifies the collation ID of this column.
 	collationID driverCommon.UB4
-	// nbArrayElements is the total number of elements for array/batch operations.
-	nbArrayElements driverCommon.UB4
+	// nbArrayElements is the signed TTC oacmal field. Oracle uses negative
+	// sentinel values here when a descriptor is not an array bind.
+	nbArrayElements driverCommon.SB4
 	// versionNumber is the type version for Oracle ADT types.
 	versionNumber driverCommon.UB2
 	// flagsContinuation stores additional ("continuation") flags for the server attribute.
@@ -215,6 +218,11 @@ func newTTIOacNull() driverCommon.Marshallable {
 	return newTTIoac(DtyVCS, converters.MaxNullLength)
 }
 
+// newTTIOacRefCursor creates an OAC descriptor for REF CURSOR bind values.
+func newTTIOacRefCursor(maxLength driverCommon.UB4) driverCommon.Marshallable {
+	return newTTIoac(DtyRSet, maxLength)
+}
+
 // newTTIOacBoolV17 creates an OAC descriptor for pre-native-boolean representations that are sent as NUMBER values.
 func newTTIOacBoolV17(maxLength driverCommon.UB4) driverCommon.Marshallable {
 	return newTTIoac(DtyNum, maxLength)
@@ -230,9 +238,10 @@ func newTTIOacTime() driverCommon.Marshallable {
 	return newTTIoac(DtyStz, converters.MaxTimeStampLength)
 }
 
-// newTTIOacJSONDefine creates a define OAC descriptor for JSON values transported as LOBs with prefetch enabled.
-func newTTIOacJSONDefine(columnContext columnContext, lobPrefetchSize driverCommon.UB4) driverCommon.Marshallable {
-	return newTTIOAcDefine(DtyBlob, max_lob_length, columnContext, uacfsald, lobPrefetchSize)
+// newTTIOacJSONDefine creates a define OAC descriptor for JSON values with prefetch enabled.
+func newTTIOacJSONDefine(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
+	// for JSON we want to fetch all the doc
+	return newTTIOAcDefine(DtyJSON, max_lob_length, columnContext, uacfsald, _jsonPrefetchSize)
 }
 
 // newTTIOacClobDefine creates a define OAC descriptor for CLOB values using column metadata and LOB prefetch settings.
@@ -296,7 +305,7 @@ func (p *tTIoac) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) err
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OAC")
 	}
 
-	if err := mar.MarshalUB4(ctx, p.nbArrayElements); err != nil {
+	if err := mar.MarshalSB4(ctx, p.nbArrayElements); err != nil {
 		common.Odl.Warn("MarshalTo: Failed to marshal nbArrayElements", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OAC")
 	}
@@ -380,7 +389,7 @@ func (p *tTIoac) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
-	if p.nbArrayElements, err = mar.UnmarshalUB4(ctx); err != nil {
+	if p.nbArrayElements, err = mar.UnmarshalSB4(ctx); err != nil {
 		common.Odl.Finest("UnmarshalFrom: failed to unmarshal nbArrayElements", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}

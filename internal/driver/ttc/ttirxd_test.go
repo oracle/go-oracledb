@@ -604,7 +604,10 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 			{DataType: DtyClob},
 		}},
 	}
-	state := &queryRunState{rows: exec.resultMetadata.newRows(shelf)}
+
+	rows := newTTCRows(exec.resultMetadata.columns)
+	rows.SetShelf(shelf)
+	state := &queryRunState{rows: rows}
 
 	clobData := common.B1Array("hello")
 	previousLobContext := &lobColumnContext{CharsetID: al16Utf16CharSet}

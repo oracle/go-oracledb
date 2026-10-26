@@ -453,6 +453,23 @@ func initMessagesEn() {
 	// Action:   Use an identifier with a supported length and characters.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidIdentifier), "invalid SQL identifier")
+	// Document: No
+	message.SetString(language.English, string(oracleErrors.ImplicitResultMessageCreationFailed), "failed to create implicit result message")
+	// Document: No
+	// Cause:    A REF CURSOR was fetched using a connection other than the one that opened it.
+	// Action:   Fetch the REF CURSOR using the connection on which it was opened.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.RefCursorConnectionMismatch), "REF CURSOR must be fetched using the connection on which it was opened")
+	// Document: No
+	// Cause:    A REF CURSOR OUT bind used an unsupported destination type.
+	// Action:   Use *datatype.Cursor as the sql.Out destination.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidRefCursorOutParameter), "REF CURSOR OUT binds require *datatype.Cursor")
+	// Document: No
+	// Cause:    The REF CURSOR executor received an unsupported argument value.
+	// Action:   Pass the decoded REF CURSOR rows to the executor.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidRefCursorArgument), "invalid REF CURSOR argument")
 
 	// Document: No
 	message.SetString(language.English, string(oracleErrors.CancelOperationError), "cancel operation failed")
@@ -572,6 +589,46 @@ func initMessagesEn() {
 	// Action:   Verify the database connection and the DBTIMEZONE value returned by the server.
 	// Comment:  Arg[0]: operation (query|retrieve|parse)
 	message.SetString(language.English, string(oracleErrors.ServerTimeZoneError), "failed to %s server timezone")
+	// Document: No
+	// Cause:    The OSON document contains a scalar opcode that this driver version cannot decode.
+	// Action:   Check database and driver version compatibility. Upgrade the driver if the document uses a newer OSON scalar type.
+	// Comment:  Arg[0]: opcode byte
+	message.SetString(language.English, string(oracleErrors.OsonUnsupportedScalarError), "OSON document contains unsupported scalar opcode 0x%02x")
+	// Document: No
+	// Cause:    A JSON access request used an invalid access path or mode.
+	// Action:   Verify that the requested JSON access is valid for the value kind.
+	// Comment:  Arg[0]: access descriptor.
+	message.SetString(language.English, string(oracleErrors.JSONAccessError), "invalid JSON access: %s")
+	// Document: No
+	// Cause:    A public oracle/datatype/json method was called on an uninitialized value.
+	// Action:   Initialize the receiver before calling the method.
+	// Comment:  Arg[0]: method name.
+	message.SetString(language.English, string(oracleErrors.JSONUninitializedValue), "JSON method %s called on an uninitialized value")
+	// Document: No
+	// Cause:    oracle/datatype/json Scan received a source type that is not supported by the current API.
+	// Action:   Scan OSON bytes or use a supported source representation.
+	// Comment:  Arg[0]: source type.
+	message.SetString(language.English, string(oracleErrors.JSONScanTypeUnsupportedError), "JSON cannot scan %s")
+	// Document: No
+	// Cause:    The caller requested an array element outside the valid bounds.
+	// Action:   Validate the index against the array length before reading.
+	// Comment:  Arg[0]: array index.
+	message.SetString(language.English, string(oracleErrors.JSONArrayIndexOutOfRangeError), "JSON array index %d out of range")
+	// Document: No
+	// Cause:    A value could not be encoded as OSON.
+	// Action:   Verify the input is supported and enable debug logging for encoding details.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.OsonEncodingError), "failed to encode value as an OSON document")
+	// Document: No
+	// Cause:    An Oracle JSON value could not be represented as JSON text.
+	// Action:   Enable debug logging for rendering details.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.JSONRenderingError), "failed to render Oracle JSON value as JSON text")
+	// Document: No
+	// Cause:    A JSON object lookup requested a key that is absent.
+	// Action:   Check the object's keys before requesting a member.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.JSONObjectKeyNotFoundError), "JSON object key not found")
 	// Document: No
 	// Cause:    The connection provided is not an Oracle connection
 	// Action:   Create a connection using the Oracle driver and try again
