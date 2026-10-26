@@ -195,7 +195,11 @@ type ConnectData struct {
 
 // Security with SSL/TLS security parameters
 type Security struct {
-	SSLServerCertDN     string
+	SSLServerCertDN string
+	// TLSServerCertHost is the custom hostname used for TLS SNI and as an
+	// additional hostname for certificate validation, including after listener
+	// redirects.
+	TLSServerCertHost   string
 	SSLServerDNMatch    bool
 	SSLAllowWeakDNMatch bool
 	WalletLocation      string
@@ -205,6 +209,7 @@ type Security struct {
 func NewSecurity() *Security {
 	return &Security{
 		SSLServerCertDN:     "",
+		TLSServerCertHost:   "",
 		SSLServerDNMatch:    true,
 		SSLAllowWeakDNMatch: false,
 		WalletLocation:      "",
@@ -537,6 +542,8 @@ func extractSecurity(node *Node) (*Security, error) {
 		switch name {
 		case "SSL_SERVER_CERT_DN":
 			security.SSLServerCertDN = child.Value
+		case "TLS_SERVER_CERT_HOST":
+			security.TLSServerCertHost = child.Value
 		case "SSL_SERVER_DN_MATCH":
 			if security.SSLServerDNMatch, parsingError = normalizeBoolean(child.Value); parsingError != nil {
 				return nil, common.NewOracleError(oracleErrors.NamingContextError, parsingError, child.Value, child.Name)

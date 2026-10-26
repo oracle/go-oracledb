@@ -95,6 +95,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared},
 	{Name: "TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate},
 	{Name: "TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate},
+	{Name: "TestTLSServerName", Categories: "unitary", Exclusive: false, Fn: TestTLSServerName},
+	{Name: "TestNTTCPSVerifyServerDNUsesTLSCertificateHost", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyServerDNUsesTLSCertificateHost},
 	{Name: "TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback},
 	{Name: "TestNTTCPSVerifyPostAcceptDNMatchSkipsWhenStrictMatchAlreadyEnabled", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchSkipsWhenStrictMatchAlreadyEnabled},
 	{Name: "TestVerifyDNWithMultiValuedRDN", Categories: "unitary", Exclusive: false, Fn: TestVerifyDNWithMultiValuedRDN},

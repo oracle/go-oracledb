@@ -404,7 +404,10 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 	if err != nil {
 		return err
 	}
-	oldhostname := address.Hostname
+	oldhostname := address.OriginHost
+	if oldhostname == "" {
+		oldhostname = address.Hostname
+	}
 	redirCtx, err := naming.ExtractConnectionContext(redirAddressNode)
 	if err != nil {
 		return err
@@ -413,6 +416,9 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 
 	if iter.HasNext() {
 		redirOption := iter.Next()
+		if redirOption.Description != nil && redirOption.Description.Security.TLSServerCertHost != "" {
+			ns.sAtts.nt.TLSServerCertHost = redirOption.Description.Security.TLSServerCertHost
+		}
 		redirOption.Address.OriginHost = oldhostname
 		hostToBeUsed := redirOption.Address.Host
 		if redirOption.Address.ResolvedIP != "" {

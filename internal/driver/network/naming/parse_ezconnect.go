@@ -117,9 +117,10 @@ var parameterDestinations = map[string]string{
 	"POOL_BOUNDARY":         "CONNECT_DATA",
 
 	// SECURITY parameters
-	"SSL_SERVER_CERT_DN":  "SECURITY",
-	"SSL_SERVER_DN_MATCH": "SECURITY",
-	"WALLET_LOCATION":     "SECURITY",
+	"SSL_SERVER_CERT_DN":   "SECURITY",
+	"TLS_SERVER_CERT_HOST": "SECURITY",
+	"SSL_SERVER_DN_MATCH":  "SECURITY",
+	"WALLET_LOCATION":      "SECURITY",
 }
 
 // Pre-compiled regex for protocol extraction

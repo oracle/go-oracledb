@@ -100,6 +100,7 @@ func TestSessionAttsSetFromDescription(t *testing.T) {
 		Security: naming.Security{
 			SSLAllowWeakDNMatch: true,
 			SSLServerCertDN:     "CN=example",
+			TLSServerCertHost:   "db.example.com",
 			WalletLocation:      "/tmp/wallet",
 		},
 		UseSNI: true,
@@ -140,6 +141,9 @@ func TestSessionAttsSetFromDescription(t *testing.T) {
 	}
 	if satt.nt.SSLServerCertDN != "CN=example" {
 		t.Fatalf("SSLServerCertDN unexpected: %s", satt.nt.SSLServerCertDN)
+	}
+	if satt.nt.TLSServerCertHost != "db.example.com" {
+		t.Fatalf("TLSServerCertHost unexpected: %s", satt.nt.TLSServerCertHost)
 	}
 	if !satt.nt.SSLAllowWeakDNMatch {
 		t.Fatalf("expected weak dn match true")

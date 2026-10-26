@@ -151,6 +151,87 @@ func TestNTTCPSVerifyPostAcceptDNMatchSkipsWhenStrictMatchAlreadyEnabled(t *test
 	}
 }
 
+// TestTLSServerName verifies the hostname selected for the TLS ClientHello:
+// the redirect hostname is used for hostname redirects, the original DSN
+// hostname is retained for IP redirects, and a configured hostname overrides
+// both values for every connection attempt.
+func TestTLSServerName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		currentHost string
+		originHost  string
+		customHost  string
+		want        string
+	}{
+		{
+			name:        "initial hostname",
+			currentHost: "db.example.com",
+			want:        "db.example.com",
+		},
+		{
+			name:        "redirect hostname",
+			currentHost: "redirect.example.com",
+			originHost:  "db.example.com",
+			want:        "redirect.example.com",
+		},
+		{
+			name:        "redirect IPv4 address",
+			currentHost: "192.0.2.10",
+			originHost:  "db.example.com",
+			want:        "db.example.com",
+		},
+		{
+			name:        "redirect IPv6 address",
+			currentHost: "[2001:db8::10]",
+			originHost:  "db.example.com",
+			want:        "db.example.com",
+		},
+		{
+			name:        "custom hostname",
+			currentHost: "redirect.example.com",
+			originHost:  "db.example.com",
+			customHost:  "certificate.example.com",
+			want:        "certificate.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tlsServerName(tt.currentHost, tt.originHost, tt.customHost); got != tt.want {
+				t.Fatalf("tlsServerName(%q, %q, %q) = %q, want %q", tt.currentHost, tt.originHost, tt.customHost, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestNTTCPSVerifyServerDNUsesTLSCertificateHost verifies that the custom
+// hostname is an additional certificate-validation name when set.
+func TestNTTCPSVerifyServerDNUsesTLSCertificateHost(t *testing.T) {
+	t.Parallel()
+
+	nt := NewNTTCPS(NTattributes{TLSServerCertHost: "certificate.example.com"})
+	nt.hostname = "redirect.example.com"
+	nt.originHost = "db.example.com"
+
+	for _, hostname := range []string{
+		"redirect.example.com",
+		"db.example.com",
+		"certificate.example.com",
+	} {
+		cert := &x509.Certificate{DNSNames: []string{hostname}}
+		if err := nt.verifyServerDN(cert); err != nil {
+			t.Errorf("certificate hostname %q should match: %v", hostname, err)
+		}
+	}
+
+	cert := &x509.Certificate{DNSNames: []string{"other.example.com"}}
+	if err := nt.verifyServerDN(cert); err == nil {
+		t.Fatal("unrelated certificate hostname should not match")
+	}
+}
+
 // TestVerifyDNWithMultiValuedRDN accepts reordered attributes within one
 // multi-valued RDN, but rejects the same attributes when their RDN grouping differs.
 func TestVerifyDNWithMultiValuedRDN(t *testing.T) {
