@@ -46,6 +46,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -79,7 +80,7 @@ Description:
 		wireBytes, _ := enc.encodeToType(enc.encodeValue)
 		_ = wireBytes // send over TTC
 
-		oac, _ := f.getBindOac(bindValue, common.UB4(len(wireBytes)))
+		oac, _ := f.getBindOac(bindValue, driverCommon.UB4(len(wireBytes)))
 		_ = oac // e.g. used to describe bind metadata (type/length) in TTC messages
 
 		// Row/scan path: resolve a decoder for an Oracle database type id.
@@ -88,9 +89,13 @@ Description:
 		_ = v // decoded driver.Value (string, number, time.Time, etc.)
 */
 type codecFactory interface {
+	// GetEncoder selects a value encoder for a normalized SQL bind.
 	getEncoder(normalizedBindValue) (encoderFunc, error)
+	// GetDecoder selects a result decoder for one Oracle TTC datatype.
 	getDecoder(DtyType) (*typeDecoder, error)
+	// GetBindOac constructs bind metadata for a normalized SQL value.
 	getBindOac(normalizedBindValue, driverCommon.UB4) (driverCommon.Marshallable, error)
+	// GetDefineOac constructs result define metadata using connection defaults.
 	getDefineOac(DtyType, columnContext, driverCommon.DriverProperties) driverCommon.Marshallable
 }
 
@@ -451,7 +456,7 @@ Returns:
   - error: Non-nil if no compatible encoder is registered.
 
 Errors:
-  - Returns a common.OracleError with code common.InternalError when no encoder candidate exists for the bind type.
+  - Returns a common.OracleError with code oracleErrors.InternalError when no encoder candidate exists for the bind type.
 */
 func (f *CodecFactoryImpl) getEncoder(normalized normalizedBindValue) (encoderFunc, error) {
 	if normalized.isOutOnly || normalized.value == nil {
@@ -488,7 +493,7 @@ Returns:
   - error: Non-nil if no compatible decoder is registered.
 
 Errors:
-  - Returns a common.OracleError with code common.InternalError when no decoder candidate exists for dbType.
+  - Returns a common.OracleError with code oracleErrors.InternalError when no decoder candidate exists for dbType.
 */
 func (f *CodecFactoryImpl) getDecoder(dbType DtyType) (*typeDecoder, error) {
 	common.Odl.Finest("New decoder requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
@@ -549,11 +554,11 @@ Parameters:
   - maxLength: Maximum length to apply when constructing the bind OAC.
 
 Returns:
-  - common.Marshallable: The selected bind OAC instance.
+  - driverCommon.Marshallable: The selected bind OAC instance.
   - error: Non-nil if no compatible bind OAC constructor is registered.
 
 Errors:
-  - Returns a common.OracleError with code common.InternalError when no OAC candidate exists for the bind type.
+  - Returns a common.OracleError with code oracleErrors.InternalError when no OAC candidate exists for the bind type.
 */
 func (f *CodecFactoryImpl) getBindOac(normalized normalizedBindValue, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
 	common.Odl.Finest("New bind OAC requested", "goType", normalized.goType, "maxLength", maxLength)
@@ -597,7 +602,7 @@ Parameters:
   - connectionProperties: Connection properties used to derive define settings such as LOB prefetch size.
 
 Returns:
-  - common.Marshallable: The selected define OAC instance.
+  - driverCommon.Marshallable: The selected define OAC instance.
 */
 func (f *CodecFactoryImpl) getDefineOac(
 	dbType DtyType,
@@ -608,7 +613,9 @@ func (f *CodecFactoryImpl) getDefineOac(
 
 	candidates := f.defineOacs.getCandidates(dbType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
-	var lobPrefetchSize driverCommon.UB4
+	// A nil properties value is possible in unit-level callers and should use
+	// the same default as a normally constructed driver configuration.
+	lobPrefetchSize := driverCommon.UB4(oracleconfig.DefaultLobPrefetchSize)
 	if connectionProperties != nil {
 		lobPrefetchSize = driverCommon.UB4(connectionProperties.GetDefaultLobPrefetchSize())
 	}

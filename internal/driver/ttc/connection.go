@@ -44,6 +44,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	ttcLob "github.com/oracle/go-oracledb/v26/internal/driver/ttc/lob"
 	"strconv"
 	"strings"
 
@@ -51,6 +52,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	internallob "github.com/oracle/go-oracledb/v26/internal/lob"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -61,13 +63,17 @@ type connection struct {
 	shelf   *ttiShelf[driverCommon.MessageType]
 	sessCtx *driverCommon.SessionContext
 	ns      driverCommon.NetworkSession
+	// leaseGeneration is set only on the private LOB-operation facade returned
+	// to a typed query LOB. It makes that capability invalid as soon as
+	// database/sql releases the owning physical connection to its pool.
+	leaseGeneration *uint64
 	// _isClosed is used to know if the connection has been closed. If _isClosed
 	// is set to true the connection cannot be used.
 	_isClosed bool
 	// _isValid will be set to true when the connection is created and should be
 	// set to false when the connection is no longer valid. This can happen when
 	// an operation failed and could not be stopped in the server (break-reset
-	// failure) or when then connectionShouldBeDropped flag is received on an STA
+	// failure) or when the connectionShouldBeDropped flag is received on an STA
 	// or OER message (TODO).
 	_isValid bool
 }
@@ -109,7 +115,7 @@ Parameters:
 
 Output:
   - driver.Stmt: Statement bound to this connection and query.
-  - error: Non-nil if the connection is closed/invalid or statement creation fails
+  - error: Non-nil if SQL classification or statement construction fails
     (propagated from PrepareContext).
 */
 func (c *connection) Prepare(query string) (driver.Stmt, error) {
@@ -120,9 +126,9 @@ func (c *connection) Prepare(query string) (driver.Stmt, error) {
 PrepareContext creates a new statement for the provided SQL query using the supplied context.
 
 Description:
-  - Validates the connection is open and usable; if closed or invalid, returns an Oracle error.
-  - Creates a TTC statement bound to this connection and returns it. The provided context is
-    accepted for API symmetry and cancellation/deadline propagation for future extensions.
+  - Parses and classifies the SQL and creates a TTC statement bound to this connection.
+  - The provided context is accepted for API symmetry and future cancellation/deadline
+    propagation during statement construction.
 
 Parameters:
 - ctx: Context for the prepare operation (cancellation, deadlines).
@@ -130,7 +136,7 @@ Parameters:
 
 Returns:
 - driver.Stmt: Prepared statement bound to this connection and query.
-- error: Non-nil if the connection is closed/invalid.
+- error: Non-nil if SQL classification or statement construction fails.
 */
 func (c *connection) PrepareContext(_ context.Context, query string) (driver.Stmt, error) {
 	common.Odl.Fine("Connection.PrepareContext: creating statement...")
@@ -141,8 +147,10 @@ func (c *connection) PrepareContext(_ context.Context, query string) (driver.Stm
 	return stmt, nil
 }
 
-// ExecContext implements driver.ExecerContext.
-// It creates a TTC Statement and delegates the execution.
+// ExecContext implements driver.ExecerContext for direct, unprepared
+// execution. It creates a short-lived Statement, executes the supplied SQL
+// binds, and closes the Statement before returning. Public streamed-LOB
+// markers are materialized into temporary locator binds during execution.
 func (c *connection) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	common.Odl.Fine("Connection.ExecContext: creating statement...")
 	stmt, err := newStatement(c.shelf, c.sessCtx, query)
@@ -150,23 +158,57 @@ func (c *connection) ExecContext(ctx context.Context, query string, args []drive
 		return nil, c.shelf.LocalizeError(err)
 	}
 	defer stmt.Close()
-	result, execErr := stmt.ExecContext(ctx, args)
+	result, execErr := stmt.execContext(ctx, args)
 	return result, c.shelf.LocalizeError(execErr)
 }
 
-// QueryContext implements driver.QueryerContext.
-// It creates a TTC Statement and delegates the query.
+// QueryContext implements driver.QueryerContext for direct queries. It creates a Statement, and on
+// success transfers Statement/cursor ownership to the returned ttcRows. Error
+// paths retain ownership and close the Statement immediately. The ownership
+// transfer keeps database/sql's physical connection checked out until Rows is
+// closed, which is required for later locator-backed LOB RPCs.
 func (c *connection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	stmt, err := newStatement(c.shelf, c.sessCtx, query)
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
-	result, err := stmt.QueryContext(ctx, args)
+	result, err := stmt.queryContext(ctx, args)
 	if err != nil {
 		_ = stmt.Close()
 		return nil, c.shelf.LocalizeError(err)
 	}
-	return result, nil
+	switch rows := result.(type) {
+	case *ttcRows:
+		if !rows.takeStatementOwnership(stmt) {
+			_ = stmt.Close()
+			return nil, c.shelf.LocalizeError(common.NewOracleError(
+				oracleErrors.InternalError,
+				errors.New("query Rows closed before Statement ownership transfer"),
+			))
+		}
+		return rows, nil
+	case *ttcRowsRefCursor:
+		// The internal REF CURSOR wrapper returns a cursor already owned by this
+		// physical connection; its short-lived wrapper Statement owns no TTC cursor.
+		if err := stmt.Close(); err != nil {
+			return nil, c.shelf.LocalizeError(err)
+		}
+		return rows, nil
+	case *ttcRowsRefCursorImplicitFetch:
+		// Implicit result cursors own their result-set lifetime and retain this
+		// Statement until Rows.Close.
+		if !rows.takeStatementOwnership(stmt) {
+			_ = stmt.Close()
+			return nil, c.shelf.LocalizeError(common.NewOracleError(
+				oracleErrors.InternalError,
+				errors.New("query Rows closed before Statement ownership transfer"),
+			))
+		}
+		return rows, nil
+	default:
+		_ = stmt.Close()
+		return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.InternalError, nil))
+	}
 }
 
 // GetRows fetches an already-decoded REF CURSOR on its owning connection.
@@ -183,6 +225,7 @@ func (c *connection) GetRows(ctx context.Context, rows driver.Rows) error {
 	// Configure the rows with their owning connection's dependencies.
 	cursor.attachShelf(c.shelf)
 	cursor.attachSessionContext(c.sessCtx)
+	cursor.ttcRows.setContext(ctx)
 	err := cursor.Fetch(ctx)
 	if err != nil {
 		common.Odl.Error("REF CURSOR fetch failed", "error", err)
@@ -197,7 +240,7 @@ func (c *connection) cancelCurrentExecution(ctx context.Context) error {
 	if err := c.ns.CancelOperation(ctx); err != nil {
 		// If an error occurs during cancellation, mark the connection as invalid so that
 		// it will be dropped form the pool
-		c._isValid = false
+		c.invalidate()
 		e := common.NewOracleError(oracleErrors.CancelOperationError, err, nil)
 		return c.shelf.LocalizeError(e)
 	}
@@ -230,7 +273,9 @@ func (c *connection) _handleConnectionShouldBeDropped(msg driverCommon.Message[d
 	// if connectionSouldBeDropped flag was received in TTISTA or TTIOER, it means
 	// that the connection is being drainned and it should be closed and not
 	// released to the connection pool
-	c._isValid = !msg.(connectionStatusProvider).isBeingDrainned()
+	if msg.(connectionStatusProvider).isBeingDrainned() {
+		c.invalidate()
+	}
 	// return always true, the incoming message should be kept
 	return true, nil
 }
@@ -245,37 +290,54 @@ func (c *connection) registerEventListeners(service *eventService) {
 	service.register(c, streamerOverFlowEvent)
 }
 
-// notify implements eventListener.
+// notify implements EventListener interface
 func (c *connection) notify(event eventType) {
-	var wasValid = c._isValid == true
 	switch event {
 	case streamerStaleEvent:
 		common.Odl.Fine("Connection.notify: streamer stale received")
-		c._isValid = false
+		c.invalidate()
 	case streamerOverFlowEvent:
 		common.Odl.Fine("Connection.notify: streamer overflow received")
-		c._isValid = false
+		c.invalidate()
 	default:
 		common.Odl.Fine("Connection.notify: received", "evt", event)
 	}
-	if wasValid == true && c._isValid == false {
+}
+
+// invalidate marks the connection unusable and posts the invalidation event.
+func (c *connection) invalidate() {
+	wasValid := c._isValid
+	c._isValid = false
+	if c.shelf != nil && c.shelf.lobState != nil {
+		c.shelf.lobState.invalidate()
+	}
+	if wasValid {
+		discardLobSessionState(c.shelf)
 		c.shelf.getEventService().post(connectionInvalidatedEvent)
 	}
 }
 
-// CheckNamedValue allows sql.Out binds to pass through database/sql conversion.
-// For all other values, we delegate back to database/sql default conversion.
+// CheckNamedValue implements driver.NamedValueChecker. It admits public Oracle LOB markers and validated private streamed LOB
+// carriers without asking database/sql's default converter to flatten them.
+// sql.Out receives the existing destination validation; all ordinary values
+// return driver.ErrSkip.
 func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 	return c.shelf.LocalizeError(checkNamedValue(nv))
 }
 
-// checkNamedValue validates sql.Out destinations and returns shelf-localized
-// Oracle errors for binding problems.
+// checkNamedValue performs package-level NamedValue classification shared by
+// Connection and Statement.
 func checkNamedValue(nv *driver.NamedValue) error {
 	// connectionWrapper.Fetch passes an already-decoded driver.Rows to the internal
 	// REF CURSOR statement executor. This is not a REF CURSOR OUT-bind destination.
 	if _, ok := nv.Value.(driver.Rows); ok {
 		return nil
+	}
+	switch value := nv.Value.(type) {
+	case internallob.BindBlob, internallob.BindClob, internallob.BindNClob:
+		return nil
+	case ttcLob.BindInput:
+		return value.Validate()
 	}
 	if out, ok := nv.Value.(sql.Out); ok {
 		if isRefCursorDestination(out.Dest) {

@@ -46,6 +46,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
+// TestConnectionPinger_Ping verifies a successful serialized TTC ping.
 func TestConnectionPinger_Ping(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
@@ -98,6 +99,46 @@ func TestConnectionPinger_Ping(t *testing.T) {
 
 }
 
+// TestConnectionPinger_PingReturnsAdmissionContextError verifies that canceling
+// a Ping while it waits for the physical-session token preserves the context
+// error instead of classifying a healthy connection as bad.
+func TestConnectionPinger_PingReturnsAdmissionContextError(t *testing.T) {
+	t.Parallel()
+	shelf := newShelf[common.MessageType]()
+	streamer := &mockStreamer{}
+	shelf.RegisterMessageStreamer(streamer)
+	connection := newTestConnection(shelf, nil, &mockNetworkSession{})
+
+	heldRelease, err := shelf.synchronizer.begin(context.Background())
+	if err != nil {
+		t.Fatalf("hold synchronizer: %v", err)
+	}
+	defer heldRelease()
+
+	baseContext, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered := make(chan struct{})
+	pingContext := &admissionProbeContext{
+		Context: baseContext,
+		entered: entered,
+	}
+	pingDone := make(chan error, 1)
+	go func() {
+		pingDone <- connection.Ping(pingContext)
+	}()
+	<-entered
+	cancel()
+
+	if err := <-pingDone; err != context.Canceled {
+		t.Fatalf("Ping error = %v, want %v", err, context.Canceled)
+	}
+	if streamer.pushCalled {
+		t.Fatal("Ping sent TTC traffic after admission cancellation")
+	}
+}
+
+// TestConnectionPinger_IsValid verifies a valid connection without an in-band
+// invalidation notification.
 func TestConnectionPinger_IsValid(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
@@ -127,6 +168,8 @@ func TestConnectionPinger_IsValid(t *testing.T) {
 
 }
 
+// TestConnectionPinger_IsValidWithInband verifies that an in-band notification
+// invalidates the connection and its LOB session state.
 func TestConnectionPinger_IsValidWithInband(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{

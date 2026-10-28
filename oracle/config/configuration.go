@@ -58,17 +58,27 @@ import (
 // configuration root node name
 const configurationRootName = "oracle.go"
 
+// DefaultLobPrefetchSize is the default numeric LOB prefetch count passed to
+// Oracle when reading LOB columns. Oracle interprets the count as bytes for
+// BLOBs and characters for CLOBs and NCLOBs. The default value is 33,554,432;
+// its memory use depends on the LOB type and character encoding.
+const DefaultLobPrefetchSize = 32 * 1024 * 1024
+
 // OracleDriverProperties defines driver-level configuration options that affect
 // how Oracle driver behavior upon request exchanges with the remote database.
 type OracleDriverProperties struct {
 	// When enabled, SQL NULL values are returned as nil. When disabled, legacy
 	// or type-specific zero-value handling may be used depending on the decoder.
+	// SQL NULL LOB columns remain nil in either mode so typed LOB scanners can
+	// distinguish NULL from a non-NULL empty LOB.
 	StrictNullValueHandling bool `default:"true" help:"if true, NULLs column values are returned as nil"`
-	// DefaultLobPrefetchSize sets the default amount of LOB data, in bytes, to
-	// prefetch when reading LOB columns.
+	// DefaultLobPrefetchSize sets the default numeric LOB prefetch count passed
+	// to Oracle when reading LOB columns. Oracle interprets the count as bytes
+	// for BLOBs and characters for CLOBs and NCLOBs. The amount of memory used
+	// for character LOBs depends on the character encoding.
 	//
-	// The default is 32 MiB.
-	DefaultLobPrefetchSize int `default:"33554432" validator:"validateZeroOrPositive"  help:"default prefetch size"`
+	// The default is 33,554,432 (32 * 1024 * 1024).
+	DefaultLobPrefetchSize int `default:"33554432" validator:"validateZeroOrPositive"  help:"default LOB prefetch count; bytes for BLOBs, characters for CLOBs and NCLOBs"`
 }
 
 func (config OracleDriverProperties) String() string {

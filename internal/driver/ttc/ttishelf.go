@@ -45,7 +45,7 @@ import (
 	"weak"
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
-	common "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/oracle/errors"
 	"github.com/oracle/go-oracledb/v26/oracle/providers"
 )
@@ -54,36 +54,62 @@ import (
 // Implementors receive the shared TTC shelf to execute their actions.
 type ttiShelfUser interface {
 	// SetShelf injects the TTC shelf used by the implementor to perform operations.
-	SetShelf(shelf *ttiShelf[common.MessageType])
+	SetShelf(shelf *ttiShelf[driverCommon.MessageType])
 }
 
-// StmtCancellationFunction function that cancel the current statement execution
-// by triggering the break/reset protocol
+// StmtCancellationFunction requests an out-of-band break/reset for the active
+// statement. Implementations must honor ctx and must not acquire the session
+// synchronizer, because cancellation has to interrupt its exchange.
 type StmtCancellationFunction func(ctx context.Context) error
 
-// ttiShelf wraps common.Shelf with TTC-specific registries.
-// In addition to the base Shelf, it maintains a codecFactory that selects
-// encoders/decoders/OAC makers for the negotiated TTC protocol version.
+// ttiShelf wraps common.Shelf with state shared by every object using one
+// physical Oracle session. In addition to codec and statement registries, it
+// owns the connection-wide TTC operation mutex. That mutex is necessary because
+// locator-backed Lob methods are invoked directly by application code, outside
+// database/sql's driver-connection lock, but still share the same message
+// stream with queries, cursor close, ping, commit, rollback, and logoff.
 type ttiShelf[T any] struct {
-	*common.Shelf[T]
-	codecFactory             codecFactory
-	_providerRegistry        internalCommon.Registry[providers.Provider]
-	_statements              map[*Statement]weak.Pointer[Statement]
-	_refCursors              map[*ttcRowsRefCursor]struct{}
-	_currentTransaction      *transaction
+	// Shelf provides common marshalling, streaming, localization, capabilities,
+	// and connection configuration.
+	*driverCommon.Shelf[T]
+	// codecFactory selects codecs and OAC builders for the negotiated protocol.
+	codecFactory      codecFactory
+	_providerRegistry internalCommon.Registry[providers.Provider]
+	// _statements tracks open statements weakly for connection shutdown.
+	_statements map[*Statement]weak.Pointer[Statement]
+	// _currentTransaction is non-nil while one transaction owns the session.
+	_currentTransaction *transaction
+	// _refCursors tracks REF CURSOR values created by this physical session.
+	_refCursors map[*ttcRowsRefCursor]struct{}
+	// _cancelExecutionFunction performs out-of-band break/reset without taking
+	// the session synchronizer, allowing cancellation to interrupt its
+	// current owner.
 	_cancelExecutionFunction StmtCancellationFunction
-	_serverTimeZoneOffset    int16 // server time zone in seconds
-	_eventService            *eventService
-	_validatorRegistry       internalCommon.Registry[stateValidator]
+	// _serverTimeZoneOffset is the negotiated server offset in seconds.
+	_serverTimeZoneOffset int16 // server time zone in seconds
+	// _eventService distributes streamer and connection invalidation events.
+	_eventService      *eventService
+	_validatorRegistry internalCommon.Registry[stateValidator]
+	// synchronizer owns admission to the physical session's TTC stream. It is a
+	// pointer because authentication copies ttiShelf values; every copy must
+	// coordinate with the same physical session.
+	synchronizer *sessionSynchronizer
+	// lobState contains LOB-specific state whose lifetime is exactly the
+	// physical Oracle session. It is shared by copied shelves during
+	// authentication and is abandoned on session teardown.
+	lobState *lobSessionState
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
 // TTC-specific registries (codecs and OAC makers) are initialized to nil and
 // can be populated via RegisterCodecs and RegisterOacs.
 func newShelf[T any]() *ttiShelf[T] {
-	base := common.NewShelf[T]()
+	base := driverCommon.NewShelf[T]()
+	lobState := newLobSessionState()
 	return &ttiShelf[T]{
 		Shelf:              base,
+		synchronizer:       newSessionSynchronizer(),
+		lobState:           lobState,
 		codecFactory:       nil,
 		_statements:        make(map[*Statement]weak.Pointer[Statement]),
 		_refCursors:        make(map[*ttcRowsRefCursor]struct{}),
@@ -180,25 +206,42 @@ func (s *ttiShelf[T]) RemoveStatement(statement *Statement) {
 
 // isInTransaction returns true if a transaction is in progress, otherwise false
 func (s *ttiShelf[T]) isInTransaction() bool {
-	return (s._currentTransaction != nil)
+	return s._currentTransaction != nil
 }
 
-// registerTransaction registeres the current transaction
+// registerTransaction installs t only when no transaction is currently
+// registered. Calls are serialized by the driver connection.
 //
 // Parameters:
 //   - t: the transaction
-func (s *ttiShelf[T]) registerTransaction(t *transaction) {
+//
+// Returns:
+//   - bool: true when t was registered.
+func (s *ttiShelf[T]) registerTransaction(t *transaction) bool {
+	if s._currentTransaction != nil {
+		return false
+	}
 	s._currentTransaction = t
+	return true
 }
 
-// unregisterTransaction unregisters the current transaction
-func (s *ttiShelf[T]) unregisterTransaction() {
-	s._currentTransaction = nil
+// unregisterTransaction clears the transaction slot only when t
+// still owns it. It prevents a completed setup/terminal path from erasing a
+// newer transaction registered after an intervening failure.
+func (s *ttiShelf[T]) unregisterTransaction(t *transaction) {
+	if s._currentTransaction == t {
+		s._currentTransaction = nil
+	}
 }
 
 // getTransaction returns the current transaction
 func (s *ttiShelf[T]) getTransaction() *transaction {
 	return s._currentTransaction
+}
+
+// isCurrentTransaction reports whether t still owns the transaction slot.
+func (s *ttiShelf[T]) isCurrentTransaction(t *transaction) bool {
+	return s._currentTransaction == t
 }
 
 // registerCancelFunction registers the cancel function used to cancel current
@@ -210,18 +253,26 @@ func (s *ttiShelf[T]) registerCancelExecution(cancelExecutionFunction StmtCancel
 	s._cancelExecutionFunction = cancelExecutionFunction
 }
 
+// cancelExecution invokes the physical connection's registered out-of-band
+// cancellation function. NewConnection registers the function before any
+// statement can execute.
 func (s *ttiShelf[T]) cancelExecution(ctx context.Context) error {
 	return s._cancelExecutionFunction(ctx)
 }
 
+// registerServerTimeZoneOffset records the negotiated server offset in seconds
+// for timestamp decoding by all statements and Rows on this session.
 func (s *ttiShelf[T]) registerServerTimeZoneOffset(serverTimeZoneOffset int16) {
 	s._serverTimeZoneOffset = serverTimeZoneOffset
 }
 
+// getServerTimeZoneOffset returns the negotiated server offset in seconds.
 func (s *ttiShelf[T]) getServerTimeZoneOffset() int16 {
 	return s._serverTimeZoneOffset
 }
 
+// getEventService returns the physical-session event distributor used for
+// streamer-stale and connection-lifecycle notifications.
 func (s *ttiShelf[T]) getEventService() *eventService {
 	return s._eventService
 }

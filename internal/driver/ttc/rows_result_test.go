@@ -41,14 +41,272 @@ package ttc
 import (
 	"bytes"
 	"database/sql/driver"
+	"errors"
+	"io"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	internallob "github.com/oracle/go-oracledb/v26/internal/lob"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype/json"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+func persistentTestLobLocator() common.B1Array {
+	locator := make(common.B1Array, kolbLobIDOffset+kolbLobIDLength)
+	for index := 0; index < kolbLobIDLength; index++ {
+		locator[kolbLobIDOffset+index] = byte(index + 1)
+	}
+	return locator
+}
+
+// TestRowsResult_StatementOwnership verifies Rows transfers and releases
+// statement ownership according to its query path.
+func TestRowsResult_StatementOwnership(t *testing.T) {
+	t.Parallel()
+	t.Run("prepared rows detach without closing statement", func(t *testing.T) {
+		shelf := newShelf[common.MessageType]()
+		stmt := &Statement{shelf: shelf, qualifiedQuery: &qualifiedSQLStatement{}}
+		rows := newTTCRows(nil)
+		if !stmt.attachRows(rows) {
+			t.Fatal("failed to attach prepared Rows")
+		}
+		rows.attachStatement(stmt)
+		if err := rows.Close(); err != nil {
+			t.Fatalf("Rows.Close returned error: %v", err)
+		}
+		if stmt.closed {
+			t.Fatal("prepared Statement was closed with its Rows")
+		}
+		if stmt._rows != nil {
+			t.Fatal("prepared Rows was not detached from Statement")
+		}
+	})
+	t.Run("direct rows close owned statement", func(t *testing.T) {
+		shelf := newShelf[common.MessageType]()
+		stmt := &Statement{shelf: shelf, qualifiedQuery: &qualifiedSQLStatement{}}
+		shelf.AddStatement(stmt)
+		rows := newTTCRows(nil)
+		if !stmt.attachRows(rows) {
+			t.Fatal("failed to attach direct Rows")
+		}
+		rows.attachStatement(stmt)
+		if !rows.takeStatementOwnership(stmt) {
+			t.Fatal("failed to transfer direct Statement ownership")
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatalf("Rows.Close returned error: %v", err)
+		}
+		if !stmt.closed {
+			t.Fatal("owned direct-query Statement remained open")
+		}
+		if len(shelf.GetStatements(false)) != 0 {
+			t.Fatal("owned direct-query Statement remained registered")
+		}
+	})
+}
+
+// TestRowsResult_NextAfterCloseReturnsEOF verifies a closed Rows returns EOF.
+func TestRowsResult_NextAfterCloseReturnsEOF(t *testing.T) {
+	t.Parallel()
+	rows := newTTCRows(nil)
+	if err := rows.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+	if err := rows.Next(nil); !errors.Is(err, io.EOF) {
+		t.Fatalf("Next after Close error = %v, want io.EOF", err)
+	}
+}
+
+// TestRowsResult_LocatorValueSurvivesRowsNext verifies an unread locator
+// remains usable while Rows advances to another row.
+func TestRowsResult_LocatorValueSurvivesRowsNext(t *testing.T) {
+	t.Parallel()
+	rows := newTTCRows([]columnContext{{DataType: DtyBlob}})
+	rows.shelf = newShelf[common.MessageType]()
+	rows.sessionContext = newTestSessionContext()
+	rows.rowData = [][]columnPayload{
+		{{data: common.B1Array("first"), lob: &lobColumnContext{LocatorByteLength: 4, TotalLobLength: 5, LobLocator: persistentTestLobLocator()}}},
+		{{data: common.B1Array("second"), lob: &lobColumnContext{LocatorByteLength: 4, TotalLobLength: 6, LobLocator: persistentTestLobLocator()}}},
+	}
+	rows.numOfRows = len(rows.rowData)
+	destination := make([]driver.Value, 1)
+	if err := rows.Next(destination); err != nil {
+		t.Fatalf("Next returned error: %v", err)
+	}
+	first, ok := destination[0].(*streamedLob)
+	if !ok {
+		t.Fatalf("reader value = %T, want *streamedLob", destination[0])
+	}
+	if err := rows.Next(destination); err != nil {
+		t.Fatalf("Next with unread locator = %v", err)
+	}
+	payload, err := io.ReadAll(first)
+	if err != nil {
+		t.Fatalf("ReadAll after Rows.Next returned error: %v", err)
+	}
+	if string(payload) != "first" {
+		t.Fatalf("payload = %q, want first", payload)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+}
+
+// TestRowsResult_ReaderModeRejectsNonNullLobWithoutLocator verifies malformed
+// non-NULL LOB metadata is rejected.
+func TestRowsResult_ReaderModeRejectsNonNullLobWithoutLocator(t *testing.T) {
+	t.Parallel()
+	rows := newTTCRows([]columnContext{{DataType: DtyBlob}})
+	rows.shelf = newShelf[common.MessageType]()
+	rows.rowData = [][]columnPayload{{{data: common.B1Array("pref"), lob: &lobColumnContext{LocatorByteLength: 8, TotalLobLength: 8}}}}
+	rows.numOfRows = len(rows.rowData)
+	err := rows.Next(make([]driver.Value, 1))
+	requireErrorCode(t, err, oracleErrors.InvalidLobSource)
+}
+
+// TestRowsResult_ReaderModeRejectsTemporaryLocator verifies temporary query
+// locators are rejected by reader-mode decoding.
+func TestRowsResult_ReaderModeRejectsTemporaryLocator(t *testing.T) {
+	t.Parallel()
+	rows := newTTCRows([]columnContext{{DataType: DtyBlob}})
+	rows.shelf = newShelf[common.MessageType]()
+	locatorBytes := persistentTestLobLocator()
+	locatorBytes[koll4FlagOffset] |= kolblTemporaryFlagByte
+	rows.rowData = [][]columnPayload{{{lob: &lobColumnContext{LocatorByteLength: 4, TotalLobLength: 1, LobLocator: locatorBytes}}}}
+	rows.numOfRows = len(rows.rowData)
+	requireErrorCode(t, rows.Next(make([]driver.Value, 1)), oracleErrors.InvalidLobSource)
+}
+
+// TestRowsResult_ReaderModeAllowsProtocolNullWithoutLocator verifies protocol
+// NULL values do not require a locator.
+func TestRowsResult_ReaderModeAllowsProtocolNullWithoutLocator(t *testing.T) {
+	t.Parallel()
+	rows := newTTCRows([]columnContext{{DataType: DtyBlob}})
+	rows.shelf = newShelf[common.MessageType]()
+	rows.rowData = [][]columnPayload{{{lob: &lobColumnContext{}}}}
+	rows.numOfRows = len(rows.rowData)
+	destination := make([]driver.Value, 1)
+	if err := rows.Next(destination); err != nil {
+		t.Fatalf("Next returned error: %v", err)
+	}
+	if destination[0] != nil {
+		t.Fatalf("NULL reader-mode LOB = %#v, want nil", destination[0])
+	}
+}
+
+// TestRowsResult_ReaderModePreservesEmptyNonNullLob verifies an empty non-NULL
+// locator value is preserved during decoding.
+func TestRowsResult_ReaderModePreservesEmptyNonNullLob(t *testing.T) {
+	t.Parallel()
+	rows := newTTCRows([]columnContext{{DataType: DtyBlob}})
+	rows.shelf = newShelf[common.MessageType]()
+	rows.sessionContext = newTestSessionContext()
+	locator := persistentTestLobLocator()
+	rows.rowData = [][]columnPayload{{{lob: &lobColumnContext{LobLocator: locator}}}}
+	rows.numOfRows = len(rows.rowData)
+	destination := make([]driver.Value, 1)
+	if err := rows.Next(destination); err != nil {
+		t.Fatalf("Next returned error: %v", err)
+	}
+	value, ok := destination[0].(*streamedLob)
+	if !ok {
+		t.Fatalf("empty LOB value = %T, want *streamedLob", destination[0])
+	}
+	if size, err := value.Size(); err != nil || size != 0 {
+		t.Fatalf("empty LOB Size = (%d, %v), want (0, nil)", size, err)
+	}
+	if _, err := value.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("empty LOB Read error = %v, want io.EOF", err)
+	}
+}
+
+// TestRowsResult_ReaderModePreservesEmptyNonNullClob verifies that an empty
+// CLOB with locator metadata remains a locator-backed value rather than SQL NULL.
+func TestRowsResult_ReaderModePreservesEmptyNonNullClob(t *testing.T) {
+	t.Parallel()
+	locator := persistentTestLobLocator()
+	rows := newTTCRows([]columnContext{{DataType: DtyClob}})
+	rows.shelf, _, _ = newExecTestShelf(1024)
+	rows.sessionContext = &common.SessionContext{}
+	rows.shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	rows.rowData = [][]columnPayload{{{lob: &lobColumnContext{LobLocator: locator}}}}
+	rows.numOfRows = len(rows.rowData)
+	destination := make([]driver.Value, 1)
+	if err := rows.Next(destination); err != nil {
+		t.Fatalf("Next returned error: %v", err)
+	}
+	if _, ok := destination[0].(internallob.LOBSource); !ok {
+		t.Fatalf("empty CLOB = %#v (%T), want locator source", destination[0], destination[0])
+	}
+}
+
+// TestRowsResult_CloseClearsBufferedRowsAndLobOwnership verifies that closing
+// Rows releases its buffered result data and local LOB ownership registry.
+func TestRowsResult_CloseClearsBufferedRowsAndLobOwnership(t *testing.T) {
+	t.Parallel()
+	rows := newTTCRows([]columnContext{{DataType: DtyBlob}})
+	rows.rowData = [][]columnPayload{{{data: common.B1Array("payload")}}}
+	rows.numOfRows = len(rows.rowData)
+	if !rows.registerLob(&streamedLob{}) {
+		t.Fatal("registerLob rejected open Rows")
+	}
+
+	if err := rows.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+	if rows.rowData != nil {
+		t.Fatal("Close retained buffered row data")
+	}
+	if len(rows.lifecycle.lobs) != 0 || len(rows.lifecycle.decodingLobs) != 0 {
+		t.Fatal("Close retained LOB ownership")
+	}
+}
+
+// TestRowsResult_NextAndCloseCoordinateLifecycle verifies that a row decode
+// completing after Close cannot publish a successful row.
+func TestRowsResult_NextAndCloseCoordinateLifecycle(t *testing.T) {
+	t.Parallel()
+	shelf := newShelf[common.MessageType]()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	shelf.RegisterCodecFactory(&blockingRowsCodecFactory{started: started, release: release})
+	rows := newTTCRows([]columnContext{{DataType: DtyVCS}})
+	rows.SetShelf(shelf)
+	rows.rowData = [][]columnPayload{{{data: common.B1Array("payload")}}}
+	rows.numOfRows = len(rows.rowData)
+
+	nextDone := make(chan error, 1)
+	go func() {
+		nextDone <- rows.Next(make([]driver.Value, 1))
+	}()
+	<-started
+	if err := rows.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+	close(release)
+	if err := <-nextDone; !errors.Is(err, io.EOF) {
+		t.Fatalf("Next after Close during decode returned %v, want io.EOF", err)
+	}
+}
+
+// blockingRowsCodecFactory pauses one scalar decode so a test can coordinate
+// Rows.Close with an in-progress Next call without a timing assumption.
+type blockingRowsCodecFactory struct {
+	testCodecFactory
+	started chan<- struct{}
+	release <-chan struct{}
+}
+
+func (f *blockingRowsCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
+	return newTypeDecoder(func(_ columnContext, data any) (driver.Value, error) {
+		close(f.started)
+		<-f.release
+		return data, nil
+	}, nil, unwrapCLRColumn), nil
+}
 
 // Test_defaultNumericValue verifies numeric defaults for NULL values across
 // integer, floating-point sentinel, and arbitrary precision NUMBER columns.
@@ -136,13 +394,13 @@ func Test_ttcRows_handleNullStrict(t *testing.T) {
 
 	rows := buildTestTTCRows(true, DtyNum, 0, nil)
 
-	val := rows.handleNull(0, DtyNum, 0)
+	val := rows.handleNull(DtyNum, 0)
 	if val != nil {
 		t.Fatalf("strict null handling should return nil, got %#v (%T)", val, val)
 	}
 
 	rows = buildTestTTCRows(true, DtyVCS, 0, new(true))
-	val = rows.handleNull(0, DtyVCS, 0)
+	val = rows.handleNull(DtyVCS, 0)
 	if val != nil {
 		t.Fatalf("strict null handling should return nil when property is true, got %#v (%T)", val, val)
 	}
@@ -176,7 +434,7 @@ func Test_ttcRows_handleNullDefaulting(t *testing.T) {
 
 			rows := buildTestTTCRows(true, tc.dtype, tc.scale, &strict)
 
-			val := rows.handleNull(0, tc.dtype, tc.scale)
+			val := rows.handleNull(tc.dtype, tc.scale)
 			if !valuesEqual(val, tc.want) {
 				t.Fatalf("defaulted value mismatch: got %#v (%T), want %#v (%T)", val, val, tc.want, tc.want)
 			}
@@ -294,8 +552,8 @@ func TestTTCRowsColumnTypeScanType(t *testing.T) {
 
 		{name: "RAW", dtype: DtyBin, want: reflect.TypeFor[[]byte]()},
 
-		{name: "CLOB", dtype: DtyClob, want: reflect.TypeFor[string]()},
-		{name: "BLOB", dtype: DtyBlob, want: reflect.TypeFor[[]byte]()},
+		{name: "CLOB", dtype: DtyClob, want: reflect.TypeFor[any]()},
+		{name: "BLOB", dtype: DtyBlob, want: reflect.TypeFor[any]()},
 
 		{name: "JSON", dtype: DtyJSON, want: reflect.TypeFor[json.JSON]()},
 	}

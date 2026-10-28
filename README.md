@@ -16,8 +16,7 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
   - PL/SQL In/Out parameters (using `sql.Out`)
   - Inband notifications
   - Native Oracle JSON support via `github.com/oracle/go-oracledb/v26/oracle/datatype/json`
-  - BLOB support using prefetch and returning `[]byte`
-  - CLOB support using prefetch and returning `string`
+  - Oracle LOB binding, materialized scans, and typed locator operations ([LOB guide](documentation/lob.md))
 
 ## Installation
 Run:
@@ -237,16 +236,20 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 
 ### Character and Text Types
 
-| Oracle Type  | Driver returns       |
-|--------------|----------------------|
-| `CHAR`       | `string`             |
-| `NCHAR`      | `string`             |
-| `VARCHAR2`   | `string`             |
-| `NVARCHAR2`  | `string`             |
-| `LONG`       | `string` or `[]byte` |
-| `CLOB`       | `string` or `[]byte` |
-| `NCLOB`      | `string`             |
-| `XMLTYPE`    | `string`             |
+| Oracle Type  | Query result handling |
+|--------------|-----------------------|
+| `CHAR`       | `string`              |
+| `NCHAR`      | `string`              |
+| `VARCHAR2`   | `string`              |
+| `NVARCHAR2`  | `string`              |
+| `LONG`       | `string` or `[]byte`  |
+| `CLOB`       | Scan into `lob.Text` to materialize UTF-8 text, or `oracle/datatype/lob.Clob` for a live locator ([LOB guide](documentation/lob.md)) |
+| `NCLOB`      | Scan into `lob.Text` to materialize UTF-8 text, or `oracle/datatype/lob.NClob` for a live locator ([LOB guide](documentation/lob.md)) |
+| `XMLTYPE`    | `string`              |
+
+LOB query results are locator-backed. Use the package-specific scan targets
+shown above; ordinary `string` and `[]byte` scan destinations are not
+supported for these LOB results.
 
 
 ### Numeric Types
@@ -281,12 +284,12 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 
 ### Binary and RAW Types
 
-| Oracle Type | Driver returns |
-|-------------|----------------|
-| `RAW`       | `[]byte`       |
-| `LONG RAW`  | `[]byte`       |
-| `BLOB`      | `[]byte`       |
-| `BFILE`     | `[]byte`       |
+| Oracle Type | Query result handling |
+|-------------|-----------------------|
+| `RAW`       | `[]byte`              |
+| `LONG RAW`  | `[]byte`              |
+| `BLOB`      | Scan into `lob.Bytes` to materialize bytes, or `oracle/datatype/lob.Blob` for a live locator ([LOB guide](documentation/lob.md)) |
+| `BFILE`     | `[]byte`              |
 
 ---
 

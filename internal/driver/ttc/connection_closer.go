@@ -56,6 +56,20 @@ const (
 // Close closes the TTC connection. A timeout context is used to prevent this
 // method from blocking indefinitely
 func (c *connection) Close() error {
+	if c._isClosed {
+		return nil
+	}
+	c._isClosed = true
+	if c.shelf != nil && c.shelf.lobState != nil {
+		c.shelf.lobState.invalidate()
+	}
+	// LOGOFF/session teardown owns every remaining temporary LOB. Do not send a
+	// queued piggyback while closing the physical connection.
+	discardLobSessionState(c.shelf)
+	// Invalidate Rows before waiting for the TTC operation guard. This cancels
+	// an in-flight locator RPC so Close does not sit behind it until timeout.
+	c.shelf.getEventService().post(connectionClosedEvent)
+
 	var nsDisconnectErr error
 	common.Odl.Fine("Closing connection")
 	// Create a context with timeout, this context will prevent this action from
@@ -73,7 +87,9 @@ func (c *connection) Close() error {
 
 	// Disconnect network connection, since the network layer call does not take
 	// the context, we are checking it here.
-	disconnect := make(chan error)
+	// Buffer the result so a timeout does not strand the disconnect goroutine on
+	// a send after Close has already returned.
+	disconnect := make(chan error, 1)
 	go func() {
 		common.Odl.Fine("Closing network connection")
 		disconnect <- c.ns.Disconnect(ctx, _disconnectFlag)
@@ -86,10 +102,6 @@ func (c *connection) Close() error {
 	case nsDisconnectErr = <-disconnect:
 		break
 	}
-
-	// Mark the connection as closed. This is done even if an error occurs.
-	c._isClosed = true
-	c.shelf.getEventService().post(connectionClosedEvent)
 
 	// Check if closing connection returned error and return error to caller
 	if ttcCloseErr != nil {
@@ -106,5 +118,10 @@ func (c *connection) Close() error {
 
 // _closeTTCConnection sends the logOff message to disconnect form the database
 func (c *connection) _closeTTCConnection(ctx context.Context) error {
+	unlock, err := c.shelf.synchronizer.begin(ctx)
+	if err != nil {
+		return common.NewOracleError(oracleErrors.ConnCloseTimeout, err)
+	}
+	defer unlock()
 	return c.runFunctionWithFunHeader(ctx, logOff)
 }

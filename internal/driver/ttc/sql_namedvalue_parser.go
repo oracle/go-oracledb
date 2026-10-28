@@ -41,6 +41,7 @@ package ttc
 import (
 	"database/sql/driver"
 	"math"
+	"strings"
 	"unicode"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -77,6 +78,9 @@ const maxBindIndex = math.MaxUint16
 //   - Numeric identifiers continue with digits (e.g., :1, :23).
 //   - Text inside comments (-- ... , /* ... */) and quoted strings ('...' or "...")
 //     is ignored.
+//   - Oracle alternative-quoted strings (q'[...]') are ignored.
+//   - Trigger pseudo-record references (:NEW, :OLD, :PARENT) are not binds.
+//   - A colon after a quoted JSON key is treated as a key/value separator.
 //   - Constructs like ':=' are ignored as non-placeholders.
 //   - A dangling ':' at the end of the string is an error.
 func parsePlaceholders(sql string) (*bindDetails, error) {
@@ -86,10 +90,15 @@ func parsePlaceholders(sql string) (*bindDetails, error) {
 	var occIndex uint16 = 0
 	runes := []rune(sql)
 	n := len(runes)
+	isTrigger := isOracleTriggerStatement(runes)
+	lastSignificantWasQuoted := false
 
 	for i := 0; i < n; i++ {
 		// Skip over comments or quoted strings starting at position i.
 		if newI, skipped := skipCommentOrString(runes, i); skipped {
+			if runes[i] == '\'' || runes[i] == '"' || ((runes[i] == 'q' || runes[i] == 'Q') && i+1 < n && runes[i+1] == '\'') {
+				lastSignificantWasQuoted = true
+			}
 			// Adjust for the loop's i++ increment.
 			i = newI - 1
 			continue
@@ -99,6 +108,12 @@ func parsePlaceholders(sql string) (*bindDetails, error) {
 
 		// Detect placeholder
 		if ch == ':' {
+			if lastSignificantWasQuoted {
+				// In Oracle JSON constructors, a colon after a quoted key is the
+				// key/value separator (e.g. {'key':value}), not a bind marker.
+				lastSignificantWasQuoted = false
+				continue
+			}
 			start := i + 1
 			if start >= n {
 				common.Odl.Error("parsePlaceholders: dangling colon at end of query")
@@ -106,6 +121,9 @@ func parsePlaceholders(sql string) (*bindDetails, error) {
 			}
 			// Not a valid placeholder (e.g., ':=' used in Pl/SQL)
 			if runes[start] == '=' {
+				continue
+			}
+			if !unicode.IsLetter(runes[start]) && !unicode.IsDigit(runes[start]) {
 				continue
 			}
 
@@ -122,6 +140,14 @@ func parsePlaceholders(sql string) (*bindDetails, error) {
 				j++
 			}
 			name := string(runes[start:j])
+			// :NEW and :OLD are trigger pseudo-records, not SQL bind variables.
+			isPseudoRecord := strings.EqualFold(name, "NEW") ||
+				strings.EqualFold(name, "OLD") ||
+				strings.EqualFold(name, "PARENT")
+			if isTrigger && isPseudoRecord {
+				i = j - 1
+				continue
+			}
 			binds = append(binds, name)
 			if _, found := occ[name]; !found {
 				if len(uniqueNames) > maxBindIndex {
@@ -135,12 +161,58 @@ func parsePlaceholders(sql string) (*bindDetails, error) {
 			occ[name] = append(occ[name], occIndex)
 			occIndex++
 			i = j - 1
+			lastSignificantWasQuoted = false
+			continue
+		}
+		if !unicode.IsSpace(ch) {
+			lastSignificantWasQuoted = false
 		}
 	}
 	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
 		common.Odl.Finest("parsePlaceholders: placeholders parsed:", "binds", binds, "bindMap", occ)
 	}
 	return &bindDetails{bindNames: binds, bindMap: occ, uniqueNames: uniqueNames}, nil
+}
+
+// isOracleTriggerStatement recognizes CREATE TRIGGER prefixes so :NEW, :OLD,
+// and :PARENT can be excluded from bind validation. It examines only leading
+// tokens and skips comments and quoted text.
+func isOracleTriggerStatement(runes []rune) bool {
+	var words []string
+	for i := 0; i < len(runes) && len(words) < 10; {
+		if next, skipped := skipCommentOrString(runes, i); skipped {
+			i = next
+			continue
+		}
+		if runes[i] == ';' {
+			break
+		}
+		if unicode.IsLetter(runes[i]) || runes[i] == '_' {
+			start := i
+			for i < len(runes) && (unicode.IsLetter(runes[i]) || unicode.IsDigit(runes[i]) || runes[i] == '_' || runes[i] == '$' || runes[i] == '#') {
+				i++
+			}
+			words = append(words, strings.ToUpper(string(runes[start:i])))
+			continue
+		}
+		i++
+	}
+
+	if len(words) < 2 || words[0] != "CREATE" {
+		return false
+	}
+	for _, word := range words[1:] {
+		if word == "TRIGGER" {
+			return true
+		}
+		switch word {
+		case "OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE", "COMPOUND", "FORWARD", "REVERSE", "CROSSEDITION":
+			// These are valid CREATE TRIGGER modifiers.
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 // skipCommentOrString checks if a comment or a quoted string starts at index i,
@@ -172,6 +244,28 @@ func skipCommentOrString(runes []rune, i int) (int, bool) {
 			j++
 		}
 		// Unclosed block comment: skip to end
+		return n, true
+	}
+
+	// Oracle alternative quoting: q'[text]', q'{text}', q'(text)', q'<text>',
+	// and q'!text!'. The closing delimiter must be followed by a single quote.
+	if (runes[i] == 'q' || runes[i] == 'Q') && i+2 < n && runes[i+1] == '\'' {
+		closing := runes[i+2]
+		switch closing {
+		case '[':
+			closing = ']'
+		case '{':
+			closing = '}'
+		case '(':
+			closing = ')'
+		case '<':
+			closing = '>'
+		}
+		for j := i + 3; j+1 < n; j++ {
+			if runes[j] == closing && runes[j+1] == '\'' {
+				return j + 2, true
+			}
+		}
 		return n, true
 	}
 
@@ -237,8 +331,6 @@ func extractInputBindValues(bindDetails *bindDetails, in []driver.NamedValue) ([
 	allPlaceholders := make([]driver.Value, numberOfBinds)
 	// filled marks which occurrence positions have been assigned a value
 	filled := make([]bool, numberOfBinds)
-	// total number of filledBindValues
-	total := 0
 
 	// place a value for all occurrences of a given key
 	placeByKey := func(key string, src driver.NamedValue) error {
@@ -256,7 +348,6 @@ func extractInputBindValues(bindDetails *bindDetails, in []driver.NamedValue) ([
 			}
 			allPlaceholders[idx] = src.Value
 			filled[idx] = true
-			total++
 		}
 		return nil
 	}
@@ -283,21 +374,20 @@ func extractInputBindValues(bindDetails *bindDetails, in []driver.NamedValue) ([
 		}
 	}
 
-	// Our parser is too simple so we may have found placeholders that are not
-	// placeholders, therefore we only send the placeholders for which the user
-	// has set values
-	filledPlaceholders := make([]driver.Value, total)
-	currentPosition := 0
 	for i, isFilled := range filled {
-		if isFilled {
-			filledPlaceholders[currentPosition] = allPlaceholders[i]
-			currentPosition++
+		if !isFilled {
+			return nil, common.NewOracleError(
+				oracleErrors.StatementParsingMissingValue,
+				nil,
+				bindDetails.bindNames[i],
+				i+1,
+			)
 		}
 	}
 	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
-		common.Odl.Finest("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
+		common.Odl.Finest("extractInputBindValues: validated input NamedValues:", "out", allPlaceholders)
 	}
-	return filledPlaceholders, nil
+	return allPlaceholders, nil
 }
 
 // extractInputBindValuesForPlSql is a special implementation for PL/SQL that aligns
@@ -308,8 +398,6 @@ func extractInputBindValuesForPlSql(bindDetails *bindDetails, in []driver.NamedV
 	// allPlaceholders holds the final positional values aligned with each placeholder occurrence
 	placeholders := make([]driver.Value, numberOfBinds)
 	filled := make([]bool, numberOfBinds)
-	// total number of filledBindValues
-	total := 0
 
 	// Process inputs in order
 	for _, nv := range in {
@@ -327,7 +415,6 @@ func extractInputBindValuesForPlSql(bindDetails *bindDetails, in []driver.NamedV
 			}
 			placeholders[index] = nv.Value
 			filled[index] = true
-			total++
 		} else {
 			// Resolve by Ordinal to its placeholder name, then place by that name
 			if nv.Ordinal <= 0 || nv.Ordinal > numberOfBinds {
@@ -342,22 +429,21 @@ func extractInputBindValuesForPlSql(bindDetails *bindDetails, in []driver.NamedV
 			}
 			placeholders[nv.Ordinal-1] = nv.Value
 			filled[nv.Ordinal-1] = true
-			total++
 		}
 	}
 
-	// Our parser is too simple so we may have found placeholders that are not
-	// placeholders, therefore we only send the placeholders for which the user
-	// has set values
-	filledPlaceholders := make([]driver.Value, total)
-	currentPosition := 0
-	for i, isFilled := range filled {
-		if isFilled {
-			filledPlaceholders[currentPosition] = placeholders[i]
-			currentPosition++
+	for _, name := range bindDetails.bindNames {
+		index := bindDetails.uniqueNames[name]
+		if !filled[index] {
+			return nil, common.NewOracleError(
+				oracleErrors.StatementParsingMissingValue,
+				nil,
+				name,
+				int(index)+1,
+			)
 		}
 	}
 
-	common.Odl.Finest("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
-	return filledPlaceholders, nil
+	common.Odl.Finest("extractInputBindValues: validated input NamedValues:", "out", placeholders)
+	return placeholders, nil
 }

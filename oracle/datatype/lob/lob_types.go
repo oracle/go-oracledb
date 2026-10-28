@@ -13,8 +13,8 @@
 **
 ** (a) the Software, and
 ** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
-** one is included with the Software (each a "Larger Work") to which the Software
-** is contributed by such licensors,
+** one is included with the Software (each a "Larger Work" to which the Software
+** is contributed by such licensors),
 **
 ** without restriction, including without limitation the rights to copy, create
 ** derivative works of, display, perform, and distribute the Software and make,
@@ -36,41 +36,16 @@
 ** SOFTWARE.
  */
 
-package datatype
+package lob
 
-import (
-	"fmt"
-	"os"
-	"testing"
+// OpenMode selects the access mode used by Blob, Clob, and NClob Open methods.
+// Persistent locators send this mode to Oracle; temporary locators record it
+// in local flags.
+type OpenMode uint8
 
-	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
+const (
+	// ReadOnly opens the LOB for server-side read operations only.
+	ReadOnly OpenMode = iota + 1
+	// ReadWrite opens the LOB for server-side reads and writes.
+	ReadWrite
 )
-
-func TestMain(m *testing.M) {
-	if err := oracleTest.InitConfig(); err != nil {
-		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
-		os.Exit(1)
-	}
-	TestEnvironement = oracleTest.TestEnvironement
-	TestingConfig = oracleTest.TestingConfig
-	DefaultTestConfig = oracleTest.DefaultTestConfig
-	TestCategories = oracleTest.TestCategories
-	os.Exit(m.Run())
-}
-
-var testCases = []oracleTest.CategorizedTestCase{}
-
-// TestCategoryExecutor provides the standard categorized-test entry point for
-// this public datatype package.
-func TestCategoryExecutor(t *testing.T) {
-	oracleTest.RunCategoryExecutor(t, TestCategories, testCases)
-}
-
-type Version = oracleTest.Version
-type TestConfig = oracleTest.TestConfig
-type TestingEnvironment = oracleTest.TestingEnvironment
-
-var DefaultTestConfig *TestConfig
-var TestEnvironement TestingEnvironment
-var TestingConfig *TestConfig
-var TestCategories oracleTest.TestCategoryList

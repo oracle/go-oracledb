@@ -93,7 +93,8 @@ type MarshalEngine struct {
 	// Each time it is fetched the value is incremented by 1.
 	// When the value reaches the maximum it is reseted to 1
 	_sequenceNumber int8
-	// default LOB prefetch size configured for this connection, in bytes.
+	// default LOB prefetch count configured for this connection. Oracle
+	// interprets the count as bytes for BLOBs and characters for CLOBs/NCLOBs.
 	_defaultLobPrefetchSize int64
 }
 
@@ -253,7 +254,8 @@ func NewMarshalEngine(dataBuffer driverCommon.DataBuffer, byteOrder driverCommon
 }
 
 // setDefaultLobPrefetchSize stores the connection-level default LOB prefetch
-// size, in bytes.
+// count. Oracle interprets the count as bytes for BLOBs and characters for
+// CLOBs/NCLOBs.
 //
 // The value is expected to come from the oracle.go.default_lob_prefetch_size
 // connection property after parsing as int64. The marshal engine uses it when

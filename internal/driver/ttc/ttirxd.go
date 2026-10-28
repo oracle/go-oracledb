@@ -70,8 +70,8 @@ type tTIrxd struct {
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
 	bvcFound bool
 
-	// Outgoing bind payload for TTIRXD when marshalling bind values (Phase 1: single row binds).
-	bindRow        []driverCommon.B1Array
+	// bindRow holds outgoing bind payloads for one TTIRXD row.
+	bindRow        []encodedBind
 	columnContexts []columnContext
 
 	numberOfReturningPositions int
@@ -80,6 +80,13 @@ type tTIrxd struct {
 	// session character set
 	sessCharSet  driverCommon.UB2
 	sessNCharSet driverCommon.UB2
+}
+
+// encodedBind is one TTC-ready SQL bind value. A temporary LOB locator uses a
+// distinct RXD representation: its TTC UB4 byte length precedes its CLR bytes.
+type encodedBind struct {
+	data       driverCommon.B1Array
+	lobLocator bool
 }
 
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
@@ -152,6 +159,15 @@ Parameters:
 */
 
 func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array) {
+	rxd.bindRow = make([]encodedBind, len(row))
+	for index, value := range row {
+		rxd.bindRow[index] = encodedBind{data: value}
+	}
+}
+
+// setEncodedBinds assigns one fully described outgoing bind row, including
+// locator framing for temporary LOB bind values.
+func (rxd *tTIrxd) setEncodedBinds(row []encodedBind) {
 	rxd.bindRow = row
 }
 
@@ -169,7 +185,8 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 	}
 	bindCount := len(rxd.bindRow)
 	for i := 0; i < bindCount; i++ {
-		val := rxd.bindRow[i]
+		bind := rxd.bindRow[i]
+		val := bind.data
 		if val == nil {
 			// Write CLR null indicator
 			if err := engine.MarshalUB1(ctx, driverCommon.UB1(0)); err != nil {
@@ -178,6 +195,14 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 			}
 			continue
+		}
+		if bind.lobLocator {
+			// A LOB bind carries its locator byte length before the CLR value.
+			if err := engine.MarshalUB4(ctx, driverCommon.UB4(len(val))); err != nil {
+				common.Odl.Error("tTIrxd.MarshalTo: failed to write LOB locator length",
+					"error", err, "stage", "lob-locator-length", "index", i)
+				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+			}
 		}
 		// Write as CLR (short or long form depending on size)
 		if err := engine.MarshalCLR(ctx, val, 0, len(val)); err != nil {
@@ -318,7 +343,7 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unwrapColumn != nil {
 		handler = decoder.unwrapColumn
 	}
-	payload, err := handler(ctx, mar, columnUnwrapContext{column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
+	payload, err := handler(ctx, mar, columnUnwrapContext{index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
 	if err != nil {
 		return err
 	}

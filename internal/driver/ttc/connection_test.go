@@ -51,6 +51,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 // TestIsRefCursorDestination verifies that only *datatype.Cursor is accepted as
@@ -73,6 +74,11 @@ func TestIsRefCursorDestination(t *testing.T) {
 	if err := checkNamedValue(&driver.NamedValue{Value: newTTCRows(nil)}); err != nil {
 		t.Fatalf("internal REF CURSOR rows: %v", err)
 	}
+}
+
+func init() {
+	message.SetString(language.French, string(oracleErrors.InternalError), "erreur interne factice.")
+	message.SetString(language.French, string(oracleErrors.StatementExecutionFailed), "echec factice de preparation de %s: %s.")
 }
 
 func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
@@ -99,12 +105,11 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 				}
 			}()
 
-			h, m, err := parseTimeZone(tt.input)
+			_, _, err := parseTimeZone(tt.input)
 			if tt.wantValid {
 				if err != nil {
 					t.Fatalf("parseTimeZone(%q) should be valid: %v", tt.input, err)
 				}
-				fmt.Printf("PASS: accepted valid input %q -> (%d, %d)\n", tt.input, h, m)
 				return
 			}
 
@@ -114,7 +119,6 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 			if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.ServerTimeZoneError) {
 				t.Fatalf("parseTimeZone(%q) should return %s, got %T: %v", tt.input, oracleErrors.ServerTimeZoneError, err, err)
 			}
-			fmt.Printf("PASS: rejected malformed input %q with error: %v\n", tt.input, err)
 		})
 	}
 }
@@ -280,6 +284,7 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 		},
 	}
 
+	expectedValid := true
 	for _, connInvalidationMsg := range tests {
 		t.Run(fmt.Sprintf("Running with %v", connInvalidationMsg), func(t *testing.T) {
 			// The factory will return the expected message
@@ -297,8 +302,11 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 			if !ok {
 				t.Fatal("Message should implement connectionStatusReceiver")
 			}
-			if connection._isValid != !connectionStatus.isBeingDrainned() {
-				t.Fatalf("isValid should be %t, but was %t", !connectionStatus.isBeingDrainned(), connection._isValid)
+			if connectionStatus.isBeingDrainned() {
+				expectedValid = false
+			}
+			if connection._isValid != expectedValid {
+				t.Fatalf("isValid should remain %t, but was %t", expectedValid, connection._isValid)
 			}
 		})
 	}

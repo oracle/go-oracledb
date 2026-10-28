@@ -102,6 +102,10 @@ func TestNewLogOff(t *testing.T) {
 	if msg.GetMsgCode() != TTIFUN {
 		t.Errorf("newLogOff() GetMsgCode = %v, want %v", msg.GetMsgCode(), TTIFUN)
 	}
+	function, ok := msg.(common.Function)
+	if !ok || function.GetFuncCode() != logOff {
+		t.Fatalf("newLogOff() function = %T/%v, want common.Function/logOff", msg, function)
+	}
 	noPayloadMsg, ok := msg.(*ttiFunHeader)
 	if !ok {
 		t.Errorf("newLogOff() did not return *ttiFunNoPayload")
@@ -122,6 +126,10 @@ func TestNewLogOff18(t *testing.T) {
 	msg := newLogOff18()
 	if msg.GetMsgCode() != TTIFUN {
 		t.Errorf("newLogOff() GetMsgCode = %v, want %v", msg.GetMsgCode(), TTIFUN)
+	}
+	function, ok := msg.(common.Function)
+	if !ok || function.GetFuncCode() != logOff {
+		t.Fatalf("newLogOff18() function = %T/%v, want common.Function/logOff", msg, function)
 	}
 	noPayloadMsg, ok := msg.(*ttiFunHeader18)
 	if !ok {
