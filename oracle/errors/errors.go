@@ -275,6 +275,9 @@ const (
 	// UnsupportedLobOperation indicates the operation is not supported for the selected LOB
 	// family or access mode.
 	UnsupportedLobOperation ErrorCode = "OGD-00308"
+	// LobValueInvalidated indicates the Rows, statement, transaction, or
+	// connection that owns a locator-backed LOB is no longer usable.
+	LobValueInvalidated ErrorCode = "OGD-00309"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error

@@ -280,6 +280,7 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 		},
 	}
 
+	expectedValid := true
 	for _, connInvalidationMsg := range tests {
 		t.Run(fmt.Sprintf("Running with %v", connInvalidationMsg), func(t *testing.T) {
 			// The factory will return the expected message
@@ -297,8 +298,37 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 			if !ok {
 				t.Fatal("Message should implement connectionStatusReceiver")
 			}
-			if connection._isValid != !connectionStatus.isBeingDrainned() {
-				t.Fatalf("isValid should be %t, but was %t", !connectionStatus.isBeingDrainned(), connection._isValid)
+			if connectionStatus.isBeingDrainned() {
+				expectedValid = false
+			}
+			if connection._isValid != expectedValid {
+				t.Fatalf("isValid should remain %t, but was %t", expectedValid, connection._isValid)
+			}
+		})
+	}
+}
+
+// TestConnection_NotifyInvalidatesLOBSession verifies stale-message and
+// overflow notifications revoke local LOB state with the physical connection.
+func TestConnection_NotifyInvalidatesLOBSession(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		event eventType
+	}{
+		{name: "stale messages", event: streamerStaleEvent},
+		{name: "message overflow", event: streamerOverFlowEvent},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			shelf := newShelf[driverCommon.MessageType]()
+			conn := &connection{shelf: shelf, _isValid: true}
+			conn.notify(test.event)
+			if conn._isValid {
+				t.Fatal("connection remained valid after an invalidating stream event")
+			}
+			if !shelf.lobState.isInvalid() {
+				t.Fatal("LOB session remained valid after an invalidating stream event")
 			}
 		})
 	}

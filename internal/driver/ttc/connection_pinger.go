@@ -50,11 +50,10 @@ import (
 
 // *** Pinger ***
 
-// Ping pings the database to check if the connection is in a valid state
+// Ping pings the database to check if the connection is in a valid state.
 //
 // Returns: driver.ErrBadConn if the connection is not in a valid state,
-//
-//	otherwise nil
+// otherwise nil.
 func (c *connection) Ping(ctx context.Context) error {
 	err := c.runFunctionWithFunHeader(ctx, ping)
 	if err != nil {
@@ -76,9 +75,15 @@ const (
 // It returns false if the connection is invalid or a callback returns
 // driver.ErrBadConn.
 func (c *connection) IsValid() bool {
-
 	// Check if inband notification has been received.
-	c._isValid = c._isValid && !c.ns.CheckInbandNotification()
+	if c._isValid && c.ns.CheckInbandNotification() {
+		// Revoke LOB state when the connection becomes unusable.
+		c.markInvalid()
+	}
+	// IsValid runs when database/sql releases the driver connection. Revoke LOB
+	// handles from this lease and wait for active LOB operations before running
+	// request-end callbacks that may use the same TTC stream.
+	c.shelf.lobState.expireLeases()
 
 	// Use one timeout context for all request-end callbacks.
 	ctx, cancel := context.WithTimeout(common.BackgroundContext, _pingTimeout)
@@ -88,6 +93,5 @@ func (c *connection) IsValid() bool {
 	if err := runRequestBoundaryCallbacks(ctx, c._requestEndCallbacks); err != nil {
 		return false
 	}
-
 	return c._isValid
 }

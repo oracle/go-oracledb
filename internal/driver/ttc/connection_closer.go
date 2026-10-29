@@ -56,6 +56,13 @@ const (
 // Close closes the TTC connection. A timeout context is used to prevent this
 // method from blocking indefinitely
 func (c *connection) Close() error {
+	if c._isClosed {
+		return nil
+	}
+	// Invalidate local LOB handles and drop pending temporary-LOB frees before
+	// teardown. The LOGOFF push removes any free piggybacks already queued.
+	discardLobSessionState(c.shelf)
+
 	var nsDisconnectErr error
 	common.Odl.Fine("Closing connection")
 	// Create a context with timeout, this context will prevent this action from
