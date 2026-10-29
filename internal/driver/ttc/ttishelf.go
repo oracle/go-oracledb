@@ -71,6 +71,9 @@ type ttiShelf[T any] struct {
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
 	_validatorRegistry       internalCommon.Registry[stateValidator]
+	// lobState contains session-scoped LOB resources. Its lifetime is exactly
+	// that of the physical Oracle session.
+	lobState *lobSessionState
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
@@ -78,8 +81,10 @@ type ttiShelf[T any] struct {
 // can be populated via RegisterCodecs and RegisterOacs.
 func newShelf[T any]() *ttiShelf[T] {
 	base := common.NewShelf[T]()
+	lobState := newLobSessionState()
 	return &ttiShelf[T]{
 		Shelf:              base,
+		lobState:           lobState,
 		codecFactory:       nil,
 		_refCursors:        make(map[*ttcRowsRefCursor]struct{}),
 		_eventService:      newEventService(),

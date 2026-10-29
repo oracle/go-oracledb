@@ -52,6 +52,7 @@ import (
 // It combines a generic TTIFUN header with per-request LOB metadata so the
 // marshalling layer can stream OLOBOPS invocations to the database.
 type tTIlob struct {
+	messageType driverCommon.MessageType
 	// header is the TTC-compatible envelope that emits the oLobOps function
 	// metadata.
 	header driverCommon.Marshallable
@@ -67,8 +68,17 @@ type tTIlob struct {
 // Returns:
 //   - *tTIlob: message with a TTIFUN header targeting the oLobOps function.
 func newTTIlob() driverCommon.Message[driverCommon.MessageType] {
+	return newTTIlobWithMessageType(TTIFUN)
+}
+
+func newTTIlobPiggyback() driverCommon.Message[driverCommon.MessageType] {
+	return newTTIlobWithMessageType(TTIPFN)
+}
+
+func newTTIlobWithMessageType(messageType driverCommon.MessageType) driverCommon.Message[driverCommon.MessageType] {
 	return &tTIlob{
-		header: &ttiFunHeader18{ttiFunHeader: &ttiFunHeader{_funcType: oLobOps}},
+		messageType: messageType,
+		header:      &ttiFunHeader18{ttiFunHeader: &ttiFunHeader{_funcType: oLobOps}},
 	}
 }
 
@@ -93,13 +103,12 @@ func (m *tTIlob) SetDefinition(lobDef *lobDefinition) error {
 	return nil
 }
 
-// GetMsgCode reports the TTC message identifier associated with TTIFUN
-// envelopes.
+// GetMsgCode reports the outer TTC message identifier for this OLOBOPS payload.
 //
 // Returns:
-//   - common.MessageType: TTIFUN, indicating a function wrapper message.
+//   - driverCommon.MessageType: TTIFUN for an ordinary function or TTIPFN for a piggyback.
 func (m *tTIlob) GetMsgCode() driverCommon.MessageType {
-	return TTIFUN
+	return m.messageType
 }
 
 // GetFuncCode exposes the TTC function opcode emitted for this message.

@@ -83,8 +83,11 @@ const (
 // It returns false if the connection is invalid or a callback returns
 // driver.ErrBadConn.
 func (c *connection) IsValid() bool {
-
 	c.isValid()
+	// IsValid runs when database/sql releases the driver connection. Revoke LOB
+	// handles from this lease and wait for active LOB operations before running
+	// request-end callbacks that may use the same TTC stream.
+	c.shelf.lobState.expireLeases()
 
 	// Use one timeout context for all request-end callbacks.
 	ctx, cancel := context.WithTimeout(common.BackgroundContext, _isValidTimeout)
@@ -94,13 +97,14 @@ func (c *connection) IsValid() bool {
 	if err := runRequestBoundaryCallbacks(ctx, c._requestEndCallbacks); err != nil {
 		return false
 	}
-
 	return c._isValid
 }
 
 // isValid checks connection status without ending active transactions
 func (c *connection) isValid() bool {
 	// Check if inband notification has been received.
-	c._isValid = c._isValid && !c.ns.CheckInbandNotification()
+	if c._isValid && c.ns.CheckInbandNotification() {
+		c.markInvalid()
+	}
 	return c._isValid
 }

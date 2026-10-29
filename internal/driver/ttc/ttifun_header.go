@@ -124,6 +124,16 @@ func (msg *ttiFunHeader) GetMsgCode() driverCommon.MessageType {
 	return TTIFUN
 }
 
+// GetFuncCode returns the TTC function represented by this header-only
+// message. It lets common streamer logic distinguish LOGOFF from ordinary
+// functions without depending on the concrete TTC message type.
+//
+// Returns:
+//   - driverCommon.FunctionType: function opcode encoded in the header.
+func (msg *ttiFunHeader) GetFuncCode() driverCommon.FunctionType {
+	return msg._funcType
+}
+
 // MarshalTo marshals the message using the given marshaller.
 // Note that this message does not have any payload, only the message code is
 // marshalled.
