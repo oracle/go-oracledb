@@ -214,6 +214,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestParsePlaceholders_IgnoreInBlockComment", Categories: "unitary", Exclusive: false, Fn: TestParsePlaceholders_IgnoreInBlockComment},
 	{Name: "TestParsePlaceholders_IgnoreInSingleQuotedString", Categories: "unitary", Exclusive: false, Fn: TestParsePlaceholders_IgnoreInSingleQuotedString},
 	{Name: "TestParsePlaceholders_IgnoreInSingleQuotedStringWithEscape", Categories: "unitary", Exclusive: false, Fn: TestParsePlaceholders_IgnoreInSingleQuotedStringWithEscape},
+	{Name: "TestParsePlaceholders_AlternativeQuotedStrings", Categories: "unitary", Exclusive: false, Fn: TestParsePlaceholders_AlternativeQuotedStrings},
 	{Name: "TestParsePlaceholders_IgnoreInDoubleQuotedIdentifier", Categories: "unitary", Exclusive: false, Fn: TestParsePlaceholders_IgnoreInDoubleQuotedIdentifier},
 	{Name: "TestParsePlaceholders_ParseAfterCommentClosed", Categories: "unitary", Exclusive: false, Fn: TestParsePlaceholders_ParseAfterCommentClosed},
 	{Name: "TestParsePlaceholders_SkipNonBindColonAssignment", Categories: "unitary", Exclusive: false, Fn: TestParsePlaceholders_SkipNonBindColonAssignment},
