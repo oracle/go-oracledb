@@ -623,8 +623,9 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "Test_ttcRows_handleNullDefaulting", Categories: "unitary", Exclusive: false, Fn: Test_ttcRows_handleNullDefaulting},
 	{Name: "Test_ttcRows_handleNullStrict", Categories: "unitary", Exclusive: false, Fn: Test_ttcRows_handleNullStrict},
 	{Name: "Test_ttiSTA_getConnectionShouldBeDropped", Categories: "unitary", Exclusive: false, Fn: Test_ttiSTA_getConnectionShouldBeDropped},
-
 	{Name: "TestTypeRep_UnmarshalFrom_TooManyTypeRepresentations", Categories: "unitary", Exclusive: false, Fn: TestTypeRep_UnmarshalFrom_TooManyTypeRepresentations},
+	{Name: "TestUrowidToString", Categories: "unitary", Exclusive: false, Fn: TestUrowidToString},
+	{Name: "TestUrowidToStringNegative", Categories: "unitary", Exclusive: false, Fn: TestUrowidToStringNegative},
 }
 
 // ArrayBasedDataBuffer is an implementation of DataBuffer for testing purposes.
