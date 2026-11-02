@@ -90,8 +90,8 @@ func TestDecodeNumberColumn(t *testing.T) {
 	}
 }
 
-// TestDecodeTextColumns verifies character, raw, JSON, and rowid column data
-// are decoded into their expected string or byte representations.
+// TestDecodeTextColumns verifies character columns, including national character
+// set encodings, are decoded into the expected strings.
 func TestDecodeTextColumns(t *testing.T) {
 	tests := []struct {
 		name string
@@ -253,8 +253,7 @@ func TestDecodeLobColumns(t *testing.T) {
 	}
 }
 
-// TestDecodeJsonColumn verifies a JSON wire value is returned as its JSON
-// string.
+// TestDecodeJSONColumn verifies that DecodeJSON returns the JSON payload bytes unchanged.
 func TestDecodeJSONColumn(t *testing.T) {
 	want := []byte(`{"ok":true}`)
 	if got, err := DecodeJSON(ColumnContext{}, common.B1Array(want)); err != nil || !reflect.DeepEqual(got, want) {

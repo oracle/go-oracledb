@@ -1058,7 +1058,7 @@ func TestDriver_Select_TIMESTAMP_SubSecond_MinimumNonZero(t *testing.T) {
 		}
 	}()
 
-	stmt := "INSERT INTO " + table + " (id, ts) VALUES (1, TIMESTAMP '2024-06-15 12:00:00.000001')"
+	stmt := "INSERT INTO " + table + " (id, ts) VALUES (1, TIMESTAMP '2024-06-15 12:00:00.000000001')"
 	if _, err := db.ExecContext(ctx, stmt); err != nil {
 		t.Fatalf("insert failed: %v", err)
 	}
@@ -1080,7 +1080,7 @@ func TestDriver_Select_TIMESTAMP_SubSecond_MinimumNonZero(t *testing.T) {
 	}
 
 	loc := time.UTC
-	expected := time.Date(2024, time.June, 15, 12, 0, 0, 1000, loc)
+	expected := time.Date(2024, time.June, 15, 12, 0, 0, 1, loc)
 	assertSameYMDHMSNanos(t, 0, "TIMESTAMP sub-second minimum", ts, expected)
 
 	if rs.Next() {
