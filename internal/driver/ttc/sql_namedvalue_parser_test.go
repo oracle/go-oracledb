@@ -238,6 +238,25 @@ func TestParsePlaceholders_IgnoreInSingleQuotedStringWithEscape(t *testing.T) {
 	}
 }
 
+// TestParsePlaceholders_IgnoreInOracleAlternativeQuotedStrings verifies that
+// Oracle q-quoted strings do not contribute bind placeholders.
+func TestParsePlaceholders_IgnoreInOracleAlternativeQuotedStrings(t *testing.T) {
+	t.Parallel()
+	for _, query := range []string{
+		"select q'[O'Reilly :not_a_bind]' from dual where dummy = :actual",
+		"select Q'{O'Reilly :not_a_bind}' from dual where dummy = :actual",
+		"select q'!O'Reilly :not_a_bind!' from dual where dummy = :actual",
+	} {
+		ph, err := parsePlaceholders(query)
+		if err != nil {
+			t.Fatalf("parsePlaceholders(%q): %v", query, err)
+		}
+		if len(ph.bindNames) != 1 || ph.bindNames[0] != "actual" {
+			t.Errorf("parsePlaceholders(%q) binds = %v, want [actual]", query, ph.bindNames)
+		}
+	}
+}
+
 func TestParsePlaceholders_IgnoreInDoubleQuotedIdentifier(t *testing.T) {
 	t.Parallel()
 	q := `select "col:1" from t where a=:1`
@@ -411,6 +430,28 @@ func TestParsePlaceholders_Uint16IndexesDoNotWrapAfter255(t *testing.T) {
 	}
 	if got := ph.uniqueNames["p256"]; got != 256 {
 		t.Fatalf("expected p256 unique-name index 256, got %d", got)
+	}
+}
+
+// TestParsePlaceholders_MaxBindBoundary verifies the largest accepted bind
+// count and rejection immediately above that limit.
+func TestParsePlaceholders_MaxBindBoundary(t *testing.T) {
+	t.Parallel()
+	const maxOccurrences = int(maxBindIndex) + 1
+	query := "SELECT " + strings.TrimSuffix(strings.Repeat(":b,", maxOccurrences), ",") + " FROM dual"
+	parsed, err := parsePlaceholders(query)
+	if err != nil {
+		t.Fatalf("parse at maximum bind count: %v", err)
+	}
+	if len(parsed.bindNames) != maxOccurrences {
+		t.Fatalf("got %d binds at maximum, want %d", len(parsed.bindNames), maxOccurrences)
+	}
+
+	overLimit := "SELECT " + strings.TrimSuffix(strings.Repeat(":b,", maxOccurrences+1), ",") + " FROM dual"
+	if _, err := parsePlaceholders(overLimit); err == nil {
+		t.Fatal("parse above maximum bind count succeeded, want an error")
+	} else if got := getErrCode(t, err); got != oracleErrors.StatementParsingPlaceholdersArgsMismatch {
+		t.Fatalf("error code above maximum bind count = %s, want %s", got, oracleErrors.StatementParsingPlaceholdersArgsMismatch)
 	}
 }
 

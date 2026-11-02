@@ -115,4 +115,11 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_AcceptsMatchingExplicitKeyLength},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params},
 	{Name: "TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID},
+	{Name: "TestNTTCPTransportSendReceiveRoundTrip", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportSendReceiveRoundTrip},
+	{Name: "TestNTTCPTransportRejectsInvalidReceiveLength", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportRejectsInvalidReceiveLength},
+	{Name: "TestNTTCPTransportReceiveTimeouts", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportReceiveTimeouts},
+	{Name: "TestNTTCPTransportReturnsReadErrors", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportReturnsReadErrors},
+	{Name: "TestNTTCPConnectHonorsCanceledContext", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectHonorsCanceledContext},
+	{Name: "TestNTTCPSClearRemovesSensitiveTLSMaterial", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSClearRemovesSensitiveTLSMaterial},
+	{Name: "TestNTTCPSProcessWalletRejectsUnknownPEMBlock", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSProcessWalletRejectsUnknownPEMBlock},
 }

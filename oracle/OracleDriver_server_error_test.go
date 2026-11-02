@@ -39,6 +39,7 @@
 package oracle
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"testing"
@@ -134,4 +135,82 @@ func TestServerError(t *testing.T) {
 		err = db.Ping()
 		checkErrorRaised(t, err, oracleErrors.ConnectFailed, oracleErrors.NoListenerAvailable) // ORA-12541
 	})
+}
+
+// TestDriver_ConstraintViolationsReturnOracleErrors checks representative
+// uniqueness, CHECK, and NOT NULL failures and verifies the connection remains
+// usable after the server rejects each statement.
+func TestDriver_ConstraintViolationsReturnOracleErrors(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("constraint_test")
+	_ = dropTable(ctx, db, table)
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":     "NUMBER PRIMARY KEY",
+		"amount": "NUMBER CHECK (amount >= 0)",
+		"label":  "VARCHAR2(20) NOT NULL",
+	}); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("drop table: %v", err)
+		}
+	}()
+	if _, err := db.ExecContext(ctx, "INSERT INTO "+table+" (id, amount, label) VALUES (:1, :2, :3)", 1, 10, "original"); err != nil {
+		t.Fatalf("insert seed row: %v", err)
+	}
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire dedicated connection: %v", err)
+	}
+	defer conn.Close()
+
+	cases := []struct {
+		name   string
+		id     any
+		amount any
+		label  any
+		code   string
+	}{
+		{name: "duplicate primary key", id: 1, amount: 20, label: "duplicate", code: "ORA-00001"},
+		{name: "check constraint", id: 2, amount: -1, label: "negative", code: "ORA-02290"},
+		{name: "not null constraint", id: 3, amount: 30, label: nil, code: "ORA-01400"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := conn.ExecContext(ctx, "INSERT INTO "+table+" (id, amount, label) VALUES (:1, :2, :3)", tc.id, tc.amount, tc.label)
+			if err == nil {
+				t.Fatalf("insert succeeded, want %s", tc.code)
+			}
+			sqlErr, ok := err.(oracleErrors.SQLError)
+			if !ok {
+				t.Fatalf("error %T does not expose Oracle error code: %v", err, err)
+			}
+			if sqlErr.ErrorCode() != tc.code {
+				t.Fatalf("ErrorCode() = %s, want %s (%v)", sqlErr.ErrorCode(), tc.code, err)
+			}
+		})
+	}
+
+	var count int
+	if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil {
+		t.Fatalf("count rows after constraint failures: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("row count after failed inserts = %d, want 1", count)
+	}
+	if _, err := conn.ExecContext(ctx, "INSERT INTO "+table+" (id, amount, label) VALUES (:1, :2, :3)", 4, 40, "connection reused"); err != nil {
+		t.Fatalf("valid insert after constraint failures: %v", err)
+	}
 }

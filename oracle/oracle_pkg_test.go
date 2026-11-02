@@ -289,6 +289,17 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OSON_ZeroValue", Categories: "unitary", Exclusive: false, Fn: TestDriver_OSON_ZeroValue},
 	{Name: "TestDriver_OSON_NullDistinction", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NullDistinction},
 	{Name: "TestDriver_OpenConnectorPreservesQuotedInParameters", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorPreservesQuotedInParameters},
+	{Name: "TestDriver_Config_QueryStringToMap", Categories: "unitary", Exclusive: false, Fn: TestDriver_Config_QueryStringToMap},
+	{Name: "TestDriver_Config_LoggingDefaults", Categories: "unitary", Exclusive: false, Fn: TestDriver_Config_LoggingDefaults},
+	{Name: "TestDriver_Config_ValidateNegativeTimeout", Categories: "unitary", Exclusive: false, Fn: TestDriver_Config_ValidateNegativeTimeout},
+	{Name: "TestDriver_Config_MapConnectionProperties", Categories: "unitary", Exclusive: false, Fn: TestDriver_Config_MapConnectionProperties},
+	{Name: "TestDriver_Config_PasswordRedaction", Categories: "unitary", Exclusive: false, Fn: TestDriver_Config_PasswordRedaction},
+	{Name: "TestDriver_Config_LoggingRejectsInvalidBooleans", Categories: "unitary", Exclusive: true, Fn: TestDriver_Config_LoggingRejectsInvalidBooleans},
+	{Name: "TestDriver_AnalyticQueryWithJoinAndWindowFunctions", Categories: "functional", Exclusive: false, Fn: TestDriver_AnalyticQueryWithJoinAndWindowFunctions},
+	{Name: "TestDriver_SelectWithCTE", Categories: "functional", Exclusive: false, Fn: TestDriver_SelectWithCTE},
+	{Name: "TestDriver_MergeMatchedUpdateAndUnmatchedInsert", Categories: "functional", Exclusive: false, Fn: TestDriver_MergeMatchedUpdateAndUnmatchedInsert},
+	{Name: "TestDriver_ConstraintViolationsReturnOracleErrors", Categories: "functional", Exclusive: false, Fn: TestDriver_ConstraintViolationsReturnOracleErrors},
+	{Name: "TestDriver_Functional_ConnectionWrapper", Categories: "functional", Exclusive: false, Fn: TestDriver_Functional_ConnectionWrapper},
 }
 
 func TestCategoryExecutor(t *testing.T) {
