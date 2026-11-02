@@ -126,10 +126,10 @@ func urowidToString(data []byte) (string, error) {
 		var rowid strings.Builder
 		rowid.Grow(18)
 
-		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidObjectFieldOffset : urowidObjectFieldLength+1]))                      // object
-		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidFileFieldOffset : urowidFileFieldOffset+urowidFileFieldLength+1]))    // file
-		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidBlockFieldOffset : urowidBlockFieldOffset+urowidBlockFieldLength+1])) // block
-		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidSlotFieldOffset : urowidSlotFieldOffset+urowidSlotFieldLength+1]))    // slot
+		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidObjectFieldOffset : urowidObjectFieldOffset+urowidObjectFieldLength])) // object
+		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidFileFieldOffset : urowidFileFieldOffset+urowidFileFieldLength]))       // file
+		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidBlockFieldOffset : urowidBlockFieldOffset+urowidBlockFieldLength]))    // block
+		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidSlotFieldOffset : urowidSlotFieldOffset+urowidSlotFieldLength]))       // slot
 
 		return rowid.String(), nil
 	}
