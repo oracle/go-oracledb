@@ -25,22 +25,62 @@ package ttc
 import (
 	"database/sql/driver"
 	"encoding/base64"
-	"encoding/binary"
-	"fmt"
+	"strings"
+
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 const (
-	urowidPhysicalType = 1
-	urowidTypeCount    = 5
+	urowidPhysicalType    = 1 // Physical ROWID
+	urowidLogicalType     = 2 // Logical (primary key) ROWID
+	urowidRemoteType      = 3 // Remote (foreign) ROWID
+	urowidExternalType    = 4 // external table ROWID
+	urowidNotUsedType     = 5
+	urowidNewExternalType = 6 // New external table ROWIDNew external table ROWID
+)
+
+// Universal ROWID component length definitions.
+// layout is one type-indicator byte, then object (4 bytes), file (2), block (4), and slot (2)—13 bytes total.
+const (
+	urowidTypeOffset      = 0
+	urowidTypeFieldLength = 1
+
+	urowidObjectFieldOffset = urowidTypeFieldLength
+	urowidObjectFieldLength = 4 // length of object number
+
+	urowidFileFieldOffset = urowidObjectFieldOffset + urowidObjectFieldLength
+	urowidFileFieldLength = 2 // length of file number
+
+	urowidBlockFieldOffset = urowidFileFieldOffset + urowidFileFieldLength
+	urowidBlockFieldLength = 4 // length of block number ;
+
+	urowidSlotFieldOffset = urowidBlockFieldOffset + urowidBlockFieldLength
+	urowidSlotFieldLength = 2 // length of slot number
+
+	urowidComponentLength = urowidObjectFieldLength + urowidFileFieldLength + urowidBlockFieldLength + urowidSlotFieldLength + 1 // +1 for tyope indicator
 )
 
 var (
-	urowidBase64Alphabet = []byte("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
-	urowidTypePrefix     = [...]byte{'A', '*', '-', '(', ')'}
+	// no prefix for physical
+	urowidTypePrefix = [...]byte{'A', '*', '-', '(', ')'}
 )
 
-// DecodeUrowidColumn converts Oracle's internal universal rowid bytes to the
-// printable rowid representation returned by Oracle clients.
+// DecodeUrowidColumn decodes a Oracle's internal universal rowid bytes.
+//
+//Description:
+//
+//	Converts Oracle's internal universal rowid bytes to the printable rowid representation returned by Oracle clients.
+//
+//Parameters:
+//  - columnContext: Column metadata used for error reporting (name/index).
+//  - data: Raw TTC payload bytes for the column.
+//
+//Returns:
+//  - driver.Value: time.Time containing the decoded date/time value.
+//  - error: Non-nil if decoding fails.
+
 func DecodeUrowidColumn(columnContext columnContext, value any) (driver.Value, error) {
 	data, err := rawColumnData(value)
 	if err != nil {
@@ -52,44 +92,50 @@ func DecodeUrowidColumn(columnContext columnContext, value any) (driver.Value, e
 
 	rowid, err := urowidToString(data)
 	if err != nil {
+		common.Odl.Debug("urowid column parse error", "err", err)
 		return nil, rowDecodeError(columnContext, err, "UROWID")
 	}
 	return rowid, nil
 }
 
+/*
+urowidToString converts an internal UROWID value to its printable representation.
+
+Description:
+
+	Uses the leading type indicator to convert physical rowid components into
+	their fixed-width Base64 form. For logical and other nonphysical rowids, it
+	prepends the type's printable prefix to the Base64 encoding of the remaining
+	bytes. The input must contain at least the type indicator.
+
+Parameters:
+  - data: Internal UROWID bytes, beginning with the type indicator.
+
+Returns:
+  - string: Printable ROWID/UROWID value.
+  - error: Non-nil if convertion failed
+*/
 func urowidToString(data []byte) (string, error) {
-	rowidType := data[0]
+	rowidType := data[urowidTypeOffset]
+
 	if rowidType == urowidPhysicalType {
-		// Physical universal rowids contain a type byte followed by the
-		// object, file, block, and slot components in big-endian order.
-		if len(data) != 13 {
-			return "", fmt.Errorf("physical UROWID has %d bytes; want 13", len(data))
+		if len(data) != urowidComponentLength {
+			return "", common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil,
+				"UROWID", "Decode", driverCommon.ReasonInvalidLength, urowidComponentLength)
 		}
-		object := binary.BigEndian.Uint32(data[1:5])
-		file := binary.BigEndian.Uint16(data[5:7])
-		block := binary.BigEndian.Uint32(data[7:11])
-		slot := binary.BigEndian.Uint16(data[11:13])
+		var rowid strings.Builder
+		rowid.Grow(18)
 
-		out := make([]byte, 0, 18)
-		out = append(out, urowidBase64Uint(uint64(object), 6)...)
-		out = append(out, urowidBase64Uint(uint64(file), 3)...)
-		out = append(out, urowidBase64Uint(uint64(block), 6)...)
-		out = append(out, urowidBase64Uint(uint64(slot), 3)...)
-		return string(out), nil
-	}
-	if rowidType < 1 || rowidType > urowidTypeCount {
-		return "", fmt.Errorf("unknown UROWID type indicator %d", rowidType)
+		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidObjectFieldOffset : urowidObjectFieldLength+1]))                      // object
+		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidFileFieldOffset : urowidFileFieldOffset+urowidFileFieldLength+1]))    // file
+		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidBlockFieldOffset : urowidBlockFieldOffset+urowidBlockFieldLength+1])) // block
+		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidSlotFieldOffset : urowidSlotFieldOffset+urowidSlotFieldLength+1]))    // slot
+
+		return rowid.String(), nil
 	}
 
-	body := base64.RawStdEncoding.EncodeToString(data[1:])
-	return string(urowidTypePrefix[rowidType-1]) + body, nil
-}
-
-func urowidBase64Uint(value uint64, digits int) []byte {
-	encoded := make([]byte, digits)
-	for i := digits - 1; i >= 0; i-- {
-		encoded[i] = urowidBase64Alphabet[value&0x3f]
-		value >>= 6
-	}
-	return encoded
+	// all others cases go here.
+	// For nonphysical UROWIDs, the format is a type-specific character prefix followed by Base64 of the remaining bytes
+	body := base64.RawStdEncoding.EncodeToString(data[urowidTypeOffset+urowidTypeFieldLength:])
+	return string(urowidTypePrefix[rowidType-2]) + body, nil
 }
