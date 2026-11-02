@@ -379,27 +379,9 @@ func (p *tTIoac) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
-	// OAC stores scale in two bytes for NUMBER, timestamp, and interval types,
-	// and in one byte for other types. Match MarshalTo so maxLength starts at the
-	// correct offset when reading the descriptor.
-	if p.dataType == driverCommon.UB1(DtyNum) ||
-		p.dataType == driverCommon.UB1(DtyStamp) ||
-		p.dataType == driverCommon.UB1(DtyStz) ||
-		p.dataType == driverCommon.UB1(DtySitz) ||
-		p.dataType == driverCommon.UB1(DtyIds) {
-		var scale driverCommon.SB2
-		if scale, err = mar.UnmarshalSB2(ctx); err != nil {
-			common.Odl.Finest("UnmarshalFrom: failed to unmarshal scale", "error", err)
-			return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
-		}
-		p.scale = driverCommon.SB1(scale)
-	} else {
-		var scale driverCommon.UB1
-		if scale, err = mar.UnmarshalUB1(ctx); err != nil {
-			common.Odl.Finest("UnmarshalFrom: failed to unmarshal scale", "error", err)
-			return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
-		}
-		p.scale = driverCommon.SB1(scale)
+	if p.scale, err = mar.UnmarshalSB1(ctx); err != nil {
+		common.Odl.Finest("UnmarshalFrom: failed to unmarshal scale", "error", err)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
 	p.maxLength, err = mar.UnmarshalUB4(ctx)
