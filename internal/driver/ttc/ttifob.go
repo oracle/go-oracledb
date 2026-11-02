@@ -62,6 +62,6 @@ func (fob *tTIfob) MarshalTo(context.Context, common.Marshaller) error {
 	return nil
 }
 
-func (fob *tTIfob) UnMarshalFrom(context.Context, common.Marshaller) error {
+func (fob *tTIfob) UnmarshalFrom(context.Context, common.Marshaller) error {
 	return nil
 }

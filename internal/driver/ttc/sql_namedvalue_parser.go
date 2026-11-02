@@ -40,7 +40,6 @@ package ttc
 
 import (
 	"database/sql/driver"
-	"log/slog"
 	"math"
 	"unicode"
 
@@ -138,8 +137,8 @@ func parsePlaceholders(sql string) (*bindDetails, error) {
 			i = j - 1
 		}
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("parsePlaceholders: placeholders parsed:", "binds", binds, "bindMap", occ)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("parsePlaceholders: placeholders parsed:", "binds", binds, "bindMap", occ)
 	}
 	return &bindDetails{bindNames: binds, bindMap: occ, uniqueNames: uniqueNames}, nil
 }
@@ -295,15 +294,14 @@ func extractInputBindValues(bindDetails *bindDetails, in []driver.NamedValue) ([
 			currentPosition++
 		}
 	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
+	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
+		common.Odl.Finest("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
 	}
 	return filledPlaceholders, nil
 }
 
-// extractInputBindValuesForPlSql special implementation for PL/SQL that aligns
-// the supplied NamedValue slice to match the order of occurence if the
-// placeholders in the PL/SQL statement.
+// extractInputBindValuesForPlSql is a special implementation for PL/SQL that aligns
+// the supplied NamedValue slice with the order of the placeholders in the PL/SQL statement.
 func extractInputBindValuesForPlSql(bindDetails *bindDetails, in []driver.NamedValue) ([]driver.Value, error) {
 
 	numberOfBinds := len(bindDetails.uniqueNames)
@@ -360,6 +358,6 @@ func extractInputBindValuesForPlSql(bindDetails *bindDetails, in []driver.NamedV
 		}
 	}
 
-	common.Odl.Debug("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
+	common.Odl.Finest("extractInputBindValues: validated input NamedValues:", "out", filledPlaceholders)
 	return filledPlaceholders, nil
 }

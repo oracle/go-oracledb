@@ -49,21 +49,22 @@ import (
 /*
 tTIrxd provides unmarshalling support for TTC RXD protocol messages, which represent plain result set rows
 delivered by the network. This struct receives RXD packets, parses columns per protocol (including column-carry logic for BVC),
-and exposes the column data in raw byte-array form.
+and retains raw wire bytes or constructed values together with their LOB metadata.
 */
 type tTIrxd struct {
 	// numberOfColumns is the expected number of columns for each incoming RXD row.
 	numberOfColumns driverCommon.UB4
+	// codecFactory supplies protocol-matched column unwrap handlers.
+	codecFactory codecFactory
 	// rowCount is the zero-based index of the row currently being processed/unmarshalled.
 	rowCount driverCommon.UB4
-	// row holds, for the current row, a common.B1Array (wire-format bytes) for each column.
-	// row[i] gives the raw data for column i for this row.
-	row []driverCommon.B1Array
+	// row holds each value and its optional LOB metadata at the column position.
+	row []columnPayload
 	// prevRow contains each column's data from the previous unmarshalled row, used for column-carry (BVC logic).
-	prevRow []driverCommon.B1Array
-	// prevLobColContext contains the LOB metadata aligned with prevRow for BVC
-	// column carry.
-	prevLobColContext []*lobColumnContext
+	prevRow []columnPayload
+	// refCursorRows retains REF CURSOR values constructed while unmarshalling
+	// this message so the statement executor can register their connection ownership.
+	refCursorRows []*ttcRowsRefCursor
 	// bvcColSent is a BitSet indicating which columns are present in this row (per BVC protocol column-carry rules).
 	bvcColSent *driverCommon.BitSet
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
@@ -72,7 +73,6 @@ type tTIrxd struct {
 	// Outgoing bind payload for TTIRXD when marshalling bind values (Phase 1: single row binds).
 	bindRow        []driverCommon.B1Array
 	columnContexts []columnContext
-	lobColContext  []*lobColumnContext
 
 	numberOfReturningPositions int
 	isDmlReturning             bool
@@ -85,6 +85,13 @@ type tTIrxd struct {
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
 func newTTIrxd() driverCommon.Message[driverCommon.MessageType] {
 	return &tTIrxd{}
+}
+
+// setCodecFactory implements codecFactoryUser by storing the factory used to
+// resolve column wire readers. The message factory supplies this dependency
+// before RXD unmarshalling begins.
+func (rxd *tTIrxd) setCodecFactory(factory codecFactory) {
+	rxd.codecFactory = factory
 }
 
 // GetMsgCode implements Message.GetMsgCode, returning the TTC RXD message code.
@@ -106,16 +113,9 @@ func (rxd *tTIrxd) setNumberofReturningArgs(numberofArgs int) {
 	rxd.numberOfReturningPositions = numberofArgs
 }
 
-// setPrevRow assigns the previous row's column data for BVC carry. The matching
-// LOB metadata is supplied separately by setPrevLobColumnContext.
-func (rxd *tTIrxd) setPrevRow(row []driverCommon.B1Array) {
+// setPrevRow assigns previous column payloads, including LOB metadata, for BVC carry.
+func (rxd *tTIrxd) setPrevRow(row []columnPayload) {
 	rxd.prevRow = row
-}
-
-// setPrevLobColumnContext assigns the per-column LOB metadata for the previous
-// row. BVC decoding carries this metadata together with omitted column data.
-func (rxd *tTIrxd) setPrevLobColumnContext(lobColContext []*lobColumnContext) {
-	rxd.prevLobColContext = lobColContext
 }
 
 // setBvcState sets both the BVC protocol state indicator and the column-sent bitset for BVC column-carry logic.
@@ -140,10 +140,6 @@ func (rxd *tTIrxd) setSessionNCharacterSet(sessNCharSet driverCommon.UB2) {
 // SetSessionNCharacterSet sets session character set
 func (rxd *tTIrxd) setSessionCharacterSet(sessCharSet driverCommon.UB2) {
 	rxd.sessCharSet = sessCharSet
-}
-
-func (rxd *tTIrxd) getLobColumnContext() []*lobColumnContext {
-	return rxd.lobColContext
 }
 
 /*
@@ -193,19 +189,19 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 	return nil
 }
 
-// UnMarshalFrom reads and decodes either a regular RXD result-set row or a DML/PLSQL
+// UnmarshalFrom reads and decodes either a regular RXD result-set row or a DML/PLSQL
 // RETURNING-bind payload from the provided Marshaller per TTC specifications.
 // It uses column/row information previously set on the struct and applies BVC
 // column-carry to both raw data and LOB metadata when required. After a
 // successful call, BVC state is reset and rxd.row contains the unmarshalled row.
-func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	// DML returning case
 	if rxd.numberOfReturningPositions > 0 && rxd.isDmlReturning {
-		rxd.row = make([]driverCommon.B1Array, rxd.numberOfReturningPositions)
+		rxd.row = make([]columnPayload, rxd.numberOfReturningPositions)
 		for col := 0; col < rxd.numberOfReturningPositions; col++ {
 			numberOfRows, err := mar.UnmarshalUB4(ctx)
 			if err != nil {
-				common.Odl.Error("tTIrxd.UnMarshalFrom: failed to read DML RETURNING row count",
+				common.Odl.Error("tTIrxd.UnmarshalFrom: failed to read DML RETURNING row count",
 					"error", err, "stage", "dml-returning-row-count", "index", col)
 				return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 			}
@@ -234,18 +230,17 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
 
-	common.Odl.Debug("RXD Unmarshal: starting row",
+	common.Odl.Finest("RXD Unmarshal: starting row",
 		"rowNum", rxd.rowCount,
 		"bvcFound", rxd.bvcFound)
 
 	// BVC rows carry both raw column data and its aligned LOB metadata from the
 	// previous row. Columns marked present are unmarshalled as fresh values.
 	// For non-BVC rows, unmarshal all columns as fresh.
-	rxd.lobColContext = make([]*lobColumnContext, 0, int(rxd.numberOfColumns))
 	if rxd.bvcFound {
 		// BVC carry requires a previous row from the current result set.
 		if rxd.prevRow == nil {
-			common.Odl.Debug("BVC/column-carry protocol unsupported for first result row")
+			common.Odl.Finest("BVC/column-carry protocol unsupported for first result row")
 			return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 		}
 		// The carried row must remain aligned with the result metadata.
@@ -254,12 +249,7 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 				"columns", len(rxd.prevRow), "expected", rxd.numberOfColumns)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
 		}
-		if rxd.prevLobColContext != nil && len(rxd.prevLobColContext) != int(rxd.numberOfColumns) {
-			common.Odl.Warn("Previous LOB column context count mismatch",
-				"contexts", len(rxd.prevLobColContext), "cols", rxd.numberOfColumns)
-			return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
-		}
-		rxd.row = make([]driverCommon.B1Array, rxd.numberOfColumns)
+		rxd.row = make([]columnPayload, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
 			if rxd.bvcColSent != nil && rxd.bvcColSent.Get(col) {
 				err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
@@ -273,21 +263,12 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 				}
 			} else {
 				// Not present: carry the previous value and its matching LOB metadata.
-				if rxd.prevRow[col] != nil {
-					tmp := make(driverCommon.B1Array, len(rxd.prevRow[col]))
-					copy(tmp, rxd.prevRow[col])
-					rxd.row[col] = tmp
-				}
-				var lobContext *lobColumnContext
-				if rxd.prevLobColContext != nil {
-					lobContext = rxd.prevLobColContext[col]
-				}
-				rxd.lobColContext = append(rxd.lobColContext, lobContext)
+				rxd.row[col] = rxd.prevRow[col].clone()
 			}
 		}
 	} else {
 		// Non-BVC: all columns present, unmarshal each as fresh.
-		rxd.row = make([]driverCommon.B1Array, rxd.numberOfColumns)
+		rxd.row = make([]columnPayload, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
 			err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
 			if err != nil {
@@ -300,13 +281,8 @@ func (rxd *tTIrxd) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 			}
 		}
 	}
-	if len(rxd.lobColContext) != int(rxd.numberOfColumns) {
-		common.Odl.Warn("RXD LOB column context count mismatch",
-			"contexts", len(rxd.lobColContext), "cols", rxd.numberOfColumns)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
 	rxd.bvcFound = false
-	common.Odl.Debug("RXD Unmarshal: success",
+	common.Odl.Finest("RXD Unmarshal: success",
 		"rowNum", rxd.rowCount,
 		"rowData", rxd.row)
 	return nil
@@ -322,8 +298,7 @@ _unmarshalColumn unmarshals a single RXD column according to its Oracle wire typ
 Description:
 
 	Dispatches to the LOB-specific or scalar unmarshalling helper based on the TTC datatype.
-	For non-LOB columns it also appends a nil LOB context entry so the row's LOB metadata
-	slice remains aligned with the row data by column position.
+	Each payload retains its value and optional LOB metadata together.
 
 Parameters:
   - ctx: Request context used by the marshaller while reading from the wire.
@@ -338,282 +313,47 @@ Errors:
   - Propagates errors returned by the delegated column unmarshalling helper.
 */
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
-	switch dtyType {
-	case DtyClob:
-		if err := rxd._unmarshalClobColumn(ctx, mar, col); err != nil {
-			return err
-		}
-	case DtyBlob, DtyJSON:
-		if err := rxd._unmarshalBlobColumn(ctx, mar, col, dtyType); err != nil {
-			return err
-		}
-	default:
-		if err := rxd._unmarshalScalarColumn(ctx, mar, col); err != nil {
-			return err
-		}
-		rxd.lobColContext = append(rxd.lobColContext, nil)
+	// Preserve CLR framing when the existing decoder lookup has no usable entry.
+	handler := unwrapCLRColumn
+	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unwrapColumn != nil {
+		handler = decoder.unwrapColumn
 	}
+	payload, err := handler(ctx, mar, columnUnwrapContext{column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
+	if err != nil {
+		return err
+	}
+	// REF CURSOR rows need connection ownership before they are later exposed
+	// through connectionWrapper.Fetch. The statement executor registers this
+	// per-message list after the full RXD message has been unmarshalled.
+	if cursor, ok := payload.data.(*ttcRowsRefCursor); ok && cursor != nil {
+		rxd.refCursorRows = append(rxd.refCursorRows, cursor)
+	}
+	rxd.row[col] = payload
 	return nil
+}
+
+// getRefCursorRows returns the REF CURSOR values decoded from this RXD message.
+func (rxd *tTIrxd) getRefCursorRows() []*ttcRowsRefCursor {
+	return rxd.refCursorRows
 }
 
 // _unmarshalScalarColumn decodes a single column's value into rxd.row[col].
 // Reads length and value per TTC wire format. Returns error on failure.
 func (rxd *tTIrxd) _unmarshalScalarColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
-	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
+	payload, err := unwrapCLRColumn(ctx, mar, columnUnwrapContext{index: col})
 	if err != nil {
-		common.Odl.Warn("Failed to unmarshal column data column", "index", col, "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[rxd.GetMsgCode()])
+		return err
 	}
-	common.Odl.Debug("RXD Unmarshal: column data decoded",
-		"col", col,
-		"length", length,
-		"data", colData)
-	rxd.row[col] = colData
-	return nil
-}
-
-/*
-_unmarshalClobColumn unmarshals a prefetched CLOB/NCLOB column and its LOB metadata.
-
-Description:
-
-	Reads the TTC LOB header for text LOBs, including logical length, prefetch metadata,
-	character set information, inline prefetched data, and the server-side LOB locator.
-	The decoded raw bytes are stored in rxd.row[col] and the associated LOB metadata is
-	appended to rxd.lobColContext.
-
-Parameters:
-  - ctx: Request context used by the marshaller while reading from the wire.
-  - mar: Marshaller used to decode bytes from the RXD payload.
-  - col: Zero-based column index within the current row.
-
-Returns:
-  - error: Non-nil if the prefetched CLOB payload cannot be unmarshalled.
-
-Errors:
-  - Returns an error when the prefetched column payload cannot be read from the wire.
-*/
-func (rxd *tTIrxd) _unmarshalClobColumn(ctx context.Context, mar driverCommon.Marshaller, col int) error {
-	// length
-	lob := &lobColumnContext{}
-	var err error
-	if lob.LobLength, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read LOB length",
-			"error", err, "stage", "lob-length", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	if lob.LobLength == 0 {
-		rxd.row[col] = nil
-		rxd.lobColContext = append(rxd.lobColContext, lob)
-		return nil
-	}
-
-	// prefetched: always for V1
-	// ------------------------------------------
-	// prefetched length
-	if lob.PrefetchLength, err = mar.UnmarshalUB8(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read prefetch length",
-			"error", err, "stage", "prefetch-length", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	// prefetched chunk size
-	if lob.PrefetchChunkSize, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read prefetch chunk size",
-			"error", err, "stage", "prefetch-chunk-size", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	var dbVary bool
-	var ub1 driverCommon.UB1
-	if ub1, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read dbVary flag",
-			"error", err, "stage", "db-vary", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	dbVary = byte(ub1) == 0x1
-	if dbVary {
-		// characterset
-		if lob.CharsetID, err = mar.UnmarshalUB2(ctx); err != nil {
-			common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read charset ID",
-				"error", err, "stage", "charset-id", "index", col)
-			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-		}
-	}
-
-	// the form of use
-	if lob.CharsetForm, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read charset form",
-			"error", err, "stage", "charset-form", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-
-	// If the character set ID was not returned by the server, use the session
-	// character set
-	if lob.CharsetID == 0 {
-		if lob.CharsetForm == 2 {
-			lob.CharsetID = rxd.sessNCharSet
-		} else {
-			lob.CharsetID = rxd.sessCharSet
-		}
-	}
-
-	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
-	if err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read prefetched column data",
-			"error", err, "stage", "prefetched-data", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	common.Odl.Debug("RXD Unmarshal: column data decoded",
-		"col", col,
-		"length", length,
-		"data", colData)
-	rxd.row[col] = colData
-	// ------------------------------------------
-
-	// locator??
-	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalClobColumn: failed to read LOB locator",
-			"error", err, "stage", "lob-locator", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-
-	rxd.lobColContext = append(rxd.lobColContext, lob)
-
-	return nil
-
-}
-
-/*
-_processIndicator unmarshals the trailing JSON indicator fields for a JSON LOB column.
-
-Description:
-
-	Consumes the two UB2 indicator values emitted after JSON LOB payloads in the TTC
-	wire format. Both values are required for proper stream alignment even when the
-	column value is NULL.
-
-Parameters:
-  - ctx: Request context used by the marshaller while reading from the wire.
-  - mar: Marshaller used to decode bytes from the RXD payload.
-  - col: Zero-based column index within the current row.
-
-Returns:
-  - error: Non-nil if either JSON indicator field cannot be unmarshalled.
-
-Errors:
-  - Returns an error when either trailing JSON indicator cannot be read from the wire.
-*/
-func (rxd *tTIrxd) _processIndicator(ctx context.Context, mar driverCommon.Marshaller, col int) error {
-	var err error
-	if _, err = mar.UnmarshalSB2(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read JSON indicator 1",
-			"error", err, "stage", "json-indicator-1", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	if _, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read JSON indicator 2",
-			"error", err, "stage", "json-indicator-2", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
+	rxd.row[col] = payload
 	return nil
 }
 
 func (rxd *tTIrxd) _processDMLPlSqlIndicator(ctx context.Context, mar driverCommon.Marshaller, col int) error {
 	var err error
 	if _, err = mar.UnmarshalSB2(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read JSON indicator 1",
+		common.Odl.Error("tTIrxd._unwrapBlobColumn: failed to read JSON indicator 1",
 			"error", err, "stage", "json-indicator-1", "index", col)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
 	return nil
-}
-
-/*
-_unmarshalBlobColumn unmarshals a prefetched BLOB or JSON column and its LOB metadata.
-
-Description:
-
-	Reads the TTC LOB header for binary LOB payloads, including prefetch metadata, inline
-	prefetched bytes, and the server-side locator. When the datatype is JSON, the function
-	also consumes the trailing JSON indicator fields emitted by the protocol. The decoded
-	raw bytes are stored in rxd.row[col] and the associated LOB metadata is appended to
-	rxd.lobColContext.
-
-Parameters:
-  - ctx: Request context used by the marshaller while reading from the wire.
-  - mar: Marshaller used to decode bytes from the RXD payload.
-  - col: Zero-based column index within the current row.
-  - dtyType: Oracle TTC datatype, used to distinguish BLOB from JSON handling.
-
-Returns:
-  - error: Non-nil if the prefetched BLOB/JSON payload cannot be unmarshalled.
-
-Errors:
-  - Returns an error when the prefetched column payload cannot be read from the wire.
-*/
-func (rxd *tTIrxd) _unmarshalBlobColumn(ctx context.Context, mar driverCommon.Marshaller, col int, dtyType DtyType) error {
-	// length
-	lob := &lobColumnContext{}
-	var err error
-	if lob.LobLength, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read LOB length",
-			"error", err, "stage", "lob-length", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	if lob.LobLength == 0 {
-		rxd.row[col] = nil
-		rxd.lobColContext = append(rxd.lobColContext, lob)
-		if dtyType == DtyJSON {
-			if err = rxd._processIndicator(ctx, mar, col); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	// prefetched: always for V1
-	// ------------------------------------------
-	// prefetched length
-	if lob.PrefetchLength, err = mar.UnmarshalUB8(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read prefetch length",
-			"error", err, "stage", "prefetch-length", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	// prefetched chunk size
-	if lob.PrefetchChunkSize, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read prefetch chunk size",
-			"error", err, "stage", "prefetch-chunk-size", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-
-	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
-	if err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read prefetched column data",
-			"error", err, "stage", "prefetched-data", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	common.Odl.Debug("RXD Unmarshal: column data decoded",
-		"col", col,
-		"length", length,
-		"data", colData)
-	rxd.row[col] = colData
-	// ------------------------------------------
-
-	// locator
-	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
-		common.Odl.Error("tTIrxd._unmarshalBlobColumn: failed to read LOB locator",
-			"error", err, "stage", "lob-locator", "index", col)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-
-	// indicator
-	if dtyType == DtyJSON {
-		if err = rxd._processIndicator(ctx, mar, col); err != nil {
-			return err
-		}
-	}
-
-	rxd.lobColContext = append(rxd.lobColContext, lob)
-
-	return nil
-
 }

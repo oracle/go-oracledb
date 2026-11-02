@@ -159,7 +159,7 @@ func (keyValueList *keyValueList) MarshalTo(ctx context.Context, engine driverCo
 	return nil
 }
 
-// UnMarshalFrom unmarshals a keyValueList. Key-value pairs are decoded as
+// UnmarshalFrom unmarshals a keyValueList. Key-value pairs are decoded as
 // follows for each key-value pair:
 //   - the length of the kay is unmarshalled (SB4)
 //   - if the length of the key is greater than zero, the key is unmarshalled
@@ -172,7 +172,7 @@ func (keyValueList *keyValueList) MarshalTo(ctx context.Context, engine driverCo
 //
 // Returns:
 //   - An error if the unmarshalling operation fails.
-func (keyValueList *keyValueList) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (keyValueList *keyValueList) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 
 	for e := keyValueList.Front(); e != nil; e = e.Next() {
 		// Unmarshal key length
@@ -268,11 +268,11 @@ func (keywordValueList keywordValueArray) MarshalTo(ctx context.Context, engine 
 	return nil
 }
 
-// UnMarshalFrom Unmarshals a keyword value list
+// UnmarshalFrom Unmarshals a keyword value list
 //  1. Unmarshals a dynamicAllocatedArray containing the text value
 //  2. Unmarshals a dynamicAllocatedArray containing the binary value
 //  3. Unmarshals the keyword (UB2)
-func (keywordValueList keywordValueArray) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (keywordValueList keywordValueArray) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 	if driverCommon.UB4(len(keywordValueList)) > maxKeywordValueArrayPairs {
 		common.Odl.Debug("keyword/value pair count exceeds maximum",
 			"pairs", len(keywordValueList), "limit", maxKeywordValueArrayPairs)
@@ -280,12 +280,12 @@ func (keywordValueList keywordValueArray) UnMarshalFrom(ctx context.Context, eng
 	}
 	for i := 0; i < len(keywordValueList); i++ {
 		var textValue dynamicAllocatedArray
-		err := textValue.UnMarshalFrom(ctx, engine)
+		err := textValue.UnmarshalFrom(ctx, engine)
 		if err != nil {
 			return _wrapError(err, "unmarshal keyword/value")
 		}
 		var binaryValue dynamicAllocatedArray
-		err = binaryValue.UnMarshalFrom(ctx, engine)
+		err = binaryValue.UnmarshalFrom(ctx, engine)
 		if err != nil {
 			return _wrapError(err, "unmarshal keyword/value")
 		}
@@ -322,10 +322,10 @@ func (dalc *dynamicAllocatedArray) MarshalTo(ctx context.Context, engine driverC
 	return nil
 }
 
-// UnMarshalFrom Unmarshals a dynamic allocated array
+// UnmarshalFrom Unmarshals a dynamic allocated array
 //  1. Unmarshals the maxLength UB4
 //  2. Unmarshals a CLR usign the maxLength
-func (dalc *dynamicAllocatedArray) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (dalc *dynamicAllocatedArray) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 	var length, err = engine.UnmarshalUB4(ctx)
 	if err != nil {
 		return _wrapError(err, "unmarshal value")
@@ -438,4 +438,52 @@ func getKeyValueFromKeyword(nlsKeys [64]string, keyword keywordValuePair) (strin
 	}
 
 	return "", nil
+}
+
+// keywordValuePairWithName represents the TTI/TTC DTYKVE keyword/value pair with name.
+type keywordValuePairWithName struct {
+	// flag: UB4 flag
+	flag driverCommon.UB4
+	// key: DALC text key
+	key dynamicAllocatedArray
+	// textValue: DALC text value
+	textValue dynamicAllocatedArray
+	// binaryValue: DALC binary value
+	binaryValue dynamicAllocatedArray
+}
+
+// newKeywordValuePairWithName creates a DTYKVE keyword/value pair with name.
+// key, textValue, and binaryValue are converted to byte arrays. The caller is
+// responsible for validating the DTYKVE field limits before calling this
+// function.
+func newKeywordValuePairWithName(
+	key string,
+	textValue string,
+	binaryValue driverCommon.B1Array,
+	flag driverCommon.UB4,
+) *keywordValuePairWithName {
+
+	return &keywordValuePairWithName{
+		flag:        flag,
+		key:         dynamicAllocatedArray{value: driverCommon.StringToB1Array(key)},
+		textValue:   dynamicAllocatedArray{value: driverCommon.StringToB1Array(textValue)},
+		binaryValue: dynamicAllocatedArray{value: append(driverCommon.B1Array(nil), binaryValue...)},
+	}
+}
+
+// MarshalTo writes one DTYKVE record.
+func (kve *keywordValuePairWithName) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
+	if err := engine.MarshalUB4(ctx, kve.flag); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.key.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.textValue.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	if err := kve.binaryValue.MarshalTo(ctx, engine); err != nil {
+		return _wrapError(err, "marshal DTYKVE")
+	}
+	return nil
 }

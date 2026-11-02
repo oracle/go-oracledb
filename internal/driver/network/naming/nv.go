@@ -350,7 +350,7 @@ type ParsedConfig struct {
 	connectionContext *ConnectionContext
 }
 
-func resolveConnectStringUrl(connectStr string) (*conversionResult, error) {
+func resolveConnectStringURL(connectStr string) (*conversionResult, error) {
 	connStr := strings.TrimSpace(connectStr)
 
 	// TNS Descriptor (long format)
@@ -387,7 +387,7 @@ func ParseDSNString(dsn string) (*ParsedConfig, error) {
 		dsn = parts[1]
 	}
 
-	converted, err := resolveConnectStringUrl(dsn)
+	converted, err := resolveConnectStringURL(dsn)
 	if err != nil {
 		return nil, err
 	}

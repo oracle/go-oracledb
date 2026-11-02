@@ -45,9 +45,9 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-// TestMessageHeader_UnMarshalFrom check that a message header can be unmarshaled
+// TestMessageHeader_UnmarshalFrom check that a message header can be unmarshaled
 // check proerties of unmarshalle messages
-func TestMessageHeader_UnMarshalFrom(t *testing.T) {
+func TestMessageHeader_UnmarshalFrom(t *testing.T) {
 	t.Parallel()
 	size := 1024
 	dataBuffer := NewArrayDataBuffer(size) //DataBuffer is properly initialized
@@ -64,10 +64,10 @@ func TestMessageHeader_UnMarshalFrom(t *testing.T) {
 	// Create messageHeader
 	mh := &messageHeader{}
 
-	// UnMarshalFrom
-	err = mh.UnMarshalFrom(context.Background(), engine)
+	// UnmarshalFrom
+	err = mh.UnmarshalFrom(context.Background(), engine)
 	if err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	// Check GetType

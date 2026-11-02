@@ -71,7 +71,7 @@ const (
 	authPDKDF2CSKSalt   = "AUTH_PBKDF2_CSK_SALT"
 	authPassword        = "AUTH_PASSWORD"
 	authAlterSession    = "AUTH_ALTER_SESSION"
-	authProxyClientName = "AUTH_PROXY_CLIENT_NAME"
+	authProxyClientName = "PROXY_CLIENT_NAME"
 
 	authServerResponse = "AUTH_SVR_RESPONSE"
 
@@ -654,6 +654,10 @@ func (o *oAuth) setUser(username driverCommon.B1Array) {
 	o.user = username
 }
 
+func (o *oAuth) setProxyClient(clientName driverCommon.B1Array) {
+	o.clientName = clientName
+}
+
 func (o *oAuth) setConnectString(connectString string) {
 	o.connectString = driverCommon.StringToB1Array(connectString)
 }
@@ -688,15 +692,15 @@ func (rpa *OAuthRPA) GetMsgCode() driverCommon.MessageType {
 	return TTIRPA
 }
 
-// UnMarshalFrom deserializes the OAuthRPA message from the provided marshaller engine.
-// It implements the common.UnMarshallable interface and reads the TTC protocol
+// UnmarshalFrom deserializes the OAuthRPA message from the provided marshaller engine.
+// It implements the common.Unmarshallable interface and reads the TTC protocol
 // data for the authentication reply, extracting connection properties and session information.
-func (rpa *OAuthRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (rpa *OAuthRPA) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 	common.Odl.Debug("unmarshal OAUTH RPA starts")
 	var err error
 	rpa.outNbPairs, err = engine.UnmarshalUB2(ctx)
 	if err != nil {
-		common.Odl.Warn("Unable to unmarshal oAuth RPA, cant' get pairs count", "error", err)
+		common.Odl.Warn("Unable to unmarshal oAuth RPA, cannot get pairs count", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAUTH RPA")
 	}
 	if err = validateAuthKeyValueLength("pairs", driverCommon.SB4(rpa.outNbPairs), maxAuthKeyValuePairs); err != nil {
@@ -705,9 +709,9 @@ func (rpa *OAuthRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Mars
 
 	//for o5logon, the flag is the verifier type
 	keyValueList := newPreallocatedKeyValueList(int(rpa.outNbPairs))
-	err = ((driverCommon.UnMarshallable)(keyValueList)).UnMarshalFrom(ctx, engine)
+	err = ((driverCommon.Unmarshallable)(keyValueList)).UnmarshalFrom(ctx, engine)
 	if err != nil {
-		common.Odl.Warn("Unable to unmarshal oAuth RPA, cant' unmarshal key/value pairs", "error", err)
+		common.Odl.Warn("Unable to unmarshal oAuth RPA, cannot unmarshal key/value pairs", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAUTH RPA")
 	}
 

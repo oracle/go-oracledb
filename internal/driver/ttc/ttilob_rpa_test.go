@@ -53,7 +53,7 @@ import (
 // -----------------------------------------------------------------------------
 
 // lobRpaReadGoldenPayload holds the TTC message body (post-header) for the LOB RPA
-// response used by TestTTILobRpa_UnMarshalFrom_Success.
+// response used by TestTTILobRpa_UnmarshalFrom_Success.
 var lobRpaReadGoldenPayload = []string{
 	`"00 70 00"`,
 	`"02 02 0C 82 00 00 02 00"`,
@@ -250,14 +250,14 @@ func runLobRpaSuccessCase(t *testing.T, tc lobRpaSuccessCase) {
 	def := tc.setup()
 	msg.SetDefinition(def)
 
-	if err := msg.UnMarshalFrom(ctx, mar); err != nil {
-		t.Fatalf("UnMarshalFrom returned error: %v", err)
+	if err := msg.UnmarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("UnmarshalFrom returned error: %v", err)
 	}
 
 	assertLobDefinition(t, def, tc.expect)
 }
 
-func TestTTILobRpa_UnMarshalFrom_Success(t *testing.T) {
+func TestTTILobRpa_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 
 	cases := []lobRpaSuccessCase{
@@ -381,7 +381,7 @@ func runLobRpaFailureCase(t *testing.T, tc lobRpaFailureCase) {
 	msg := newTTILobRPA().(*ttiLobRpa)
 	msg.SetDefinition(tc.definition())
 
-	err = msg.UnMarshalFrom(context.Background(), mar)
+	err = msg.UnmarshalFrom(context.Background(), mar)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -390,7 +390,7 @@ func runLobRpaFailureCase(t *testing.T, tc lobRpaFailureCase) {
 	}
 }
 
-func TestTTILobRpa_UnMarshalFrom_Failure(t *testing.T) {
+func TestTTILobRpa_UnmarshalFrom_Failure(t *testing.T) {
 	t.Parallel()
 
 	readPayload := lobRpaReadGoldenPayload

@@ -106,6 +106,54 @@ or:
  ```
  return NewOracleError(ConnectionLost, err, nil)
  ```
+
+### Logging.
+
+A common logger _Odl_ is available in common package.
+
+```go
+import "github.com/oracle/go-oracledb/v26/internal/common"
+
+common.Odl.Info("Hello Go world")
+```
+This logger is customize by the use of logging configuration.
+
+
+Custime level are defined.
+
+```go
+	OlFinest
+	OlFine
+	OlDebug
+	OlInfo
+	OlWarning
+	OlError
+```
+
+
+In order to trace more easily connections'behavior you should use the OdlT method.
+This method returns a logger based on the default one that host an ID attribute
+
+```go
+import "github.com/oracle/go-oracledb/v26/internal/common"
+
+common.OdlT("1234").Info("Hello Go world")
+// outpout will be msg="Hello Go world" ID="1234"
+```
+
+Each time it make sens to add a namespace to a given activity within logging, It is recommended
+to use attributes like 
+
+```go
+import "github.com/oracle/go-oracledb/v26/internal/common"
+
+common.OdlT("1234").With("request","SELECT").Info("Hello Go world")
+// when connection ID is not available 
+common.Odl.With("request","SELECT").Info("Hello Go world")
+```
+For long live objects, it is recommended to keep a reference to the logger object.
+
+
 ## Testing
 
 ### Configuration

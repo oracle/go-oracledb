@@ -43,15 +43,15 @@ import (
 	"testing"
 )
 
-func TestTTIuds24_UnMarshalFrom_Success(t *testing.T) {
+func TestTTIuds24_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	payload := makeTtiudsUnmarshalPayload(validTtiudsUnmarshalDump)
 	mar := createMarshaller(payload, 0, 0)
 	obj := newTTIuds24()
-	err := obj.UnMarshalFrom(ctx, mar)
+	err := obj.UnmarshalFrom(ctx, mar)
 	if err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 	// Only check vectorDim, vectorType, vectorFlag fields
 	typed := obj.(*tTIuds24)
@@ -66,7 +66,7 @@ func TestTTIuds24_UnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-func TestTTIuds24_UnMarshalFrom_Fail(t *testing.T) {
+func TestTTIuds24_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	type faultyTest struct {
 		name      string
@@ -85,7 +85,7 @@ func TestTTIuds24_UnMarshalFrom_Fail(t *testing.T) {
 			ctx := context.Background()
 			mar := createMarshaller(payload, failOnReadByte, tc.failCount)
 			obj := newTTIuds24()
-			err := obj.UnMarshalFrom(ctx, mar)
+			err := obj.UnmarshalFrom(ctx, mar)
 			if err == nil {
 				t.Errorf("expected error, got nil for fault case: %s", tc.name)
 			}

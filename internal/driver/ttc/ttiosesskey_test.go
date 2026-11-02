@@ -190,7 +190,7 @@ func TestOSesskeyRPANew(t *testing.T) {
 }
 
 func makeOSesskeyRPASuccessPayload() []byte {
-	// Simplified payload for testing UnMarshalFrom
+	// Simplified payload for testing UnmarshalFrom
 	// UB2 number of pairs (2)
 	// Then key-value pairs
 	// AUTH_SESSKEY: "sessionkey"
@@ -240,18 +240,18 @@ func makeOSesskeyRPASuccessPayload() []byte {
 	return buf
 }
 
-// TestOSesskeyRPAUnMarshalFrom_Success checks success path unmarshaling.
-func TestOSesskeyRPAUnMarshalFrom_Success(t *testing.T) {
+// TestOSesskeyRPAUnmarshalFrom_Success checks success path unmarshaling.
+func TestOSesskeyRPAUnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	payload := makeOSesskeyRPASuccessPayload()
 	rpa := NewOSesskeyRPA()
 	buf := NewArrayDataBuffer(1024)
 	buf.WriteBytesWithContext(context.Background(), payload)
 	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-	unmarshallable, _ := rpa.(common.UnMarshallable)
-	err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+	unmarshallable, _ := rpa.(common.Unmarshallable)
+	err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 	if err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 	if !rpa.(*oSesskeyRPA).connectionValues.ContainsKey("AUTH_SESSKEY") {
 		t.Error("Missing AUTH_SESSKEY")
@@ -288,8 +288,8 @@ func TestOSesskeyRPAUnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-// TestOSesskeyRPAUnMarshalFrom_Fail checks error unmarshaling.
-func TestOSesskeyRPAUnMarshalFrom_Fail(t *testing.T) {
+// TestOSesskeyRPAUnmarshalFrom_Fail checks error unmarshaling.
+func TestOSesskeyRPAUnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
@@ -302,11 +302,11 @@ func TestOSesskeyRPAUnMarshalFrom_Fail(t *testing.T) {
 		{"Error Reading Number of Pairs (ReadByte)", []byte{0x00, 0x05}, 1, 0, "simulated read error"},
 		{"Error Reading Key Value List (ReadBytes)", makeOSesskeyRPAPayload(), 0, 2, "simulated read error"},
 		// Missing keys in payload
-		{"Missing AUTH_SESSKEY", makeOSesskeyRPAMissingKeyPayload("AUTH_SESSKEY"), 0, 0, "Failed to unmarshal message"},
-		{"Missing AUTH_VFR_DATA", makeOSesskeyRPAMissingKeyPayload("AUTH_VFR_DATA"), 0, 0, "Failed to unmarshal message"},
-		{"Missing AUTH_PBKDF2_CSK_SALT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_CSK_SALT"), 0, 0, "Failed to unmarshal message"},
-		{"Missing AUTH_PBKDF2_VGEN_COUNT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_VGEN_COUNT"), 0, 0, "Failed to unmarshal message"},
-		{"Missing AUTH_PBKDF2_SDER_COUNT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_SDER_COUNT"), 0, 0, "Failed to unmarshal message"},
+		{"Missing AUTH_SESSKEY", makeOSesskeyRPAMissingKeyPayload("AUTH_SESSKEY"), 0, 0, "failed to unmarshal message"},
+		{"Missing AUTH_VFR_DATA", makeOSesskeyRPAMissingKeyPayload("AUTH_VFR_DATA"), 0, 0, "failed to unmarshal message"},
+		{"Missing AUTH_PBKDF2_CSK_SALT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_CSK_SALT"), 0, 0, "failed to unmarshal message"},
+		{"Missing AUTH_PBKDF2_VGEN_COUNT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_VGEN_COUNT"), 0, 0, "failed to unmarshal message"},
+		{"Missing AUTH_PBKDF2_SDER_COUNT", makeOSesskeyRPAMissingKeyPayload("AUTH_PBKDF2_SDER_COUNT"), 0, 0, "failed to unmarshal message"},
 		// Invalid counts that must fail strconv.Atoi
 		{"Invalid VGEN_COUNT", makeOSesskeyRPAInvalidCountPayload("VGEN", "abcd"), 0, 0, "strconv.Atoi"},
 		{"Invalid SDER_COUNT", makeOSesskeyRPAInvalidCountPayload("SDER", "d"), 0, 0, "strconv.Atoi"},
@@ -332,10 +332,9 @@ func TestOSesskeyRPAUnMarshalFrom_Fail(t *testing.T) {
 			}
 
 			engine := NewMarshalEngine(faulty, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-			unmarshallable, _ := rpa.(common.UnMarshallable)
+			unmarshallable, _ := rpa.(common.Unmarshallable)
 
-			// zsession.PrintPacket(tc.payload, 0, len(tc.payload))
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 			if tc.name == "Invalid VGEN_COUNT_1" || tc.name == "Invalid SDER_COUNT_2" {
 				return
 			}
@@ -411,10 +410,10 @@ func TestOSesskeyRPAGetters(t *testing.T) {
 	buf := NewArrayDataBuffer(1024)
 	buf.WriteBytesWithContext(context.Background(), payload)
 	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-	unmarshallable, _ := rpa.(common.UnMarshallable)
-	err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+	unmarshallable, _ := rpa.(common.Unmarshallable)
+	err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 	if err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	sessionProperties := rpa.(*oSesskeyRPA).connectionValues
@@ -449,9 +448,9 @@ func TestOSesskeyRPAGetters(t *testing.T) {
 	}
 }
 
-// TestOSesskeyRPAUnMarshalFrom_Golden unmarshals the golden RPA hex dump and
+// TestOSesskeyRPAUnmarshalFrom_Golden unmarshals the golden RPA hex dump and
 // verifies the parsed connection values and derived fields.
-func TestOSesskeyRPAUnMarshalFrom_Golden(t *testing.T) {
+func TestOSesskeyRPAUnmarshalFrom_Golden(t *testing.T) {
 	t.Parallel()
 	payload := makeOSesskeyRPAPayload()
 	if len(payload) == 0 {
@@ -463,9 +462,9 @@ func TestOSesskeyRPAUnMarshalFrom_Golden(t *testing.T) {
 	buf.WriteBytesWithContext(context.Background(), payload)
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	unmarshallable, _ := rpa.(common.UnMarshallable)
-	if err := unmarshallable.UnMarshalFrom(context.Background(), engine); err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+	unmarshallable, _ := rpa.(common.Unmarshallable)
+	if err := unmarshallable.UnmarshalFrom(context.Background(), engine); err != nil {
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	cv := rpa.(*oSesskeyRPA).connectionValues

@@ -71,14 +71,14 @@ type Marshallable interface {
 	MarshalTo(context.Context, Marshaller) error
 }
 
-// UnMarshallable represents something that can be unmarshalled
-type UnMarshallable interface {
-	// UnMarshalFrom unmarshals the UnMarshallable using the Marshaller.
+// Unmarshallable represents something that can be unmarshalled
+type Unmarshallable interface {
+	// UnmarshalFrom unmarshals the Unmarshallable using the Marshaller.
 	//
 	// Parameters:
 	//   - the context
 	//   - the marshaller
 	// Returns:
 	//   - un error if an error occurs
-	UnMarshalFrom(ctx context.Context, engine Marshaller) error
+	UnmarshalFrom(ctx context.Context, engine Marshaller) error
 }

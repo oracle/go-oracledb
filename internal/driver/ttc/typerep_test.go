@@ -97,7 +97,7 @@ func TestTypeRep_MarshalTo_Fail(t *testing.T) {
 	}
 }
 
-func TestTypeRep_UnMarshalFrom_Success(t *testing.T) {
+func TestTypeRep_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -113,14 +113,14 @@ func TestTypeRep_UnMarshalFrom_Success(t *testing.T) {
 		_ = buf.WriteBytesWithContext(context.Background(), payload)
 		buf.currentReadPosition = 0
 		engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-		err := tr.UnMarshalFrom(context.Background(), engine)
+		err := tr.UnmarshalFrom(context.Background(), engine)
 		if err != nil {
-			t.Fatalf("[%s] UnMarshalFrom returned error: %v", tc.name, err)
+			t.Fatalf("[%s] UnmarshalFrom returned error: %v", tc.name, err)
 		}
 	}
 }
 
-func TestTypeRep_UnMarshalFrom_Fail(t *testing.T) {
+func TestTypeRep_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name                string
@@ -147,7 +147,7 @@ func TestTypeRep_UnMarshalFrom_Fail(t *testing.T) {
 				FailOnReadBytesCall:  tt.failOnReadBytesCall,
 			}
 			engine := NewNativeMarshalEngine(faulty, common.BIG_ENDIAN)
-			err := tr.UnMarshalFrom(context.Background(), engine)
+			err := tr.UnmarshalFrom(context.Background(), engine)
 			if err == nil || !regexp.MustCompile("simulated read error").MatchString(err.Error()) {
 				t.Errorf("expected 'simulated read error' but got %v", err)
 			}
@@ -155,7 +155,7 @@ func TestTypeRep_UnMarshalFrom_Fail(t *testing.T) {
 	}
 }
 
-func TestTypeRep_UnMarshalFrom_TooManyTypeRepresentations(t *testing.T) {
+func TestTypeRep_UnmarshalFrom_TooManyTypeRepresentations(t *testing.T) {
 	t.Parallel()
 	tr := newTypeRep()
 	payload := make([]byte, 0, int(_maxReceivedReps+1)*4+2)
@@ -170,7 +170,7 @@ func TestTypeRep_UnMarshalFrom_TooManyTypeRepresentations(t *testing.T) {
 	buf.currentReadPosition = 0
 	engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
 
-	err := tr.UnMarshalFrom(context.Background(), engine)
+	err := tr.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
 		t.Fatal("expected protocol violation error, got nil")
 	}

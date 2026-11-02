@@ -62,7 +62,7 @@ const (
 // operation flags (exerof) and execution flags (exeflg).
 type tTIOexfen struct {
 	headerMarshaller driverCommon.Marshallable // marshals the function code w/wo seq and token numbers
-	cursorId         driverCommon.SB4          // execid: cursor id
+	cursorID         driverCommon.SB4          // execid: cursor ID
 	fetchSize        driverCommon.UB4          // exenit: number of rows to fetch
 	options          driverCommon.UB4          // options (used to derive commit-on-success)
 }
@@ -87,8 +87,8 @@ func (m *tTIOexfen) GetMsgCode() driverCommon.MessageType { return TTIFUN }
 // GetFuncCode returns the TTC function code associated with OEXFEN.
 func (m *tTIOexfen) GetFuncCode() driverCommon.FunctionType { return oExfen }
 
-// setCursorId sets the cursor id.
-func (m *tTIOexfen) setCursorId(c driverCommon.SB4) { m.cursorId = c }
+// setCursorID sets the cursor ID.
+func (m *tTIOexfen) setCursorID(c driverCommon.SB4) { m.cursorID = c }
 
 // setFetchSize sets the number of iterations (rows) for execute+fetch.
 func (m *tTIOexfen) setFetchSize() { m.fetchSize = _maxfetchSize }
@@ -99,7 +99,7 @@ func (m *tTIOexfen) setOptions(opts driverCommon.UB4) { m.options = opts }
 // MarshalTo serializes the OEXFEN function message.
 //
 // Wire layout:
-// - execid (cursorId)  -> SWORD (marshalled here as SB4 for consistency with engine usage)
+// - execid (cursor ID)  -> SWORD (marshalled here as SB4 for consistency with engine usage)
 // - exenit (iters)   -> SWORD (marshalled as SB4)
 // - exerof (ops)     -> SWORD (marshalled as UB4): KPUCXEXE|KPUCXFCH
 // - exeflg (modifiers)-> SWORD (marshalled as UB4): commit-on-success if requested
@@ -114,11 +114,11 @@ func (m *tTIOexfen) MarshalTo(ctx context.Context, engine driverCommon.Marshalle
 	}
 
 	// 2) Payload fields
-	// execid (cursorId)
-	if err := engine.MarshalSB4(ctx, m.cursorId); err != nil {
+	// execid (cursor ID)
+	if err := engine.MarshalSB4(ctx, m.cursorID); err != nil {
 		common.Odl.Error("TTIOexfen.MarshalTo: cursorId marshal failed",
 			"error", err,
-			"cursorId", m.cursorId,
+			"cursorId", m.cursorID,
 			"msgCode", m.GetMsgCode(),
 		)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[m.GetMsgCode()])

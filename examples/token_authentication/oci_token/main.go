@@ -89,7 +89,7 @@ func (p *fileOCITokenProvider) Token(_ context.Context) (string, error) {
 func (p *fileOCITokenProvider) PrivateKeyForToken(_ context.Context, token string) ([]byte, error) {
 	keyPEM := p.privateKeyForToken[token]
 	if keyPEM == nil {
-		return nil, errors.New("No private key found for provided token")
+		return nil, errors.New("no private key found for the provided token")
 	}
 	return keyPEM, nil
 }

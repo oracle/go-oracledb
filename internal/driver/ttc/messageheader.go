@@ -52,7 +52,7 @@ type messageHeader struct { // we can argue of the need for interface as message
 	functionType driverCommon.FunctionType
 }
 
-func (mh *messageHeader) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (mh *messageHeader) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 	// messageType also implement the "marshaller" interface
 	var err error
 	msgType, err := engine.UnmarshalUB1(ctx)

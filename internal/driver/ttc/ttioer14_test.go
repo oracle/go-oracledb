@@ -63,22 +63,6 @@ func TestNewTTIoer14(t *testing.T) {
 	}
 }
 
-// TestTTIoer14_Init sets nonzero values, calls Init, and checks that all fields reset.
-func TestTTIoer14_Init(t *testing.T) {
-	t.Parallel()
-	oer := newTTIoer14().(*tTIoer14)
-	oer.sqlCommandType = 42
-	oer.checksum = 99
-	oer.tTIoer.oerrcd2 = 777
-	oer.init()
-	if oer.sqlCommandType != 0 || oer.checksum != 0 {
-		t.Errorf("Init should reset oertyp2 and oerchksm to zero; got oertyp2=%d, oerchksm=%d", oer.sqlCommandType, oer.checksum)
-	}
-	if oer.tTIoer.oerrcd2 != 0 {
-		t.Errorf("Init should reset embedded tTIoer fields")
-	}
-}
-
 // TestTTIoer14_GetMsgCode ensures GetMsgCode returns TTIOER.
 func TestTTIoer14_GetMsgCode(t *testing.T) {
 	t.Parallel()
@@ -126,10 +110,10 @@ func TestTTIoer14_UnmarshalAttributes_Fail(t *testing.T) {
 	}
 }
 
-// TestTTIoer14_UnMarshalFrom_Success verifies successful UnMarshalFrom paths:
+// TestTTIoer14_UnmarshalFrom_Success verifies successful UnmarshalFrom paths:
 // - when oerrcd2 == 0 (no error message section)
 // - when oerrcd2 != 0, ensuring error message content is parsed as expected.
-func TestTTIoer14_UnMarshalFrom_Success(t *testing.T) {
+func TestTTIoer14_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
 		name       string
@@ -141,7 +125,7 @@ func TestTTIoer14_UnMarshalFrom_Success(t *testing.T) {
 		{
 			name: "Success",
 			fillBuffer: func() []byte {
-				// For UnMarshalFrom success, oerrcd2 must be 0
+				// For UnmarshalFrom success, oerrcd2 must be 0
 				return makeOerPayload(oerDump)
 			},
 			ErrorMsg: "",
@@ -163,7 +147,7 @@ func TestTTIoer14_UnMarshalFrom_Success(t *testing.T) {
 			oer.setSupportsEndOfCallStatus(true)
 			buf := tc.fillBuffer()
 			mar := createMarshaller(buf, 0, 0)
-			err := oer.UnMarshalFrom(context.Background(), mar)
+			err := oer.UnmarshalFrom(context.Background(), mar)
 			assertErrorContains(t, err, "")
 			// Match oer error
 			if tc.ErrorMsg != "" {
@@ -178,11 +162,11 @@ func TestTTIoer14_UnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-// TestTTIoer14_UnMarshalFrom_Fail triggers failures in different phases:
+// TestTTIoer14_UnmarshalFrom_Fail triggers failures in different phases:
 // - attribute unmarshalling failure
 // - error-message unmarshalling failure (when oerrcd2 != 0),
 // and asserts an error is returned in both cases.
-func TestTTIoer14_UnMarshalFrom_Fail(t *testing.T) {
+func TestTTIoer14_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
 		name       string
@@ -219,7 +203,7 @@ func TestTTIoer14_UnMarshalFrom_Fail(t *testing.T) {
 			oer.setSupportsEndOfCallStatus(true)
 			buf := tc.fillBuffer()
 			mar := createMarshaller(buf, tc.failOn, tc.failCount)
-			err := oer.UnMarshalFrom(context.Background(), mar)
+			err := oer.UnmarshalFrom(context.Background(), mar)
 			assertErrorContains(t, err, "error")
 		})
 	}

@@ -39,7 +39,6 @@
 package common
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -106,5 +105,5 @@ func NormalizeProtocol(ps string) (Protocol, error) {
 	if normalized == "tcps" {
 		return ProtocolTCPS, nil
 	}
-	return ProtocolTCP, errors.New(fmt.Sprintf("Invalid boolean value [%s]", ps)) // TODO : use ORA error for this.
+	return ProtocolTCP, fmt.Errorf("invalid protocol value [%s]", ps) // TODO : use ORA error for this.
 }

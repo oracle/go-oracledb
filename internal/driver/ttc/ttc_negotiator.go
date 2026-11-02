@@ -62,7 +62,7 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	var pro *tTIpro
 	var dty *tTIdty
 
-	common.Odl.Debug("connectionNegotiator: Negotiation start")
+	common.Odl.Fine("connectionNegotiator: Negotiation start")
 	// 1. Create Shelf & Session Context
 	shelf, sessCtx := _createShelfAndSessionContext()
 
@@ -106,7 +106,7 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	if clientVersion < serverVersion {
 		negotiatedTTCVersion = clientVersion
 	}
-	common.Odl.Debug("Negotiated TTC version", "client version", clientVersion, "server version", serverVersion, "negotiated version", negotiatedTTCVersion)
+	common.Odl.Fine("Negotiated TTC version", "client version", clientVersion, "server version", serverVersion, "negotiated version", negotiatedTTCVersion)
 
 	// set timezone version number in session context
 	sessCtx.SetTimeZoneVersionNumber(dty.GetTimeZoneVersionNumber())
@@ -114,18 +114,11 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	// 7. Update Version based MessageFactory
 	_ = _createAndRegisterMessageFactory(shelf, int8(negotiatedTTCVersion))
 
-	common.Odl.Debug("connectionNegotiator: Negotiation complete", "SessionContext", sessCtx, "Shelf", shelf)
+	common.Odl.Fine("connectionNegotiator: Negotiation complete", "SessionContext", sessCtx, "Shelf", shelf)
 
 	_createAndRegisterCodecFactory(shelf, int8(negotiatedTTCVersion))
 
-	// 8. Re-register messages with negotiated capabilities
-	if shelf.GetCapabilities()[kpccapCtbTtc1Eocs].IsSet {
-		RegisterOerWithCapability()
-		RegisterSTAWithCapability()
-		common.Odl.Debug("Replaced OER messages by messages with EOCS support")
-	}
-
-	common.Odl.Debug("connectionNegotiator: Negotiation complete", "SessionContext", sessCtx, "Shelf", shelf)
+	common.Odl.Fine("connectionNegotiator: Negotiation complete", "SessionContext", sessCtx, "Shelf", shelf)
 	return sessCtx, shelf, nil
 }
 
@@ -141,7 +134,7 @@ func (cn *connectionNegotiator) _negotiateDatatype(
 	msgfactory driverCommon.Factory,
 	pro *tTIpro,
 ) (*tTIdty, error) {
-	common.Odl.Debug("Start datatype negotiation")
+	common.Odl.Fine("Start datatype negotiation")
 	dtyMsg, err := msgfactory.GetMessage(TTIDTY)
 	if err != nil {
 		common.Odl.Warn("msgfactory.GetMessage(TTIDTY) failed", "error", err)
@@ -154,7 +147,7 @@ func (cn *connectionNegotiator) _negotiateDatatype(
 		typeRepresentationTable.SetFlags(TTCLXMCONV)
 	}
 
-	common.Odl.Debug("connectionNegotiator: TTIDTY message created and sending")
+	common.Odl.Fine("connectionNegotiator: TTIDTY message created and sending")
 	if pro == nil || pro.clientCaps == nil {
 		common.Odl.Warn("Client Caps is nil) failed", "error", err)
 		return nil, common.NewOracleError(oracleErrors.NegotiatorError, err, nil)
@@ -189,11 +182,11 @@ func (cn *connectionNegotiator) _negotiateDatatype(
 		common.Odl.Warn("msgStmr.Pull(TTIDTY) failed", "error", err)
 		return nil, common.NewOracleError(oracleErrors.NegotiatorError, err)
 	}
-	common.Odl.Debug("connectionNegotiator: TTIDTY negotiation message received", "msg_type", fmt.Sprintf("%T", msg))
+	common.Odl.Fine("connectionNegotiator: TTIDTY negotiation message received", "msg_type", fmt.Sprintf("%T", msg))
 
 	switch m := msg.(type) {
 	case *tTIdty:
-		common.Odl.Debug("connectionNegotiator: Negotiated datatype", "DTY", m)
+		common.Odl.Fine("connectionNegotiator: Negotiated datatype", "DTY", m)
 		return m, nil
 	default:
 		common.Odl.Warn("Unexpected message type during TTIDTY", "message", m)
@@ -212,7 +205,7 @@ func (cn *connectionNegotiator) _negotiateProtocol(
 		common.Odl.Warn("msgfactory.GetMessage(TTIPRO) failed", "error", err)
 		return nil, common.NewOracleError(oracleErrors.NegotiatorError, err, nil)
 	}
-	common.Odl.Debug("connectionNegotiator: TTIPRO message created and sending")
+	common.Odl.Fine("connectionNegotiator: TTIPRO message created and sending")
 	err = msgStmr.Push(ctx, proMsg.(driverCommon.Message[driverCommon.MessageType]))
 	if err != nil {
 		common.Odl.Warn("Push TTIPRO failed", "error", err)
@@ -230,11 +223,11 @@ func (cn *connectionNegotiator) _negotiateProtocol(
 		common.Odl.Warn("msgStmr.Pull(TTIPRO) failed", "error", err)
 		return nil, common.NewOracleError(oracleErrors.NegotiatorError, err, nil)
 	}
-	common.Odl.Debug("connectionNegotiator: TTIPRO negotiation message received", "msg_type", fmt.Sprintf("%T", msg))
+	common.Odl.Fine("connectionNegotiator: TTIPRO negotiation message received", "msg_type", fmt.Sprintf("%T", msg))
 
 	switch m := msg.(type) {
 	case *tTIpro:
-		common.Odl.Debug("connectionNegotiator: Negotiated capabilities", "Caps", m.clientCaps)
+		common.Odl.Fine("connectionNegotiator: Negotiated capabilities", "Caps", m.clientCaps)
 		return m, nil
 	default:
 		common.Odl.Warn("Unexpected message type", "message", m)
@@ -245,10 +238,10 @@ func (cn *connectionNegotiator) _negotiateProtocol(
 // _createShelfAndSessionContext manages creation of Shelf and SessionContext.
 func _createShelfAndSessionContext() (*ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext) {
 	shelf := newShelf[driverCommon.MessageType]()
-	common.Odl.Debug("connectionNegotiator: Shelf created")
+	common.Odl.Fine("connectionNegotiator: Shelf created")
 
 	sessCtx := driverCommon.NewSessionContext()
-	common.Odl.Debug("connectionNegotiator: SessionContext created")
+	common.Odl.Fine("connectionNegotiator: SessionContext created")
 	return shelf, sessCtx
 }
 
@@ -258,16 +251,16 @@ func _createAndRegisterMessageStreamer(
 ) *MessageStreamer {
 	msgStmr := NewMessageStreamer(shelf)
 	shelf.RegisterMessageStreamer(msgStmr)
-	common.Odl.Debug("connectionNegotiator: MessageStreamer created and registered")
+	common.Odl.Fine("connectionNegotiator: MessageStreamer created and registered")
 	return msgStmr
 }
 
 // _createAndRegisterMessageFactory creates a new message factory and registers it to the shelf.
 func _createAndRegisterMessageFactory(
 	shelf *ttiShelf[driverCommon.MessageType], version int8) driverCommon.Factory {
-	msgfactory := NewMessageFactoryForProtocol(version)
+	msgfactory := NewMessageFactoryForProtocol(version, shelf.GetCapabilities())
 	shelf.RegisterMessageFactory(msgfactory)
-	common.Odl.Debug("connectionNegotiator: MessageFactory created and registered")
+	common.Odl.Fine("connectionNegotiator: MessageFactory created and registered")
 	return msgfactory
 }
 
@@ -276,7 +269,7 @@ func _createAndRegisterCodecFactory(
 	shelf *ttiShelf[driverCommon.MessageType], version int8) {
 	codecFactory := NewCodecFactoryForProtocol(version)
 	shelf.RegisterCodecFactory(codecFactory)
-	common.Odl.Debug("connectionNegotiator: codecFactory created and registered")
+	common.Odl.Fine("connectionNegotiator: codecFactory created and registered")
 }
 
 // _createAndRegisterMarshaller creates a new marshaller and registers it to the shelf.
@@ -288,10 +281,10 @@ func _createAndRegisterMarshaller(
 	var mar driverCommon.Marshaller
 	if isNative {
 		mar = NewNativeMarshalEngine(buf, driverCommon.BIG_ENDIAN)
-		common.Odl.Debug("connectionNegotiator: Creating Native Marshaller")
+		common.Odl.Fine("connectionNegotiator: Creating Native Marshaller")
 	} else {
 		mar = NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-		common.Odl.Debug("connectionNegotiator: Creating TTC Marshaller")
+		common.Odl.Fine("connectionNegotiator: Creating TTC Marshaller")
 	}
 	if props := shelf.GetConnectionProperties(); props != nil {
 		if marshalEngine, ok := mar.(*MarshalEngine); ok {
@@ -299,5 +292,5 @@ func _createAndRegisterMarshaller(
 		}
 	}
 	shelf.RegisterMarshaller(mar)
-	common.Odl.Debug("connectionNegotiator: Marshaller created/updated and registered")
+	common.Odl.Fine("connectionNegotiator: Marshaller created/updated and registered")
 }

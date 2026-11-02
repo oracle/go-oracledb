@@ -102,13 +102,14 @@ type OracleConnectionProperties struct {
 	// WalletLocation sets the directory containing Oracle wallets.
 	WalletLocation string `ns_name:"wallet_location" default:"" help:"sets the directory containing the Oracle wallets"`
 
-	// HttpsProxy sets the HTTP proxy hostname or IP address used to tunnel TLS
-	// client connections.
-	HttpsProxy string `ns_name:"https_proxy" default:"" help:"sets an HTTP proxy hostname or IP address for tunneling TLS client connections"`
+	// HttpsProxy sets an unauthenticated HTTP CONNECT proxy hostname or IP
+	// address used to tunnel TCPS client connections. Proxy authentication and
+	// the Proxy-Authorization header are not supported.
+	HttpsProxy string `ns_name:"https_proxy" default:"" help:"sets an unauthenticated HTTP CONNECT proxy hostname or IP address for tunneling TCPS client connections"`
 
-	// HttpsProxyPort sets the HTTP proxy port used to tunnel TLS client
-	// connections.
-	HttpsProxyPort int `ns_name:"https_proxy_port" default:"8080" help:"sets an HTTP proxy host port for tunneling TLS client connections"`
+	// HttpsProxyPort sets the HTTP CONNECT proxy port used to tunnel TCPS
+	// client connections.
+	HttpsProxyPort int `ns_name:"https_proxy_port" default:"80" help:"sets an HTTP CONNECT proxy port for tunneling TCPS client connections"`
 
 	// ConnectTimeout sets the timeout, in seconds, for establishing an Oracle
 	// Net connection.
@@ -174,7 +175,7 @@ func (config *OracleDriverConfig) ToNSConnectionParameters() string {
 		subsb.Reset()
 		NsNAme := field.element.Tag.Get("ns_name")
 		if len(NsNAme) != 0 {
-			// we discard convertion error as we trust default value
+			// we discard conversion error as we trust default value
 			switch field.elementValue.Kind() {
 			case reflect.String:
 				v := field.elementValue.String()
@@ -183,8 +184,13 @@ func (config *OracleDriverConfig) ToNSConnectionParameters() string {
 				}
 				// skip empty strings
 				if strings.Count(v, " ") != 0 || strings.Count(v, "=") != 0 {
-					// quote it then
-					parameterValue = fmt.Sprintf("\"%s\"", v)
+					// quote it if not already quoted
+					isQuoted := len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"'
+					if isQuoted {
+						parameterValue = v
+					} else {
+						parameterValue = fmt.Sprintf("\"%s\"", v)
+					}
 				} else {
 					parameterValue = v
 				}
@@ -272,7 +278,7 @@ func NewOracleLoggingConfig() *OracleLoggingConfig {
 		field := item.Value.(*_fieldListElem)
 		defaultValue := field.element.Tag.Get("default")
 		if len(defaultValue) != 0 {
-			// we discard convertion error as we trust default value
+			// we discard conversion error as we trust default value
 			switch field.elementValue.Kind() {
 			case reflect.String:
 				field.elementValue.Set(reflect.ValueOf(defaultValue))
@@ -466,6 +472,7 @@ func (config *OracleLoggingConfig) AssignFromFlags() error {
 // database session.
 type OracleNLSParameters struct {
 	// ClientLanguage selects the language used for driver error messages.
+	// English, French, and Spanish are supported; other languages fall back to English.
 	ClientLanguage language.Tag `default:"en" cliVisible:"true" validator:"validateLanguage" help:"driver language to be used"`
 	// Language sets the default database language for the session.
 	Language string `default:"AMERICAN" help:"specifies the default language of the database"`
@@ -864,7 +871,7 @@ func (config *OracleDriverConfig) loadFromEnviron() error {
 	return nil
 }
 
-// _getEnvironmentVarName map a configuration item name to a environment variable name
+// _getEnvironmentVarName maps a configuration item name to an environment variable name.
 // ex : a.b.c is mapped to A_B_C
 func _getEnvironmentVarName(name string) string {
 	return strings.ToUpper(strings.ReplaceAll(name, ".", "_"))
@@ -1066,6 +1073,12 @@ func validateUserName(value reflect.Value, valueName string) (any, error) {
 func validateLoggingLevel(value reflect.Value, valueName string) (any, error) {
 	if value.Kind() == reflect.String {
 		if len(value.String()) != 0 {
+			switch strings.ToUpper(value.String()) {
+			case "FINEST":
+				return slog.Level(-16).String(), nil
+			case "FINE":
+				return slog.Level(-8).String(), nil
+			}
 			var l slog.Level
 			if err := l.UnmarshalText([]byte(value.String())); err == nil {
 				return l.String(), nil
@@ -1088,10 +1101,10 @@ func validateLoggingLevel(value reflect.Value, valueName string) (any, error) {
 	)
 }
 
-// validateZeroOrPositive validator for positive non-zero integer value.
+// validateZeroOrPositive validates that a value is a positive, non-zero integer.
 // errors:
-//   - value is not assignable to a int
-//   - int value is less or equal to zero
+//   - the value is not assignable to an int
+//   - the integer value is less than or equal to zero
 func validateZeroOrPositive(value reflect.Value, valueName string) (any, error) {
 	switch value.Kind() {
 	case reflect.String:
@@ -1156,7 +1169,7 @@ func validateLanguage(value reflect.Value, valueName string) (any, error) {
 		oracleErrors.InvalidConnectionParameter,
 		nil,
 		value,
-		valueName, "one of language Tag",
+		valueName, "a language tag",
 	)
 }
 

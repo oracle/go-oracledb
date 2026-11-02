@@ -43,7 +43,7 @@ import (
 	"testing"
 )
 
-func TestTTIwrnUnMarshalFrom(t *testing.T) {
+func TestTTIwrnUnmarshalFrom(t *testing.T) {
 	t.Parallel()
 	warning := newTTIwrn().(*tTIwrn)
 	payload := []byte{
@@ -53,8 +53,8 @@ func TestTTIwrnUnMarshalFrom(t *testing.T) {
 		'h', 'e', 'l', 'l', 'o',
 	}
 
-	if err := warning.UnMarshalFrom(context.Background(), createMarshaller(payload, 0, 0)); err != nil {
-		t.Fatalf("UnMarshalFrom returned error: %v", err)
+	if err := warning.UnmarshalFrom(context.Background(), createMarshaller(payload, 0, 0)); err != nil {
+		t.Fatalf("UnmarshalFrom returned error: %v", err)
 	}
 	if warning.GetMsgCode() != TTIWRN {
 		t.Errorf("GetMsgCode = %v, want %v", warning.GetMsgCode(), TTIWRN)
@@ -71,7 +71,7 @@ func TestTTIwrnUnMarshalFrom(t *testing.T) {
 	}
 }
 
-func TestTTIwrnUnMarshalFromRejectsTruncatedMessage(t *testing.T) {
+func TestTTIwrnUnmarshalFromRejectsTruncatedMessage(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -86,8 +86,8 @@ func TestTTIwrnUnMarshalFromRejectsTruncatedMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			warning := newTTIwrn().(*tTIwrn)
-			if err := warning.UnMarshalFrom(context.Background(), createMarshaller(tt.payload, 0, 0)); err == nil {
-				t.Fatal("UnMarshalFrom returned nil error for truncated message")
+			if err := warning.UnmarshalFrom(context.Background(), createMarshaller(tt.payload, 0, 0)); err == nil {
+				t.Fatal("UnmarshalFrom returned nil error for truncated message")
 			}
 		})
 	}

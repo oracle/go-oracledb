@@ -845,7 +845,7 @@ func (m *MarshalEngine) UnmarshalCLR(ctx context.Context, bytes driverCommon.B1A
 			break
 		}
 		if length < 0 {
-			common.Odl.Debug("Invalid length value while unmarshalling CLR", "length", length)
+			common.Odl.Finest("Invalid length value while unmarshalling CLR", "length", length)
 			return -1, common.NewOracleError(oracleErrors.MarshalEngineError, nil, "CLR")
 		}
 
@@ -934,11 +934,11 @@ func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context) (driverCommo
 			break
 		}
 		if length < 0 {
-			common.Odl.Debug("Invalid length value while unmarshalling CLR", "length", length)
+			common.Odl.Finest("Invalid length value while unmarshalling CLR", "length", length)
 			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
 		}
 		if length > _maximumLongCLRChunkLength {
-			common.Odl.Debug("Long CLR chunk length exceeds maximum allowed size",
+			common.Odl.Finest("Long CLR chunk length exceeds maximum allowed size",
 				"length", length, "maxLength", _maximumLongCLRChunkLength)
 			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
 		}
@@ -951,7 +951,7 @@ func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context) (driverCommo
 		nbBytesWritten += int(length)
 
 		if nbBytesWritten > int(maxAllowedCLRLength) {
-			common.Odl.Debug("CLR data length exceeds maximum allowed size",
+			common.Odl.Finest("CLR data length exceeds maximum allowed size",
 				"length", nbBytesWritten, "maxLength", _maximumLongCLRChunkLength)
 			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
 		}
@@ -993,7 +993,7 @@ func (m *MarshalEngine) _unmarshalBuffer(ctx context.Context, byteValue []byte, 
 
 	// Check that the buffer is big enough to receive the data
 	if len(byteValue) < offset+length {
-		common.Odl.Debug("Invalid buffer length", "buffer length", len(byteValue),
+		common.Odl.Finest("Invalid buffer length", "buffer length", len(byteValue),
 			"data length", length)
 		return common.NewOracleError(oracleErrors.MarshalEngineError, nil, "CLR")
 	}
@@ -1197,7 +1197,7 @@ func _decodeUniversal[T unmarshalTypes, V unmarshalTypes](
 		return zero, err
 	}
 	if negativeUNV && typeRep.isUnsigned {
-		common.Odl.Debug("UNIVERSAL unsigned value cannot be negative", "first byte", firstByte)
+		common.Odl.Finest("UNIVERSAL unsigned value cannot be negative", "first byte", firstByte)
 		return zero, common.NewOracleError(oracleErrors.MarshalEngineError, nil, typeRep.typeName)
 	}
 
@@ -1250,12 +1250,12 @@ func _validateUniversalByteCount(firstByte byte, numberOfBytes byte, maxBytes ui
 	// zero, numberOfBytes being zero would mean that the value was negative zero
 	// which is not possible.
 	if numberOfBytes == 0 {
-		common.Odl.Debug("Number of bytes zero and first byte different of zero",
+		common.Odl.Finest("Number of bytes zero and first byte different of zero",
 			"first byte", firstByte, "number of bytes", numberOfBytes)
 		return common.NewOracleError(oracleErrors.MarshalEngineError, nil, typeName)
 	}
 	if numberOfBytes > maxBytes {
-		common.Odl.Debug("Number of bytes greater than UNIVERSAL target width",
+		common.Odl.Finest("Number of bytes greater than UNIVERSAL target width",
 			"first byte", firstByte, "number of bytes", numberOfBytes, "max bytes", maxBytes)
 		return common.NewOracleError(oracleErrors.MarshalEngineError, nil, typeName)
 	}

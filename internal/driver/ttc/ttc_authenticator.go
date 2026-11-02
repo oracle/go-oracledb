@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -52,9 +53,14 @@ import (
 // server-side code.
 const maxPasswordBytes = 1024
 
+// A proxy login consists of two identifiers, either unquoted or double quoted.
+// Brackets within a quoted identifier are part of that identifier.
+var proxyUsernamePattern = regexp.MustCompile(`^("[^"\x00]+"|[\p{L}\p{M}\p{N}\p{Pc}$#]+)\[("[^"\x00]+"|[\p{L}\p{M}\p{N}\p{Pc}$#]+)\]$`)
+
 // passwordAuthenticator authenticates using user/password O5 logon.
 type passwordAuthenticator struct {
 	_username                      driverCommon.B1Array
+	_proxyClient                   driverCommon.B1Array
 	_password                      driverCommon.B1Array
 	_logonMode                     int64
 	_shelf                         ttiShelf[driverCommon.MessageType]
@@ -70,9 +76,11 @@ type passwordAuthenticator struct {
 //   - password : user password
 //   - connectString : connectionString
 func newPasswordAuthenticator(username, password string, connectString string) *passwordAuthenticator {
+	username, proxyClient := parseUsername(username)
 	pa := passwordAuthenticator{
 		_connectString: connectString,
-		_username:      driverCommon.StringToB1Array(sanitizeInputCredential(username)),
+		_username:      driverCommon.StringToB1Array(username),
+		_proxyClient:   driverCommon.StringToB1Array(proxyClient),
 		_password:      driverCommon.StringToB1Array(sanitizeInputCredential(password)),
 		_logonMode:     0,
 	}
@@ -93,7 +101,7 @@ func newPasswordAuthenticatorWithLogonMode(username, password string, mode commo
 
 // Authenticate performs authentication.
 func (pa *passwordAuthenticator) Authenticate(ctx context.Context) error {
-	common.Odl.Debug("Authenticate start for user", "userName", pa._username)
+	common.Odl.Fine("Authenticate start for user", "userName", pa._username)
 
 	if err := pa.validatePasswordLength(); err != nil {
 		return err
@@ -110,8 +118,21 @@ func (pa *passwordAuthenticator) Authenticate(ctx context.Context) error {
 		common.Odl.Warn("Authentication failed, oauth keys exchange failed", "error", err)
 		return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 	}
-	common.Odl.Debug("Authenticate ended")
+	common.Odl.Fine("Authenticate ended")
 	return nil
+}
+
+// parseUsername extracts the proxy client and sanitizes the authenticating username.
+// Unrecognized syntax is treated as an ordinary username.
+func parseUsername(username string) (string, string) {
+	var proxyClient string
+	// Parse before sanitizing to preserve quoted identifiers.
+	if parts := proxyUsernamePattern.FindStringSubmatch(strings.TrimSpace(username)); parts != nil {
+		username = parts[1]
+		// Preserve quotes on the proxy client.
+		proxyClient = parts[2]
+	}
+	return sanitizeInputCredential(username), proxyClient
 }
 
 func (pa *passwordAuthenticator) validatePasswordLength() error {
@@ -132,7 +153,7 @@ func (pa *passwordAuthenticator) SetSessionContext(sessCtx *driverCommon.Session
 }
 
 func (pa *passwordAuthenticator) _doOSESSKEY(ctx context.Context) error {
-	common.Odl.Debug("_doOSESSKEY start")
+	common.Odl.Fine("_doOSESSKEY start")
 	shelf := pa._shelf
 	streamer := shelf.GetMessageStreamer().(MessageStreamerInterface)
 	osesskey, err := shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIFUN, oSesskey)
@@ -145,7 +166,7 @@ func (pa *passwordAuthenticator) _doOSESSKEY(ctx context.Context) error {
 	osesskey.(*oSessionKey).setUser(pa._username)
 
 	osesskeyRPACallBack := func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
-		common.Odl.Debug("_doOSESSKEY inside osesskeyRPACallBack")
+		common.Odl.Fine("_doOSESSKEY inside osesskeyRPACallBack")
 		msg, err := shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIRPA, oSesskey)
 		if err != nil {
 			common.Odl.Warn("Can't get osesskey RPA frnom factory", "error", err)
@@ -169,12 +190,12 @@ func (pa *passwordAuthenticator) _doOSESSKEY(ctx context.Context) error {
 		return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 	}
 
-	common.Odl.Debug("_doOSESSKEY message streamer flushed")
+	common.Odl.Fine("_doOSESSKEY message streamer flushed")
 
 	var osesskeyrpa *oSesskeyRPA
 	oerFound := false
 	for {
-		common.Odl.Debug("_doOSESSKEY pulling message streamer flushed")
+		common.Odl.Fine("_doOSESSKEY pulling message streamer flushed")
 		msg, err := streamer.Pull(ctx, TTIRPA, TTIOER, TTIWRN)
 		if err != nil {
 			common.Odl.Warn("Failed to pull authentication response from streamer", "error", err)
@@ -183,14 +204,14 @@ func (pa *passwordAuthenticator) _doOSESSKEY(ctx context.Context) error {
 		switch msg.GetMsgCode() {
 		case TTIRPA:
 			osesskeyrpa = msg.(*oSesskeyRPA)
-			common.Odl.Debug("_doOSESSKEY RPA received", "OSESSKEY_RPA", osesskeyrpa)
+			common.Odl.Fine("_doOSESSKEY RPA received", "OSESSKEY_RPA", osesskeyrpa)
 		case TTIOER:
 			ttioer := msg.(tTIOerIface)
 			err := ttioer.getError()
 			if err != nil {
 				return err
 			}
-			common.Odl.Debug("_doOSESSKEY TTIOER message received", "ErrorMessage", msg)
+			common.Odl.Fine("_doOSESSKEY TTIOER message received", "ErrorMessage", msg)
 			oerFound = true
 		case TTIWRN:
 			logAuthenticationWarning(msg.(*tTIwrn))
@@ -216,13 +237,13 @@ func (pa *passwordAuthenticator) _doOSESSKEY(ctx context.Context) error {
 	}
 
 	pa._sessionContext.UpdateSessionProperties(osesskeyrpa.connectionValues)
-	common.Odl.Debug("_doOSESSKEY ended")
+	common.Odl.Fine("_doOSESSKEY ended")
 	return nil
 
 }
 
 func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
-	common.Odl.Debug("Authenticator, starting oauthMsg")
+	common.Odl.Fine("Authenticator, starting oauthMsg")
 	shelf := pa._shelf
 	streamer := shelf.GetMessageStreamer().(MessageStreamerInterface)
 
@@ -269,6 +290,7 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 
 	oauthMsg.(*oAuth).setPBKDF2Salt(sessionProperties.GetProperty(authPDKDF2CSKSalt).(*driverCommon.KeyValue).Value)
 	oauthMsg.(*oAuth).setUser(pa._username)
+	oauthMsg.(*oAuth).setProxyClient(pa._proxyClient)
 	oauthMsg.(*oAuth).setConnectString(pa._connectString)
 	oauthMsg.(*oAuth).setPBKDF2VgenCount(PBKDF2VgenCount)
 	oauthMsg.(*oAuth).setPBKDF2SderCount(PBKDF2SderCount)
@@ -277,11 +299,11 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 	oauthMsg.(*oAuth).setBUseO5Logon(sessionProperties.ContainsKey(authVFRData))
 	oauthMsg.(*oAuth).setLogonMode(pa._logonMode)
 	if common.KpzLogonSysdba.Enabled(pa._logonMode) && len(pa._password) == 0 {
-		common.Odl.Debug("KpzLogonSysdba mode, skip _oSessionKeyInit of o response")
+		common.Odl.Fine("KpzLogonSysdba mode, skip _oSessionKeyInit of o response")
 	} else {
 		err = oauthMsg.(*oAuth)._initializeOAuthResponse(pa._password)
 		if err != nil {
-			common.Odl.Debug("Can't initialize oauthMsg response", "error", err)
+			common.Odl.Fine("Can't initialize oauthMsg response", "error", err)
 			return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 		}
 	}
@@ -300,7 +322,7 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 		return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 	}
 
-	common.Odl.Debug("_doOAuth oatuh message pushed and flushed to the streamer")
+	common.Odl.Fine("_doOAuth oatuh message pushed and flushed to the streamer")
 
 	oauthrpa, err := handleOAuthResponse(ctx, streamer, &shelf)
 	if err != nil {
@@ -315,7 +337,7 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 		common.Odl.Warn("Error occurred while validating server response", "error", err)
 		return common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 	}
-	common.Odl.Debug("Authenticator: oauthMsg ok")
+	common.Odl.Fine("Authenticator: oauthMsg ok")
 	return nil
 }
 
@@ -325,7 +347,7 @@ func handleOAuthResponse(ctx context.Context, streamer MessageStreamerInterface,
 	var oauthrpa *OAuthRPA = nil
 
 	oauthRPACallBack := func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
-		common.Odl.Debug("Inside oauthRPACallBack hdr", "msg", t.GetType())
+		common.Odl.Fine("Inside oauthRPACallBack hdr", "msg", t.GetType())
 		msg, err := shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIRPA, oauth)
 		if err != nil {
 			return nil, err
@@ -339,20 +361,20 @@ func handleOAuthResponse(ctx context.Context, streamer MessageStreamerInterface,
 	for goOn == true {
 		msg, err := streamer.Pull(ctx, TTIRPA, TTIOER, TTIWRN)
 		if err != nil {
-			common.Odl.Debug("Authenticator failed to pull server messages", "error", err)
+			common.Odl.Fine("Authenticator failed to pull server messages", "error", err)
 			return nil, common.NewOracleError(oracleErrors.AuthenticatorError, err, nil)
 		}
 		switch msg.GetMsgCode() {
 		case TTIRPA:
 			oauthrpa = msg.(*OAuthRPA)
-			common.Odl.Debug("Authenticator:", "oAuth-RPA", oauthrpa)
+			common.Odl.Fine("Authenticator:", "oAuth-RPA", oauthrpa)
 		case TTIOER:
 			ttioer := msg.(tTIOerIface)
 			err := ttioer.getError()
 			if err != nil {
 				return nil, err
 			}
-			common.Odl.Debug("Authenticator: TTIOER message received", "ErrorMessage", ttioer)
+			common.Odl.Fine("Authenticator: TTIOER message received", "ErrorMessage", ttioer)
 			goOn = false
 		case TTIWRN:
 			logAuthenticationWarning(msg.(*tTIwrn))
@@ -373,7 +395,7 @@ func handleOAuthResponse(ctx context.Context, streamer MessageStreamerInterface,
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil, nil)
 	}
 
-	common.Odl.Debug("Authenticator: processing RPA")
+	common.Odl.Fine("Authenticator: processing RPA")
 	return oauthrpa, nil
 }
 

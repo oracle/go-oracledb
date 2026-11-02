@@ -1362,7 +1362,7 @@ func TestUnmarshalKeyValue(t *testing.T) {
 
 			dataBuffer.currentReadPosition = 0
 			returnedKeyValuePairs := newPreallocatedKeyValueList(tt.keyValuePairs.Len())
-			err = ((common.UnMarshallable)(returnedKeyValuePairs)).UnMarshalFrom(context.Background(), engine)
+			err = ((common.Unmarshallable)(returnedKeyValuePairs)).UnmarshalFrom(context.Background(), engine)
 			if err != nil {
 				t.Errorf("Error unmarshalling key value %v", err)
 			}
@@ -1606,7 +1606,7 @@ func TestUnmarshalKeyValueNoSpace(t *testing.T) {
 			dataBuffer.currentWritePosition = tt.writePosition
 			dataBuffer.currentReadPosition = 0
 			keyvalFlags := newPreallocatedKeyValueList(tt.keyValuePairs.Len())
-			err = ((common.UnMarshallable)(keyvalFlags)).UnMarshalFrom(context.Background(), engine)
+			err = ((common.Unmarshallable)(keyvalFlags)).UnmarshalFrom(context.Background(), engine)
 			if err == nil {
 				t.Errorf("UnmarshalKeyValue should have failed")
 			}
@@ -1866,9 +1866,9 @@ func TestDynamicAllocatedArrayRejectsNegativeUniversalLength(t *testing.T) {
 	}
 
 	var dalc dynamicAllocatedArray
-	err := dalc.UnMarshalFrom(context.Background(), engine)
+	err := dalc.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
-		t.Fatalf("UnMarshalFrom should have failed")
+		t.Fatalf("UnmarshalFrom should have failed")
 	}
 	checkSQLErrorCodeContains(t, err, string(oracleErrors.MarshalEngineError), "unmarshal value")
 }
@@ -2118,16 +2118,16 @@ func TestMarshalDALC(t *testing.T) {
 	dalc.value = []byte{'T', 'e', 's', 't', ' ', 'm', 'a', 'r', 's', 'h', 'a', 'l', ' ', 'D', 'A', 'L', 'C'}
 	dalc.MarshalTo(context.Background(), engine)
 
-	var unMarshalledDalc dynamicAllocatedArray
-	unMarshalledDalc.UnMarshalFrom(context.Background(), engine)
+	var unmarshalledDalc dynamicAllocatedArray
+	unmarshalledDalc.UnmarshalFrom(context.Background(), engine)
 
-	if len(dalc.value) != len(unMarshalledDalc.value) {
-		t.Fatalf("Invalid length expected %d, but was %d", len(dalc.value), len(unMarshalledDalc.value))
+	if len(dalc.value) != len(unmarshalledDalc.value) {
+		t.Fatalf("Invalid length expected %d, but was %d", len(dalc.value), len(unmarshalledDalc.value))
 	}
 
 	for i, value := range dalc.value {
-		if value != unMarshalledDalc.value[i] {
-			t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unMarshalledDalc.value[i])
+		if value != unmarshalledDalc.value[i] {
+			t.Fatalf("Invalid value at position %d, expected %d, but was %d", i, value, unmarshalledDalc.value[i])
 		}
 	}
 }

@@ -286,7 +286,66 @@ func successOnWriteDefaults(protocolVer byte, includeFDO, addArrays bool) func(t
 	}
 }
 
+// successOnWriteEOCS returns a test-buffer callback that supplies a protocol
+// response advertising EOCS during the first negotiation flush.
+//
+// Parameters:
+//   - protocolVer is the wire TTIPRO protocol version in the test response.
+//
+// Returns a callback for TestDataBuffer.OnWriteDefaults.
+func successOnWriteEOCS(protocolVer byte) func(tb *TestDataBuffer) {
+	writeCount := 0
+	return func(tb *TestDataBuffer) {
+		writeCount++
+		if writeCount == 1 {
+			tb.ResetBuf()
+			tb.WriteBuf(DefaultTTIproSuccessPayloadWithEOCS(protocolVer))
+		} else if writeCount == 2 {
+			writeCount = 0
+		}
+	}
+}
+
+// DefaultTTIproSuccessPayload returns a synthetic TTIPRO response payload.
+//
+// Parameters:
+//   - protoVer is the wire TTIPRO protocol version.
+//   - includeFDO controls whether the feature-data object is included.
+//   - addArrays controls whether synthetic capability arrays are included.
+//
+// Returns the encoded TTIPRO response payload.
 func DefaultTTIproSuccessPayload(protoVer byte, includeFDO bool, addArrays bool) []byte {
+	return defaultTTIproSuccessPayload(protoVer, includeFDO, addArrays,
+		[]byte{1, 2, 3, 4, 5, 6, 7, 8}, []byte{9, 10, 11})
+}
+
+// DefaultTTIproSuccessPayloadWithEOCS returns a synthetic TTIPRO response with
+// negotiated TTC version 14 and the EOCS capability enabled.
+//
+// Parameters:
+//   - protoVer is the wire TTIPRO protocol version.
+//
+// Returns the encoded TTIPRO response payload.
+func DefaultTTIproSuccessPayloadWithEOCS(protoVer byte) []byte {
+	compileCaps := make([]byte, 16)
+	compileCaps[7] = 14 // negotiated TTC version, independent of the wire TTIPRO version
+	compileCaps[15] = 1
+	return defaultTTIproSuccessPayload(protoVer, true, true, compileCaps, []byte{9, 10, 11})
+}
+
+// defaultTTIproSuccessPayload constructs a synthetic TTIPRO response for
+// negotiator tests.
+//
+// Parameters:
+//   - protoVer is the wire TTIPRO protocol version.
+//   - includeFDO controls whether the feature-data object is included.
+//   - addArrays controls whether compile-time and runtime capability arrays
+//     are included after the feature-data object.
+//   - compileCaps contains the synthetic compile-time capability bytes.
+//   - runtimeCaps contains the synthetic runtime capability bytes.
+//
+// Returns the encoded TTIPRO response payload.
+func defaultTTIproSuccessPayload(protoVer byte, includeFDO bool, addArrays bool, compileCaps, runtimeCaps []byte) []byte {
 	var buf []byte
 	// Append TTC message type, protocol version, reserved byte.
 	buf = append(buf, byte(TTIPRO), protoVer, 0)
@@ -307,11 +366,11 @@ func DefaultTTIproSuccessPayload(protoVer byte, includeFDO bool, addArrays bool)
 		buf = append(buf, fdo...)
 		if addArrays {
 			// Append compile capabilities array length and data.
-			buf = append(buf, 8)
-			buf = append(buf, []byte{1, 2, 3, 4, 5, 6, 7, 8}...)
+			buf = append(buf, byte(len(compileCaps)))
+			buf = append(buf, compileCaps...)
 			// Append run time capabilities array length and data.
-			buf = append(buf, 3)
-			buf = append(buf, []byte{9, 10, 11}...)
+			buf = append(buf, byte(len(runtimeCaps)))
+			buf = append(buf, runtimeCaps...)
 		}
 	}
 	return buf
@@ -358,5 +417,45 @@ func TestConnectionNegotiator_Negotiate_Success(t *testing.T) {
 				t.Error("Shelf is nil")
 			}
 		})
+	}
+}
+
+// TestConnectionNegotiator_Negotiate_SelectsEOCSMessages verifies that
+// negotiated EOCS capabilities are passed to the shelf's message factory and
+// select EOCS-aware TTIOER and TTISTA implementations.
+func TestConnectionNegotiator_Negotiate_SelectsEOCSMessages(t *testing.T) {
+	negotiator := newConnectionNegotiator()
+	data := NewTestDataBuffer()
+	data.OnWriteDefaults = successOnWriteEOCS(6)
+	negotiator.SetDataBuffer(data)
+
+	_, shelf, err := negotiator.Negotiate(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	factory := shelf.GetMessageFactory()
+	oer, err := factory.GetMessage(TTIOER)
+	if err != nil {
+		t.Fatalf("unexpected TTIOER error: %v", err)
+	}
+	oer14, ok := oer.(*tTIoer14)
+	if !ok {
+		t.Fatalf("got %T for TTIOER, want *tTIoer14", oer)
+	}
+	if !oer14._supportsEndOfCallStatus {
+		t.Error("TTIOER does not support end-of-call status after EOCS negotiation")
+	}
+
+	sta, err := factory.GetMessage(TTISTA)
+	if err != nil {
+		t.Fatalf("unexpected TTISTA error: %v", err)
+	}
+	staMsg, ok := sta.(*ttiSTA)
+	if !ok {
+		t.Fatalf("got %T for TTISTA, want *ttiSTA", sta)
+	}
+	if !staMsg._supportsEndOfCallStatus {
+		t.Error("TTISTA does not support end-of-call status after EOCS negotiation")
 	}
 }

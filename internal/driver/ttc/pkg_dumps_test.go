@@ -45,8 +45,8 @@ import (
 	"strings"
 )
 
-// Minimal dump for tz test (first 20 lines of validttidtyUnMarshalDump)
-var validttidtyUnMarshalDumpTZ = []string{
+// Minimal dump for tz test (first 20 lines of validttidtyUnmarshalDump)
+var validttidtyUnmarshalDumpTZ = []string{
 	`"........ 00 00 0A DD 06 00 00 00"`,
 	`"........ 00 00 02 00 01 00 01 00"`,
 	`"........ 01 00 00 00 02 00 02 00"`,
@@ -671,7 +671,7 @@ var validplsqlResponse = []string{
 	`"........ 03 00 01 01 00 00 00 00"`,
 	`"....     00 01 01 01 2F 00"`,
 }
-var validttiproUnMarshalDump = []string{
+var validttiproUnmarshalDump = []string{
 	`"........ 00 00 01 03 06 00 00 00"`,
 	`".....Lin 00 00 01 06 00 4C 69 6E"`,
 	`"ux390x/L 75 78 33 39 30 78 2F 4C"`,
@@ -987,7 +987,7 @@ var validttidtyMarshalDump = []string{
 	`"..       00 00"`,
 }
 
-var validttidtyUnMarshalDump = []string{
+var validttidtyUnmarshalDump = []string{
 	`"........ 00 00 0A DD 06 00 00 00"`,
 	`"........ 00 00 02 00 01 00 01 00"`,
 	`"........ 01 00 00 00 02 00 02 00"`,
@@ -1928,7 +1928,7 @@ func ExtractBytesFromDump(lines []string) ([]byte, error) {
 }
 
 func makeDtyValidPayload() []byte {
-	buf, _ := ExtractBytesFromDump(validttidtyUnMarshalDump)
+	buf, _ := ExtractBytesFromDump(validttidtyUnmarshalDump)
 	if len(buf) <= 11 {
 		return []byte{}
 	}
@@ -1937,7 +1937,7 @@ func makeDtyValidPayload() []byte {
 
 // Extract the tz-capable typerep payload for the tz path test
 func makeDtyValidPayloadTZ() []byte {
-	buf, _ := ExtractBytesFromDump(validttidtyUnMarshalDumpTZ)
+	buf, _ := ExtractBytesFromDump(validttidtyUnmarshalDumpTZ)
 	if len(buf) <= 11 {
 		return []byte{}
 	}

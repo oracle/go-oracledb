@@ -151,7 +151,7 @@ func TestDriver_PLSQL_BreakCausedByTimeout(t *testing.T) {
 	defer conn.Close()
 
 	common.Odl.Info("before execute", "time", time.Now())
-	// PL/SQL block that sleeps for 5 mins and an context than expires in 10s
+	// The PL/SQL block sleeps for 5 minutes, but the context expires after 10 seconds.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, err = conn.ExecContext(ctx, "BEGIN DBMS_SESSION.SLEEP(300); END;")

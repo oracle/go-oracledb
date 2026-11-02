@@ -116,6 +116,53 @@ func TestConnectionIterator_Next_Basic(t *testing.T) {
 	}
 }
 
+// TestConnectionIterator_BuildConnectStringWithHTTPSProxy verifies that the
+// iterator preserves proxy settings when building a full DESCRIPTION.
+func TestConnectionIterator_BuildConnectStringWithHTTPSProxy(t *testing.T) {
+	t.Parallel()
+
+	ci := &ConnectionIterator{}
+	addr := &Address{
+		Protocol:       common.ProtocolTCPS,
+		Host:           "db.example.com",
+		Port:           2484,
+		HTTPSProxy:     "proxy.example.com",
+		HTTPSProxyPort: 8080,
+	}
+	connectData := &Node{
+		Name: "CONNECT_DATA",
+		Children: []Node{
+			{Name: "SERVICE_NAME", Value: "pdb1"},
+		},
+	}
+
+	got := ci.buildConnectString(addr, connectData)
+	want := "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=db.example.com)(PORT=2484)(HTTPS_PROXY=proxy.example.com)(HTTPS_PROXY_PORT=8080))(CONNECT_DATA=(SERVICE_NAME=pdb1)))"
+	if got != want {
+		t.Errorf("expected %s, got %s", want, got)
+	}
+}
+
+// TestConnectionIterator_BuildDescriptionWithAddressHTTPSProxy verifies that
+// proxy settings are preserved for an address without CONNECT_DATA.
+func TestConnectionIterator_BuildDescriptionWithAddressHTTPSProxy(t *testing.T) {
+	t.Parallel()
+
+	ci := &ConnectionIterator{}
+	addr := &Address{
+		Protocol:   common.ProtocolTCPS,
+		Host:       "db.example.com",
+		Port:       2484,
+		HTTPSProxy: "proxy.example.com",
+	}
+
+	got := ci.buildDescriptionWithAddress(addr)
+	want := "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=db.example.com)(PORT=2484)(HTTPS_PROXY=proxy.example.com)))"
+	if got != want {
+		t.Errorf("expected %s, got %s", want, got)
+	}
+}
+
 func TestConnectionIterator_HasNext(t *testing.T) {
 	t.Parallel()
 	// Use direct IP to avoid multiple DNS answers (e.g., IPv4 + IPv6 for localhost).

@@ -39,10 +39,13 @@
 package transport
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -55,6 +58,13 @@ const (
 	DEFAULT_HTTPS_PROXY_PORT = 80
 	TCPCHA                   = 1<<1 | 1<<2 | 1<<3 | 1<<8 | 1<<9 | 1<<12
 )
+
+func httpsProxyPortOrDefault(port int) int {
+	if port == 0 {
+		return DEFAULT_HTTPS_PROXY_PORT
+	}
+	return port
+}
 
 // nttcp represents a TCP network transport adapter
 type nttcp struct {
@@ -95,17 +105,34 @@ type ioOperationResult struct {
 	ioerr     error // error of the I/O operation
 }
 
+type socketBufferSetter interface {
+	SetReadBuffer(bytes int) error
+	SetWriteBuffer(bytes int) error
+}
+
+// configureSocketBuffers applies optional Oracle Net socket buffer sizes to a
+// TCP connection. A zero value leaves the operating-system default unchanged.
+func configureSocketBuffers(conn socketBufferSetter, recvBufSize, sendBufSize int) error {
+	if recvBufSize > 0 {
+		if err := conn.SetReadBuffer(recvBufSize); err != nil {
+			return fmt.Errorf("set receive buffer size: %w", err)
+		}
+	}
+	if sendBufSize > 0 {
+		if err := conn.SetWriteBuffer(sendBufSize); err != nil {
+			return fmt.Errorf("set send buffer size: %w", err)
+		}
+	}
+	return nil
+}
+
 // Send writes all bytes in buf to the connected stream.
 // parameters:
-//   - ctx : context used to cancel the write.
+//   - ctx : context to be used while reading
 //   - buf : the buffer to be sent.
 //
 // returns :
-//   - nil when all bytes have been written.
-//   - ChannelWriteFailed if the underlying write fails.
-//   - CtxTimeout if the context or configured SendTimeout expires or is canceled.
-//
-// After cancellation, Send joins the writer and resets the socket write deadline.
+//   - error raised during read operation
 func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 
 	var ctxToBeUsed context.Context
@@ -142,31 +169,25 @@ func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 		return nil
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
-		common.Odl.Debug("context for Send() cancelled, cancelling writer")
+		common.OdlT(nt.atts.Connectionid).Debug("context for Send() cancelled, cancelling writer")
 		nt.stream.SetWriteDeadline(time.Now())
 		nt._writerWG.Wait()
-		common.Odl.Debug("Send() timed-out, writer is now joined")
+		common.OdlT(nt.atts.Connectionid).Debug("Send() timed-out, writer is now joined")
 		// reset the deadline
 		nt.stream.SetWriteDeadline(time.Time{})
 		return common.NewOracleError(oracleErrors.CtxTimeout, ctx.Err(), "send", fmt.Sprintf("%s:%d", nt.host, nt.port), nt.atts.Connectionid)
 	}
 }
 
-// Receive reads bytes2Read bytes from the connected stream into buf.
+// Receive read bytes2Read byte form underlying stream
 // parameters:
-//   - ctx : context used to cancel the read.
+//   - ctx : context to be used while reading
 //   - buf : the buffer to copy bytes to.
-//   - bytes2Read: non-negative number of bytes to read, no greater than len(buf).
+//   - bytes2Read: number of byte sot be read
 //
 // returns :
-//   - bytes2Read and nil on success; bytes beyond bytes2Read are unchanged.
-//   - zero and InvalidNetworkExpectedLength if bytes2Read exceeds len(buf).
-//   - the bytes already read and ChannelReadFailed if the stream read fails.
-//   - zero and the context cause if the context or configured RecvTimeout expires
-//     or is canceled. RecvTimeout uses a CtxTimeoutCauseError with recv-timeout as
-//     its source, the timeout in milliseconds, and the connection ID.
-//
-// After cancellation, Receive joins the reader and resets the socket read deadline.
+//   - read bytes count
+//   - error raised during read operation
 func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error) {
 
 	if bytes2Read > len(buf) {
@@ -209,10 +230,10 @@ func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 		return res.byteCount, nil
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
-		common.Odl.Debug("context for Receive() cancelled, cancelling reader")
+		common.OdlT(nt.atts.Connectionid).Debug("context for Receive() cancelled, cancelling reader")
 		nt.stream.SetReadDeadline(time.Now())
 		nt._readerWG.Wait()
-		common.Odl.Debug("Receive() timed-out, reader is now joined")
+		common.OdlT(nt.atts.Connectionid).Debug("Receive() timed-out, reader is now joined")
 		// reset the deadline
 		nt.stream.SetReadDeadline(time.Time{})
 		return 0, context.Cause(ctxToBeUsed)
@@ -222,6 +243,11 @@ func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 // nTConnect establishes a TCP connection
 func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 
+	targetHost := address.Hostname
+	if targetHost == "" {
+		targetHost = address.Host
+	}
+	target := net.JoinHostPort(targetHost, strconv.Itoa(int(address.Port)))
 	var httpsProxy string
 	var httpsProxyPort int
 	if address.HTTPSProxy != "" {
@@ -231,14 +257,6 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 		httpsProxy = nt.atts.HttpsProxy
 		httpsProxyPort = nt.atts.HttpsProxyPort
 	}
-	if httpsProxyPort == 0 {
-		httpsProxyPort = DEFAULT_HTTPS_PROXY_PORT
-	}
-
-	if httpsProxy != "" {
-		return common.NewOracleError(oracleErrors.UnsupportedFeature, nil, "HTTPS proxy")
-	}
-
 	var dialer net.Dialer
 
 	var dialCtxToBeUsed context.Context
@@ -254,10 +272,70 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 					nt.atts.Connectionid))
 		defer dialCancelToBeUsed()
 	}
-	common.Odl.Debug("dialing remote host")
-	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", address.String())
+	dialAddress := address.String()
+	if httpsProxy != "" {
+		httpsProxyPort = httpsProxyPortOrDefault(httpsProxyPort)
+		dialAddress = net.JoinHostPort(httpsProxy, strconv.Itoa(httpsProxyPort))
+	}
+	common.OdlT(nt.atts.Connectionid).Debug("dialing remote host")
+	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", dialAddress)
 	if err != nil {
-		return normalizeDialError(dialCtxToBeUsed, err, address, nt.atts.Connectionid)
+		if httpsProxy == "" {
+			return normalizeDialError(dialCtxToBeUsed, err, address, nt.atts.Connectionid)
+		}
+		proxyAddress := address
+		proxyAddress.Host = httpsProxy
+		proxyAddress.Port = uint16(httpsProxyPort)
+		return normalizeDialError(dialCtxToBeUsed, err, proxyAddress, nt.atts.Connectionid)
+	}
+	if httpsProxy != "" {
+		request, reqErr := http.NewRequestWithContext(dialCtxToBeUsed, http.MethodConnect, "http://"+target, nil)
+		if reqErr != nil {
+			_ = conn.Close()
+			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, reqErr, target)
+		}
+		request.Host = target
+		reader := bufio.NewReader(conn)
+		type proxyHandshakeResult struct {
+			response *http.Response
+			err      error
+		}
+		resultCh := make(chan proxyHandshakeResult, 1)
+		go func() {
+			if err := request.Write(conn); err != nil {
+				resultCh <- proxyHandshakeResult{err: err}
+				return
+			}
+			response, err := http.ReadResponse(reader, request)
+			resultCh <- proxyHandshakeResult{response: response, err: err}
+		}()
+
+		var response *http.Response
+		select {
+		case result := <-resultCh:
+			response = result.response
+			if result.err != nil {
+				_ = conn.Close()
+				return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, result.err, target)
+			}
+		case <-dialCtxToBeUsed.Done():
+			// Interrupt a blocked Request.Write or ReadResponse, then wait for
+			// the goroutine before closing the connection.
+			_ = conn.SetDeadline(time.Now())
+			<-resultCh
+			_ = conn.Close()
+			if timeoutCause, ok := context.Cause(dialCtxToBeUsed).(common.CtxTimeoutCauseError); ok {
+				return timeoutCause
+			}
+			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed,
+				context.Cause(dialCtxToBeUsed), target)
+		}
+		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+			_ = response.Body.Close()
+			_ = conn.Close()
+			return common.NewOracleError(oracleErrors.HTTPSProxyConnectFailed, errors.New(response.Status), target)
+		}
+		_ = response.Body.Close()
 	}
 	nt.stream = conn
 	nt.connected = true
@@ -299,6 +377,9 @@ func (nt *nttcp) Connect(ctx context.Context, address Address) error {
 	nt.originHost = address.OriginHost
 	nt.host = address.Host
 	nt.hostname = address.Hostname
+	if nt.hostname == "" {
+		nt.hostname = address.Host
+	}
 	nt.port = address.Port
 
 	if err := nt.nTConnect(ctx, address); err != nil {
@@ -309,6 +390,11 @@ func (nt *nttcp) Connect(ctx context.Context, address Address) error {
 			return errors.Join(err, disconnectErr)
 		}
 		return err
+	}
+	if tcpConn, ok := nt.stream.(*net.TCPConn); ok {
+		if err := configureSocketBuffers(tcpConn, nt.atts.RecvBufSize, nt.atts.SendBufSize); err != nil {
+			return cleanupOnError(err)
+		}
 	}
 	if nt.atts.ExpireTime > 0 || nt.atts.EnabledDCD {
 		tcpConn, ok := nt.stream.(*net.TCPConn)

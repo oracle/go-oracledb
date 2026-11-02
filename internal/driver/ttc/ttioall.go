@@ -71,6 +71,10 @@ const (
 	plsqlMaxLength = 32760
 	// maxValue is a sentinel UB4 used for prefetch size to indicate "use server maximum".
 	maxValue = 0xFFFFFFFF
+	// implicitResultPrefetchRowCount bounds rows returned for each implicit
+	// cursor in the execution response. The OALL8 max-value sentinel is not valid
+	// for the implicit-result prefetch protocol on all server versions.
+	implicitResultPrefetchRowCount driverCommon.UB4 = 200000000
 )
 
 // tTIOall represents the OALL8 execute/query TTC function request.
@@ -80,7 +84,7 @@ type tTIOall struct {
 	sql              driverCommon.B1Array      // sql represents SQL text payload encoded in network character set
 	options          driverCommon.UB4          // options represents operation flags (statementParsedByServer / bindValuesPresent / executeStatement / defineColumnsProvided /...)
 	oall8Options     []driverCommon.UB4        // oall8Options represents variable-length vector (we use len=13)
-	cursorId         driverCommon.SB4          // cursorId id of the cursorId
+	cursorID         driverCommon.SB4          // cursor ID used by this request
 	maxLength        driverCommon.UB4          // maxLength represents max bytes for marshalling
 	numberOfBinds    driverCommon.SB4          // numberOfBinds represents number of bindValuesPresent positions present in this request
 	defineColumns    driverCommon.SB4          // defineColumns represents number of defineColumnsProvided columns provided by the client
@@ -126,8 +130,8 @@ func (m *tTIOall) setOptions(opts driverCommon.UB4) { m.options = opts }
 // setOall8Options sets the i4 vector (length, iterations, flags, etc.).
 func (m *tTIOall) setOall8Options(v []driverCommon.UB4) { m.oall8Options = v }
 
-// setCursorId sets the cursor id.
-func (m *tTIOall) setCursorId(c driverCommon.SB4) { m.cursorId = c }
+// setCursorID sets the cursor ID.
+func (m *tTIOall) setCursorID(c driverCommon.SB4) { m.cursorID = c }
 
 // setMaxLength sets the maximum length used for marshalling.
 func (m *tTIOall) setMaxLength(n driverCommon.UB4) { m.maxLength = n }
@@ -137,6 +141,12 @@ func (m *tTIOall) setRowsToFetch() {
 	m.maxClientBuffer = maxValue
 	m.rowsToFetch = maxValue
 
+}
+
+// setRowsToFetchCount limits the number of rows requested in an OALL8
+// prefetch response while retaining the maximum client buffer sentinel.
+func (m *tTIOall) setRowsToFetchCount(count driverCommon.UB4) {
+	m.rowsToFetch = count
 }
 
 func (m *tTIOall) resetRowsToFetch() {
@@ -187,8 +197,8 @@ func (m *tTIOall) MarshalTo(ctx context.Context, engine driverCommon.Marshaller)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 	}
 
-	// cursorId
-	if err := engine.MarshalSB4(ctx, m.cursorId); err != nil {
+	// cursorID
+	if err := engine.MarshalSB4(ctx, m.cursorID); err != nil {
 		common.Odl.Warn("Error marshalling OALL8 cursorId", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OALL8")
 

@@ -47,19 +47,19 @@ import (
 )
 
 /*
-TestTTIuds_UnMarshalFrom_Success verifies successful unmarshalling of a valid TTIuds payload,
+TestTTIuds_UnmarshalFrom_Success verifies successful unmarshalling of a valid TTIuds payload,
 checking all key fields (nullable, columnName, schemaName, typeName, kernelPosition, columnFlags)
 against expected values.
 */
-func TestTTIuds_UnMarshalFrom_Success(t *testing.T) {
+func TestTTIuds_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	payload := makeTtiudsUnmarshalPayload(validTtiudsUnmarshalDump)
 	mar := createMarshaller(payload, 0, 0)
 	obj := newTTIuds()
-	err := obj.UnMarshalFrom(ctx, mar)
+	err := obj.UnmarshalFrom(ctx, mar)
 	if err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 	typed := obj.(*tTIuds)
 	if !typed.isNullable {
@@ -86,10 +86,10 @@ func TestTTIuds_UnMarshalFrom_Success(t *testing.T) {
 }
 
 /*
-TestTTIuds_UnMarshalFrom_Fail exercises error handling of TTIuds unmarshalling by injecting simulated
+TestTTIuds_UnmarshalFrom_Fail exercises error handling of TTIuds unmarshalling by injecting simulated
 read errors at various stages, ensuring all error paths are reached and confirmed.
 */
-func TestTTIuds_UnMarshalFrom_Fail(t *testing.T) {
+func TestTTIuds_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	type faultyTest struct {
 		name      string
@@ -112,7 +112,7 @@ func TestTTIuds_UnMarshalFrom_Fail(t *testing.T) {
 			ctx := context.Background()
 			mar := createMarshaller(payload, failOnReadByte, tc.failCount)
 			obj := newTTIuds()
-			err := obj.UnMarshalFrom(ctx, mar)
+			err := obj.UnmarshalFrom(ctx, mar)
 			if err == nil {
 				t.Errorf("expected error, got nil for case: %s", tc.name)
 			} else {
@@ -154,8 +154,8 @@ and UDS array for all tTIdcb family types and returns (0, nil) for unsupported i
 func TestTTIuds_GetUdsArrayAndColCount(t *testing.T) {
 	t.Parallel()
 	t.Skip()
-	makeDCB := func(numCols uint32) (*tTIdcb, []common.UnMarshallable) {
-		udsArr := make([]common.UnMarshallable, numCols)
+	makeDCB := func(numCols uint32) (*tTIdcb, []common.Unmarshallable) {
+		udsArr := make([]common.Unmarshallable, numCols)
 		for i := range udsArr {
 			udsArr[i] = &tTIuds{columnName: []byte{byte('A' + i)}}
 		}
@@ -174,7 +174,7 @@ func TestTTIuds_GetUdsArrayAndColCount(t *testing.T) {
 		name    string
 		input   common.Message[common.MessageType]
 		wantN   common.UB4
-		wantArr []common.UnMarshallable
+		wantArr []common.Unmarshallable
 	}{
 		{"*tTIdcb", ttidcb, 2, u1},
 		{"*tTIdcb17", ttidcb17, 2, u1},

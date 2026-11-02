@@ -551,7 +551,7 @@ func TestConnectSubtests(t *testing.T) {
 		ns.ntAdapter = mock
 		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
 		// mock redirect packet from server without overflow
-		redirectData := []byte("(ADDRESS=(PROTOCOL=tcp)(HOST=redirecthost)(PORT=1522))")
+		redirectData := []byte("(ADDRESS=(PROTOCOL=tcps)(HOST=redirecthost)(PORT=1522))")
 		dataLen := len(redirectData)
 		packetLen := 8 + 2 + dataLen
 		fullPacket := make([]byte, packetLen)
@@ -566,8 +566,16 @@ func TestConnectSubtests(t *testing.T) {
 		mock.receivedData = append(mock.receivedData, acceptpacket...)
 		mock.recvPos = 0
 		err := ns.connect(context.Background(), transport.Address{
-			Address:  naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
-			Hostname: "originalhost",
+			Address: naming.Address{
+				Protocol:       driverCommon.ProtocolTCPS,
+				Host:           "localhost",
+				Port:           1521,
+				HTTPSProxy:     "proxy.example.com",
+				HTTPSProxyPort: 8080,
+			},
+			Hostname:       "originalhost",
+			HTTPSProxy:     "proxy.example.com",
+			HTTPSProxyPort: 8080,
 		})
 		if err != nil {
 			t.Errorf("Unexpected redirect packet error without overflow: %v", err)
@@ -577,6 +585,9 @@ func TestConnectSubtests(t *testing.T) {
 		}
 		if mock.lastAddress.OriginHost != "originalhost" {
 			t.Errorf("Expected original host to be preserved as fallback, got %q", mock.lastAddress.OriginHost)
+		}
+		if mock.lastAddress.HTTPSProxy != "proxy.example.com" || mock.lastAddress.HTTPSProxyPort != 8080 {
+			t.Errorf("Expected proxy settings to be preserved, got %q:%d", mock.lastAddress.HTTPSProxy, mock.lastAddress.HTTPSProxyPort)
 		}
 		ns.Disconnect(context.Background(), 0)
 	})
@@ -1947,7 +1958,6 @@ func TestHandleResend(t *testing.T) {
 		connectPkt.marshal([]byte("(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=orcl)))"), ns.sAtts, NO_HEADER_FLAGS)
 		p := &resendPacket{hdr: &header{flags: 0}}
 		err := ns.handleResend(context.Background(), p, connectPkt)
-		fmt.Println(err)
 		if err == nil || !strings.Contains(err.Error(), "send error") {
 			t.Errorf("Expected send error, got %v", err)
 		}

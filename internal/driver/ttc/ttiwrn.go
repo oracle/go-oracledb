@@ -68,27 +68,27 @@ func (w *tTIwrn) GetMsgCode() driverCommon.MessageType {
 	return TTIWRN
 }
 
-func (w *tTIwrn) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (w *tTIwrn) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	var err error
 	if w.warningNumber, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Warn("TTIWRN.UnMarshalFrom: failed to unmarshal", "error", err, "field", "warningNumber")
+		common.Odl.Warn("TTIWRN.UnmarshalFrom: failed to unmarshal", "error", err, "field", "warningNumber")
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "WRN")
 	}
 
 	warningLength, err := mar.UnmarshalUB2(ctx)
 	if err != nil {
-		common.Odl.Warn("TTIWRN.UnMarshalFrom: failed to unmarshal", "error", err, "field", "warningLength")
+		common.Odl.Warn("TTIWRN.UnmarshalFrom: failed to unmarshal", "error", err, "field", "warningLength")
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "WRN")
 	}
 
 	if w.warningFlags, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Warn("TTIWRN.UnMarshalFrom: failed to unmarshal", "error", err, "field", "warningFlags")
+		common.Odl.Warn("TTIWRN.UnmarshalFrom: failed to unmarshal", "error", err, "field", "warningFlags")
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "WRN")
 	}
 
 	warningMessage, err := mar.UnmarshalB1Array(ctx, int(warningLength))
 	if err != nil {
-		common.Odl.Warn("TTIWRN.UnMarshalFrom: failed to unmarshal", "error", err, "field", "warningMessage")
+		common.Odl.Warn("TTIWRN.UnmarshalFrom: failed to unmarshal", "error", err, "field", "warningMessage")
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "WRN")
 	}
 	w.warningMessage = driverCommon.B1ArrayToString(warningMessage)

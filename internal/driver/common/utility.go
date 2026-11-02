@@ -90,7 +90,7 @@ func StringToB1Array(key string) B1Array {
 // _runesToAL32UTF8 converts rune (unicode) array to UTF8
 // parameters:
 //   - runes : the runes to be encoded
-//   - out : the byte array to write the convertion to.
+//   - out : the byte array to write the conversion to.
 //
 // returns:
 //
