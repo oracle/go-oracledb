@@ -149,6 +149,37 @@ func (p *tTIdcb) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 	return nil
 }
 
+/*
+unmarshalFromRefCursor reads the describe information embedded in a REF CURSOR
+value carried by TTIRXD.
+
+Description:
+
+  - Consumes the REF CURSOR-specific leading byte and maximum-row-size field.
+  - Decodes the common DCB metadata that describes the cursor's result columns.
+  - Leaves the marshaller positioned at the server cursor ID that follows the
+    descriptor; the caller reads that ID separately.
+
+Parameters:
+
+  - ctx: context governing TTC unmarshalling.
+  - mar: marshaller positioned at the embedded REF CURSOR DCB payload.
+
+Returns:
+
+  - error: a wrapped unmarshalling error when the prefix or common DCB metadata
+    is malformed; nil when the descriptor is decoded successfully.
+*/
+func (p *tTIdcb) unmarshalFromRefCursor(ctx context.Context, mar driverCommon.Marshaller) error {
+	if _, err := mar.UnmarshalUB1(ctx); err != nil {
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
+	}
+	if _, err := mar.UnmarshalUB4(ctx); err != nil {
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
+	}
+	return p.receiveCommon(ctx, mar, false)
+}
+
 // receiveCommon unmarshals column information.
 // If fromOdny is true, unmarshalling logic is adapted for ODNY sources.
 func (p *tTIdcb) receiveCommon(ctx context.Context, mar driverCommon.Marshaller, fromOdny bool) error {
