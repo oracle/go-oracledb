@@ -55,7 +55,7 @@ The client can specify the type of remote server process to be used. The type ca
 
 For DRCP to be used, the type must be set to `POOLED`.
 
-There will be a new property within `OracleConnectionProperties`:
+The property is within `OracleConnectionProperties`:
 
 ```text
 ServerType = POOLED | SHARED | DEDICATED
@@ -73,7 +73,7 @@ be set to `POOLED`.
 The connection must be attached to the pool in order to perform operations and detached to release remote
 resources when the connection becomes idle. 
 
-There are two scenarii: when the connection is used directly by the client application and when it is used implicitly by the `sql.DB` object.
+There are two scenarios: when the connection is used directly by the client application and when it is used implicitly by the `sql.DB` object.
 
 This is when the connection is handled by the Go connection pool, or when `ExecContext` and `QueryContext` are executed against the `sql.DB` object.
 
