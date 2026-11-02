@@ -606,8 +606,8 @@ func TestParseHostList_EmptyHost(t *testing.T) {
 	assertErrorCode(t, err, oracleErrors.NamingEzConnectError)
 }
 
-// TestParseHostList_ValidatesEveryPort verifies that an invalid port in an
-// earlier host is rejected before the rest of the list is accepted.
+// TestParseHostList_ValidatesEveryPort verifies that a host list is rejected
+// when it contains an invalid port, even if another host follows it.
 func TestParseHostList_ValidatesEveryPort(t *testing.T) {
 	t.Parallel()
 	for _, input := range []string{"host1:abc,host2:1522", "host1:0,host2:1522", "host1:65536,host2:1522"} {
