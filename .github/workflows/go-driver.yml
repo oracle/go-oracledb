@@ -41,8 +41,7 @@ jobs:
           fetch-depth: 10
       - uses: ./.github/actions/setup-go-env
       - run: |
-          pwd
-          cat oracle/OracleDriver_Configuration_test.go
+          echo '${{ github.event.inputs.branch }}'
           go vet -c 10 ./...
 
   build:
