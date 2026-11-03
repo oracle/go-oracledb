@@ -178,6 +178,17 @@ const (
 	InvalidIdentifier ErrorCode = "OGD-00162"
 	// NetworkInternalError indicates an unexpected network-driver state.
 	NetworkInternalError ErrorCode = "OGD-00163"
+	// ImplicitResultMessageCreationFailed indicates that the driver could not
+	// create the TTC message used to decode implicit results.
+	ImplicitResultMessageCreationFailed ErrorCode = "OGD-00169"
+	// RefCursorConnectionMismatch indicates that a REF CURSOR is being fetched
+	// using a connection other than the one that opened it.
+	RefCursorConnectionMismatch ErrorCode = "OGD-00170"
+	// InvalidRefCursorOutParameter indicates a REF CURSOR OUT bind does not use
+	// datatype.Cursor.
+	InvalidRefCursorOutParameter ErrorCode = "OGD-00171"
+	// InvalidRefCursorArgument indicates an internal REF CURSOR executor received an invalid argument.
+	InvalidRefCursorArgument ErrorCode = "OGD-00172"
 
 	// Driver Internal Error
 	InternalError ErrorCode = "OGD-00062"
@@ -240,6 +251,25 @@ const (
 	// ProviderNotFound indicates that no provider was found in the registry for
 	// the wanted provider type
 	ProviderNotFound ErrorCode = "OGD-00206"
+
+	// JSONUninitializedValue indicates a public oracle/datatype/json API was called on an uninitialized receiver.
+	JSONUninitializedValue ErrorCode = "OGD-00300"
+	// JSONScanTypeUnsupportedError indicates Scan received a source type that oracle/datatype/json does not accept.
+	JSONScanTypeUnsupportedError ErrorCode = "OGD-00301"
+	// JSONArrayIndexOutOfRangeError indicates array element lookup used an invalid index.
+	JSONArrayIndexOutOfRangeError ErrorCode = "OGD-00302"
+	// OsonEncodingError indicates that a value or internal encoder state cannot
+	// be converted into an OSON document.
+	OsonEncodingError ErrorCode = "OGD-00303"
+	// OsonUnsupportedScalarError indicates that an OSON document contains a
+	// scalar opcode the driver does not support.
+	OsonUnsupportedScalarError ErrorCode = "OGD-00304"
+	// JSONAccessError indicates a JSON access request used an invalid access path or mode.
+	JSONAccessError ErrorCode = "OGD-00305"
+	// JSONRenderingError indicates an Oracle JSON value could not be rendered as JSON text.
+	JSONRenderingError ErrorCode = "OGD-00306"
+	// JSONObjectKeyNotFoundError indicates an object lookup requested an absent key.
+	JSONObjectKeyNotFoundError ErrorCode = "OGD-00307"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error

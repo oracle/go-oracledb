@@ -84,3 +84,13 @@ type codecFactoryUser interface {
 	// and is shared by messages created by that factory.
 	setCodecFactory(factory codecFactory)
 }
+
+// messageFactoryUser identifies messages that create nested TTC messages while
+// unmarshalling. The message factory injects itself immediately after creating
+// a message so nested messages use the same negotiated protocol version.
+// Implementations do not need access to the connection shelf for message
+// allocation.
+type messageFactoryUser interface {
+	// setMessageFactory stores the factory used to allocate nested messages.
+	setMessageFactory(factory Factory)
+}

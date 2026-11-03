@@ -184,8 +184,13 @@ func (config *OracleDriverConfig) ToNSConnectionParameters() string {
 				}
 				// skip empty strings
 				if strings.Count(v, " ") != 0 || strings.Count(v, "=") != 0 {
-					// quote it then
-					parameterValue = fmt.Sprintf("\"%s\"", v)
+					// quote it if not already quoted
+					isQuoted := len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"'
+					if isQuoted {
+						parameterValue = v
+					} else {
+						parameterValue = fmt.Sprintf("\"%s\"", v)
+					}
 				} else {
 					parameterValue = v
 				}
