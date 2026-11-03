@@ -309,8 +309,8 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 	conf.ConnectionProperties.HttpsProxyPort = 9000
 	conf.ConnectionProperties.RetryDelay = 7
 	conf.ConnectionProperties.Compression = true
-	conf.ConnectionProperties.TokenAuth = "OCI_TOKEN"
-	conf.ConnectionProperties.TokenLocation = "/token/location"
+	conf.Credentials.TokenAuth = "OCI_TOKEN"
+	conf.Credentials.TokenLocation = "/token/location"
 
 	params := conf.ToNSConnectionParameters()
 	if len(params) == 0 {
