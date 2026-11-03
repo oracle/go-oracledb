@@ -74,8 +74,8 @@ const (
 	TTIRENEG
 	TTIDONE
 	TTICOOKIE
-	// unused
-	_
+	// TTIIMPLOER terminates the prefetched payload nested in TTIIMPLRES.
+	TTIIMPLOER
 	_
 	TTITKN
 	TTIINIT
@@ -113,6 +113,7 @@ var TTCMsgTypeName = map[common.MessageType]string{
 	TTIRENEG:    "TTIRENEG",
 	TTIDONE:     "TTIDONE",
 	TTICOOKIE:   "TTICOOKIE",
+	TTIIMPLOER:  "TTIIMPLOER",
 	TTITKN:      "TTITKN",
 	TTIINIT:     "TTIINIT",
 }
@@ -143,6 +144,7 @@ var TTCMsgTypeDescription = map[common.MessageType]string{
 	TTIIMPLRES:  "Send implicit resultsets",
 	TTIRENEG:    "Protocol re-negotiation message",
 	TTICOOKIE:   "Protocol cookie-based fast negotiation message",
+	TTIIMPLOER:  "End implicit result set prefetch",
 	TTITKN:      "Token message code",
 	TTIINIT:     "Protocol fast negotiation message",
 }

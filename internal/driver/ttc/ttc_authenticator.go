@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -52,9 +53,14 @@ import (
 // server-side code.
 const maxPasswordBytes = 1024
 
+// A proxy login consists of two identifiers, either unquoted or double quoted.
+// Brackets within a quoted identifier are part of that identifier.
+var proxyUsernamePattern = regexp.MustCompile(`^("[^"\x00]+"|[\p{L}\p{M}\p{N}\p{Pc}$#]+)\[("[^"\x00]+"|[\p{L}\p{M}\p{N}\p{Pc}$#]+)\]$`)
+
 // passwordAuthenticator authenticates using user/password O5 logon.
 type passwordAuthenticator struct {
 	_username                      driverCommon.B1Array
+	_proxyClient                   driverCommon.B1Array
 	_password                      driverCommon.B1Array
 	_logonMode                     int64
 	_shelf                         ttiShelf[driverCommon.MessageType]
@@ -70,9 +76,11 @@ type passwordAuthenticator struct {
 //   - password : user password
 //   - connectString : connectionString
 func newPasswordAuthenticator(username, password string, connectString string) *passwordAuthenticator {
+	username, proxyClient := parseUsername(username)
 	pa := passwordAuthenticator{
 		_connectString: connectString,
-		_username:      driverCommon.StringToB1Array(sanitizeInputCredential(username)),
+		_username:      driverCommon.StringToB1Array(username),
+		_proxyClient:   driverCommon.StringToB1Array(proxyClient),
 		_password:      driverCommon.StringToB1Array(sanitizeInputCredential(password)),
 		_logonMode:     0,
 	}
@@ -112,6 +120,19 @@ func (pa *passwordAuthenticator) Authenticate(ctx context.Context) error {
 	}
 	common.Odl.Fine("Authenticate ended")
 	return nil
+}
+
+// parseUsername extracts the proxy client and sanitizes the authenticating username.
+// Unrecognized syntax is treated as an ordinary username.
+func parseUsername(username string) (string, string) {
+	var proxyClient string
+	// Parse before sanitizing to preserve quoted identifiers.
+	if parts := proxyUsernamePattern.FindStringSubmatch(strings.TrimSpace(username)); parts != nil {
+		username = parts[1]
+		// Preserve quotes on the proxy client.
+		proxyClient = parts[2]
+	}
+	return sanitizeInputCredential(username), proxyClient
 }
 
 func (pa *passwordAuthenticator) validatePasswordLength() error {
@@ -269,6 +290,7 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 
 	oauthMsg.(*oAuth).setPBKDF2Salt(sessionProperties.GetProperty(authPDKDF2CSKSalt).(*driverCommon.KeyValue).Value)
 	oauthMsg.(*oAuth).setUser(pa._username)
+	oauthMsg.(*oAuth).setProxyClient(pa._proxyClient)
 	oauthMsg.(*oAuth).setConnectString(pa._connectString)
 	oauthMsg.(*oAuth).setPBKDF2VgenCount(PBKDF2VgenCount)
 	oauthMsg.(*oAuth).setPBKDF2SderCount(PBKDF2SderCount)

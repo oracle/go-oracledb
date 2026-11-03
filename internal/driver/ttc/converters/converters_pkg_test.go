@@ -124,6 +124,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNumber_DecodeDecimal_ZeroScaleBounds", Categories: "unitary", Exclusive: false, Fn: TestNumber_DecodeDecimal_ZeroScaleBounds},
 	{Name: "TestNumber_DecodeDecimal_PrecisionBounds", Categories: "unitary", Exclusive: false, Fn: TestNumber_DecodeDecimal_PrecisionBounds},
 	{Name: "TestNumber_EncodeDecimal", Categories: "unitary", Exclusive: false, Fn: TestNumber_EncodeDecimal},
+	{Name: "TestDecodeExactDecimalAsString_DecimalWireFormats", Categories: "unitary", Exclusive: false, Fn: TestDecodeExactDecimalAsString_DecimalWireFormats},
 	{Name: "TestNumber_EncodeDecode_Roundtrip", Categories: "unitary", Exclusive: false, Fn: TestNumber_EncodeDecode_Roundtrip},
 	{Name: "TestNumber_OverflowHandling", Categories: "unitary", Exclusive: false, Fn: TestNumber_OverflowHandling},
 	{Name: "TestNumber_DecodeInt_MinInt64", Categories: "unitary", Exclusive: false, Fn: TestNumber_DecodeInt_MinInt64},
