@@ -216,6 +216,126 @@ func TestDriver_Authentication_TTIWRN(t *testing.T) {
 	}
 }
 
+// TestDriver_Authentication_Proxy verifies that user[client] authenticates with
+// the proxy user's password and establishes a session as the client user.
+// It covers DSN and connector configuration, including quoted identifiers.
+// The configured database user must be able to create/drop users, grant CREATE
+// SESSION, and grant CONNECT THROUGH. All users created here are cleaned up.
+func TestDriver_Authentication_Proxy(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+
+	adminDB, err := sql.Open(TestingConfig.Driver.Name, TestingConfig.GetConnectionString())
+	if err != nil {
+		t.Fatalf("failed to open administrative connection: %v", err)
+	}
+	t.Cleanup(func() { _ = adminDB.Close() })
+
+	var containerName string
+	if err := adminDB.QueryRowContext(ctx, "SELECT SYS_CONTEXT('USERENV', 'CON_NAME') FROM DUAL").Scan(&containerName); err != nil {
+		t.Fatalf("failed to determine the current database container: %v", err)
+	}
+	prefix := "PGD"
+	if strings.EqualFold(containerName, "CDB$ROOT") {
+		prefix = "C##PGD"
+	}
+	suffix := fmt.Sprintf("%X", time.Now().UnixNano())
+	proxyUser := prefix + "_PROXY_" + suffix
+	clientUser := prefix + "_CLIENT_" + suffix
+	const proxyPassword = "ProxyAuthTest42#"
+	const clientPassword = "ClientAuthTest42#"
+
+	for _, user := range []struct{ name, password string }{
+		{proxyUser, proxyPassword},
+		{clientUser, clientPassword},
+	} {
+		// Names are generated from uppercase letters, digits and underscores.
+		createSQL := fmt.Sprintf(`CREATE USER %s IDENTIFIED BY "%s"`, user.name, user.password)
+		if _, err := adminDB.ExecContext(ctx, createSQL); err != nil {
+			if isInsufficientPrivilegeError(err) {
+				t.Skipf("configured user cannot create users: %v", err)
+			}
+			t.Fatalf("failed to create proxy authentication test user %s: %v", user.name, err)
+		}
+		t.Cleanup(func() {
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cleanupCancel()
+			if _, err := adminDB.ExecContext(cleanupCtx, "DROP USER "+user.name+" CASCADE"); err != nil {
+				t.Errorf("failed to drop proxy authentication test user %s: %v", user.name, err)
+			}
+		})
+		if _, err := adminDB.ExecContext(ctx, "GRANT CREATE SESSION TO "+user.name); err != nil {
+			if isInsufficientPrivilegeError(err) {
+				t.Skipf("configured user cannot grant CREATE SESSION: %v", err)
+			}
+			t.Fatalf("failed to grant CREATE SESSION to %s: %v", user.name, err)
+		}
+	}
+	if _, err := adminDB.ExecContext(ctx, "ALTER USER "+clientUser+" GRANT CONNECT THROUGH "+proxyUser); err != nil {
+		if isInsufficientPrivilegeError(err) {
+			t.Skipf("configured user cannot grant CONNECT THROUGH: %v", err)
+		}
+		t.Fatalf("failed to grant CONNECT THROUGH: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name, username string
+		connector      bool
+	}{
+		{"DSN", proxyUser + "[" + clientUser + "]", false},
+		{"Connector", proxyUser + "[" + clientUser + "]", true},
+		{"QuotedProxyUser", fmt.Sprintf(`"%s"[%s]`, proxyUser, clientUser), false},
+		{"QuotedClient", fmt.Sprintf(`%s["%s"]`, proxyUser, clientUser), false},
+		{"BothQuoted", fmt.Sprintf(`"%s"["%s"]`, proxyUser, clientUser), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := TestingConfig.Clone()
+			cfg.Credentials.Username = tc.username
+			cfg.Credentials.Password = proxyPassword
+			cfg.Credentials.LogonMode = ""
+
+			var db *sql.DB
+			if tc.connector {
+				driverConfig := NewOracleDriverConfig()
+				driverConfig.ConnectDescriptor = cfg.GetConnectionDSN()
+				driverConfig.Credentials.User = tc.username
+				driverConfig.Credentials.Password = proxyPassword
+				connector, err := NewOracleConnector(driverConfig)
+				if err != nil {
+					t.Fatalf("failed to create proxy authentication connector: %v", err)
+				}
+				db = sql.OpenDB(connector)
+			} else {
+				var err error
+				db, err = sql.Open(cfg.Driver.Name, cfg.GetConnectionString())
+				if err != nil {
+					t.Fatalf("failed to open proxy authentication database handle: %v", err)
+				}
+			}
+			defer db.Close()
+
+			var sessionUser string
+			var actualProxy sql.NullString
+			err := db.QueryRowContext(ctx, `SELECT
+				SYS_CONTEXT('USERENV', 'SESSION_USER'),
+				SYS_CONTEXT('USERENV', 'PROXY_USER') FROM DUAL`).Scan(&sessionUser, &actualProxy)
+			if err != nil {
+				t.Fatalf("proxy authentication query failed: %v", err)
+			}
+			if sessionUser != clientUser {
+				t.Errorf("SESSION_USER = %q, want %q", sessionUser, clientUser)
+			}
+			if !actualProxy.Valid || actualProxy.String != proxyUser {
+				t.Errorf("PROXY_USER = %v, want %q", actualProxy, proxyUser)
+			}
+		})
+	}
+}
+
 func isInsufficientPrivilegeError(err error) bool {
 	return err != nil && (strings.Contains(err.Error(), string(oracleErrors.InsufficientPrivilege)) ||
 		strings.Contains(err.Error(), "ORA-01031"))

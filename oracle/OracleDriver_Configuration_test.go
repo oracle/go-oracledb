@@ -394,6 +394,34 @@ func TestDriver_OpenConnectorUsesNSParam(t *testing.T) {
 	}
 }
 
+// TestDriver_OpenConnectorPreservesQuotedInParameters verifies that a
+// quoted configuration value with space retains its spaces
+// expectations : quoting remain correct
+func TestDriver_OpenConnectorPreservesQuotedInParameters(t *testing.T) {
+	t.Parallel()
+	const expected = "CN=My Server, OU=Org"
+	const dsn = `tcps://127.0.0.1:1521/service?ssl_server_cert_dn="CN=My Server, OU=Org"`
+
+	connector, err := NewDriver().openConnector(dsn)
+	if err != nil {
+		t.Fatalf("openConnector failed: %v", err)
+	}
+
+	oracleConnector := connector.(*oracleConnector)
+	iterator := oracleConnector.config.NewConnectionAttemptIterator(context.Background())
+	if !iterator.HasNext() {
+		t.Fatal("expected a connection attempt")
+	}
+
+	option := iterator.Next()
+	if option.Description == nil {
+		t.Fatal("expected parsed description")
+	}
+	if got := option.Description.Security.SSLServerCertDN; got != expected {
+		t.Fatalf("expected SSL server certificate DN %q, got %q", expected, got)
+	}
+}
+
 // TestDriver_OpenConnectorReturnsInvalidDSNParameterError verifies that invalid
 // DSN query parameters fail connector creation.
 func TestDriver_OpenConnectorReturnsInvalidDSNParameterError(t *testing.T) {

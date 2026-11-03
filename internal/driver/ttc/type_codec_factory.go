@@ -102,7 +102,7 @@ type encoderFunc func(driver.Value) (driverCommon.B1Array, error)
 // decoderFunc defines the signature for TTC decoder implementors registered with the
 // codec factory. The function receives the column context and raw TTC data bytes and is
 // expected to return the decoded database value or an error.
-type decoderFunc func(columnContext, driverCommon.B1Array) (driver.Value, error)
+type decoderFunc func(columnContext, any) (driver.Value, error)
 
 // bindOacFunc defines the signature for bind OAC constructor functions registered
 // with the codec factory. The function receives the requested maximum bind length
@@ -133,12 +133,10 @@ type typeDecoder struct {
 }
 
 // newTypeDecoder associates a datatype decoder with its explicit wire reader.
-func newTypeDecoder(f decoderFunc, sf scanTypeFunc, unwrap columnUnwrapFunc) *typeDecoder {
-	_n := &typeDecoder{}
-	_n.decodeToType = f
-	_n.getScanType = sf
-	_n.unwrapColumn = unwrap
-	return _n
+// Every registered decoder accepts the common decoderFunc input contract. A
+// decoder that requires raw wire bytes validates them with rawColumnData.
+func newTypeDecoder(decode decoderFunc, sf scanTypeFunc, unwrap columnUnwrapFunc) *typeDecoder {
+	return &typeDecoder{decodeToType: decode, getScanType: sf, unwrapColumn: unwrap}
 }
 
 /*
