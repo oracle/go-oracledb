@@ -242,8 +242,10 @@ func TestParsePlaceholders_IgnoreInSingleQuotedStringWithEscape(t *testing.T) {
 // quoted literals hide embedded colons and apostrophes while preserving real bind
 // placeholders in occurrence order. Cases cover issue #135, paired and custom
 // delimiters (including Unicode and single quotes), q/Q and national prefixes,
-// embedded delimiters, empty literals, and unterminated literals. Each case also
-// checks that the real named placeholder "actual" binds successfully to "X".
+// embedded delimiters, empty literals, and unterminated literals. Invalid space,
+// tab, and carriage-return delimiters fall back to ordinary quote scanning; SQL
+// syntax validation remains the database's responsibility. Each case also checks
+// that the real named placeholder "actual" binds successfully to "X".
 func TestParsePlaceholders_AlternativeQuotedStrings(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -267,6 +269,9 @@ func TestParsePlaceholders_AlternativeQuotedStrings(t *testing.T) {
 		{"empty", `SELECT q'[]', q'!!' FROM dual WHERE dummy = :actual`, "actual"},
 		{"unterminated", `SELECT :actual, q'[O'Reilly :ignored`, "actual"},
 		{"truncated", `SELECT :actual, q'[`, "actual"},
+		{"spaceDelimiter", "SELECT q' text' FROM dual WHERE dummy = :actual", "actual"},
+		{"tabDelimiter", "SELECT q'\ttext' FROM dual WHERE dummy = :actual", "actual"},
+		{"returnDelimiter", "SELECT q'\rtext' FROM dual WHERE dummy = :actual", "actual"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

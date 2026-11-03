@@ -180,6 +180,9 @@ func skipCommentOrString(runes []rune, i int) (int, bool) {
 	if (runes[i] == 'q' || runes[i] == 'Q') && i+2 < n && runes[i+1] == '\'' {
 		closing := runes[i+2]
 		switch closing {
+		case ' ', '\t', '\r':
+			// These characters cannot delimit an alternative-quoted literal.
+			return i, false
 		case '[':
 			closing = ']'
 		case '{':
