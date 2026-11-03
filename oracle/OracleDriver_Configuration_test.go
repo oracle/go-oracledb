@@ -402,7 +402,7 @@ func TestDriver_OpenConnectorPreservesQuotedInParameters(t *testing.T) {
 	const expected = "CN=My Server, OU=Org"
 	const dsn = `tcps://127.0.0.1:1521/service?ssl_server_cert_dn="CN=My Server, OU=Org"`
 
-	connector, err := NewDriver().openConnector(dsn)
+	connector, err := NewDriver().OpenConnector(dsn)
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}

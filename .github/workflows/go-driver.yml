@@ -41,8 +41,7 @@ jobs:
           fetch-depth: 10
       - uses: ./.github/actions/setup-go-env
       - run: |
-          echo '${{ github.event.inputs.branch }}'
-          go vet -c 10 ./...
+          go vet ./...
 
   build:
     needs:
