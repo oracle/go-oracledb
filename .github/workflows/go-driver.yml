@@ -40,7 +40,7 @@ jobs:
         with:
           fetch-depth: 10
       - uses: ./.github/actions/setup-go-env
-      - run: go vet -c 10 -diff ./...
+      - run: go vet -c 10 -diff -fix ./...
 
   build:
     needs:
