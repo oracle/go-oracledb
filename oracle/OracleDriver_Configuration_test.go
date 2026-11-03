@@ -201,7 +201,7 @@ func TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector(t *testing.T) {
 		t.Fatal("expected debug logging to be enabled after applying the configuration")
 	}
 
-	if _, err := driver.openConnector("localhost:1521/freepdb1"); err != nil {
+	if _, err := driver.OpenConnector("localhost:1521/freepdb1"); err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
 
@@ -224,7 +224,7 @@ func TestDriver_OpenConnectorUsesFallbackConnectDescriptor(t *testing.T) {
 	config := NewOracleDriverConfig()
 	config.ConnectDescriptor = "localhost:1521/freepdb1?oracle.go.ConnectionProperties.ConnectTimeout=12"
 
-	connector, err := NewDriverWithConfig(config).openConnector("")
+	connector, err := NewDriverWithConfig(config).OpenConnector("")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestDriver_OpenConnectorUsesFallbackConnectDescriptor(t *testing.T) {
 // TestDriver_OpenConnectorStoresConnectDescriptorFromDSN verifies that
 // credentials and the connect descriptor are stored from the DSN.
 func TestDriver_OpenConnectorStoresConnectDescriptorFromDSN(t *testing.T) {
-	connector, err := NewDriver().openConnector("user/pass@localhost:1521/freepdb1")
+	connector, err := NewDriver().OpenConnector("user/pass@localhost:1521/freepdb1")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestDriver_OpenConnectorUsesParam(t *testing.T) {
 	t.Parallel()
 	const walletLocation = "/tmp/foo"
 
-	connector, err := GetDefaultDriver().openConnector("tcps://127.0.0.1:2484/freepdb1?oracle.go.ConnectionProperties.WalletLocation=/tmp/foo")
+	connector, err := GetDefaultDriver().OpenConnector("tcps://127.0.0.1:2484/freepdb1?oracle.go.ConnectionProperties.WalletLocation=/tmp/foo")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestDriver_OpenConnectorUsesNSParam(t *testing.T) {
 	const walletLocation = "/tmp/foo"
 	const logonMode = "SYSOPER"
 
-	connector, err := GetDefaultDriver().openConnector("tcps://127.0.0.1:2484/freepdb1?wallet_location=" + walletLocation + "&logon_mode=" + logonMode)
+	connector, err := GetDefaultDriver().OpenConnector("tcps://127.0.0.1:2484/freepdb1?wallet_location=" + walletLocation + "&logon_mode=" + logonMode)
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestDriver_OpenConnectorUsesNSParam(t *testing.T) {
 // DSN query parameters fail connector creation.
 func TestDriver_OpenConnectorReturnsInvalidDSNParameterError(t *testing.T) {
 	t.Parallel()
-	_, err := NewDriver().openConnector("user/pass@localhost:1521/freepdb1?oracle.go.ConnectionProperties.ConnectTimeout=-1")
+	_, err := NewDriver().OpenConnector("user/pass@localhost:1521/freepdb1?oracle.go.ConnectionProperties.ConnectTimeout=-1")
 	if err == nil {
 		t.Fatal("expected invalid DSN parameter error")
 	}
