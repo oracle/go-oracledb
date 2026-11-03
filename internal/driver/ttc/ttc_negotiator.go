@@ -49,12 +49,13 @@ import (
 
 // connectionNegotiator implements the Negotiator interface for TTC connections.
 type connectionNegotiator struct {
-	_dataBuffer driverCommon.DataBuffer
+	_dataBuffer            driverCommon.DataBuffer
+	defaultLobPrefetchSize int64
 }
 
 // newConnectionNegotiator creates a new instance of connectionNegotiator.
-func newConnectionNegotiator() *connectionNegotiator {
-	return &connectionNegotiator{}
+func newConnectionNegotiator(defaultLobPrefetchSize int64) *connectionNegotiator {
+	return &connectionNegotiator{defaultLobPrefetchSize: defaultLobPrefetchSize}
 }
 
 // Negotiate performs the connection negotiation process over the provided DataBuffer.
@@ -67,7 +68,7 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	shelf, sessCtx := _createShelfAndSessionContext()
 
 	// 2. Fetch new Marshaller & TTC Msg Streamer
-	_createAndRegisterMarshaller(cn._dataBuffer, shelf, true)
+	_createAndRegisterMarshaller(cn._dataBuffer, shelf, true, cn.defaultLobPrefetchSize)
 	msgStmr := _createAndRegisterMessageStreamer(shelf)
 
 	// 3. Create and register Initial MessageFactory
@@ -97,7 +98,7 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	)
 
 	// 7. Update Marshaller with Datatype Reps
-	_createAndRegisterMarshaller(cn._dataBuffer, shelf, false)
+	_createAndRegisterMarshaller(cn._dataBuffer, shelf, false, cn.defaultLobPrefetchSize)
 
 	// Determine negotiated TTC version (minimum of client and server)
 	clientVersion := dty.GetClientTTCVersion()
@@ -277,8 +278,9 @@ func _createAndRegisterMarshaller(
 	buf driverCommon.DataBuffer,
 	shelf *ttiShelf[driverCommon.MessageType],
 	isNative bool,
+	defaultLobPrefetchSize int64,
 ) {
-	var mar driverCommon.Marshaller
+	var mar *MarshalEngine
 	if isNative {
 		mar = NewNativeMarshalEngine(buf, driverCommon.BIG_ENDIAN)
 		common.Odl.Fine("connectionNegotiator: Creating Native Marshaller")
@@ -286,11 +288,7 @@ func _createAndRegisterMarshaller(
 		mar = NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		common.Odl.Fine("connectionNegotiator: Creating TTC Marshaller")
 	}
-	if props := shelf.GetConnectionProperties(); props != nil {
-		if marshalEngine, ok := mar.(*MarshalEngine); ok {
-			marshalEngine.setDefaultLobPrefetchSize(int64(props.GetDefaultLobPrefetchSize()))
-		}
-	}
+	mar.setDefaultLobPrefetchSize(defaultLobPrefetchSize)
 	shelf.RegisterMarshaller(mar)
 	common.Odl.Fine("connectionNegotiator: Marshaller created/updated and registered")
 }

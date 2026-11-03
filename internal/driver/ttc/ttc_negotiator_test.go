@@ -252,7 +252,7 @@ func TestConnectionNegotiator_Negotiate_Fail(t *testing.T) {
 				failWhere: tc.failWhere,
 				failErr:   errors.New(tc.expectedErr),
 			}
-			negotiator := newConnectionNegotiator()
+			negotiator := newConnectionNegotiator(0)
 			var err error
 			switch tc.step {
 			case stepProtocol:
@@ -402,7 +402,7 @@ func TestConnectionNegotiator_Negotiate_Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			negotiator := newConnectionNegotiator()
+			negotiator := newConnectionNegotiator(0)
 			ctx := context.Background()
 			data := tc.buffer()
 			negotiator.SetDataBuffer(data)
@@ -424,7 +424,7 @@ func TestConnectionNegotiator_Negotiate_Success(t *testing.T) {
 // negotiated EOCS capabilities are passed to the shelf's message factory and
 // select EOCS-aware TTIOER and TTISTA implementations.
 func TestConnectionNegotiator_Negotiate_SelectsEOCSMessages(t *testing.T) {
-	negotiator := newConnectionNegotiator()
+	negotiator := newConnectionNegotiator(0)
 	data := NewTestDataBuffer()
 	data.OnWriteDefaults = successOnWriteEOCS(6)
 	negotiator.SetDataBuffer(data)
@@ -457,5 +457,32 @@ func TestConnectionNegotiator_Negotiate_SelectsEOCSMessages(t *testing.T) {
 	}
 	if !staMsg._supportsEndOfCallStatus {
 		t.Error("TTISTA does not support end-of-call status after EOCS negotiation")
+	}
+}
+
+// TestCreateAndRegisterMarshallerLobPrefetchSize verifies that both marshaller
+// creation paths apply the supplied prefetch size without shelf properties.
+func TestCreateAndRegisterMarshallerLobPrefetchSize(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name         string
+		prefetchSize int64
+	}{
+		{name: "zero"},
+		{name: "configured", prefetchSize: 64 * 1024 * 1024},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shelf, _ := _createShelfAndSessionContext()
+			buffer := NewArrayDataBuffer(128)
+
+			for _, isNative := range []bool{true, false} {
+				_createAndRegisterMarshaller(buffer, shelf, isNative, tc.prefetchSize)
+
+				marshaller := shelf.GetMarshaller().(*MarshalEngine)
+				if got := marshaller._defaultLobPrefetchSize; got != tc.prefetchSize {
+					t.Errorf("native=%t: LOB prefetch size = %d, want %d", isNative, got, tc.prefetchSize)
+				}
+			}
+		})
 	}
 }

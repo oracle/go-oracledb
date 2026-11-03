@@ -74,7 +74,7 @@ type connectionInstantiator struct {
 //   - an error if the authenticator or instantiator cannot be initialized.
 func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
 	dataBuffer := ns.(driverCommon.DataBuffer)
-	negotiator := GetNegotiator(dataBuffer)
+	negotiator := GetNegotiator(dataBuffer, int64(config.DriverProperties.GetDefaultLobPrefetchSize()))
 	localizationService := common.NewLocalizationService(config.Locale.ClientLanguage)
 
 	authenticator, err := GetAuthenticator(config, providerRegistry)
@@ -206,10 +206,10 @@ func createPasswordAuthenticator(parameters *oracleconfig.OracleDriverConfig) (A
 
 // *** Negotiator Factory ***
 
-// GetNegotiator returns the default Negotiator implementation.
+// GetNegotiator returns the default Negotiator implementation with the configured LOB prefetch size.
 // TODO : we should not have to pass the buffer here...
-func GetNegotiator(transport driverCommon.DataBuffer) Negotiator {
-	n := newConnectionNegotiator()
+func GetNegotiator(transport driverCommon.DataBuffer, defaultLobPrefetchSize int64) Negotiator {
+	n := newConnectionNegotiator(defaultLobPrefetchSize)
 	n.SetDataBuffer(transport)
 	return n
 }

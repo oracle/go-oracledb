@@ -279,6 +279,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTokenAuthenticatorAuthenticateStreamerErrors", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorAuthenticateStreamerErrors},
 	{Name: "TestOAuth_prepareForTokenOAUTH", Categories: "unitary", Exclusive: false, Fn: TestOAuth_prepareForTokenOAUTH},
 	{Name: "TestConnectionNegotiator_Negotiate_Fail", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_Fail},
+	{Name: "TestCreateAndRegisterMarshallerLobPrefetchSize", Categories: "unitary", Exclusive: false, Fn: TestCreateAndRegisterMarshallerLobPrefetchSize},
+	{Name: "TestConnectionNegotiatorConfiguredLobPrefetchSize", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiatorConfiguredLobPrefetchSize},
 	{Name: "TestConnectionNegotiator_Negotiate_Success", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_Success},
 	{Name: "TestConnectionNegotiator_Negotiate_SelectsEOCSMessages", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_SelectsEOCSMessages},
 	{Name: "TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey", Categories: "unitary", Exclusive: false, Fn: TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey},
