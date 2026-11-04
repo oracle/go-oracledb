@@ -625,7 +625,7 @@ func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts
 		common.Odl.Debug(
 			"decodeSignedIntegerValue: failed",
 			"reason", "Oracle NUMBER has a fractional part",
-			"numberLength", len(text),
+			"number", text,
 		)
 		return nil, common.NewOracleError(
 			oracleErrors.ConverterExpectedFormat,
@@ -646,7 +646,7 @@ func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts
 			common.Odl.Debug(
 				"decodeSignedIntegerValue: failed",
 				"reason", "Oracle NUMBER is outside signed 64-bit range",
-				"numberLength", len(text),
+				"number", text,
 			)
 			return nil, common.NewOracleError(
 				oracleErrors.ConverterRange,
@@ -662,7 +662,7 @@ func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts
 		common.Odl.Debug(
 			"decodeSignedIntegerValue: failed",
 			"reason", "decoded Oracle NUMBER has invalid integer text",
-			"numberLength", len(text),
+			"number", text,
 		)
 		return nil, common.NewOracleError(oracleErrors.InternalError, err)
 	}
