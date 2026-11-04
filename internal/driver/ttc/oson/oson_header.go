@@ -654,7 +654,7 @@ func (h *osonHeader) readPrimaryDictionary(buf *osonBuffer, layout _parsedDictio
 	//   1 byte length
 	//   N bytes UTF-8 field name
 	names := make([]string, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		// Heap offsets are untrusted wire values. Each entry must start
 		// inside the heap and keep its 1-byte length prefix addressable,
 		// so the unchecked heap[offset:] below can never panic.
@@ -737,7 +737,7 @@ func (h *osonHeader) readSecondaryDictionary(buf *osonBuffer, layout _parsedDict
 	//   2 byte big-endian length
 	//   N bytes UTF-8 field name
 	names := make([]string, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		// Heap offsets are untrusted wire values. Each entry must start
 		// inside the heap and keep its 2-byte length prefix addressable,
 		// so the unchecked heap[offset:] below can never panic.
@@ -858,7 +858,7 @@ func (h *osonHeader) readSecondaryOffsets(buf *osonBuffer, count int) ([]int, er
 	offsets := make([]int, count)
 	if h.secondaryFlags&osonFlagSecondaryFieldOffsetsUB2Mask != 0 {
 		// Small long-key heaps can keep the offset array compact as UB2 entries.
-		for i := 0; i < count; i++ {
+		for i := range count {
 			val, err := buf.readUB2()
 			if err != nil {
 				common.Odl.Debug("osonHeader.readSecondaryOffsets: failed", "error", err, "index", i, "width", osonUB2Size)
@@ -869,7 +869,7 @@ func (h *osonHeader) readSecondaryOffsets(buf *osonBuffer, count int) ([]int, er
 		return offsets, nil
 	}
 	// Otherwise offsets are stored in full UB4 width.
-	for i := 0; i < count; i++ {
+	for i := range count {
 		val, err := buf.readUB4()
 		if err != nil {
 			common.Odl.Debug("osonHeader.readSecondaryOffsets: failed", "error", err, "index", i, "width", osonUB4Size)
@@ -1028,7 +1028,7 @@ func osonHash(key string) (uint32, int) {
 	// Hash the UTF-8 bytes directly so field lookup matches the on-wire format.
 	hash := uint32(osonFNVOffsetBasis32)
 	bytes := []byte(key)
-	for i := 0; i < len(bytes); i++ {
+	for i := range bytes {
 		hash = (hash ^ uint32(bytes[i])) * osonFNVPrime32
 	}
 	return hash, len(bytes)

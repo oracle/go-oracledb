@@ -107,7 +107,7 @@ func TestClearAllAndLength(t *testing.T) {
 	bs := NewBitSet(9)
 	bs.SetBytes(0, []byte{0xFF, 0xFF})
 	bs.ClearAll()
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		if bs.Get(i) {
 			t.Errorf("All bits should be cleared. Bit %d is set", i)
 		}

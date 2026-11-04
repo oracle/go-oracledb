@@ -52,8 +52,8 @@ type CategorizedTestCase struct {
 // isTestCategoryEnabled checks that the comma separated list of categories in testCategories
 // matches what's enabled in categories.
 func isTestCategoryEnabled(testCategories string, categories TestCategoryList) bool {
-	stc := strings.Split(testCategories, ",")
-	for _, ec := range stc {
+	stc := strings.SplitSeq(testCategories, ",")
+	for ec := range stc {
 		for _, c := range categories {
 			if strings.EqualFold(
 				strings.TrimSpace(ec),

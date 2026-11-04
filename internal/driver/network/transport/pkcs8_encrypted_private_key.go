@@ -117,7 +117,7 @@ const (
 //
 // The returned key is one of *rsa.PrivateKey or *ecdsa.PrivateKey
 // depending on what was stored in the wallet.
-func parsePKCS8EncryptedPrivateKey(block *pem.Block, password []byte) (interface{}, error) {
+func parsePKCS8EncryptedPrivateKey(block *pem.Block, password []byte) (any, error) {
 	if block == nil {
 		return nil, common.NewOracleError(oracleErrors.InvalidNetworkProperty, nil, "PEM block")
 	}

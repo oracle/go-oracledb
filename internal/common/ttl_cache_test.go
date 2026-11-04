@@ -321,7 +321,7 @@ func TestLRUCacheGetUpdatesRecency(t *testing.T) {
 
 func deleteWorker(t *testing.T, iterationCount int, cache Cache[string]) {
 	t.Helper()
-	for j := 0; j < iterationCount; j++ {
+	for j := range iterationCount {
 		key := fmt.Sprintf("k%d", j%25)
 		value := fmt.Sprintf("v%d", j)
 
@@ -338,7 +338,7 @@ func deleteWorker(t *testing.T, iterationCount int, cache Cache[string]) {
 }
 func getWorker(t *testing.T, iterationCount int, cache Cache[string]) {
 	t.Helper()
-	for j := 0; j < iterationCount; j++ {
+	for j := range iterationCount {
 		key := fmt.Sprintf("k%d", j%25)
 		value := fmt.Sprintf("v%d", j)
 		cache.Put(key, value)
@@ -361,7 +361,7 @@ func cacheConcurrency(t *testing.T, cache Cache[string]) {
 
 	var wg sync.WaitGroup
 	wg.Add(workersCount)
-	for i := 0; i < workersCount; i++ {
+	for i := range workersCount {
 		go func(flag int) {
 			defer wg.Done()
 			if flag == 0 {

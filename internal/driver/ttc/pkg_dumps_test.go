@@ -1917,7 +1917,7 @@ func ExtractBytesFromDump(lines []string) ([]byte, error) {
 				segment = segment[start+1 : end]
 			}
 		}
-		for _, tok := range strings.Fields(segment) {
+		for tok := range strings.FieldsSeq(segment) {
 			if isHex.MatchString(tok) {
 				b, _ := hex.DecodeString(tok)
 				buf = append(buf, b...)
@@ -2008,7 +2008,7 @@ func decodeUniversalAt(b []byte, idx int) (int, int, bool) {
 		return 0, 0, false
 	}
 	val := 0
-	for i := 0; i < n; i++ {
+	for i := range n {
 		val = (val << 8) | int(b[idx+1+i])
 	}
 	return val, 1 + n, true
@@ -2080,10 +2080,7 @@ func overwriteValueAfterKey(buf []byte, key string, value []byte) {
 			if dataEnd > len(buf) {
 				return
 			}
-			n := len(value)
-			if n > clrLen {
-				n = clrLen
-			}
+			n := min(len(value), clrLen)
 			copy(buf[dataStart:dataStart+n], value[:n])
 			return
 		}

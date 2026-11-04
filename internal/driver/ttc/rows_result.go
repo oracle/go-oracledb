@@ -359,7 +359,7 @@ func newTTCRows(columnContexts []columnContext) *ttcRows {
 	rows := &ttcRows{strictNullHandlingValue: true}
 
 	rows.columnContexts = make([]columnContext, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		rows.columnContexts[i] = columnContexts[i]
 	}
 
@@ -476,7 +476,7 @@ func (r *ttcRows) ColumnTypeScanType(index int) reflect.Type {
 		decoder, err := r.shelf.GetCodecFactory().getDecoder(r.columnContexts[index].DataType)
 		if err != nil {
 			common.Odl.Warn("Do not have decode mapping", "type", r.columnContexts[index].DataType)
-			return reflect.TypeOf([]byte(nil))
+			return reflect.TypeFor[[]byte]()
 		}
 		r.columnContexts[index].ScanType = new(decoder.getScanType(r.columnContexts[index]))
 	}

@@ -497,10 +497,7 @@ func runPreparedInsertNclob(t *testing.T, table string, rows []clobRowData) {
 			t.Logf("actual   string: %q", gotNclob)
 
 			// Prefix mismatch detection
-			minLen := len(rr.c)
-			if len(gotNclob) < minLen {
-				minLen = len(gotNclob)
-			}
+			minLen := min(len(gotNclob), len(rr.c))
 
 			mismatchAt := -1
 			for i := 0; i < minLen; i++ {

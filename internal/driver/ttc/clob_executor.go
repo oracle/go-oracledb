@@ -519,10 +519,7 @@ func (c *clobExecutor) encodeLobCharPayload(
 ) (int, int, int) {
 	// Clamp the upper bound so slicing never exceeds the source length; callers may request
 	// more characters than remain in the buffer when writing the final chunk.
-	end := offset + numChars
-	if end > len(source) {
-		end = len(source)
-	}
+	end := min(offset+numChars, len(source))
 
 	// Slice the runes that should be encoded. When the requested window falls outside the source
 	// (e.g. offset == len(source)), we return early to avoid invoking conversion helpers with an
@@ -823,7 +820,7 @@ func readUTF16CodeUnits(data []byte, littleEndian bool) ([]uint16, error) {
 		)
 	}
 	codeUnits := make([]uint16, len(data)/bytesPerUTF16CodeUnit)
-	for i := 0; i < len(codeUnits); i++ {
+	for i := range codeUnits {
 		base := i * bytesPerUTF16CodeUnit
 		if littleEndian {
 			codeUnits[i] = uint16(data[base]) | (uint16(data[base+1]) << 8)

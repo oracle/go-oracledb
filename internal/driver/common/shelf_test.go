@@ -303,7 +303,7 @@ func (t *testObject) Drain(context.Context, StreamDirection) (int, int) {
 
 type testLocalizationService struct{}
 
-func (t *testLocalizationService) Format(code oracleErrors.ErrorCode, args ...interface{}) string {
+func (t *testLocalizationService) Format(code oracleErrors.ErrorCode, args ...any) string {
 	return message.NewPrinter(language.English).Sprintf(string(code), args...)
 }
 

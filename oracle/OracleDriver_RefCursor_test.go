@@ -338,7 +338,7 @@ END;`)
 	}
 	t.Cleanup(func() { _ = rows.Close() })
 
-	for resultSet := 0; resultSet < len(tableNames); resultSet++ {
+	for resultSet := range tableNames {
 		rowCount := 0
 		for rows.Next() {
 			var id int

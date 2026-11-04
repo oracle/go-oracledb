@@ -187,7 +187,7 @@ func TestDriverErrorMessagesAreLocalized(t *testing.T) {
 	ms := NewLocalizationService(language.English)
 	tests := []struct {
 		code oracleErrors.ErrorCode
-		args []interface{}
+		args []any
 		want string
 	}{
 		{oracleErrors.ImplicitResultMessageCreationFailed, nil, "failed to create implicit result message"},

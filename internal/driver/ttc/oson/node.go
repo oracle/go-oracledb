@@ -337,7 +337,7 @@ func readChildOffsetsAt(buf *osonBuffer, header *osonHeader, containerOffset, st
 		return nil, err
 	}
 	offsets := make([]int, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		entryOffset := start + (i * size)
 		childOffset, err := readChildOffsetAt(buf, header, containerOffset, entryOffset, size)
 		if err != nil {

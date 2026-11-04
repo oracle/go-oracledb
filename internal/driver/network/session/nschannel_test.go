@@ -400,7 +400,7 @@ func TestReadMultiPacket(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if buf[i] != byte(i+1) {
 			t.Errorf("Mismatch at %d", i)
 		}
@@ -623,7 +623,7 @@ func TestReadBytesWithContextDoesNotTruncateLargeLength(t *testing.T) {
 	ns.rcvBuf = make([]byte, NSPDADAT+length)
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + length, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		ns.rcvDatapkt.buf[NSPDADAT+i] = byte(i)
 	}
 

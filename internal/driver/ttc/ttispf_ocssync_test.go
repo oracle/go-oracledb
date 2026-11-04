@@ -346,7 +346,7 @@ func indexOf(s, sub string) int {
 	}
 	for i := 0; i <= n-m; i++ {
 		match := true
-		for j := 0; j < m; j++ {
+		for j := range m {
 			if s[i+j] != sub[j] {
 				match = false
 				break

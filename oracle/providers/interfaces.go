@@ -51,7 +51,7 @@ type ProviderRegistrar interface {
 
 // Provider is the marker interface implemented by connector-extensible runtime
 // providers.
-type Provider interface{}
+type Provider any
 
 /*** TOKEN AUTHENTICATION ***/
 

@@ -47,6 +47,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -186,12 +187,7 @@ func newPacketDumpHandler(out io.Writer, next slog.Handler) *packetDumpHandler {
 
 // Enabled see slog.Logger.Enabled()
 func (h *filteredHandler) Enabled(_ context.Context, level slog.Level) bool {
-	for _, l := range h.levels {
-		if l == level {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(h.levels, level)
 }
 
 // WithAttrs see slog.Logger.WithAttrs()

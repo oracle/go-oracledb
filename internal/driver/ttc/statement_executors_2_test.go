@@ -69,19 +69,19 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	maps.Copy(bindOacRegistry.entries, BindOacRegistry.entries)
 	// Register encoders used by prepareBindsAndOAC tests.
 	// (Registration uses "version 2" which is <= any supported protocol version in tests.)
-	_ = encoderRegistry.Register(reflect.TypeOf(int64(0)), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeFor[int64](), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeInt(v.(int64))
 	})
-	_ = encoderRegistry.Register(reflect.TypeOf(""), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeFor[string](), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeVarchar(v.(string))
 	})
-	_ = encoderRegistry.Register(reflect.TypeOf([]byte(nil)), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeFor[[]byte](), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return common.B1Array(v.([]byte)), nil
 	})
-	_ = encoderRegistry.Register(reflect.TypeOf(true), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeFor[bool](), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeBoolean(v.(bool))
 	})
-	_ = encoderRegistry.Register(reflect.TypeOf(time.Time{}), 2, func(v sqldriver.Value) (common.B1Array, error) {
+	_ = encoderRegistry.Register(reflect.TypeFor[time.Time](), 2, func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeTimestampWithTimeZone(v.(time.Time))
 	})
 	_ = encoderRegistry.Register(reflect.TypeOf(nil), 2, func(v sqldriver.Value) (common.B1Array, error) {
@@ -89,31 +89,31 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	})
 
 	// Register bind OAC makers used by prepareBindsAndOAC tests.
-	_ = bindOacRegistry.Register(reflect.TypeOf(int64(0)), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeFor[int64](), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyNum, maxLength)
 		},
 		maxLength: converters.MaxNumberLength,
 	})
-	_ = bindOacRegistry.Register(reflect.TypeOf(""), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeFor[string](), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyVCS, maxLength)
 		},
 		maxLength: 32768,
 	})
-	_ = bindOacRegistry.Register(reflect.TypeOf([]byte(nil)), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeFor[[]byte](), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyVbi, maxLength)
 		},
 		maxLength: 32767,
 	})
-	_ = bindOacRegistry.Register(reflect.TypeOf(true), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeFor[bool](), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyBol, maxLength)
 		},
 		maxLength: converters.MaxBoolLength,
 	})
-	_ = bindOacRegistry.Register(reflect.TypeOf(time.Time{}), 2, bindOacType{
+	_ = bindOacRegistry.Register(reflect.TypeFor[time.Time](), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyStz, maxLength)
 		},

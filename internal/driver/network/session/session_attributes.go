@@ -70,7 +70,7 @@ type sessionAtts struct {
 	recvTimeout                        int
 	sendTimeout                        int
 	naFlags                            int
-	cDataNVPair                        interface{} // Placeholder for nvStrToNvPair data
+	cDataNVPair                        any // Placeholder for nvStrToNvPair data
 	negotiatedNetworkCompressionScheme int
 	networkCompressionEnabled          bool
 	firstRecvCompressedPacket          bool
@@ -102,7 +102,7 @@ func newSessionAtts(uuid string) *sessionAtts {
 	}
 }
 
-func (sa *sessionAtts) setFrom(source interface{}) {
+func (sa *sessionAtts) setFrom(source any) {
 	if source == nil {
 		return
 	}

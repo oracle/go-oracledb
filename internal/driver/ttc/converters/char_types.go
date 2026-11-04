@@ -237,7 +237,7 @@ func DecodeUTF16BEToString(value driverCommon.B1Array) (string, error) {
 		return "", common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, "UTF16BE", "Decode", driverCommon.ReasonInvalidLength, "even length")
 	}
 	units := make([]uint16, len(value)/2)
-	for i := 0; i < len(units); i++ {
+	for i := range units {
 		units[i] = binary.BigEndian.Uint16(value[i*2 : i*2+2])
 	}
 	runes := utf16.Decode(units)
