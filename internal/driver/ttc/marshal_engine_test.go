@@ -73,7 +73,7 @@ func TestMarshalUB1(t *testing.T) {
 	dataBuffer := NewArrayDataBuffer(1024)
 	byteOrder := common.BIG_ENDIAN
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
-	for i := range 256 {
+	for i := 0; i < 256; i++ {
 		err := engine.MarshalUB1(context.Background(), common.UB1(i))
 		if err != nil {
 			t.Errorf("MarshalUB1 failed: %v", err)
@@ -318,7 +318,7 @@ func TestMarshalByteArray(t *testing.T) {
 	for _, value := range values {
 		engine.MarshalB1Array(context.Background(), value)
 		length := len(value)
-		for j := range length {
+		for j := 0; j < length; j++ {
 			if dataBuffer.bytes[dataBuffer.currentWritePosition-(length-j)] != value[j] {
 				t.Errorf("Invalid value at byte %d was: %d but should be: %d", j, dataBuffer.bytes[dataBuffer.currentWritePosition-(length-j)], value[j])
 			}
@@ -340,7 +340,7 @@ func TestMarshalChar(t *testing.T) {
 	for _, value := range values {
 		engine.MarshalChar(context.Background(), value)
 		length := len(value)
-		for j := range length {
+		for j := 0; j < length; j++ {
 			if dataBuffer.bytes[dataBuffer.currentWritePosition-(length-j)] != value[j] {
 				t.Errorf("Invalid value at byte %d was: %d but should be: %d", j, dataBuffer.bytes[dataBuffer.currentWritePosition-(length-j)], value[j])
 			}
@@ -452,7 +452,10 @@ func TestMarshalCLR(t *testing.T) {
 				dataRead := 0
 				remaining := tt.length - tt.offset
 				for remaining > 0 {
-					chunkSize := min(remaining, _checkSize)
+					chunkSize := remaining
+					if chunkSize > _checkSize {
+						chunkSize = _checkSize
+					}
 					// Verify the 4-byte chunk length
 					chunkLen := binary.LittleEndian.Uint32(dataBuffer.bytes[pos : pos+4])
 					if int(chunkLen) != chunkSize {
@@ -513,14 +516,14 @@ func TestUnmarshalUB1(t *testing.T) {
 	dataBuffer := NewArrayDataBuffer(1024)
 	byteOrder := common.BIG_ENDIAN
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
-	for i := range 256 {
+	for i := 0; i < 256; i++ {
 		err := engine.MarshalUB1(context.Background(), common.UB1(i))
 		if err != nil {
 			t.Errorf("MarshalUB1 failed: %v", err)
 		}
 	}
 	dataBuffer.currentReadPosition = 0
-	for i := range 256 {
+	for i := 0; i < 256; i++ {
 		value, err := engine.UnmarshalUB1(context.Background())
 		if err != nil {
 			t.Errorf("MarshalUB1 failed: %v", err)
@@ -1245,7 +1248,7 @@ func TestUnmarshalByteArray(t *testing.T) {
 			t.Errorf("An error occurred while reading values %v", err)
 		}
 
-		for j := range length {
+		for j := 0; j < length; j++ {
 			if value[j] != (readValue)[j] {
 				t.Errorf("Wrong value read, expected %d, but was %d", value[j], (readValue)[j])
 			}
@@ -1267,7 +1270,7 @@ func TestUnmarshalByteArray(t *testing.T) {
 			t.Errorf("An error occurred while reading values %v", err)
 		}
 
-		for j := range length {
+		for j := 0; j < length; j++ {
 			if value[j] != (readValue)[j] {
 				t.Errorf("Wrong value read, expected %d, but was %d", value[j], (readValue)[j])
 			}
@@ -1389,7 +1392,7 @@ func TestMarshalUB1NoSpace(t *testing.T) {
 	dataBuffer := NewArrayDataBuffer(0)
 	byteOrder := common.BIG_ENDIAN
 	engine := NewMarshalEngine(dataBuffer, byteOrder, [5]byte{Native, Native, Native, Native, Native})
-	for i := range 256 {
+	for i := 0; i < 256; i++ {
 		err := engine.MarshalUB1(context.Background(), common.UB1(i))
 		if err == nil {
 			t.Errorf("MarshalUB1 should have failed")
@@ -2029,7 +2032,7 @@ func TestUnmarshalCLRBufferToSmallForLength(t *testing.T) {
 	t.Parallel()
 	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	value := make(common.B1Array, 300)
-	for i := range value {
+	for i := 0; i < len(value); i++ {
 		value[i] = byte(i % 256)
 	}
 	engine.MarshalCLR(context.Background(), value, 0, len(value))
@@ -2047,7 +2050,7 @@ func TestUnmarshalCLRReadLessThatTotalLength(t *testing.T) {
 	t.Parallel()
 	_, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	value := make(common.B1Array, 300)
-	for i := range value {
+	for i := 0; i < len(value); i++ {
 		value[i] = byte(i % 256)
 	}
 	engine.MarshalCLR(context.Background(), value, 0, len(value))
@@ -2067,7 +2070,7 @@ func TestUnmarshalCLRReadLessThatTotalLengthNoSpace(t *testing.T) {
 	t.Parallel()
 	dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, 1000)
 	value := make(common.B1Array, 300)
-	for i := range value {
+	for i := 0; i < len(value); i++ {
 		value[i] = byte(i % 256)
 	}
 	engine.MarshalCLR(context.Background(), value, 0, len(value))
@@ -2099,7 +2102,7 @@ func runMarshalTest[T common.UB1 | common.UB2 | common.UB4 | common.SB4 | common
 		}
 
 		length := len(v)
-		for j := range length {
+		for j := 0; j < length; j++ {
 			if dataBuffer.bytes[dataBuffer.currentWritePosition-(length-j)] != v[j] {
 				t.Errorf("Invalid value at byte %d was: %d but should be: %d", j, dataBuffer.bytes[dataBuffer.currentWritePosition-(length-j)], v[j])
 			}

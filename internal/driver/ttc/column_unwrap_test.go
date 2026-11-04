@@ -299,7 +299,7 @@ func TestColumnPayloadConstructedValues(t *testing.T) {
 		t.Fatalf("BVC re-read cursor: %d reads", reads)
 	}
 	rows.numOfRows = 2
-	for range 2 {
+	for i := 0; i < 2; i++ {
 		dest := make([]driver.Value, 1)
 		if err := rows.Next(dest); err != nil {
 			t.Fatal(err)

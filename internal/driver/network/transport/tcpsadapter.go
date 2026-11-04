@@ -683,7 +683,7 @@ func validateRDN(rdn pkix.RelativeDistinguishedNameSET, source string) error {
 		if _, ok := atv.Value.(string); !ok {
 			return common.NewOracleError(oracleErrors.DNAttributeOIDValueTypeInvalid, nil, atv.Type)
 		}
-		for j := range i {
+		for j := 0; j < i; j++ {
 			if rdn[j].Type.Equal(atv.Type) {
 				return common.NewOracleError(oracleErrors.DNDuplicateAttributeOID, nil, atv.Type)
 			}

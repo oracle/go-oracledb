@@ -166,6 +166,7 @@ func TestDateDecode(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := DecodeDate(b1(tt.payload))
@@ -224,6 +225,7 @@ func TestDateEncode(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, _ := EncodeDate(tt.when)
@@ -275,6 +277,7 @@ func TestTimestampDecode(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := DecodeTimestamp(b1(tt.payload))
@@ -326,6 +329,7 @@ func TestTimestampEncode(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, _ := EncodeTimestamp(tt.when)
@@ -373,6 +377,7 @@ func TestTimestampWithTimeZoneDecode(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := DecodeTimestampWithTimeZone(b1(tt.payload))
@@ -412,6 +417,7 @@ func TestTimestampWithTimeZoneEncode(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, _ := EncodeTimestampWithTimeZone(tt.when)

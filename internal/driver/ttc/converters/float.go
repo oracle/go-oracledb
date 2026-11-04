@@ -173,9 +173,9 @@ func EncodeFloat(v driver.Value) (driverCommon.B1Array, error) {
 	// Split into integer and fractional parts
 	intPart := dec
 	fracPart := ""
-	if before, after, ok := strings.Cut(dec, "."); ok {
-		intPart = before
-		fracPart = after
+	if idx := strings.IndexByte(dec, _dotByte); idx != -1 {
+		intPart = dec[:idx]
+		fracPart = dec[idx+1:]
 	}
 
 	// Compute integer digits count (without leading zeros in int part)

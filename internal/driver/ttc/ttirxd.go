@@ -168,7 +168,7 @@ func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller
 		return nil
 	}
 	bindCount := len(rxd.bindRow)
-	for i := range bindCount {
+	for i := 0; i < bindCount; i++ {
 		val := rxd.bindRow[i]
 		if val == nil {
 			// Write CLR null indicator

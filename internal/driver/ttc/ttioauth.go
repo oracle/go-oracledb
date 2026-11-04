@@ -533,7 +533,7 @@ func (o *oAuth) _initializeOAuthResponse(userPassword driverCommon.B1Array) erro
 
 	encryptedPasswordLength := make([]int, 1)
 	o5logonpassword := make([]byte, passwordBufferLength)
-	for k := range passwordBufferLength {
+	for k := 0; k < passwordBufferLength; k++ {
 		o5logonpassword[k] = 0
 	}
 

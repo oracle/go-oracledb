@@ -333,9 +333,9 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 		"transport_connect_timeout=0":    false,
 		"USE_SNI=false":                  false,
 	}
-	tokens := strings.SplitSeq(params, "&")
+	tokens := strings.Split(params, "&")
 
-	for s := range tokens {
+	for _, s := range tokens {
 		if _, ok := want[s]; ok {
 			want[s] = true
 		}

@@ -87,7 +87,7 @@ type localizationService struct {
 // localized printers to errors created or wrapped by the driver.
 type LocalizationService interface {
 	// format renders a localized message for the given error code and arguments.
-	Format(code oracleErrors.ErrorCode, args ...any) string
+	Format(code oracleErrors.ErrorCode, args ...interface{}) string
 	// LocalizeError attaches the service printer to an existing error chain.
 	LocalizeError(err error) error
 }
@@ -107,7 +107,7 @@ func NewLocalizationService(userLanguage language.Tag) LocalizationService {
 }
 
 // format renders a localized message for the given error code and arguments.
-func (ms *localizationService) Format(code oracleErrors.ErrorCode, args ...any) string {
+func (ms *localizationService) Format(code oracleErrors.ErrorCode, args ...interface{}) string {
 	return ms.printer.Sprintf(string(code), args...)
 }
 
@@ -154,7 +154,7 @@ func (e *oracleError) setLocalizationService(localizationService LocalizationSer
 //   - args: the arguments to add to the error code
 //
 // Returns: a new instance of OracleError
-func NewOracleError(code oracleErrors.ErrorCode, cause error, args ...any) oracleErrors.SQLError {
+func NewOracleError(code oracleErrors.ErrorCode, cause error, args ...interface{}) oracleErrors.SQLError {
 	return &oracleError{
 		code:  code,
 		cause: cause,

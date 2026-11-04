@@ -176,7 +176,10 @@ func (m *mockNTAdapter) Receive(ctx context.Context, buf []byte, size int) (int,
 	if remaining <= 0 {
 		return 0, io.EOF
 	}
-	toCopy := min(size, len(buf))
+	toCopy := size
+	if toCopy > len(buf) {
+		toCopy = len(buf)
+	}
 	if toCopy > remaining {
 		toCopy = remaining
 	}

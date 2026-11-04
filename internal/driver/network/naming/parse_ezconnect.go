@@ -196,9 +196,9 @@ func parseExtendedParams(paramStr string) (map[string]string, map[string]string,
 	}
 
 	// Split by '&'
-	params := strings.SplitSeq(paramStr, "&")
+	params := strings.Split(paramStr, "&")
 
-	for param := range params {
+	for _, param := range params {
 		param = strings.TrimSpace(param)
 		if param == "" {
 			continue
@@ -270,11 +270,11 @@ func parseMainURL(url string) (*parsedURL, error) {
 	if len(parts) > 1 && parts[1] != "" {
 		// Service name is before any ':'
 		serviceAndMode := parts[1]
-		before, after, ok := strings.Cut(serviceAndMode, ":")
+		colonIdx := strings.Index(serviceAndMode, ":")
 
-		if ok {
-			result.serviceName = before
-			result.serverMode = strings.ToUpper(after)
+		if colonIdx != -1 {
+			result.serviceName = serviceAndMode[:colonIdx]
+			result.serverMode = strings.ToUpper(serviceAndMode[colonIdx+1:])
 		} else {
 			result.serviceName = serviceAndMode
 		}

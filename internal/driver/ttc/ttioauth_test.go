@@ -493,14 +493,16 @@ func TestOAuth_setVSessionKeyValsForOAUTHIsConnectionLocal(t *testing.T) {
 	var waitGroup sync.WaitGroup
 	for index := range 16 {
 		expected := strconv.Itoa(index)
-		waitGroup.Go(func() {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
 			oauth := NewOAuth().(*oAuth)
 			oauth.setConnectString(expected)
 			oauth.setVSessionKeyValsForOAUTH()
 			if got := connectString(oauth); got != expected {
 				t.Errorf("AUTH_CONNECT_STRING = %q, want %q", got, expected)
 			}
-		})
+		}()
 	}
 	waitGroup.Wait()
 }

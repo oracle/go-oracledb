@@ -80,6 +80,7 @@ func TestTTILobd_UnmarshalFrom_Fail(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			msg := newTTIlobd().(*tTIlobd)
@@ -208,6 +209,7 @@ func TestTTILobd_MarshalTo_Fail(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			msg := newTTIlobd().(*tTIlobd)
@@ -270,7 +272,7 @@ func normalizeLOBText(data common.B1Array) string {
 		length--
 	}
 	words := make([]uint16, length/2)
-	for i := range words {
+	for i := 0; i < len(words); i++ {
 		words[i] = binary.BigEndian.Uint16(data[i*2:])
 	}
 	decoded := string(utf16.Decode(words))

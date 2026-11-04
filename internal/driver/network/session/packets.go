@@ -41,7 +41,6 @@ package session
 import (
 	"encoding/binary"
 	"io"
-	"slices"
 	"strconv"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -145,10 +144,16 @@ func (cp *connectPacket) marshal(connectData []byte, sAtts *sessionAtts, flags u
 	options := NSGDONTCARE
 	binary.BigEndian.PutUint16(cp.buf[NSPCNOPT:], uint16(options))
 
-	sdu := min(sAtts.sdu, NSPMXSDULN)
+	sdu := sAtts.sdu
+	if sdu > NSPMXSDULN {
+		sdu = NSPMXSDULN
+	}
 	binary.BigEndian.PutUint16(cp.buf[NSPCNSDU:], uint16(sdu))
 
-	tdu := min(sAtts.tdu, NSPMXSDULN)
+	tdu := sAtts.tdu
+	if tdu > NSPMXSDULN {
+		tdu = NSPMXSDULN
+	}
 	binary.BigEndian.PutUint16(cp.buf[NSPCNTDU:], uint16(tdu))
 
 	binary.BigEndian.PutUint16(cp.buf[NSPCNNTC:], 0) // NT characteristics
@@ -229,9 +234,11 @@ func (dp *dataPacket) marshal(buf []byte, _ *sessionAtts, _ uint8) error {
 
 // FillBuf populates the data packet
 func (dp *dataPacket) FillBuf(userBuf []byte, offset, len int) int {
-	bytes2Copy := min(
-		// limit the bytes to copy to the remaining buffer space to avoid overflow;
-		len, dp.bufLen-dp.offset)
+	bytes2Copy := len
+	//limit the bytes to copy to the remaining buffer space to avoid overflow;
+	if len > dp.bufLen-dp.offset {
+		bytes2Copy = dp.bufLen - dp.offset
+	}
 	if bytes2Copy > 0 {
 		copy(dp.buf[dp.offset:], userBuf[offset:offset+bytes2Copy])
 	}
@@ -525,7 +532,12 @@ func (rp *resendPacket) unmarshal(buffer []byte, _ *sessionAtts, hdr *header) er
 
 // Helper function to check if a slice contains a string
 func contains(slice []string, item string) bool {
-	return slices.Contains(slice, item)
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
 
 // Helper that takes a value plus lower/upper bounds and forces the result into that range:

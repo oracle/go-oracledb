@@ -98,7 +98,7 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drv
 	}
 
 	members := make(map[string]int, memberCount)
-	for i := range memberCount {
+	for i := 0; i < memberCount; i++ {
 		// Field ids are 1-based on the wire and the merged dictionary is zero-based.
 		fieldName, ok := header.fieldName(fieldIDValues[i] - 1)
 		if !ok {
@@ -153,7 +153,7 @@ func readFieldIDEntriesAt(buf *osonBuffer, header *osonHeader, start, count int)
 		return nil, err
 	}
 	entries := make([]int, count)
-	for i := range count {
+	for i := 0; i < count; i++ {
 		entryOffset := start + (i * size)
 		switch size {
 		case osonUB1Size:

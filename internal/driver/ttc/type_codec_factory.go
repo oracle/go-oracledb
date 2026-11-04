@@ -187,7 +187,7 @@ func normalizeBindValue(bindValue driver.Value) normalizedBindValue {
 		n.isOutOnly = !outValue.In
 	}
 
-	if n.goType != nil && n.goType.Kind() == reflect.Pointer {
+	if n.goType != nil && n.goType.Kind() == reflect.Ptr {
 		rv := reflect.ValueOf(n.value)
 		if !rv.IsValid() || rv.IsNil() {
 			n.value = nil
@@ -205,56 +205,56 @@ func normalizeBindValue(bindValue driver.Value) normalizedBindValue {
 		} else {
 			n.value = nil
 		}
-		n.goType = reflect.TypeFor[string]()
+		n.goType = reflect.TypeOf(value.String)
 	case sql.NullInt64:
 		if value.Valid {
 			n.value = value.Int64
 		} else {
 			n.value = nil
 		}
-		n.goType = reflect.TypeFor[int64]()
+		n.goType = reflect.TypeOf(value.Int64)
 	case sql.NullInt32:
 		if value.Valid {
 			n.value = value.Int32
 		} else {
 			n.value = nil
 		}
-		n.goType = reflect.TypeFor[int32]()
+		n.goType = reflect.TypeOf(value.Int32)
 	case sql.NullInt16:
 		if value.Valid {
 			n.value = value.Int16
 		} else {
 			n.value = nil
 		}
-		n.goType = reflect.TypeFor[int16]()
+		n.goType = reflect.TypeOf(value.Int16)
 	case sql.NullByte:
 		if value.Valid {
 			n.value = value.Byte
 		} else {
 			n.value = nil
 		}
-		n.goType = reflect.TypeFor[byte]()
+		n.goType = reflect.TypeOf(value.Byte)
 	case sql.NullFloat64:
 		if value.Valid {
 			n.value = value.Float64
 		} else {
 			n.value = nil
 		}
-		n.goType = reflect.TypeFor[float64]()
+		n.goType = reflect.TypeOf(value.Float64)
 	case sql.NullBool:
 		if value.Valid {
 			n.value = value.Bool
 		} else {
 			n.value = nil
 		}
-		n.goType = reflect.TypeFor[bool]()
+		n.goType = reflect.TypeOf(value.Bool)
 	case sql.NullTime:
 		if value.Valid {
 			n.value = value.Time
 		} else {
 			n.value = nil
 		}
-		n.goType = reflect.TypeFor[time.Time]()
+		n.goType = reflect.TypeOf(value.Time)
 	}
 
 	return n

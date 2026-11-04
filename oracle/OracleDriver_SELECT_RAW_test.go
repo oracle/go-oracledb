@@ -442,7 +442,7 @@ func TestIssue_DecodeBinaryColumnType(t *testing.T) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		var raw any
+		var raw interface{}
 		rows.Scan(&raw)
 		if _, ok := raw.([]byte); !ok {
 			t.Errorf("driver.Value type = %T, want []byte — "+

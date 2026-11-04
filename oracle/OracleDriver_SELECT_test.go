@@ -367,12 +367,12 @@ func TestDriver_ConcurrentQueriesOnSharedDB(t *testing.T) {
 	start := make(chan struct{})
 	errs := make(chan error, workers)
 	var wg sync.WaitGroup
-	for worker := range workers {
+	for worker := 0; worker < workers; worker++ {
 		wg.Add(1)
 		go func(worker int) {
 			defer wg.Done()
 			<-start
-			for query := range queriesPerWorker {
+			for query := 0; query < queriesPerWorker; query++ {
 				expectedID := int64((worker*queriesPerWorker+query)%rowCount + 1)
 				var id, value int64
 				if err := db.QueryRowContext(ctx, "SELECT id, num_value FROM "+table+" WHERE id = :1", expectedID).Scan(&id, &value); err != nil {

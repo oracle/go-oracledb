@@ -217,6 +217,7 @@ func TestTTIlob_MarshalTo_Success(t *testing.T) {
 
 	ctx := context.Background()
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			msg := newTTIlob().(*tTIlob)
 			msg.SetDefinition(tc.def())
