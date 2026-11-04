@@ -1733,30 +1733,200 @@ func TestDriver_Select_UROWID(t *testing.T) {
 	if _, err := db.ExecContext(context.Background(), "INSERT INTO "+table+" (id, payload) VALUES (1, 'alpha')"); err != nil {
 		t.Fatalf("insert failed: %v", err)
 	}
+
 	if _, err := db.ExecContext(context.Background(), "UPDATE "+table+" SET row_addr = ROWID WHERE id = 1"); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
 
-	var count int
-	err = db.QueryRowContext(context.Background(),
-		fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id = 1", table),
-	).Scan(&count)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("matching rows=%d", count)
 	var id int64
 	var got sql.NullString
 	err = db.QueryRowContext(
 		context.Background(),
 		fmt.Sprintf("SELECT id, row_addr FROM %s WHERE id = 1", table),
 	).Scan(&id, &got)
+
 	if err != nil {
-		t.Fatalf("query/scan failed: %v", err)
-	}
-	if !got.Valid || got.String == "" {
-		t.Fatalf("expected a nonempty UROWID, got %+v", got)
+		t.Fatalf("query/scan of row_addr failed: %v", err)
 	}
 
-	t.Logf("ROWID =%s", got.String)
+	if !got.Valid || got.String == "" {
+		t.Fatalf("expected a nonempty ROWID, got %+v", got)
+	}
+
+	t.Logf("ROWID = [%s]", got.String)
+
+}
+
+// TestDriver_Select_ROWID validates that we can fetch row id out of the DB
+// expectations:
+//   - the inserted id is retrieved back the same
+func TestDriver_Select_ROWID(t *testing.T) {
+	t.Parallel()
+
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open DB: %v", err)
+	}
+	defer db.Close()
+
+	table := createObjectName("t_rowid")
+	ctx := context.Background()
+	cols := map[string]string{
+		"id":      "NUMBER(10)",
+		"payload": "VARCHAR2(40)",
+	}
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	if _, err := db.ExecContext(context.Background(), "INSERT INTO "+table+" (id, payload) VALUES (1, 'alpha')"); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	var id int64
+	var got sql.NullString
+
+	err = db.QueryRowContext(
+		context.Background(),
+		fmt.Sprintf("SELECT id, ROWID FROM %s WHERE id = 1", table),
+	).Scan(&id, &got)
+
+	if err != nil {
+		t.Fatalf("query/scan of ROWID failed: %v", err)
+	}
+
+	if !got.Valid || got.String == "" {
+		t.Fatalf("expected a nonempty ROWID, got %+v", got)
+	}
+
+	t.Logf("ROWID = [%s]", got.String)
+
+}
+
+// TestDriver_Insert_ROWID validates that we can insert a ROWID as string
+// expectations:
+//   - the inserted id is retrieved back the same
+func TestDriver_Insert_ROWID(t *testing.T) {
+	t.Parallel()
+
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open DB: %v", err)
+	}
+	defer db.Close()
+
+	//table := createObjectName("t_insert_rowid")
+	table := "manu2"
+	ctx := context.Background()
+	cols := map[string]string{
+		"id":       "NUMBER PRIMARY KEY",
+		"row_addr": "ROWID",
+	}
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	rowid := "AAATchAAAAAAAMlAAA"
+
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO "+table+" (id, row_addr) VALUES (:1, :2)",
+		1,
+		rowid,
+	); err != nil {
+		t.Fatalf("insert of rowid failed: %v", err)
+	}
+
+	var id int64
+	var got sql.NullString
+
+	err = db.QueryRowContext(
+		context.Background(),
+		fmt.Sprintf("SELECT id, row_addr FROM %s WHERE id = 1", table),
+	).Scan(&id, &got)
+
+	if err != nil {
+		t.Fatalf("query/scan of ROWID failed: %v", err)
+	}
+
+	if !got.Valid || got.String != rowid {
+		t.Fatalf("expected  ROWID [%s], got %+v", rowid, got.String)
+	}
+
+}
+
+// TestDriver_Insert_UROWID validates that we can insert a UROWID as string
+// expectations:
+//   - the inserted id is retrieved back the same
+func TestDriver_Insert_UROWID(t *testing.T) {
+	t.Parallel()
+
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open DB: %v", err)
+	}
+	defer db.Close()
+
+	table := createObjectName("t_insert_urowid")
+	ctx := context.Background()
+	cols := map[string]string{
+		"id":       "NUMBER PRIMARY KEY",
+		"row_addr": "UROWID",
+	}
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	rowid := "AAATchAAAAAAAMlAAA"
+
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO "+table+" (id, row_addr) VALUES (:1, :2)",
+		1,
+		rowid,
+	); err != nil {
+		t.Fatalf("insert of rowid failed: %v", err)
+	}
+
+	var id int64
+	var got sql.NullString
+
+	err = db.QueryRowContext(
+		context.Background(),
+		fmt.Sprintf("SELECT id, row_addr FROM %s WHERE id = 1", table),
+	).Scan(&id, &got)
+
+	if err != nil {
+		t.Fatalf("query/scan of UROWID failed: %v", err)
+	}
+
+	if !got.Valid || got.String != rowid {
+		t.Fatalf("expected  UROWID [%s], got %+v", rowid, got.String)
+	}
+
 }

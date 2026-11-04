@@ -25,7 +25,8 @@ package ttc
 import (
 	"database/sql/driver"
 	"encoding/base64"
-	"strings"
+	"encoding/binary"
+	"fmt"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -54,18 +55,99 @@ const (
 	urowidFileFieldLength = 2 // length of file number
 
 	urowidBlockFieldOffset = urowidFileFieldOffset + urowidFileFieldLength
-	urowidBlockFieldLength = 4 // length of block number ;
+	urowidBlockFieldLength = 4 // length of block number
 
 	urowidSlotFieldOffset = urowidBlockFieldOffset + urowidBlockFieldLength
 	urowidSlotFieldLength = 2 // length of slot number
 
 	urowidComponentLength = urowidObjectFieldLength + urowidFileFieldLength + urowidBlockFieldLength + urowidSlotFieldLength + 1 // +1 for tyope indicator
+
+	rowidDefRbaFieldOffset = 0
+	rowidDefRbaFieldLength = 4
+
+	rowidDefPartitionIdFieldOffset = rowidDefRbaFieldOffset + rowidDefRbaFieldLength
+	rowidDefPartitionIdFieldLength = 2
+
+	rowidDefTableIdFieldOffset = rowidDefPartitionIdFieldOffset + rowidDefPartitionIdFieldLength
+	rowidDefTableIdFieldLength = 1
+
+	rowidDefBlockNumberFieldOffset = rowidDefTableIdFieldOffset + rowidDefTableIdFieldLength
+	rowidDefBlockNumberFieldLength = 4
+
+	rowidDefSlotNumberFieldOffset = rowidDefBlockNumberFieldOffset + rowidDefBlockNumberFieldLength
+	rowidDefSlotNumberFieldLength = 2
+
+	rowidDefComponentLength = rowidDefRbaFieldLength + rowidDefPartitionIdFieldLength + rowidDefTableIdFieldLength + rowidDefBlockNumberFieldLength + rowidDefSlotNumberFieldLength
 )
 
 var (
+	rowidBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
 	// no prefix for physical
 	urowidTypePrefix = [...]byte{'A', '*', '-', '(', ')'}
 )
+
+// DecodeRowidDefColumn decodes an Oracle's  rowid bytes.
+//
+// Description:
+//
+//	Converts Oracle's rowid bytes to the printable rowid def representation returned by Oracle clients.
+//
+// Parameters:
+//   - columnContext: Column metadata used for error reporting (name/index).
+//   - data: Raw TTC payload bytes for the column.
+//     format : RBA (4 bytes) | partition ID (2) | table ID (1) | block number (4) | slot number (2)
+//
+// Returns:
+//   - driver.Value: time.Time containing the decoded date/time value.
+//   - error: Non-nil if decoding fails.
+func DecodeRowidDefColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	rowid, err := rowidDefToString(data)
+	if err != nil {
+		common.Odl.Fine("rowid column parse error", "err", err)
+		return nil, rowDecodeError(columnContext, err, "ROWID")
+	}
+	return rowid, nil
+}
+
+func appendKgrd42b(dst []byte, value uint64, digits int) []byte {
+	start := len(dst)
+	dst = append(dst, make([]byte, digits)...)
+
+	for i := digits - 1; i >= 0; i-- {
+		dst[start+i] = rowidBase64Alphabet[value&0x3f]
+		value >>= 6
+	}
+	return dst
+}
+
+func rowidDefToString(data []byte) (string, error) {
+	if len(data) != rowidDefComponentLength {
+		return "", common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil,
+			"ROWID", "Decode", driverCommon.ReasonInvalidLength, rowidDefComponentLength)
+	}
+
+	var rba = binary.BigEndian.Uint32(data[rowidDefRbaFieldOffset:rowidDefRbaFieldLength])
+	var partitionID = binary.BigEndian.Uint16(data[rowidDefPartitionIdFieldOffset : rowidDefPartitionIdFieldOffset+rowidDefPartitionIdFieldLength])
+	var blockNumber = binary.BigEndian.Uint32(data[rowidDefBlockNumberFieldOffset : rowidDefBlockNumberFieldOffset+rowidDefBlockNumberFieldLength])
+	var slotNumber = binary.BigEndian.Uint16(data[rowidDefSlotNumberFieldOffset : rowidDefSlotNumberFieldLength+rowidDefSlotNumberFieldOffset])
+
+	result := make([]byte, 0, 18)
+	result = appendKgrd42b(result, uint64(rba), 6)
+	result = appendKgrd42b(result, uint64(partitionID), 3)
+	result = appendKgrd42b(result, uint64(blockNumber), 6)
+	result = appendKgrd42b(result, uint64(slotNumber), 3)
+
+	return string(result), nil
+}
 
 // DecodeUrowidColumn decodes a Oracle's internal universal rowid bytes.
 //
@@ -92,7 +174,7 @@ func DecodeUrowidColumn(columnContext columnContext, value any) (driver.Value, e
 
 	rowid, err := urowidToString(data)
 	if err != nil {
-		common.Odl.Debug("urowid column parse error", "err", err)
+		common.Odl.Fine("urowid column parse error", "err", err)
 		return nil, rowDecodeError(columnContext, err, "UROWID")
 	}
 	return rowid, nil
@@ -123,19 +205,26 @@ func urowidToString(data []byte) (string, error) {
 			return "", common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil,
 				"UROWID", "Decode", driverCommon.ReasonInvalidLength, urowidComponentLength)
 		}
-		var rowid strings.Builder
-		rowid.Grow(18)
 
-		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidObjectFieldOffset : urowidObjectFieldOffset+urowidObjectFieldLength])) // object
-		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidFileFieldOffset : urowidFileFieldOffset+urowidFileFieldLength]))       // file
-		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidBlockFieldOffset : urowidBlockFieldOffset+urowidBlockFieldLength]))    // block
-		rowid.WriteString(base64.RawStdEncoding.EncodeToString(data[urowidSlotFieldOffset : urowidSlotFieldOffset+urowidSlotFieldLength]))       // slot
+		objectNumber := binary.BigEndian.Uint32(data[urowidObjectFieldOffset : urowidObjectFieldOffset+urowidObjectFieldLength])
+		fileNumber := binary.BigEndian.Uint16(data[urowidFileFieldOffset : urowidFileFieldOffset+urowidFileFieldLength])
+		blockNumber := binary.BigEndian.Uint32(data[urowidBlockFieldOffset : urowidBlockFieldOffset+urowidBlockFieldLength])
+		slotNumber := binary.BigEndian.Uint16(data[urowidSlotFieldOffset : urowidSlotFieldOffset+urowidSlotFieldLength])
 
-		return rowid.String(), nil
+		// uses the restricted hexadecimal form when the object number is zero.
+		if objectNumber == 0 {
+			return fmt.Sprintf("%08X.%04X.%04X", blockNumber, slotNumber, fileNumber), nil
+		}
+
+		rowid := make([]byte, 0, 18)
+		rowid = appendKgrd42b(rowid, uint64(objectNumber), 6)
+		rowid = appendKgrd42b(rowid, uint64(fileNumber), 3)
+		rowid = appendKgrd42b(rowid, uint64(blockNumber), 6)
+		rowid = appendKgrd42b(rowid, uint64(slotNumber), 3)
+		return string(rowid), nil
 	}
 
-	// all others cases go here.
-	// For nonphysical UROWIDs, the format is a type-specific character prefix followed by Base64 of the remaining bytes
+	// For nonphysical UROWIDs, the format is a type-specific character prefix followed by Base64 of the remaining bytes.
 	body := base64.RawStdEncoding.EncodeToString(data[urowidTypeOffset+urowidTypeFieldLength:])
 	return string(urowidTypePrefix[rowidType-2]) + body, nil
 }

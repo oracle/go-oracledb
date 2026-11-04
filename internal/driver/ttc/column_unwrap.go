@@ -190,28 +190,117 @@ func unwrapCLRColumn(ctx context.Context, mar driverCommon.Marshaller, env colum
 	return payload, nil
 }
 
-/*
-unwrapUrowidColumn reads a UROWID column value from the row data stream.
+//unwrapRowidDefColumn reads a ROWID column value from the row data stream.
+//
+//Description:
+//
+//	Reads the outer UB1 length and then the ROW id layout as follows
+//     rba — 4 bytes (UB4)
+//     partitionID — 2 bytes (UB2)
+//     tableID — 1 byte (UB1)
+//     blockNumber — 4 bytes (UB4)
+//     slotNumber — 2 bytes (UB2)
+//	A zero outer length represents SQL NULL. For a non-NULL value, the outer
+//
+//Parameters:
+//  - ctx: Context for the read operations.
+//  - mar: Marshaller positioned at the start of the UROWID value.
+//  - env: Column context used for diagnostics.
+//
+//Returns:
+//  - columnPayload: ROWID bytes, or nil data for SQL NULL.
+//  - error: Non-nil if reading the value fails or the two lengths differ.
+//
+//Errors:
+//  - Returns FailUnmarshal for read errors.
 
-Description:
+func unwrapRowidDefColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
+	defLength, err := mar.UnmarshalUB1(ctx)
+	if err != nil {
+		common.Odl.Warn("unwrapRowidDefColumn: failed to read outer length",
+			"index", env.index, "error", err)
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	var payload driverCommon.B1Array
+	if defLength > 0 {
 
-	Reads the outer UB4 length and then the CLR-framed internal UROWID bytes.
-	A zero outer length represents SQL NULL. For a non-NULL value, the outer
-	length must match the length of the CLR payload.
+		payload = make(driverCommon.B1Array, 13) // enough to store definition, see below
 
-Parameters:
-  - ctx: Context for the read operations.
-  - mar: Marshaller positioned at the start of the UROWID value.
-  - env: Column context used for diagnostics.
+		writer := driverCommon.NewB1ArrayWriter(payload)
 
-Returns:
-  - columnPayload: Raw internal UROWID bytes, or nil data for SQL NULL.
-  - error: Non-nil if reading the value fails or the two lengths differ.
+		rba, err := mar.UnmarshalUB4(ctx)
+		if err != nil {
+			common.Odl.Warn("unwrapRowidDefColumn: failed to read riddef RBA",
+				"index", env.index, "error", err)
+			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 
-Errors:
-  - Returns FailUnmarshal for read errors.
-  - Returns ProtocolViolation when the outer and CLR lengths differ.
-*/
+		}
+		writer.PutUint32(uint32(rba))
+
+		partitionID, err := mar.UnmarshalUB2(ctx)
+		if err != nil {
+			common.Odl.Warn("unwrapRowidDefColumn: failed to read riddef partitionID",
+				"index", env.index, "error", err)
+			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+
+		}
+		writer.PutUint16(uint16(partitionID))
+
+		tableID, err := mar.UnmarshalUB1(ctx)
+		if err != nil {
+			common.Odl.Warn("unwrapRowidDefColumn: failed to read riddef tableID",
+				"index", env.index, "error", err)
+			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+
+		}
+
+		writer.PutUint(uint(tableID))
+
+		blockNumber, err := mar.UnmarshalUB4(ctx)
+		if err != nil {
+			common.Odl.Warn("unwrapRowidDefColumn: failed to read riddef blockNumber",
+				"index", env.index, "error", err)
+			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+
+		}
+		writer.PutUint32(uint32(blockNumber))
+
+		slotNumber, err := mar.UnmarshalUB2(ctx)
+		if err != nil {
+			common.Odl.Warn("unwrapRowidDefColumn: failed to read riddef slotNumber",
+				"index", env.index, "error", err)
+			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+
+		}
+		writer.PutUint16(uint16(slotNumber))
+
+	}
+	common.Odl.Finest("RXD Unwrap: ROWID def column data decoded",
+		"col", env.index, "length", defLength, "data", payload)
+	return byteColumnPayload(payload), nil
+}
+
+//unwrapUrowidColumn reads a UROWID column value from the row data stream.
+//
+//Description:
+//
+//	Reads the outer UB4 length and then the CLR-framed internal UROWID bytes.
+//	A zero outer length represents SQL NULL. For a non-NULL value, the outer
+//	length must match the length of the CLR payload.
+//
+//Parameters:
+//  - ctx: Context for the read operations.
+//  - mar: Marshaller positioned at the start of the UROWID value.
+//  - env: Column context used for diagnostics.
+//
+//Returns:
+//  - columnPayload: Raw internal UROWID bytes, or nil data for SQL NULL.
+//  - error: Non-nil if reading the value fails or the two lengths differ.
+//
+//Errors:
+//  - Returns FailUnmarshal for read errors.
+//  - Returns ProtocolViolation when the outer and CLR lengths differ.
+
 func unwrapUrowidColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
 	outerLength, err := mar.UnmarshalUB4(ctx)
 	if err != nil {
@@ -234,7 +323,7 @@ func unwrapUrowidColumn(ctx context.Context, mar driverCommon.Marshaller, env co
 			"index", env.index, "outerLength", outerLength, "clrLength", length)
 		return columnPayload{}, common.NewOracleError(oracleErrors.ProtocolViolation, nil)
 	}
-	common.Odl.Fine("RXD Unwrap: UROWID column data decoded",
+	common.Odl.Finest("RXD Unwrap: UROWID column data decoded",
 		"col", env.index, "length", length, "data", data)
 	return byteColumnPayload(data), nil
 }

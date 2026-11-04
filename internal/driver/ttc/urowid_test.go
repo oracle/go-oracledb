@@ -44,7 +44,7 @@ func TestUrowidToString(t *testing.T) {
 				0x00, 0x00, 0x00, 0x02, // block
 				0x00, 0x03, // slot
 			},
-			want: "AAAAAQAAEAAAAAgAAM",
+			want: "AAAAABAABAAAAACAAD",
 		},
 		{
 			name: "logical",
