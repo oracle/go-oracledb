@@ -89,6 +89,7 @@ func initMessagesPt() {
 		{oracleErrors.FailMarshal, "falha ao serializar a mensagem: %s"},
 		{oracleErrors.FailUnmarshal, "falha ao desserializar a mensagem: %s"},
 		{oracleErrors.InvalidLOBBuffer, "configuração inválida do buffer LOB durante %s (%s): %s"},
+		{oracleErrors.InvalidBufferOperation, "operação de buffer inválida"},
 		{oracleErrors.LobExecError, "falha na operação LOB durante %s."},
 		{oracleErrors.UnsupportedCharacterSet, "conjunto de caracteres não compatível: %d"},
 		{oracleErrors.InvalidNetworkValue, "valor inválido para %s: %v"},

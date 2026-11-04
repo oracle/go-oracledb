@@ -89,6 +89,7 @@ func initMessagesFr() {
 		{oracleErrors.FailMarshal, "échec de la sérialisation du message : %s"},
 		{oracleErrors.FailUnmarshal, "échec de la désérialisation du message : %s"},
 		{oracleErrors.InvalidLOBBuffer, "configuration de tampon LOB non valide pendant %s (%s) : %s"},
+		{oracleErrors.InvalidBufferOperation, "opération de tampon invalide"},
 		{oracleErrors.LobExecError, "échec de l'opération LOB pendant %s."},
 		{oracleErrors.UnsupportedCharacterSet, "jeu de caractères non pris en charge : %d"},
 		{oracleErrors.InvalidNetworkValue, "valeur non valide pour %s : %v"},

@@ -89,6 +89,7 @@ func initMessagesIt() {
 		{oracleErrors.FailMarshal, "serializzazione del messaggio non riuscita: %s"},
 		{oracleErrors.FailUnmarshal, "deserializzazione del messaggio non riuscita: %s"},
 		{oracleErrors.InvalidLOBBuffer, "configurazione del buffer LOB non valida durante %s (%s): %s"},
+		{oracleErrors.InvalidBufferOperation, "operazione del buffer non valida"},
 		{oracleErrors.LobExecError, "operazione LOB non riuscita durante %s."},
 		{oracleErrors.UnsupportedCharacterSet, "set di caratteri non supportato: %d"},
 		{oracleErrors.InvalidNetworkValue, "valore non valido per %s: %v"},
