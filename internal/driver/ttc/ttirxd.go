@@ -70,9 +70,9 @@ type tTIrxd struct {
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
 	bvcFound bool
 
-	// Outgoing bind payload and TTC wrappers for TTIRXD bind-row marshalling.
+	// Outgoing bind payload and metadata for TTIRXD bind-row marshalling.
 	bindRow        []driverCommon.B1Array
-	wrapColumns    []columnWrapFunc
+	bindMetadata   []normalizedBindValue
 	columnContexts []columnContext
 
 	numberOfReturningPositions int
@@ -94,6 +94,8 @@ func newTTIrxd() driverCommon.Message[driverCommon.MessageType] {
 func (rxd *tTIrxd) setCodecFactory(factory codecFactory) {
 	rxd.codecFactory = factory
 }
+
+func (rxd *tTIrxd) getFactory() codecFactory { return rxd.codecFactory }
 
 // GetMsgCode implements Message.GetMsgCode, returning the TTC RXD message code.
 func (rxd *tTIrxd) GetMsgCode() driverCommon.MessageType {
@@ -150,31 +152,26 @@ setBindValues sets the prepared outgoing bind values for marshalling as an RXD m
 Parameters:
 - row: one prepared bind value per bind position for a single row. Each value
   contains its encoded payload.
-- wrapColumns: one transport wrapper per bind position, aligned with row.
+- metadata: one normalized bind descriptor per bind position, aligned with row.
 */
 
-func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array, wrapColumns []columnWrapFunc) {
+func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array, metadata []normalizedBindValue) {
 	rxd.bindRow = row
-	rxd.wrapColumns = wrapColumns
+	rxd.bindMetadata = metadata
 }
 
 /*
 MarshalTo writes the RXD bind payload for outgoing messages (single row).
-
-When used as an outgoing message, tTIrxd uses the transport wrappers prepared
-by the statement executor. The default wrapper is CLR framing with TTC's null
-length indicator for nil payloads.
+It resolves each encoder from the message's protocol-matched codec factory and
+uses that encoder's transport wrapper for the corresponding payload.
 */
 func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
-	// Nothing to marshal if no bind payload was configured.
-	if rxd.bindRow == nil {
-		return nil
-	}
-	if len(rxd.wrapColumns) != len(rxd.bindRow) {
-		return common.NewOracleError(oracleErrors.InternalError, nil)
-	}
 	for i := range rxd.bindRow {
-		if err := rxd.wrapColumns[i](ctx, engine, rxd.bindRow[i]); err != nil {
+		encoder, err := rxd.getFactory().getEncoderForGoType(rxd.bindMetadata[i])
+		if err != nil {
+			return err
+		}
+		if err := encoder.wrapColumn(ctx, engine, rxd.bindRow[i]); err != nil {
 			return err
 		}
 	}

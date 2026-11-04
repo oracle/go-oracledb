@@ -211,9 +211,9 @@ func TestNeedToSendOACs_NoPreviousOACs(t *testing.T) {
 	registerTestCodecs(shelf, 20)
 
 	sp := &statementProcessor{shelf: shelf}
-	_, _, oacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(1)})
+	_, _, oacs, err := prepareBindDataForTest(sp, []sqldriver.Value{int64(1)})
 	if err != nil {
-		t.Fatalf("prepareBindsAndOAC: %v", err)
+		t.Fatalf("bind preparation: %v", err)
 	}
 	// previousOacs is still nil after the first call.
 	if !sp.needToSendOACs(oacs) {
@@ -235,17 +235,17 @@ func TestNeedToSendOACs_CountChanged(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// First "execution" – simulated by preparing and promoting to previousOacs.
-	_, _, firstOacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(1)})
+	_, _, firstOacs, err := prepareBindDataForTest(sp, []sqldriver.Value{int64(1)})
 	if err != nil {
-		t.Fatalf("first prepareBindsAndOAC: %v", err)
+		t.Fatalf("first bind preparation: %v", err)
 	}
 	sp.previousOacs = firstOacs // mimic post-execution promotion
 
 	// Second "execution" with a larger bind count.  getMaxLengthForOac must not
 	// panic for position 1 (which has no prior OAC entry).
-	_, _, secondOacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(2), "extra"})
+	_, _, secondOacs, err := prepareBindDataForTest(sp, []sqldriver.Value{int64(2), "extra"})
 	if err != nil {
-		t.Fatalf("second prepareBindsAndOAC: %v", err)
+		t.Fatalf("second bind preparation: %v", err)
 	}
 	if !sp.needToSendOACs(secondOacs) {
 		t.Error("needToSendOACs must return true when bind count changed")
@@ -262,16 +262,16 @@ func TestNeedToSendOACs_TypeChanged(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// First execution: int64 bind.
-	_, _, firstOacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(1)})
+	_, _, firstOacs, err := prepareBindDataForTest(sp, []sqldriver.Value{int64(1)})
 	if err != nil {
-		t.Fatalf("first prepareBindsAndOAC: %v", err)
+		t.Fatalf("first bind preparation: %v", err)
 	}
 	sp.previousOacs = firstOacs
 
 	// Second execution: string bind at the same position → different dataType OAC.
-	_, _, secondOacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{"hello"})
+	_, _, secondOacs, err := prepareBindDataForTest(sp, []sqldriver.Value{"hello"})
 	if err != nil {
-		t.Fatalf("second prepareBindsAndOAC: %v", err)
+		t.Fatalf("second bind preparation: %v", err)
 	}
 	if !sp.needToSendOACs(secondOacs) {
 		t.Error("needToSendOACs must return true when bind dataType changed")
@@ -288,18 +288,18 @@ func TestNeedToSendOACs_LengthIncreased(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// First execution: short string.
-	_, _, firstOacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{"ab"})
+	_, _, firstOacs, err := prepareBindDataForTest(sp, []sqldriver.Value{"ab"})
 	if err != nil {
-		t.Fatalf("first prepareBindsAndOAC: %v", err)
+		t.Fatalf("first bind preparation: %v", err)
 	}
 	sp.previousOacs = firstOacs
 	prevMaxLen := firstOacs[0].(*tTIoac).maxLength
 
 	// Second execution: longer string that exceeds prevMaxLen.
 	longStr := "this-string-is-definitely-longer-than-two-characters"
-	_, _, secondOacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{longStr})
+	_, _, secondOacs, err := prepareBindDataForTest(sp, []sqldriver.Value{longStr})
 	if err != nil {
-		t.Fatalf("second prepareBindsAndOAC: %v", err)
+		t.Fatalf("second bind preparation: %v", err)
 	}
 	newMaxLen := secondOacs[0].(*tTIoac).maxLength
 	if newMaxLen <= prevMaxLen {
@@ -320,16 +320,16 @@ func TestNeedToSendOACs_SameOAC_ReturnsFalse(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// First execution.
-	_, _, firstOacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(100)})
+	_, _, firstOacs, err := prepareBindDataForTest(sp, []sqldriver.Value{int64(100)})
 	if err != nil {
-		t.Fatalf("first prepareBindsAndOAC: %v", err)
+		t.Fatalf("first bind preparation: %v", err)
 	}
 	sp.previousOacs = firstOacs
 
 	// Second execution: same type and same encoded length.
-	_, _, secondOacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{int64(200)})
+	_, _, secondOacs, err := prepareBindDataForTest(sp, []sqldriver.Value{int64(200)})
 	if err != nil {
-		t.Fatalf("second prepareBindsAndOAC: %v", err)
+		t.Fatalf("second bind preparation: %v", err)
 	}
 	if sp.needToSendOACs(secondOacs) {
 		t.Error("needToSendOACs must return false when OAC type and length are unchanged")
@@ -363,9 +363,9 @@ func TestGetMaxLengthForOac_PreservesPreviousLarger(t *testing.T) {
 
 	// Establish previousOacs with a large maxLength by executing with a long string.
 	longStr := "abcdefghijklmnopqrstuvwxyz" // 26 chars
-	_, _, oacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{longStr})
+	_, _, oacs, err := prepareBindDataForTest(sp, []sqldriver.Value{longStr})
 	if err != nil {
-		t.Fatalf("prepareBindsAndOAC: %v", err)
+		t.Fatalf("bind preparation: %v", err)
 	}
 	sp.previousOacs = oacs
 	prevMaxLen := sp.previousOacs[0].(*tTIoac).maxLength
@@ -391,9 +391,9 @@ func TestGetMaxLengthForOac_UsesCurrentIfLarger(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// Establish previousOacs with a small maxLength.
-	_, _, oacs, err := sp.prepareBindsAndOAC([]sqldriver.Value{"xy"})
+	_, _, oacs, err := prepareBindDataForTest(sp, []sqldriver.Value{"xy"})
 	if err != nil {
-		t.Fatalf("prepareBindsAndOAC: %v", err)
+		t.Fatalf("bind preparation: %v", err)
 	}
 	sp.previousOacs = oacs
 	prevMaxLen := sp.previousOacs[0].(*tTIoac).maxLength

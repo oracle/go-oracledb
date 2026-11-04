@@ -67,7 +67,7 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	maps.Copy(decoderRegistry.entries, DecoderRegistry.entries)
 	var bindOacRegistry = newCodecRegistry[reflect.Type, bindOacType]()
 	maps.Copy(bindOacRegistry.entries, BindOacRegistry.entries)
-	// Register encoders used by prepareBindsAndOAC tests.
+	// Register encoders used by bind preparation tests.
 	// (Registration uses "version 2" which is <= any supported protocol version in tests.)
 	_ = encoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int64(0))}, 2, newCLRBindEncoder(func(v sqldriver.Value) (common.B1Array, error) {
 		return converters.EncodeInt(v.(int64))
@@ -88,7 +88,7 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 		return converters.EncodeNull(v)
 	}))
 
-	// Register bind OAC makers used by prepareBindsAndOAC tests.
+	// Register bind OAC makers used by bind preparation tests.
 	_ = bindOacRegistry.Register(reflect.TypeOf(int64(0)), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
 			return newTTIoac(DtyNum, maxLength)
@@ -141,8 +141,21 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	shelf.RegisterCodecFactory(factory)
 }
 
+func prepareBindDataForTest(sp *statementProcessor, args []sqldriver.Value) ([][]common.B1Array, []normalizedBindValue, []common.Marshallable, error) {
+	metadata := extractBindMetadata(args)
+	rows, err := sp.encodeBindValues(args, metadata)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	oacs, err := sp.prepareOACs(rows, metadata)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return rows, metadata, oacs, nil
+}
+
 // ------------------------------
-// prepareBindsAndOAC - normalization
+// Bind preparation - normalization
 // ------------------------------
 
 func TestPrepareBindsAndOAC_Normalize_Supported(t *testing.T) {
@@ -174,15 +187,15 @@ func TestPrepareBindsAndOAC_Normalize_Supported(t *testing.T) {
 	registerTestCodecs(shelf, 20)
 
 	sp := &statementProcessor{shelf: shelf}
-	rows, wrapColumns, oacs, err := sp.prepareBindsAndOAC(args)
+	rows, metadata, oacs, err := prepareBindDataForTest(sp, args)
 	if err != nil {
-		t.Fatalf("prepareBindsAndOAC returned error: %v", err)
+		t.Fatalf("bind preparation returned error: %v", err)
 	}
 	if len(rows) != 1 || len(rows[0]) != len(args) {
 		t.Fatalf("prepared row shape = %d x %d, want 1 x %d", len(rows), len(rows[0]), len(args))
 	}
-	if len(wrapColumns) != 1 || len(wrapColumns[0]) != len(args) {
-		t.Fatalf("prepared wrapper shape does not match %d bind positions", len(args))
+	if len(metadata) != len(args) {
+		t.Fatalf("prepared metadata count does not match %d bind positions", len(args))
 	}
 	if len(oacs) != len(args) {
 		t.Fatalf("prepared OAC count = %d, want %d", len(oacs), len(args))
@@ -197,14 +210,14 @@ func TestPrepareBindsAndOAC_Normalize_Errors(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// unsupported type
-	_, _, _, err := sp.prepareBindsAndOAC([]sqldriver.Value{struct{}{}})
+	_, _, _, err := prepareBindDataForTest(sp, []sqldriver.Value{struct{}{}})
 	if err == nil || !strings.Contains(err.Error(), "internal error occurred") {
 		t.Fatalf("expected unsupported type error containing 'bind-type', got %v", err)
 	}
 }
 
 // ------------------------------
-// prepareBindsAndOAC - encoding
+// Bind preparation - encoding
 // ------------------------------
 
 func TestPrepareBindsAndOAC_Encode_Supported(t *testing.T) {
@@ -226,9 +239,9 @@ func TestPrepareBindsAndOAC_Encode_Supported(t *testing.T) {
 	registerTestCodecs(shelf, 20)
 
 	sp := &statementProcessor{shelf: shelf}
-	encoded, _, _, err := sp.prepareBindsAndOAC(args)
+	encoded, _, _, err := prepareBindDataForTest(sp, args)
 	if err != nil {
-		t.Fatalf("prepareBindsAndOAC returned error: %v", err)
+		t.Fatalf("bind preparation returned error: %v", err)
 	}
 	if len(encoded) != 1 {
 		t.Fatalf("expected single row encoded, got %d rows", len(encoded))
@@ -273,7 +286,7 @@ func TestPrepareBindsAndOAC_Encode_Errors(t *testing.T) {
 	sp := &statementProcessor{shelf: shelf}
 
 	// unsupported type should raise bind-type (was bind-encode-type in old API)
-	_, _, _, err := sp.prepareBindsAndOAC([]sqldriver.Value{struct{}{}})
+	_, _, _, err := prepareBindDataForTest(sp, []sqldriver.Value{struct{}{}})
 	if err == nil || !strings.Contains(err.Error(), "internal error occurred") {
 		t.Fatalf("expected type encode error containing 'bind-type', got %v", err)
 	}
@@ -283,7 +296,7 @@ func TestPrepareBindsAndOAC_Encode_Errors(t *testing.T) {
 // pushBindRows error paths
 // ------------------------------
 
-// Using prepareBindsAndOAC to produce encoded payloads and exercising pushBindRows
+// Use bind preparation to produce encoded payloads before exercising pushBindRows.
 func TestPushBindRowsIfAny_EncodeBindValues_Error(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -298,7 +311,7 @@ func TestPushBindRowsIfAny_EncodeBindValues_Error(t *testing.T) {
 	// float64 encodes successfully while createMessages builds the RXD row.
 	args := []sqldriver.Value{float64(1.25)}
 	sp := &statementProcessor{shelf: shelf}
-	_, messages, _, err := sp.createMessages(&qualifiedSQLStatement{}, args, oAll8, "ut", oracleErrors.RunExecError)
+	_, messages, _, err := sp.createMessages(&qualifiedSQLStatement{}, args, oAll8)
 	if err != nil {
 		t.Fatalf("unexpected createMessages error, got %v", err)
 	}
@@ -339,8 +352,8 @@ func TestPushBindRowsIfAny_GetMessage_RXD_Error(t *testing.T) {
 	// Supported bind so createMessages reaches the RXD allocation.
 	args := []sqldriver.Value{int64(1)}
 	sp := &statementProcessor{shelf: shelf}
-	_, _, _, err := sp.createMessages(&qualifiedSQLStatement{}, args, oAll8, "ut", oracleErrors.RunExecError)
-	if err == nil || !strings.Contains(err.Error(), "push") {
+	_, _, _, err := sp.createMessages(&qualifiedSQLStatement{}, args, oAll8)
+	if err == nil || !strings.Contains(err.Error(), "fail RXD") {
 		t.Fatalf("expected get-rxd push error, got %v", err)
 	}
 }
@@ -368,7 +381,7 @@ func TestPushBindRowsIfAny_Push_RXD_Error(t *testing.T) {
 	// Supported bind so createMessages creates an RXD row; Push should fail.
 	args := []sqldriver.Value{int64(1)}
 	sp := &statementProcessor{shelf: shelf}
-	_, messages, _, err := sp.createMessages(&qualifiedSQLStatement{}, args, oAll8, "ut", oracleErrors.RunExecError)
+	_, messages, _, err := sp.createMessages(&qualifiedSQLStatement{}, args, oAll8)
 	if err != nil {
 		t.Fatalf("unexpected createMessages error, got %v", err)
 	}
@@ -379,7 +392,7 @@ func TestPushBindRowsIfAny_Push_RXD_Error(t *testing.T) {
 }
 
 // ------------------------------
-// prepareBindsAndOAC - OACs
+// Bind preparation - OACs
 // ------------------------------
 
 func TestPrepareBindsAndOAC_OAC_Supported(t *testing.T) {
@@ -400,9 +413,9 @@ func TestPrepareBindsAndOAC_OAC_Supported(t *testing.T) {
 	registerTestCodecs(shelf, 20)
 
 	sp := &statementProcessor{shelf: shelf}
-	_, _, oacs, err := sp.prepareBindsAndOAC(args)
+	_, _, oacs, err := prepareBindDataForTest(sp, args)
 	if err != nil {
-		t.Fatalf("prepareBindsAndOAC returned error: %v", err)
+		t.Fatalf("bind preparation returned error: %v", err)
 	}
 	if len(oacs) != len(args) {
 		t.Fatalf("unexpected oacs length: got %d want %d", len(oacs), len(args))
@@ -451,7 +464,7 @@ func TestPrepareBindsAndOAC_OAC_Errors(t *testing.T) {
 
 	// unsupported type
 	sp := &statementProcessor{shelf: shelf}
-	_, _, _, err := sp.prepareBindsAndOAC([]sqldriver.Value{map[string]int{"x": 1}})
+	_, _, _, err := prepareBindDataForTest(sp, []sqldriver.Value{map[string]int{"x": 1}})
 	if err == nil || !strings.Contains(err.Error(), "internal error occurred") {
 		t.Fatalf("expected type encode error containing 'bind-type', got %v", err)
 	}

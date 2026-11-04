@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
@@ -48,6 +49,22 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+type bindCodecFactoryStub struct{ encoder *typeEncoder }
+
+func (s bindCodecFactoryStub) getEncoderForGoType(normalizedBindValue) (*typeEncoder, error) {
+	return s.encoder, nil
+}
+func (s bindCodecFactoryStub) getEncoderForDtyType(DtyType, normalizedBindValue) (*typeEncoder, error) {
+	return s.encoder, nil
+}
+func (bindCodecFactoryStub) getDecoder(DtyType) (*typeDecoder, error) { return nil, nil }
+func (bindCodecFactoryStub) getBindOac(normalizedBindValue, common.UB4) (common.Marshallable, error) {
+	return nil, nil
+}
+func (bindCodecFactoryStub) getDefineOac(DtyType, columnContext, common.DriverProperties) common.Marshallable {
+	return nil
+}
 
 var validRow1Dump = []string{
 	`"07 02 C1 02 03 61 62 63"`,
@@ -105,12 +122,13 @@ func rowToBytes(row []columnPayload) [][]byte {
 // codec factory injected by the message factory.
 func setCLRBindValues(rxd *tTIrxd, payloads ...common.B1Array) {
 	row := make([]common.B1Array, len(payloads))
-	wrapColumns := make([]columnWrapFunc, len(payloads))
+	metadata := make([]normalizedBindValue, len(payloads))
 	for i, payload := range payloads {
 		row[i] = payload
-		wrapColumns[i] = wrapCLRColumn
+		metadata[i] = normalizedBindValue{isNull: payload == nil}
 	}
-	rxd.setBindValues(row, wrapColumns)
+	rxd.setCodecFactory(bindCodecFactoryStub{encoder: newCLRBindEncoder(func(driver.Value) (common.B1Array, error) { return nil, nil })})
+	rxd.setBindValues(row, metadata)
 }
 
 // TestTTIrxd_GetMsgCode verifies that GetMsgCode returns TTIRXD for tTIrxd message.
@@ -153,11 +171,10 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 func TestTTIrxd_MarshalTo_PreparedBindValue(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.setBindValues([]common.B1Array{{0x01, 0x02, 0x03}}, []columnWrapFunc{
-		func(ctx context.Context, mar common.Marshaller, _ common.B1Array) error {
-			return mar.MarshalUB1(ctx, 0x7F)
-		},
-	})
+	rxd.setCodecFactory(bindCodecFactoryStub{encoder: &typeEncoder{wrapColumn: func(ctx context.Context, mar common.Marshaller, _ common.B1Array) error {
+		return mar.MarshalUB1(ctx, 0x7F)
+	}}})
+	rxd.setBindValues([]common.B1Array{{0x01, 0x02, 0x03}}, []normalizedBindValue{{}})
 
 	buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 64)
 	if err := rxd.MarshalTo(context.Background(), eng); err != nil {

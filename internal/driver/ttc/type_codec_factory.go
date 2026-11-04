@@ -75,10 +75,10 @@ Description:
 
 		// Bind/encode path: resolve OAC + encoder for a Go value.
 		bindValue := "hello"
-		normalized := normalizeBindValue(bindValue)
+		normalized, normalizedValue := normalizeBindValueAndValue(bindValue)
 
 		encoder, _ := f.getEncoderForGoType(normalized)
-		payload, _ := encoder.encodeToType(normalized.value)
+		payload, _ := encoder.encodeToType(normalizedValue)
 
 		oac, _ := f.getBindOac(normalized, driverCommon.UB4(len(payload)))
 		_ = oac // e.g. used to describe bind metadata (type/length) in TTC messages
@@ -161,13 +161,13 @@ normalizedBindValue stores the canonical bind metadata derived from an input bin
 Description:
   - Captures the effective Go type used for registry lookup after unwrapping sql.Out
     and dereferencing pointer values.
-  - Stores the normalized driver.Value that should be passed to the selected encoder.
+  - Records whether the normalized value is SQL NULL without retaining that value.
   - Records whether the original bind was an sql.Out and whether it represents a pure
     OUT bind (sql.Out with In == false), which affects encoder and bind OAC behavior.
 */
 type normalizedBindValue struct {
 	goType    reflect.Type
-	value     driver.Value
+	isNull    bool
 	isOut     bool
 	isOutOnly bool
 }
@@ -191,89 +191,98 @@ Returns:
   - normalizedBindValue: the normalized bind metadata used by getEncoderForGoType and getBindOac.
 */
 func normalizeBindValue(bindValue driver.Value) normalizedBindValue {
+	normalized, _ := normalizeBindValueAndValue(bindValue)
+	return normalized
+}
+
+// normalizeBindValueAndValue separates bind metadata from the normalized value
+// that an encoder receives. The metadata is retained by outgoing RXD messages;
+// the value is used only while encoding their payloads.
+func normalizeBindValueAndValue(bindValue driver.Value) (normalizedBindValue, driver.Value) {
 	n := normalizedBindValue{
 		goType: reflect.TypeOf(bindValue),
-		value:  bindValue,
 	}
+	value := bindValue
 
 	if outValue, ok := bindValue.(sql.Out); ok {
 		n.isOut = true
-		n.value = outValue.Dest
+		value = outValue.Dest
 		n.goType = reflect.TypeOf(outValue.Dest)
 		n.isOutOnly = !outValue.In
 	}
 
 	if n.goType != nil && n.goType.Kind() == reflect.Ptr {
-		rv := reflect.ValueOf(n.value)
+		rv := reflect.ValueOf(value)
 		if !rv.IsValid() || rv.IsNil() {
-			n.value = nil
+			value = nil
 			n.goType = nil
 		} else {
-			n.value = rv.Elem().Interface()
+			value = rv.Elem().Interface()
 			n.goType = n.goType.Elem()
 		}
 	}
 
-	switch value := n.value.(type) {
+	switch nullValue := value.(type) {
 	case sql.NullString:
-		if value.Valid {
-			n.value = value.String
+		if nullValue.Valid {
+			value = nullValue.String
 		} else {
-			n.value = nil
+			value = nil
 		}
-		n.goType = reflect.TypeOf(value.String)
+		n.goType = reflect.TypeOf(nullValue.String)
 	case sql.NullInt64:
-		if value.Valid {
-			n.value = value.Int64
+		if nullValue.Valid {
+			value = nullValue.Int64
 		} else {
-			n.value = nil
+			value = nil
 		}
-		n.goType = reflect.TypeOf(value.Int64)
+		n.goType = reflect.TypeOf(nullValue.Int64)
 	case sql.NullInt32:
-		if value.Valid {
-			n.value = value.Int32
+		if nullValue.Valid {
+			value = nullValue.Int32
 		} else {
-			n.value = nil
+			value = nil
 		}
-		n.goType = reflect.TypeOf(value.Int32)
+		n.goType = reflect.TypeOf(nullValue.Int32)
 	case sql.NullInt16:
-		if value.Valid {
-			n.value = value.Int16
+		if nullValue.Valid {
+			value = nullValue.Int16
 		} else {
-			n.value = nil
+			value = nil
 		}
-		n.goType = reflect.TypeOf(value.Int16)
+		n.goType = reflect.TypeOf(nullValue.Int16)
 	case sql.NullByte:
-		if value.Valid {
-			n.value = value.Byte
+		if nullValue.Valid {
+			value = nullValue.Byte
 		} else {
-			n.value = nil
+			value = nil
 		}
-		n.goType = reflect.TypeOf(value.Byte)
+		n.goType = reflect.TypeOf(nullValue.Byte)
 	case sql.NullFloat64:
-		if value.Valid {
-			n.value = value.Float64
+		if nullValue.Valid {
+			value = nullValue.Float64
 		} else {
-			n.value = nil
+			value = nil
 		}
-		n.goType = reflect.TypeOf(value.Float64)
+		n.goType = reflect.TypeOf(nullValue.Float64)
 	case sql.NullBool:
-		if value.Valid {
-			n.value = value.Bool
+		if nullValue.Valid {
+			value = nullValue.Bool
 		} else {
-			n.value = nil
+			value = nil
 		}
-		n.goType = reflect.TypeOf(value.Bool)
+		n.goType = reflect.TypeOf(nullValue.Bool)
 	case sql.NullTime:
-		if value.Valid {
-			n.value = value.Time
+		if nullValue.Valid {
+			value = nullValue.Time
 		} else {
-			n.value = nil
+			value = nil
 		}
-		n.goType = reflect.TypeOf(value.Time)
+		n.goType = reflect.TypeOf(nullValue.Time)
 	}
 
-	return n
+	n.isNull = value == nil
+	return n, value
 }
 
 /*
@@ -478,7 +487,7 @@ Errors:
   - Returns a common.OracleError with code common.InternalError when no encoder candidate exists for the bind type.
 */
 func (f *CodecFactoryImpl) getEncoderForGoType(normalized normalizedBindValue) (*typeEncoder, error) {
-	if normalized.isOutOnly || normalized.value == nil {
+	if normalized.isOutOnly || normalized.isNull {
 		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
 	common.Odl.Finest("New encoder requested", "goType", normalized.goType)
@@ -499,7 +508,7 @@ func (f *CodecFactoryImpl) getEncoderForGoType(normalized normalizedBindValue) (
 // for the declared Oracle type and Go type. Otherwise it uses the ordinary
 // Go-type encoder.
 func (f *CodecFactoryImpl) getEncoderForDtyType(dty DtyType, normalized normalizedBindValue) (*typeEncoder, error) {
-	if normalized.isOutOnly || normalized.value == nil {
+	if normalized.isOutOnly || normalized.isNull {
 		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
 

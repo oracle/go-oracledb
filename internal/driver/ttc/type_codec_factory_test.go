@@ -151,7 +151,8 @@ func TestCodecFactory_getEncoderForGoType(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			got, err := encoder.encodeToType(normalizeBindValue(tc.value).value)
+			_, normalizedValue := normalizeBindValueAndValue(tc.value)
+			got, err := encoder.encodeToType(normalizedValue)
 			if err != nil {
 				t.Fatalf("unexpected encode error: %v", err)
 			}
@@ -485,18 +486,18 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := normalizeBindValue(tc.input)
+			got, value := normalizeBindValueAndValue(tc.input)
 			if tc.wantIsNil {
-				if got.value != nil {
-					t.Fatalf("expected nil normalized value, got %v", got.value)
+				if !got.isNull || value != nil {
+					t.Fatalf("expected null normalized value, got metadata=%+v value=%v", got, value)
 				}
 				return
 			}
 			if got.goType != tc.wantType {
 				t.Fatalf("expected normalized type %v, got %v", tc.wantType, got.goType)
 			}
-			if !reflect.DeepEqual(got.value, tc.wantValue) {
-				t.Fatalf("expected normalized value %v, got %v", tc.wantValue, got.value)
+			if !reflect.DeepEqual(value, tc.wantValue) {
+				t.Fatalf("expected normalized value %v, got %v", tc.wantValue, value)
 			}
 		})
 	}
