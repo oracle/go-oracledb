@@ -229,40 +229,37 @@ type B1ArrayWriter struct {
 	index int     // current index within the array
 	data  B1Array // actual data.
 }
-
+func (w *B1ArrayWriter) ensure(size int) {
+	end := w.index + size
+	if end > len(w.data) {
+		w.data = append(w.data, make(B1Array, end-len(w.data))...)
+	}
+}
 // PutUint puts an uint at the current position of the underlying buffer
 // arguments:
 //
 //	num the uint to be written
 func (w *B1ArrayWriter) PutUint(num uint) {
-	if cap(w.data)-w.index <= 1 {
-		w.data = append(w.data, make([]byte, 32)...)
-	}
+	w.ensure(1)
 	w.data[w.index] = byte(num)
 	w.index += 1
 
 }
 
 func (w *B1ArrayWriter) PutUint16(num uint16) {
-	if cap(w.data)-w.index <= 2 {
-		w.data = append(w.data, make([]byte, 32)...)
-	}
+	w.ensure(2)
 	binary.BigEndian.PutUint16(w.data[w.index:], num)
 	w.index += 2
 
 }
 func (w *B1ArrayWriter) PutUint32(num uint32) {
-	if cap(w.data)-w.index <= 4 {
-		w.data = append(w.data, make([]byte, 32)...)
-	}
+	w.ensure(4)
 	binary.BigEndian.PutUint32(w.data[w.index:], num)
 	w.index += 4
 
 }
 func (w *B1ArrayWriter) PutUint64(num uint64) {
-	if cap(w.data)-w.index <= 8 {
-		w.data = append(w.data, make([]byte, 32)...)
-	}
+	w.ensure(8)
 	binary.BigEndian.PutUint64(w.data[w.index:], num)
 	w.index += 8
 
