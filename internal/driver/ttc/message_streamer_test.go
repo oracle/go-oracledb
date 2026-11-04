@@ -215,6 +215,98 @@ func TestMessageStreamer_Flush(t *testing.T) {
 	}
 }
 
+// TestMessageStreamer_FlushUsesMessageSpecificMarshallers verifies that one flush
+// encodes each queued message with its assigned marshaller or the default.
+func TestMessageStreamer_FlushUsesMessageSpecificMarshallers(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fakeBuffer := NewArrayDataBuffer(2048)
+	nativeMarshaller := NewNativeMarshalEngine(fakeBuffer, common.BIG_ENDIAN)
+	universalMarshaller := NewMarshalEngine(fakeBuffer, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+
+	shelf := newShelf[common.MessageType]()
+
+	shelf.RegisterMarshaller(universalMarshaller)
+	shelf.RegisterMarshaller(nativeMarshaller, TTIPRO, TTIDTY)
+	streamer := NewMessageStreamer(shelf)
+
+	messages := []struct {
+		messageType common.MessageType
+		marshaller  common.Marshaller
+	}{
+		{TTIPRO, nativeMarshaller},
+		{TTIRPA, universalMarshaller},
+		{TTIDTY, nativeMarshaller},
+	}
+	for _, message := range messages {
+		if err := streamer.Push(ctx, &mockMessage{msgType: message.messageType}); err != nil {
+			t.Fatalf("Push(%v) failed: %v", message.messageType, err)
+		}
+	}
+	if err := streamer.Flush(ctx); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	for _, message := range messages {
+		header := &messageHeader{}
+		if err := header.UnmarshalFrom(ctx, universalMarshaller); err != nil {
+			t.Fatalf("read header for %v: %v", message.messageType, err)
+		}
+		if header.GetType() != message.messageType {
+			t.Fatalf("message type = %v, want %v", header.GetType(), message.messageType)
+		}
+		if err := (&mockMessage{}).UnmarshalFrom(ctx, message.marshaller); err != nil {
+			t.Fatalf("decode payload for %v: %v", message.messageType, err)
+		}
+	}
+}
+
+// TestMessageStreamer_PullUsesMessageSpecificMarshallers verifies that Pull
+// decodes independently prepared payloads with their assigned marshaller or the default.
+func TestMessageStreamer_PullUsesMessageSpecificMarshallers(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fakeBuffer := NewArrayDataBuffer(2048)
+	nativeMarshaller := NewNativeMarshalEngine(fakeBuffer, common.BIG_ENDIAN)
+	universalMarshaller := NewMarshalEngine(fakeBuffer, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+
+	shelf := _prepareShelf()
+	streamer := NewMessageStreamer(shelf)
+
+	shelf.RegisterMarshaller(universalMarshaller)
+	shelf.RegisterMarshaller(nativeMarshaller, TTIPRO, TTIDTY)
+
+	messages := []struct {
+		messageType common.MessageType
+		marshaller  common.Marshaller
+	}{
+		{TTIPRO, nativeMarshaller},
+		{TTIRPA, universalMarshaller},
+		{TTIDTY, nativeMarshaller},
+	}
+	for _, message := range messages {
+		header := &messageHeader{messageType: message.messageType}
+		if err := header.MarshalTo(ctx, universalMarshaller); err != nil {
+			t.Fatalf("write header for %v: %v", message.messageType, err)
+		}
+		if err := (&mockMessage{}).MarshalTo(ctx, message.marshaller); err != nil {
+			t.Fatalf("write payload for %v: %v", message.messageType, err)
+		}
+	}
+
+	for _, message := range messages {
+		received, err := streamer.Pull(ctx, TTIPRO, TTIRPA, TTIDTY)
+		if err != nil {
+			t.Fatalf("Pull(%v) failed: %v", message.messageType, err)
+		}
+		if received.GetMsgCode() != message.messageType {
+			t.Fatalf("message type = %v, want %v", received.GetMsgCode(), message.messageType)
+		}
+	}
+}
+
 // Simple push null test
 // 1 - push a null message
 // expectations:

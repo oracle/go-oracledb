@@ -249,6 +249,11 @@ func init() {
 		common.Odl.Warn("Failed to register TTIWRN", "error", err)
 	}
 
+	err = MessageRegistry.Register(TTIRENEG, MinTTCProtocolVersion, newTTIReneg)
+	if err != nil {
+		common.Odl.Warn("Failed to register TTIRENEG", "error", err)
+	}
+
 	err = MessageRegistry.Register(TTIFOB, MinTTCProtocolVersion, newTTIfob)
 	if err != nil {
 		common.Odl.Warn("Failed to register TTIFOB", "error", err)

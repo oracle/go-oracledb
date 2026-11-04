@@ -65,7 +65,7 @@ import (
 // Returns:
 //   - a connection instantiator bound to ns.
 //   - an error if the instantiator cannot be created.
-type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error)
+type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], reneg bool) (driverCommon.ConnectionInstantiator, error)
 
 // ConnCreator opens a network session for a specific connection option and
 // connection identifier.
@@ -204,12 +204,28 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	common.OdlT(sessionUid).Fine("Network session established")
 
-	connInstantiator, err := c.connInstantiatorFactory(c.connectorConfig, ns, c.providerRegistry)
+	connInstantiator, err := c.connInstantiatorFactory(c.connectorConfig, ns, c.providerRegistry, false)
 	if err != nil {
 		e := common.NewOracleError(oracleErrors.ConnectFailed, err)
 		return nil, localizationService.LocalizeError(e)
 	}
 	connection, err := connInstantiator.GetConnection(ctx)
+	if errors.Is(err, driverCommon.ErrTTIRENEG) {
+		// Retry connection establishment once on the same network session.
+		common.OdlT(sessionUid).Fine("TTC cookie rejected; falling back to normal negotiation on the same network session")
+		connInstantiator, err = c.connInstantiatorFactory(c.connectorConfig, ns, c.providerRegistry, true)
+		if err != nil {
+			e := common.NewOracleError(oracleErrors.ConnectFailed, err)
+			return nil, localizationService.LocalizeError(e)
+		}
+
+		connection, err = connInstantiator.GetConnection(ctx)
+		if err != nil {
+			e := common.NewOracleError(oracleErrors.ConnectFailed, err)
+			return nil, localizationService.LocalizeError(e)
+		}
+	}
+
 	if err == nil {
 		// Connection established successfully no clean-up needed.
 		isConnectionEstablished = true

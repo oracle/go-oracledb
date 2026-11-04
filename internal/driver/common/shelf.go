@@ -52,9 +52,12 @@ type Capability struct {
 	IsSet bool
 }
 
+// Message type zero is reserved for the default marshaller.
+const defaultMarshallerMessageType MessageType = 0
+
 // Shelf as a global storage to share driver infrastructure
 type Shelf[T any] struct {
-	marshaller           Marshaller
+	marshallers          map[MessageType]Marshaller
 	msgFactory           Factory
 	msgStmr              Streamer[T]
 	localizationService  common.LocalizationService
@@ -65,7 +68,7 @@ type Shelf[T any] struct {
 // NewShelf Creates a new Shelf
 func NewShelf[T any]() *Shelf[T] {
 	return &Shelf[T]{
-		marshaller:           nil,
+		marshallers:          nil,
 		msgFactory:           nil,
 		msgStmr:              nil,
 		localizationService:  nil,
@@ -73,11 +76,20 @@ func NewShelf[T any]() *Shelf[T] {
 	}
 }
 
-// RegisterMarshaller Registers a marshaler to the Shelf
-// Returns the Shelf itself
-// Existing instance os replaced by the one passed as parameter
-func (s *Shelf[T]) RegisterMarshaller(mar Marshaller) *Shelf[T] {
-	s.marshaller = mar
+// RegisterMarshaller registers the default marshaller when no message types are
+// supplied, or overrides the marshaller for the supplied message types.
+// Other registrations are left unchanged. Returns the shelf itself.
+func (s *Shelf[T]) RegisterMarshaller(mar Marshaller, messageTypes ...MessageType) *Shelf[T] {
+	if s.marshallers == nil {
+		s.marshallers = make(map[MessageType]Marshaller)
+	}
+	if len(messageTypes) == 0 {
+		s.marshallers[defaultMarshallerMessageType] = mar
+	} else {
+		for _, messageType := range messageTypes {
+			s.marshallers[messageType] = mar
+		}
+	}
 	return s
 }
 
@@ -87,6 +99,20 @@ func (s *Shelf[T]) RegisterMarshaller(mar Marshaller) *Shelf[T] {
 func (s *Shelf[T]) RegisterMessageFactory(msgFactory Factory) *Shelf[T] {
 	s.msgFactory = msgFactory
 	return s
+}
+
+// GetMarshaller returns the registered default marshaller, or nil.
+func (s *Shelf[T]) GetMarshaller() Marshaller {
+	return s.marshallers[defaultMarshallerMessageType]
+}
+
+// GetMarshallerForMessageType returns the marshaller registered for the message
+// type, or the default marshaller when no override is registered.
+func (s *Shelf[T]) GetMarshallerForMessageType(messageType MessageType) Marshaller {
+	if mar, ok := s.marshallers[messageType]; ok {
+		return mar
+	}
+	return s.GetMarshaller()
 }
 
 // RegisterMessageStreamer Registers a message streamer to the Shelf
@@ -128,11 +154,6 @@ func (s *Shelf[T]) GetConnectionProperties() DriverProperties {
 // GetMessageStreamer Retrieves the streamer previously registered or nil
 func (s *Shelf[T]) GetMessageStreamer() Streamer[T] {
 	return s.msgStmr
-}
-
-// GetMarshaller Retrieves the marshaller previously registered or nil
-func (s *Shelf[T]) GetMarshaller() Marshaller {
-	return s.marshaller
 }
 
 // GetMessageFactory Retrieves the factory previously registered or nil

@@ -77,6 +77,7 @@ type sessionAtts struct {
 	firstSendCompressedPacket          bool
 	version                            int
 	options                            int
+	databaseUUID                       string
 }
 
 // GenUUID generates a UUID for connection ID

@@ -231,7 +231,7 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 			common.Odl.Warn("Message does not implmente common.Unmarshallable", "msg", msg)
 			return nil, common.NewOracleError(oracleErrors.StreamerReadError, nil, nil)
 		}
-		uerr := marshallable.UnmarshalFrom(ctx, ms.shelf.GetMarshaller())
+		uerr := marshallable.UnmarshalFrom(ctx, ms.shelf.GetMarshallerForMessageType(msg.GetMsgCode()))
 		if uerr != nil {
 			common.Odl.Info(fmt.Sprintf("can't unmarshal message: %v", uerr))
 			processingError = uerr
@@ -345,7 +345,7 @@ func (ms *MessageStreamer) Flush(ctx context.Context) error {
 			return common.NewOracleError(oracleErrors.StreamerWriteError, err, nil)
 		}
 
-		err = marshalable.MarshalTo(ctx, ms.shelf.GetMarshaller())
+		err = marshalable.MarshalTo(ctx, ms.shelf.GetMarshallerForMessageType(outgoingMsg.GetMsgCode()))
 		if err != nil {
 			common.Odl.Warn("Failed to flush, can't mashall message", "error", err)
 			return common.NewOracleError(oracleErrors.StreamerWriteError, err, nil)

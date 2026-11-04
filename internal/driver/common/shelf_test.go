@@ -87,6 +87,41 @@ func TestShelf_GetMarshaller(t *testing.T) {
 
 }
 
+// TestShelf_GetMarshallerForMessageType verifies that registered message types
+// use their assigned marshaller and unregistered types use the default.
+// Registering a message-specific marshaller must leave the default unchanged.
+func TestShelf_GetMarshallerForMessageType(t *testing.T) {
+	t.Parallel()
+	const registeredType MessageType = 1
+	const unregisteredType MessageType = 2
+	shelf := NewShelf[int]()
+	if shelf == nil {
+		t.Fatal("shelf should not be nil")
+	}
+
+	marshaller := &testObject{}
+	defaultMarshaller := &testObject{}
+
+	shelf.RegisterMarshaller((Marshaller)(defaultMarshaller))
+	shelf.RegisterMarshaller((Marshaller)(marshaller), registeredType)
+
+	retrievedMarshaller := shelf.GetMarshallerForMessageType(registeredType)
+
+	if retrievedMarshaller != marshaller {
+		t.Fatal("the same marshaller should have been retrieved.")
+	}
+
+	retrievedMarshaller = shelf.GetMarshallerForMessageType(unregisteredType)
+
+	if retrievedMarshaller != defaultMarshaller {
+		t.Fatal("For non registered message,the default marshaller should have been retrieved.")
+	}
+
+	if shelf.GetMarshaller() != defaultMarshaller {
+		t.Fatal("registering a message override changed the default marshaller")
+	}
+}
+
 // 1. Register a factory and check that the same factory is returned
 // 2. Unregister factory and check that nil is returned
 func TestShelf_GetMessageFactory(t *testing.T) {
@@ -212,7 +247,9 @@ func TestShelf_GetCapabilities(t *testing.T) {
 }
 
 // testObject implements all of the needed interfaces for this test
-type testObject struct{}
+type testObject struct {
+	marker byte // Makes separate instances distinguishable by pointer.
+}
 
 func (t *testObject) MarshalUB1(context.Context, UB1) error {
 	return nil

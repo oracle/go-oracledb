@@ -100,6 +100,46 @@ func TestHandleAcceptRequiredANO(t *testing.T) {
 	}
 }
 
+// TestHandleAcceptDatabaseUUID verifies UUID extraction from ACCEPT packets,
+// rejection of a truncated UUID field, and acceptance of older TNS versions without a UUID.
+func TestHandleAcceptDatabaseUUID(t *testing.T) {
+	t.Run("stores UUID for supported TNS version", func(t *testing.T) {
+		ns := newNetworkSession()
+		packet := &acceptPacket{buf: make([]byte, TNS_UUID_OFFSET+NSPACUUIDLEN)}
+		databaseUUID := "test-database-01"
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MIN_END_OF_RESPONSE}
+		copy(packet.buf[TNS_UUID_OFFSET:TNS_UUID_OFFSET+NSPACUUIDLEN], databaseUUID)
+
+		if err := ns.handleAccept(context.Background(), packet); err != nil {
+			t.Fatalf("handleAccept failed: %v", err)
+		}
+		if got := ns.GetDatabaseUUID(); got != databaseUUID {
+			t.Errorf("database UUID = %q, want %q", got, databaseUUID)
+		}
+	})
+
+	t.Run("rejects ACCEPT packet with truncated UUID field", func(t *testing.T) {
+		ns := newNetworkSession()
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MIN_END_OF_RESPONSE}
+		packet := &acceptPacket{buf: make([]byte, TNS_UUID_OFFSET+NSPACUUIDLEN-1)}
+		err := ns.handleAccept(context.Background(), packet)
+		expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkContextExpectedLength)
+	})
+
+	t.Run("accepts older TNS version without UUID", func(t *testing.T) {
+		ns := newNetworkSession()
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MIN_DATA_FLAGS}
+		packet := &acceptPacket{buf: make([]byte, NSPACFL2+4)}
+		if err := ns.handleAccept(context.Background(), packet); err != nil {
+			t.Fatalf("handleAccept failed: %v", err)
+		}
+
+		if got := ns.GetDatabaseUUID(); got != "" {
+			t.Errorf("database UUID should be empty, got %q", got)
+		}
+	})
+}
+
 type mockNTTCPS struct {
 	mockNTAdapter
 	renegotiated bool

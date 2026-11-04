@@ -1442,7 +1442,7 @@ func (e *statementExecutorDML) registerDMLCallbacks(ctx context.Context) {
 		}
 		if rpa, ok := msg.(*ttioallrpa); ok {
 			// map DML row count parsing failure -> OGD-00060 RunExecError("unmarshal-dml-rows")
-			if err := rpa.UnmarshalDMLRows(ctx, e.shelf.GetMarshaller()); err != nil {
+			if err := rpa.UnmarshalDMLRows(ctx, e.shelf.GetMarshallerForMessageType(msg.GetMsgCode())); err != nil {
 				common.Odl.Error("StatementExecutorDML.ExecContext: UnmarshalDMLRows failed",
 					"error", err, "stage", "unmarshal-dml-rows")
 				return false, common.NewOracleError(oracleErrors.RunExecError, err, "ExecContext failed")
@@ -1605,7 +1605,7 @@ func registerDMLOallRpaCallbacks(ctx context.Context, stmr MessageStreamerInterf
 		if rpa, ok := msg.(*ttioallrpa); ok {
 			// map DML row count parsing failure -> OGD-00060 RunExecError("unmarshal-dml-rows")
 			// todo: once ttcResult is implemented, consume the rows returned.
-			if err := rpa.UnmarshalDMLRows(ctx, shelf.GetMarshaller()); err != nil {
+			if err := rpa.UnmarshalDMLRows(ctx, shelf.GetMarshallerForMessageType(msg.GetMsgCode())); err != nil {
 				common.Odl.Error("StatementExecutorDML.ExecContext: UnmarshalDMLRows failed",
 					"error", err, "stage", "unmarshal-dml-rows")
 				return false, common.NewOracleError(oracleErrors.RunExecError, err, "ExecContext failed")

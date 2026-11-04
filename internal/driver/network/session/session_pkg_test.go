@@ -71,6 +71,7 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestHandleAcceptDatabaseUUID", Categories: "unitary", Exclusive: false, Fn: TestHandleAcceptDatabaseUUID},
 	{Name: "TestNewNetworkSession", Categories: "unitary", Exclusive: false, Fn: TestNewNetworkSession},
 	{Name: "TestHandleAcceptRequiredANO", Categories: "unitary", Exclusive: false, Fn: TestHandleAcceptRequiredANO},
 	{Name: "TestAcceptPacketClampsOversizedValues", Categories: "unitary", Exclusive: false, Fn: TestAcceptPacketClampsOversizedValues},

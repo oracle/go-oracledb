@@ -111,6 +111,24 @@ func TestConfiguration_AssignFromMap(t *testing.T) {
 	}
 }
 
+// TestConfiguration_TTCCookieOptimization verifies that cookie optimization is
+// enabled by default and can be disabled through a configuration map.
+func TestConfiguration_TTCCookieOptimization(t *testing.T) {
+	t.Parallel()
+	conf := NewOracleDriverConfig()
+	if !conf.DriverProperties.IsTTCCookieOptimizationEnabled() {
+		t.Fatal("TTC cookie optimization should be enabled by default")
+	}
+	if err := conf.AssignFromMap(map[string]string{
+		"oracle.go.DriverProperties.TTCCookieOptimizationEnabled": "false",
+	}); err != nil {
+		t.Fatalf("disable TTC cookie optimization: %v", err)
+	}
+	if conf.DriverProperties.IsTTCCookieOptimizationEnabled() {
+		t.Fatal("TTC cookie optimization should be disabled after configuration override")
+	}
+}
+
 // TestConfiguration_AssignFromMapValidatedIntString checks AssignFromMap for
 // integer fields that use validators.
 // expectations:

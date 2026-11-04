@@ -48,7 +48,30 @@ import (
 
 // GetConnectionInstantiator returns the correct connection instantiator
 // according to the configuration
-func GetConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+func GetConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], reneg bool) (driverCommon.ConnectionInstantiator, error) {
+
 	// Get the correct connection instantiator depending on the configuration. For now we only support TTC
-	return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry)
+	databaseUUID := ns.GetDatabaseUUID()
+	if reneg {
+		// Bypass the cached cookie and consume the server's pending TTIPRO.
+		common.Odl.Fine("Selecting normal TTC instantiator for server-requested renegotiation")
+		return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry, driverCommon.ConnectionRenegotiate)
+	}
+
+	if ttc.IsTTCCookieEligible(config.DriverProperties, databaseUUID) {
+		cookie, found := ttc.GetCachedTTCCookie(databaseUUID)
+		if found {
+			common.Odl.Fine("Selecting cookie TTC instantiator: cached cookie found")
+			return ttc.NewTTCCookieConnectionInstantiator(
+				config,
+				ns,
+				providerRegistry,
+				cookie,
+			)
+		}
+	}
+
+	common.Odl.Fine("Selecting normal TTC instantiator: cookie optimization ineligible or cache miss")
+	return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry, driverCommon.ConnectionNormal)
+
 }
