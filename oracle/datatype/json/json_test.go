@@ -40,12 +40,19 @@ package json
 
 import (
 	"bytes"
+	"context"
 	stdjson "encoding/json"
+	"errors"
+	"fmt"
 	"math"
+	"os"
+	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -597,4 +604,371 @@ func TestJSONScanCopiesSourceBytes(t *testing.T) {
 	if nameValue != "first" {
 		t.Fatalf(`name = %#v, want "first"; JSON.Scan retained caller-owned []byte`, nameValue)
 	}
+}
+
+// TestJSONViewsPropagateNodeErrors checks the public wrappers without depending
+// on a particular OSON byte sequence. Codec fixtures are tested in oson.
+func TestJSONViewsPropagateNodeErrors(t *testing.T) {
+	sentinel := errors.New("test node error")
+	document := JSON{node: jsonErrorScalarNode{err: sentinel}}
+	object := JSONObject{node: jsonErrorObjectNode{err: sentinel}}
+	array := JSONArray{node: jsonErrorArrayNode{err: sentinel}}
+	scalar := JSONScalar{node: jsonErrorScalarNode{err: sentinel}}
+	tests := []struct {
+		name  string
+		value interface {
+			MarshalJSON() ([]byte, error)
+			String() string
+		}
+		getValue    func() (any, error)
+		placeholder string
+	}{
+		{"document", document, document.GetValue, "<JSON: rendering failed>"},
+		{"object", object, func() (any, error) { return object.GetValue() }, "<JSONObject: rendering failed>"},
+		{"array", array, func() (any, error) { return array.GetValue() }, "<JSONArray: rendering failed>"},
+		{"scalar", scalar, scalar.GetValue, "<JSONScalar: rendering failed>"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := tc.getValue(); !errors.Is(err, sentinel) {
+				t.Fatalf("GetValue() error = %v, want wrapped sentinel", err)
+			}
+			if _, err := stdjson.Marshal(tc.value); !errors.Is(err, sentinel) {
+				t.Fatalf("json.Marshal() error = %v, want wrapped sentinel", err)
+			}
+			if got := tc.value.String(); got != tc.placeholder {
+				t.Fatalf("String() = %q, want %q", got, tc.placeholder)
+			}
+		})
+	}
+}
+
+type jsonErrorObjectNode struct {
+	drvCommon.JSONObjectNode
+	err error
+}
+
+func (n jsonErrorObjectNode) GetValue(drvCommon.JSONConversionOptions) (any, error) {
+	return nil, n.err
+}
+func (n jsonErrorObjectNode) Value(drvCommon.JSONConversionOptions) (map[string]any, error) {
+	return nil, n.err
+}
+func (n jsonErrorObjectNode) MarshalJSON() ([]byte, error) { return nil, n.err }
+func (n jsonErrorObjectNode) String() (string, error)      { return "", n.err }
+
+type jsonErrorArrayNode struct {
+	drvCommon.JSONArrayNode
+	err error
+}
+
+func (n jsonErrorArrayNode) GetValue(drvCommon.JSONConversionOptions) (any, error) {
+	return nil, n.err
+}
+func (n jsonErrorArrayNode) Value(drvCommon.JSONConversionOptions) ([]any, error) {
+	return nil, n.err
+}
+func (n jsonErrorArrayNode) MarshalJSON() ([]byte, error) { return nil, n.err }
+func (n jsonErrorArrayNode) String() (string, error)      { return "", n.err }
+
+type jsonErrorScalarNode struct {
+	drvCommon.JSONScalarNode
+	err error
+}
+
+func (n jsonErrorScalarNode) GetValue(drvCommon.JSONConversionOptions) (any, error) {
+	return nil, n.err
+}
+func (n jsonErrorScalarNode) Value(drvCommon.JSONConversionOptions) (any, error) {
+	return nil, n.err
+}
+func (n jsonErrorScalarNode) MarshalJSON() ([]byte, error) { return nil, n.err }
+func (n jsonErrorScalarNode) String() (string, error)      { return "", n.err }
+
+// TestJSONUnsupportedGoInputMatrix checks API type boundaries without requiring
+// a configured database. Defined Go types differ from true type aliases.
+func TestJSONUnsupportedGoInputMatrix(t *testing.T) {
+	type definedString string
+	type definedNumber int64
+	type definedBytes []byte
+	type definedMap map[string]any
+	type definedSlice []any
+	var nilPointer *int
+	for _, input := range []struct {
+		name  string
+		value any
+	}{
+		{"defined_string", definedString("oracle")},
+		{"defined_number", definedNumber(42)},
+		{"defined_bytes", definedBytes{0, 255}},
+		{"defined_map", definedMap{"value": "oracle"}},
+		{"defined_slice", definedSlice{"oracle"}},
+		{"pointer", new(int)},
+		{"nil_pointer", nilPointer},
+		{"typed_string_slice", []string{"oracle"}},
+		{"typed_integer_slice", []int{1, 2}},
+		{"typed_value_map", map[string]int{"value": 42}},
+		{"non_string_key_map", map[int]any{1: "oracle"}},
+		{"array", [1]string{"oracle"}},
+		{"raw_message", stdjson.RawMessage(`{"value":"oracle"}`)},
+		{"nested_pointer", map[string]any{"value": []any{new(int)}}},
+	} {
+		t.Run("unsupported/"+input.name, func(t *testing.T) {
+			_, err := NewJSON(input.value)
+			requirePublicOSONRegressionCode(t, err, oracleErrors.OsonEncodingError)
+		})
+	}
+
+	type stringAlias = string
+	type numberAlias = int64
+	type booleanAlias = bool
+	type bytesAlias = []byte
+	type mapAlias = map[string]any
+	type sliceAlias = []any
+	type jsonNumberAlias = stdjson.Number
+	for _, input := range []struct {
+		name  string
+		value any
+		want  any
+	}{
+		{"string", stringAlias("oracle"), "oracle"},
+		{"number", numberAlias(42), int64(42)},
+		{"boolean", booleanAlias(true), true},
+		{"bytes", bytesAlias{0, 255}, []byte{0, 255}},
+		{"map", mapAlias{"value": "oracle"}, map[string]any{"value": "oracle"}},
+		{"slice", sliceAlias{"oracle", true}, []any{"oracle", true}},
+		{"json_number", jsonNumberAlias("123.45"), stdjson.Number("123.45")},
+	} {
+		t.Run("supported_alias/"+input.name, func(t *testing.T) {
+			doc, err := NewJSON(input.value)
+			if err != nil {
+				t.Fatalf("true alias rejected: %v", err)
+			}
+			got, err := doc.GetValue()
+			if err != nil || !reflect.DeepEqual(got, input.want) {
+				t.Fatalf("true alias value=(%#v,%v), want %#v", got, err, input.want)
+			}
+		})
+	}
+}
+
+func requirePublicOSONRegressionCode(t *testing.T, err error, want oracleErrors.ErrorCode) {
+	t.Helper()
+	var coded interface{ ErrorCode() string }
+	if err == nil || !errors.As(err, &coded) || coded.ErrorCode() != string(want) {
+		t.Fatalf("error=%v, want %s", err, want)
+	}
+}
+
+// Each timezone runs in a fresh process. Mutating time.Local in this process
+// would interfere with other tests and would not test initialization from TZ.
+func TestJSONTemporal_LocalZoneSubprocess(t *testing.T) {
+	const childZone = "GO_ORACLEDB_OSON_TEMPORAL_ZONE_CHILD"
+	if zone := os.Getenv(childZone); zone != "" {
+		location, err := time.LoadLocation(zone)
+		if err != nil {
+			t.Fatalf("load requested child timezone %q: %v", zone, err)
+		}
+		input := time.Date(2024, 2, 29, 14, 15, 16, 123456789, time.FixedZone("source", 19800))
+		for _, encoding := range temporalRegressionEncodings() {
+			t.Run(encoding.name, func(t *testing.T) {
+				for _, nested := range []bool{false, true} {
+					t.Run(fmt.Sprintf("nested-%t", nested), func(t *testing.T) {
+						var source any = input
+						if nested {
+							source = map[string]any{"when": input}
+						}
+						doc, err := NewJSONWithOptions(source, Options{TimeEncoding: encoding.value})
+						if err != nil {
+							t.Fatalf("construct temporal document: %v", err)
+						}
+						if nested {
+							view, err := doc.AsJSONObject()
+							if err != nil {
+								t.Fatalf("obtain temporal object view: %v", err)
+							}
+							doc, err = view.Get("when")
+							if err != nil {
+								t.Fatalf("obtain temporal child: %v", err)
+							}
+						}
+						value, err := doc.GetValue()
+						if err != nil {
+							t.Fatalf("materialize temporal value: %v", err)
+						}
+						actual, ok := value.(time.Time)
+						if !ok {
+							t.Fatalf("temporal value=%T, want time.Time", value)
+						}
+						want := input
+						if encoding.value == TimeAsDate {
+							want = input.Truncate(time.Second)
+						}
+						if temporalRegressionFields(actual) != temporalRegressionFields(want) {
+							t.Fatalf("temporal fields=%v, want %v", temporalRegressionFields(actual), temporalRegressionFields(want))
+						}
+						if encoding.value == TimeAsTimestampTZ {
+							_, offset := actual.Zone()
+							if !actual.Equal(input) || offset != 19800 {
+								t.Fatalf("timestamp-tz changed instant/offset: %v", actual)
+							}
+						} else {
+							_, actualOffset := actual.Zone()
+							expectedLocal := time.Date(want.Year(), want.Month(), want.Day(), want.Hour(), want.Minute(), want.Second(), want.Nanosecond(), location)
+							_, expectedOffset := expectedLocal.Zone()
+							if actual.Location() != time.Local || actualOffset != expectedOffset {
+								t.Fatalf("zone-free value location=%v offset=%d, want local %s offset=%d", actual.Location(), actualOffset, zone, expectedOffset)
+							}
+						}
+						text, err := stdjson.Marshal(doc)
+						if err != nil {
+							t.Fatalf("marshal temporal value: %v", err)
+						}
+						var rendered string
+						if err := stdjson.Unmarshal(text, &rendered); err != nil {
+							t.Fatalf("temporal rendering is not a JSON string: %v", err)
+						}
+						if encoding.value != TimeAsTimestampTZ && rendered != want.Format("2006-01-02T15:04:05.999999999") {
+							t.Fatalf("zone-free rendering unexpectedly depends on TZ: %q", rendered)
+						}
+					})
+				}
+			})
+		}
+		return
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("locate temporal test executable: %v", err)
+	}
+	for _, zone := range []string{"UTC", "Asia/Kolkata", "America/New_York"} {
+		t.Run(zone, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, executable, "-test.run=^TestJSONTemporal_LocalZoneSubprocess$", "-test.count=1")
+			for _, entry := range os.Environ() {
+				if !strings.HasPrefix(entry, "TZ=") && !strings.HasPrefix(entry, childZone+"=") {
+					cmd.Env = append(cmd.Env, entry)
+				}
+			}
+			cmd.Env = append(cmd.Env, "TZ="+zone, childZone+"="+zone)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				if len(output) > 4000 {
+					output = output[:4000]
+				}
+				t.Fatalf("isolated timezone %s failed: %v (context=%v)\n%s", zone, err, ctx.Err(), output)
+			}
+		})
+	}
+}
+
+// This local regression accepts explicit rejection, but not a successfully
+// materialized year that differs from the input due to century-byte wrapping.
+// Functional tests separately establish server rejection/persistence behavior.
+func TestJSONTemporal_YearValidation(t *testing.T) {
+	for _, year := range []int{0, 10000, 30000, -30000} {
+		for _, encoding := range temporalRegressionEncodings() {
+			t.Run(fmt.Sprintf("year-%d/%s", year, encoding.name), func(t *testing.T) {
+				input := time.Date(year, 2, 3, 4, 5, 6, 123456789, time.UTC)
+				doc, err := NewJSONWithOptions(input, Options{TimeEncoding: encoding.value})
+				if err != nil {
+					if !temporalRegressionErrorCode(err, oracleErrors.OsonEncodingError) {
+						t.Fatalf("unexpected temporal constructor error: %v", err)
+					}
+					t.Logf("temporal input rejected at construction: %v", err)
+					return
+				}
+				value, err := doc.GetValue()
+				if err != nil {
+					if !temporalRegressionErrorCode(err, oracleErrors.OsonEncodingError, oracleErrors.ConverterExpectedFormat, oracleErrors.ConverterRange) {
+						t.Fatalf("unexpected temporal materialization error: %v", err)
+					}
+					t.Logf("temporal input rejected lazily: %v", err)
+					return
+				}
+				actual, ok := value.(time.Time)
+				want := input
+				if encoding.value == TimeAsDate {
+					want = want.Truncate(time.Second)
+				}
+				if !ok || temporalRegressionFields(actual) != temporalRegressionFields(want) {
+					t.Fatalf("accepted temporal year changed: got=%#v, want fields=%v", value, temporalRegressionFields(want))
+				}
+				t.Logf("year %d survives local conversion; server range validation is checked separately", year)
+			})
+		}
+	}
+}
+
+// User-selected policy for unrepresentable offset seconds: explicit rejection
+// or normalization is acceptable, provided an accepted value keeps its instant.
+// TestJSONTemporal_SecondsOffsetCharacterization accepts rejection or minute-offset normalization that preserves the original UTC instant.
+func TestJSONTemporal_SecondsOffsetCharacterization(t *testing.T) {
+	for _, offset := range []int{30, -30, 19830, -12630} {
+		t.Run(fmt.Sprintf("offset-%d", offset), func(t *testing.T) {
+			input := time.Date(2026, 1, 1, 0, 0, 0, 123456789, time.FixedZone("offset-seconds", offset))
+			doc, err := NewJSONWithOptions(input, Options{TimeEncoding: TimeAsTimestampTZ})
+			if err != nil {
+				if !temporalRegressionErrorCode(err, oracleErrors.OsonEncodingError) {
+					t.Fatalf("unexpected seconds-offset constructor error: %v", err)
+				}
+				t.Logf("sub-minute offset rejected at construction: %v", err)
+				return
+			}
+			value, err := doc.GetValue()
+			if err != nil {
+				if !temporalRegressionErrorCode(err, oracleErrors.OsonEncodingError, oracleErrors.ConverterExpectedFormat, oracleErrors.ConverterRange) {
+					t.Fatalf("unexpected seconds-offset materialization error: %v", err)
+				}
+				t.Logf("sub-minute offset rejected lazily: %v", err)
+				return
+			}
+			actual, ok := value.(time.Time)
+			if !ok || !actual.Equal(input) {
+				t.Fatalf("sub-minute offset changed instant: got=%#v, want UTC=%s", value, input.UTC().Format(time.RFC3339Nano))
+			}
+			text, err := stdjson.Marshal(doc)
+			if err != nil {
+				t.Fatalf("marshal normalized timestamp: %v", err)
+			}
+			var rendered string
+			if err := stdjson.Unmarshal(text, &rendered); err != nil {
+				t.Fatalf("normalized timestamp is not a JSON string: %v", err)
+			}
+			parsed, err := time.Parse(time.RFC3339Nano, rendered)
+			if err != nil || !parsed.Equal(input) {
+				t.Fatalf("normalized rendering changed instant: %q (%v)", rendered, err)
+			}
+			_, normalized := actual.Zone()
+			t.Logf("offset-seconds policy: requested=%d returned=%d lost=%d; instant preserved", offset, normalized, offset-normalized)
+		})
+	}
+}
+
+func temporalRegressionErrorCode(err error, accepted ...oracleErrors.ErrorCode) bool {
+	var coded oracleErrors.SQLError
+	if !errors.As(err, &coded) {
+		return false
+	}
+	for _, code := range accepted {
+		if coded.ErrorCode() == string(code) {
+			return true
+		}
+	}
+	return false
+}
+
+func temporalRegressionFields(v time.Time) [7]int {
+	return [7]int{v.Year(), int(v.Month()), v.Day(), v.Hour(), v.Minute(), v.Second(), v.Nanosecond()}
+}
+
+func temporalRegressionEncodings() []struct {
+	name  string
+	value TimeEncoding
+} {
+	return []struct {
+		name  string
+		value TimeEncoding
+	}{{"timestamp", TimeAsTimestamp}, {"timestamp-tz", TimeAsTimestampTZ}, {"date", TimeAsDate}}
 }

@@ -39,14 +39,87 @@
 package oson
 
 import (
+	"bytes"
+	"encoding/hex"
 	"encoding/json"
-	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
-	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
+
+	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+// TestDecodeIDScalarFixture decodes a hand-audited OSON ID scalar. The fixture
+// has a version 1 scalar tree with ID opcode 7E and identifier bytes 00..0B.
+func TestDecodeIDScalarFixture(t *testing.T) {
+	fixture := drvCommon.B1Array{
+		0xff, 0x4a, 0x5a, 0x01, 0x00, 0x16, 0x00, 0x0e,
+		0x7e, 0x0c, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
+		0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+	}
+	original := bytes.Clone(fixture)
+	want := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+	for _, mode := range []drvCommon.JSONNumberMode{drvCommon.JSONNumberDefault, drvCommon.JSONNumberAsJSONNumber, drvCommon.JSONNumberAsFloat64} {
+		root, err := Parse(fixture)
+		if err != nil {
+			t.Fatalf("Parse(ID fixture): %v", err)
+		}
+		if got := root.Kind(); got != drvCommon.KindScalar {
+			t.Fatalf("Kind() = %v, want scalar", got)
+		}
+		value, err := root.GetValue(drvCommon.JSONConversionOptions{NumberMode: mode})
+		actual, ok := value.([]byte)
+		if err != nil || !ok || !bytes.Equal(actual, want) {
+			t.Fatalf("GetValue(mode=%v) = %#v (%T), error=%v, want %x", mode, value, value, err, want)
+		}
+		actual[0] ^= 0xff
+		again, err := root.GetValue(drvCommon.JSONConversionOptions{NumberMode: mode})
+		actual, ok = again.([]byte)
+		if err != nil || !ok || !bytes.Equal(actual, want) {
+			t.Fatalf("ID materialization exposed source bytes: value=%#v error=%v", again, err)
+		}
+		text, err := root.MarshalJSON()
+		if err != nil || string(text) != "\"000102030405060708090A0B\"" {
+			t.Fatalf("MarshalJSON() = %s, %v", text, err)
+		}
+		if !bytes.Equal(fixture, original) {
+			t.Fatal("materialization changed source OSON bytes")
+		}
+	}
+}
+
+// TestDecodeMalformedCompactSignedPayloads keeps issue #148 reproducible with
+// fixed invalid signed-integer OSON fixtures under all number modes.
+func TestDecodeMalformedCompactSignedPayloads(t *testing.T) {
+	fixtures := []struct{ name, wire string }{
+		{"signed32_overflow", "ff4a5a010016000746c51630312531"},           // 2147483648 in SB4.
+		{"signed32_fraction", "ff4a5a010016000443c10233"},                 // 1.5 in SB4.
+		{"signed64_overflow", "ff4a5a010016000c5bca132d442d08260a381110"}, // uint64 maximum in SB8.
+	}
+	for _, fixture := range fixtures {
+		for _, mode := range []drvCommon.JSONNumberMode{drvCommon.JSONNumberDefault, drvCommon.JSONNumberAsJSONNumber, drvCommon.JSONNumberAsFloat64} {
+			t.Run(fmt.Sprintf("%s/mode_%d", fixture.name, mode), func(t *testing.T) {
+				data, err := hex.DecodeString(fixture.wire)
+				if err != nil {
+					t.Fatalf("invalid audited fixture: %v", err)
+				}
+				root, err := Parse(data)
+				if err != nil {
+					return // Rejecting an invalid payload during Parse is valid.
+				}
+				if value, err := root.GetValue(drvCommon.JSONConversionOptions{NumberMode: mode}); err == nil {
+					t.Errorf("invalid signed payload materialized as %v (%T), want rejection", value, value)
+				}
+				if text, err := root.MarshalJSON(); err == nil {
+					t.Errorf("invalid signed payload rendered as %s, want rejection", text)
+				}
+			})
+		}
+	}
+}
 
 // TestDecodeNumberModes verifies NUMBER decoding honors the configured number
 // mode.

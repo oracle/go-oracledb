@@ -40,6 +40,7 @@ package oson
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -89,10 +90,13 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDecodeSecondaryDictionary", Categories: "unitary", Fn: TestDecodeSecondaryDictionary},
 	{Name: "TestDecodeScalarJSONRendering", Categories: "unitary", Fn: TestDecodeScalarJSONRendering},
 	{Name: "TestDecodeOtherScalarWireForms", Categories: "unitary", Fn: TestDecodeOtherScalarWireForms},
+	{Name: "TestDecodeIDScalarFixture", Categories: "unitary", Fn: TestDecodeIDScalarFixture},
 
 	// Check unsupported scalar opcodes and malformed scalar payloads fail cleanly.
 	{Name: "TestDecodeNativeIntegerOpcode", Categories: "unitary", Fn: TestDecodeNativeIntegerOpcode},
 	{Name: "TestDecodeMalformedScalarPayload", Categories: "unitary", Fn: TestDecodeMalformedScalarPayload},
+	{Name: "TestDecodeMalformedCompactSignedPayloads", Categories: "unitary", Exclusive: true, Fn: TestDecodeMalformedCompactSignedPayloads},
+	{Name: "TestDecodeUnsupportedScalarAccess", Categories: "unitary", Exclusive: true, Fn: TestDecodeUnsupportedScalarAccess},
 
 	// Encode scalar values with the expected opcode families and length forms.
 	{Name: "TestEncodeSignedIntegerWidths", Categories: "unitary", Fn: TestEncodeSignedIntegerWidths},
@@ -114,6 +118,13 @@ var testCases = []oracleTest.CategorizedTestCase{
 	// Keep unsupported inputs and documents beyond the format limit out of output.
 	{Name: "TestEncodeRejectsUnsupportedValues", Categories: "unitary", Fn: TestEncodeRejectsUnsupportedValues},
 	{Name: "TestEncodeRejectsOversizedDocument", Categories: "unitary", Fn: TestEncodeRejectsOversizedDocument},
+	{Name: "TestOSONScalarBoundaryContent", Categories: "unitary", Exclusive: true, Fn: TestOSONScalarBoundaryContent},
+	{Name: "TestOSONContainerBoundaryContent", Categories: "unitary", Exclusive: true, Fn: TestOSONContainerBoundaryContent},
+	{Name: "TestOSONDictionaryHeapBoundaryContent", Categories: "unitary", Exclusive: true, Fn: TestOSONDictionaryHeapBoundaryContent},
+	{Name: "TestOSONMixedDictionaryFieldIDBoundary", Categories: "unitary", Exclusive: true, Fn: TestOSONMixedDictionaryFieldIDBoundary},
+	{Name: "TestOSONFieldNameMaximum", Categories: "unitary", Exclusive: true, Fn: TestOSONFieldNameMaximum},
+	{Name: "TestOSONExactDocumentSizeLimit", Categories: "unitary", Exclusive: true, Fn: TestOSONExactDocumentSizeLimit},
+	{Name: "TestOSONNumberTextLengthLimit", Categories: "unitary", Exclusive: true, Fn: TestOSONNumberTextLengthLimit},
 }
 
 // main test
@@ -144,9 +155,9 @@ func decodeJSONForTest(t *testing.T, text string) any {
 // assertOracleErrorCode checks an OSON failure uses the expected public Oracle error code.
 func assertOracleErrorCode(t *testing.T, err error, want oracleErrors.ErrorCode) {
 	t.Helper()
-	sqlErr, ok := err.(oracleErrors.SQLError)
-	if !ok {
-		t.Fatalf("error type = %T, want oracleErrors.SQLError", err)
+	var sqlErr oracleErrors.SQLError
+	if !errors.As(err, &sqlErr) {
+		t.Fatalf("error = %v (%T), want oracleErrors.SQLError", err, err)
 	}
 	if got := sqlErr.ErrorCode(); got != string(want) {
 		t.Fatalf("error code = %s, want %s", got, want)

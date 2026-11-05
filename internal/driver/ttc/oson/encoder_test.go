@@ -39,7 +39,9 @@
 package oson
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
 	"reflect"
 	"strconv"
@@ -414,4 +416,309 @@ func encodedRootOpcode(t *testing.T, doc drvCommon.B1Array) drvCommon.UB1 {
 		t.Fatalf("read root opcode error = %v", err)
 	}
 	return opcode
+}
+
+// TestOSONScalarBoundaryContent fills content-check gaps in the existing
+// opcode-focused boundary cases, including the independent tree-size change.
+func TestOSONScalarBoundaryContent(t *testing.T) {
+	for _, kind := range []string{"string", "binary"} {
+		lengths := []int{0, 1, 30, 65532, 65533, 65535}
+		if kind == "binary" {
+			lengths = append(lengths, 65536)
+		}
+		for _, length := range lengths {
+			for _, nested := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/bytes_%d/nested_%v", kind, length, nested), func(t *testing.T) {
+					var scalar any
+					if kind == "string" {
+						scalar = strings.Repeat("é🙂", length/6) + strings.Repeat("x", length%6)
+					} else {
+						data := make([]byte, length)
+						for i := range data {
+							data[i] = byte(i*73 + 19)
+						}
+						scalar = data
+					}
+					value := scalar
+					if nested {
+						value = map[string]any{"payload": scalar, "next": "sentinel"}
+					}
+					doc := requireOSONBoundaryRoundTrip(t, value)
+					if !nested && (length == 65532 || length == 65533) {
+						header, err := newOsonHeader(newOsonBuffer(doc))
+						if err != nil {
+							t.Fatal(err)
+						}
+						if got, want := header.treeSegmentByteLength, uint(length+3); got != want {
+							t.Fatalf("tree bytes=%d, want %d", got, want)
+						}
+						if got, want := header.isSet(osonFlagTreeSegmentSizeUB4Mask), length == 65533; got != want {
+							t.Fatalf("wide tree size flag=%v, want %v", got, want)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+// TestOSONContainerBoundaryContent materializes every element/member so wide
+// counts and field IDs cannot pass merely because their header bits are set.
+func TestOSONContainerBoundaryContent(t *testing.T) {
+	for _, count := range []int{255, 256, 65535, 65536} {
+		for _, shape := range []string{"array", "object"} {
+			t.Run(fmt.Sprintf("%s/count_%d", shape, count), func(t *testing.T) {
+				var value any
+				if shape == "array" {
+					items := make([]any, count)
+					for i := range items {
+						items[i] = strconv.Itoa(i)
+					}
+					value = items
+				} else {
+					fields := make(map[string]any, count)
+					for i := 0; i < count; i++ {
+						fields[fmt.Sprintf("field_%05d", i)] = strconv.Itoa(i)
+					}
+					value = fields
+				}
+				doc := requireOSONBoundaryRoundTrip(t, value)
+				if shape == "object" {
+					header, err := newOsonHeader(newOsonBuffer(doc))
+					if err != nil {
+						t.Fatal(err)
+					}
+					width := 1
+					if count > 255 {
+						width = 2
+					}
+					if count > 65535 {
+						width = 4
+					}
+					if got := header.numFieldIDBytes(); got != width {
+						t.Fatalf("field-ID bytes=%d, want %d", got, width)
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestOSONDictionaryHeapBoundaryContent holds key counts stable while the
+// dictionary heap crosses 65535 bytes, then checks every decoded member.
+func TestOSONDictionaryHeapBoundaryContent(t *testing.T) {
+	for _, tier := range []string{"primary", "secondary"} {
+		for _, size := range []int{65534, 65535, 65536} {
+			t.Run(fmt.Sprintf("%s/bytes_%d", tier, size), func(t *testing.T) {
+				fields := make(map[string]any)
+				if tier == "primary" {
+					for i := 0; i < 256; i++ {
+						length := 255
+						if i == 255 {
+							length = size - 255*256 - 1
+						}
+						fields[fmt.Sprintf("%03d_", i)+strings.Repeat("p", length-4)] = strconv.Itoa(i)
+					}
+				} else {
+					for i := 0; i < 254; i++ {
+						length := 256
+						if i == 253 {
+							length = size - 253*258 - 2
+						}
+						fields[fmt.Sprintf("%03d_", i)+strings.Repeat("s", length-4)] = strconv.Itoa(i)
+					}
+				}
+				doc := requireOSONBoundaryRoundTrip(t, fields)
+				header, err := newOsonHeader(newOsonBuffer(doc))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tier == "primary" {
+					if got, want := header.isSet(osonFlagFieldHeapSizeUB4Mask), size > 65535; got != want {
+						t.Fatalf("wide primary offsets=%v, want %v", got, want)
+					}
+				} else {
+					if got, want := header.secondaryFlags&osonFlagSecondaryFieldOffsetsUB2Mask != 0, size <= 65535; got != want {
+						t.Fatalf("narrow secondary offsets=%v, want %v", got, want)
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestOSONMixedDictionaryFieldIDBoundary covers field-ID width selected by the
+// total count across primary and secondary dictionaries, not either alone.
+func TestOSONMixedDictionaryFieldIDBoundary(t *testing.T) {
+	for _, count := range []int{255, 256} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			fields := make(map[string]any, count)
+			for i := 0; i < count; i++ {
+				key := fmt.Sprintf("field_%03d", i)
+				if i >= 127 {
+					key += strings.Repeat("é", 128)
+				}
+				fields[key] = strconv.Itoa(i)
+			}
+			doc := requireOSONBoundaryRoundTrip(t, fields)
+			header, err := newOsonHeader(newOsonBuffer(doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if header.primaryFieldsCount != 127 || len(header.fieldDictionary.fieldNames) != count {
+				t.Fatalf("dictionary counts: primary=%d total=%d", header.primaryFieldsCount, len(header.fieldDictionary.fieldNames))
+			}
+			width := 1
+			if count == 256 {
+				width = 2
+			}
+			if got := header.numFieldIDBytes(); got != width {
+				t.Fatalf("field-ID bytes=%d, want %d", got, width)
+			}
+		})
+	}
+}
+
+// TestOSONFieldNameMaximum verifies maximum-length field names retain their content and oversized names return an encoding error.
+func TestOSONFieldNameMaximum(t *testing.T) {
+	for _, length := range []int{255, 256, 65535, 65536} {
+		t.Run(strconv.Itoa(length), func(t *testing.T) {
+			key := strings.Repeat("é", length/2) + strings.Repeat("x", length%2)
+			fields := map[string]any{key: "long-key-value", "short": "sentinel"}
+			if length > osonMaxSecondaryDictKeyLength {
+				_, err := Encode(fields)
+				assertOracleErrorCode(t, err, oracleErrors.OsonEncodingError)
+				return
+			}
+			doc := requireOSONBoundaryRoundTrip(t, fields)
+			version := byte(1)
+			if length > 255 {
+				version = 3
+			}
+			if doc[3] != version {
+				t.Fatalf("version=%d, want %d", doc[3], version)
+			}
+		})
+	}
+}
+
+// TestOSONExactDocumentSizeLimit measures the complete encoded document,
+// rather than treating payload bytes as the native JSON storage size.
+func TestOSONExactDocumentSizeLimit(t *testing.T) {
+	const overhead = 15 // ten-byte large scalar document header, five-byte scalar prefix.
+	for _, kind := range []string{"string", "binary"} {
+		for _, delta := range []int{-1, 0, 1} {
+			t.Run(fmt.Sprintf("%s/limit_delta_%d", kind, delta), func(t *testing.T) {
+				length := osonMaxDocumentSize - overhead + delta
+				var input any
+				if kind == "string" {
+					input = strings.Repeat("x", length)
+				} else {
+					data := make([]byte, length)
+					for i := range data {
+						data[i] = byte(i*73 + 19)
+					}
+					input = data
+				}
+				doc, err := Encode(input)
+				if delta > 0 {
+					assertOracleErrorCode(t, err, oracleErrors.OsonEncodingError)
+					return
+				}
+				if err != nil {
+					t.Fatalf("Encode accepted boundary value: %v", err)
+				}
+				if len(doc) != osonMaxDocumentSize+delta {
+					t.Fatalf("encoded bytes=%d, want %d", len(doc), osonMaxDocumentSize+delta)
+				}
+				root, err := Parse(doc)
+				if err != nil {
+					t.Fatalf("Parse boundary document: %v", err)
+				}
+				got, err := root.GetValue(drvCommon.JSONConversionOptions{})
+				if err != nil {
+					t.Fatalf("materialize boundary document: %v", err)
+				}
+				if !osonBoundaryCodecEqual(got, input) {
+					t.Fatalf("boundary document content changed: got type=%T want type=%T", got, input)
+				}
+			})
+		}
+	}
+}
+
+// TestOSONNumberTextLengthLimit verifies number text at the one-byte length boundary encodes intact and oversized text is rejected.
+func TestOSONNumberTextLengthLimit(t *testing.T) {
+	for _, length := range []int{255, 256} {
+		t.Run(strconv.Itoa(length), func(t *testing.T) {
+			want := json.Number("1." + strings.Repeat("0", length-2))
+			if length > 255 {
+				_, err := Encode(want)
+				assertOracleErrorCode(t, err, oracleErrors.OsonEncodingError)
+				return
+			}
+			doc := requireOSONBoundaryRoundTrip(t, want)
+			root, err := Parse(doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text, err := root.MarshalJSON()
+			if err != nil || string(text) != string(want) {
+				t.Fatalf("number text bytes=%d error=%v, want original %d-byte number", len(text), err, length)
+			}
+		})
+	}
+}
+
+func requireOSONBoundaryRoundTrip(t *testing.T, want any) drvCommon.B1Array {
+	t.Helper()
+	doc, err := Encode(want)
+	if err != nil {
+		t.Fatalf("Encode %T: %v", want, err)
+	}
+	root, err := Parse(doc)
+	if err != nil {
+		t.Fatalf("Parse %T: %v", want, err)
+	}
+	got, err := root.GetValue(drvCommon.JSONConversionOptions{})
+	if err != nil {
+		t.Fatalf("GetValue %T: %v", want, err)
+	}
+	if !osonBoundaryCodecEqual(got, want) {
+		t.Fatalf("boundary content mismatch: got type=%T want type=%T", got, want)
+	}
+	return doc
+}
+
+func osonBoundaryCodecEqual(got, want any) bool {
+	switch expected := want.(type) {
+	case []byte:
+		value, ok := got.([]byte)
+		return ok && bytes.Equal(value, expected)
+	case map[string]any:
+		value, ok := got.(map[string]any)
+		if !ok || len(value) != len(expected) {
+			return false
+		}
+		for key, item := range expected {
+			other, ok := value[key]
+			if !ok || !osonBoundaryCodecEqual(other, item) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		value, ok := got.([]any)
+		if !ok || len(value) != len(expected) {
+			return false
+		}
+		for i, item := range expected {
+			if !osonBoundaryCodecEqual(value[i], item) {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(got, want)
+	}
 }
