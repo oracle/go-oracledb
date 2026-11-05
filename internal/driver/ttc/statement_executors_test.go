@@ -978,7 +978,7 @@ func TestStatementExecutor_Others_Factory_GetMessageForFunction_Error(t *testing
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("create table t(x number)")
-	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
+	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "create-messages") {
 		t.Fatalf("expected factory GetMessageForFunction failure, got err=%v", err)
 	}
 }
@@ -1004,7 +1004,7 @@ func TestStatementExecutor_DML_Factory_GetMessageForFunction_Error(t *testing.T)
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("insert into t values(1)")
-	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
+	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "create-messages") {
 		t.Fatalf("expected factory GetMessageForFunction failure for DML, got err=%v", err)
 	}
 }
@@ -1030,7 +1030,7 @@ func TestStatementExecutor_Select_Factory_GetMessageForFunction_Error(t *testing
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from t")
-	if _, err := exec.QueryContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
+	if _, err := exec.QueryContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "create-messages") {
 		t.Fatalf("expected factory GetMessageForFunction failure for Select, got err=%v", err)
 	}
 }
@@ -1056,7 +1056,7 @@ func TestStatementExecutor_PLSQL_Factory_GetMessageForFunction_Error(t *testing.
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())
 	plsql, _ := newQualifiedSQLStatement("BEGIN NULL; END;")
-	if _, err := exec.ExecContext(ctx, plsql, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
+	if _, err := exec.ExecContext(ctx, plsql, nil); err == nil || !strings.Contains(err.Error(), "create-messages") {
 		t.Fatalf("expected factory GetMessageForFunction failure for PLSQL, got err=%v", err)
 	}
 }

@@ -79,16 +79,16 @@ func dummyDefineOacB(columnContext, common.UB4) common.Marshallable {
 	return newTTIoac(DtyVCS, define_maxlength_varchar)
 }
 
-// TestCodecFactory_getEncoder exercises encoder selection and error paths for CodecFactoryImpl.
+// TestCodecFactory_getEncoderForGoType exercises encoder selection and error paths for CodecFactoryImpl.
 // It validates that the highest compatible version is returned for a given protocol and Go type,
 // and that the factory emits structured Oracle errors when the Go type is nil or unregistered.
-func TestCodecFactory_getEncoder(t *testing.T) {
+func TestCodecFactory_getEncoderForGoType(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
 		name        string
 		protocol    int8
 		value       driver.Value
-		setup       func(reg *codecRegistry[reflect.Type, encoderFunc])
+		setup       func(reg *codecRegistry[encoderKey, *typeEncoder])
 		wantValue   common.B1Array
 		expectError bool
 		errCode     oracleErrors.ErrorCode
@@ -99,9 +99,9 @@ func TestCodecFactory_getEncoder(t *testing.T) {
 			name:     "selects highest version within protocol",
 			protocol: 3,
 			value:    int64(0),
-			setup: func(reg *codecRegistry[reflect.Type, encoderFunc]) {
-				reg.Register(reflect.TypeOf(int64(0)), 1, dummyEncoderA)
-				reg.Register(reflect.TypeOf(int64(0)), 3, dummyEncoderB)
+			setup: func(reg *codecRegistry[encoderKey, *typeEncoder]) {
+				reg.Register(encoderKey{goType: reflect.TypeOf(int64(0))}, 1, newCLRBindEncoder(dummyEncoderA))
+				reg.Register(encoderKey{goType: reflect.TypeOf(int64(0))}, 3, newCLRBindEncoder(dummyEncoderB))
 			},
 			wantValue: common.B1Array{1, 2, 3},
 		},
@@ -109,8 +109,8 @@ func TestCodecFactory_getEncoder(t *testing.T) {
 			name:     "skips candidates greater than protocol",
 			protocol: 1,
 			value:    int64(0),
-			setup: func(reg *codecRegistry[reflect.Type, encoderFunc]) {
-				reg.Register(reflect.TypeOf(int64(0)), 2, dummyEncoderB)
+			setup: func(reg *codecRegistry[encoderKey, *typeEncoder]) {
+				reg.Register(encoderKey{goType: reflect.TypeOf(int64(0))}, 2, newCLRBindEncoder(dummyEncoderB))
 			},
 			expectError: true,
 			errCode:     oracleErrors.InternalError,
@@ -119,7 +119,7 @@ func TestCodecFactory_getEncoder(t *testing.T) {
 			name:        "no registered encoder",
 			protocol:    1,
 			value:       "",
-			setup:       func(reg *codecRegistry[reflect.Type, encoderFunc]) {},
+			setup:       func(reg *codecRegistry[encoderKey, *typeEncoder]) {},
 			expectError: true,
 			errCode:     oracleErrors.InternalError,
 		},
@@ -127,13 +127,13 @@ func TestCodecFactory_getEncoder(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			encReg := newCodecRegistry[reflect.Type, encoderFunc]()
+			encReg := newCodecRegistry[encoderKey, *typeEncoder]()
 			if tc.setup != nil {
 				tc.setup(encReg)
 			}
 			factory := &CodecFactoryImpl{ttcVersion: tc.protocol, encoders: encReg}
 
-			encoder, err := factory.getEncoder(normalizeBindValue(tc.value))
+			encoder, err := factory.getEncoderForGoType(extractBindValueMetadata(tc.value))
 			if tc.expectError {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -151,7 +151,8 @@ func TestCodecFactory_getEncoder(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			got, err := encoder(normalizeBindValue(tc.value).value)
+			_, normalizedValue := normalizeBindValue(tc.value)
+			got, err := encoder.encodeToType(normalizedValue)
 			if err != nil {
 				t.Fatalf("unexpected encode error: %v", err)
 			}
@@ -159,6 +160,47 @@ func TestCodecFactory_getEncoder(t *testing.T) {
 				t.Fatalf("returned encoder mismatch: got %v want %v", got, tc.wantValue)
 			}
 		})
+	}
+}
+
+// TestCodecFactory_getEncoderForDtyType verifies that ADT-specific encoder
+// entries override ordinary Go-type entries, which are otherwise reused.
+func TestCodecFactory_getEncoderForDtyType(t *testing.T) {
+	t.Parallel()
+
+	registry := newCodecRegistry[encoderKey, *typeEncoder]()
+	if err := registry.Register(encoderKey{goType: reflect.TypeOf(int64(0))}, 1, newCLRBindEncoder(dummyEncoderA)); err != nil {
+		t.Fatalf("register ordinary integer encoder: %v", err)
+	}
+	if err := registry.Register(encoderKey{goType: reflect.TypeOf(float64(0))}, 1, newCLRBindEncoder(dummyEncoderA)); err != nil {
+		t.Fatalf("register ordinary float encoder: %v", err)
+	}
+	if err := registry.Register(encoderKey{dtyType: DtyNum, goType: reflect.TypeOf(float64(0))}, 1, newCLRBindEncoder(dummyEncoderB)); err != nil {
+		t.Fatalf("register float NUMBER encoder: %v", err)
+	}
+	factory := &CodecFactoryImpl{ttcVersion: 1, encoders: registry}
+	encoder, err := factory.getEncoderForDtyType(DtyNum, extractBindValueMetadata(float64(1)))
+	if err != nil {
+		t.Fatalf("get float NUMBER encoder: %v", err)
+	}
+	got, err := encoder.encodeToType(float64(1))
+	if err != nil {
+		t.Fatalf("encode float NUMBER value: %v", err)
+	}
+	if !reflect.DeepEqual(got, common.B1Array{1, 2, 3}) {
+		t.Fatalf("float DtyType encoder result = %v, want [1 2 3]", got)
+	}
+
+	encoder, err = factory.getEncoderForDtyType(DtyNum, extractBindValueMetadata(int64(1)))
+	if err != nil {
+		t.Fatalf("get integer NUMBER encoder: %v", err)
+	}
+	got, err = encoder.encodeToType(int64(1))
+	if err != nil {
+		t.Fatalf("encode integer NUMBER value: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("integer DtyType encoder result = %v, want nil", got)
 	}
 }
 
@@ -304,7 +346,7 @@ func TestCodecFactory_getBindOac(t *testing.T) {
 			}
 			factory := &CodecFactoryImpl{ttcVersion: tc.protocol, bindOacs: bindReg}
 
-			oac, err := factory.getBindOac(normalizeBindValue(tc.bindValue), tc.maxLength)
+			oac, err := factory.getBindOac(extractBindValueMetadata(tc.bindValue), tc.maxLength)
 			if tc.expectError {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -444,18 +486,18 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := normalizeBindValue(tc.input)
+			got, value := normalizeBindValue(tc.input)
 			if tc.wantIsNil {
-				if got.value != nil {
-					t.Fatalf("expected nil normalized value, got %v", got.value)
+				if !got.isNull || value != nil {
+					t.Fatalf("expected null normalized value, got metadata=%+v value=%v", got, value)
 				}
 				return
 			}
 			if got.goType != tc.wantType {
 				t.Fatalf("expected normalized type %v, got %v", tc.wantType, got.goType)
 			}
-			if !reflect.DeepEqual(got.value, tc.wantValue) {
-				t.Fatalf("expected normalized value %v, got %v", tc.wantValue, got.value)
+			if !reflect.DeepEqual(value, tc.wantValue) {
+				t.Fatalf("expected normalized value %v, got %v", tc.wantValue, value)
 			}
 		})
 	}
