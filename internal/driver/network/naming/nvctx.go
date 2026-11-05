@@ -200,6 +200,8 @@ type Security struct {
 	SSLAllowWeakDNMatch bool
 	WalletLocation      string
 	MyWalletDirectory   string
+	TokenAuth           string
+	TokenLocation       string
 }
 
 func NewSecurity() *Security {
@@ -209,6 +211,8 @@ func NewSecurity() *Security {
 		SSLAllowWeakDNMatch: false,
 		WalletLocation:      "",
 		MyWalletDirectory:   "",
+		TokenAuth:           "",
+		TokenLocation:       "",
 	}
 }
 
@@ -549,6 +553,11 @@ func extractSecurity(node *Node) (*Security, error) {
 			security.WalletLocation = child.Value
 		case "MY_WALLET_DIRECTORY":
 			security.MyWalletDirectory = child.Value
+		// Token parameters are retained here for the authentication layer to use.
+		case "TOKEN_AUTH":
+			security.TokenAuth = child.Value
+		case "TOKEN_LOCATION":
+			security.TokenLocation = child.Value
 		default:
 			return nil, common.NewOracleError(oracleErrors.NamingContextError, nil, child.Name, "SECURITY")
 		}
