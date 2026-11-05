@@ -66,7 +66,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestValidateLanguage", Categories: "unitary", Exclusive: false, Fn: TestValidateLanguage},
 	{Name: "TestValidateZeroOrPositive", Categories: "unitary", Exclusive: false, Fn: TestValidateZeroOrPositive},
 	{Name: "TestValidateDRCPPurity", Categories: "unitary", Exclusive: false, Fn: TestValidateDRCPPurity},
-	{Name: "TestValidateDRCPBoundary", Categories: "unitary", Exclusive: false, Fn: TestValidateDRCPBoundary},
 }
 
 func TestCategoryExecutor(t *testing.T) {

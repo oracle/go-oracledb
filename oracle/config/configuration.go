@@ -1159,29 +1159,6 @@ func validateDRCPPurity(value reflect.Value, valueName string) (any, error) {
 		[]string{common.DrcpPurityNew, common.DrcpPuritySelf})
 }
 
-// validateDRCPBoundary parses a string to a valid DRCP boundary setting
-// parameters:
-//   - key : property key to be parsed
-//   - value : property value
-//
-// error:
-//   - value is not assignable to string
-//   - parsing has failed
-func validateDRCPBoundary(value reflect.Value, valueName string) (any, error) {
-	if value.Kind() == reflect.String {
-		boundary := strings.ToUpper(strings.TrimSpace(value.String()))
-		if boundary == "" || boundary == common.DrcpBoundaryStatement || boundary == common.DrcpBoundaryTransaction {
-			return boundary, nil
-		}
-	}
-	return nil, common.NewOracleError(
-		oracleErrors.InvalidConnectionParameter,
-		nil,
-		value,
-		valueName,
-		[]string{common.DrcpBoundaryStatement, common.DrcpBoundaryTransaction})
-}
-
 // validateZeroOrPositive validator for positive non-zero integer value.
 // errors:
 //   - value is not assignable to a int

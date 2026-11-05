@@ -233,7 +233,6 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 	}
 
 	sessionProperties := pa._sessionContext.GetSessionProperties()
-	clientProperties := pa._sessionContext.GetClientProperties()
 
 	oauthMsg.(*oAuth).setEncryptedSK(sessionProperties.GetProperty(authSesskey).(*driverCommon.KeyValue).Value)
 	oauthMsg.(*oAuth).setSalt(sessionProperties.GetProperty(authVFRData).(*driverCommon.KeyValue).Value)
@@ -283,9 +282,10 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 			oauthMsg.(*oAuth).setDrcpConnectionClass(
 				driverCommon.B1Array(drcpClassName))
 		}
-		if clientProperties.ContainsKey(AuthKpplPurity) {
+		purity := shelf.GetDriverConfig().ConnectionProperties.Drcp.Purity
+		if len(purity) != 0 {
 			oauthMsg.(*oAuth).setDrcpPurity(
-				driverCommon.B1Array(shelf.GetDriverConfig().ConnectionProperties.Drcp.Purity))
+				purity)
 		}
 	}
 	oauthMsg.(*oAuth).setLogonMode(pa._logonMode)

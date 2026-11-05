@@ -50,7 +50,7 @@ import (
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 )
 
-// Sample application that uses DRCP connections.
+// Sample application that uses DRCP pool.
 func main() {
 
 	connectDescriptor := os.Getenv("ORACLE_DSN")
@@ -60,7 +60,7 @@ func main() {
 		log.Fatal("set ORACLE_DSN, ORACLE_USER, and ORACLE_PASSWORD")
 	}
 
-	// Build  configuration for NewOracleConnector.
+	// Build configuration for NewOracleConnector.
 	cfg := oracle.NewOracleDriverConfig()
 	cfg.ConnectDescriptor = connectDescriptor
 	cfg.Credentials.User = user
@@ -94,12 +94,11 @@ func customPool(cfg *oracleconfig.OracleDriverConfig) {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
+	// this connection is now attached to 'MYPOOL'
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// this connection is now attached to 'MYPOOL'
 
 	defer conn.Close()
 
@@ -121,20 +120,19 @@ func simpleRun(config *oracleconfig.OracleDriverConfig) {
 	}()
 
 	// Run a minimal query using the established connection pool.
-	//  All connections used by DB Apis will be automatically attached and detached to and form the remote DRCP pool.
 	var currentUser string
 	if err := db.QueryRowContext(context.Background(),
 		"select user from dual").Scan(&currentUser); err != nil {
 		log.Fatal(err)
 	}
 
-	// USe this API to grab a connection out of the pool.
+	// Use this API to grab a connection out of the pool.
 	cnx, err := db.Conn(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Because DRCP is enabled the connection will automatically attach to the pool
+	// Because DRCP is enabled, the connection is already attached to the pool
 	rows, err := cnx.QueryContext(context.Background(), "SELECT 1 FROM DUAL")
 	if err != nil {
 		log.Fatal(err)
