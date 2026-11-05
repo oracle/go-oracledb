@@ -159,6 +159,9 @@ func (p *ttioallrpa) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshal
 	return nil
 }
 
+// enableUnmarshalRowCounts enables decoding of optional per-iteration DML row
+// counts in the RPA response. This method will be called on DML execution to
+// indicate that the row counts are expected in the RPA.
 func (p *ttioallrpa) enableUnmarshalRowCounts() {
 	p.unmarshalRowCounts = true
 }
