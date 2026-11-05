@@ -343,7 +343,7 @@ func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
 			}
 
 			// Capture decoder-relevant metadata from the bind OAC when it is available.
-			bindOac, err := codecFactory.getBindOac(normalizeBindValue(outArg), 0)
+			bindOac, err := codecFactory.getBindOac(extractBindValueMetadata(outArg), 0)
 			if err == nil {
 				if oac, ok := bindOac.(*tTIoac); ok {
 					e.outColumnContexts = append(e.outColumnContexts, columnContext{
@@ -527,7 +527,7 @@ type executionMessages struct {
 // createMessages builds a statement request and its bind rows. requestFunction
 // selects OALL8 directly or OEXFEN when cached OACs are reusable.
 func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args []sqldriver.Value, requestFunction driverCommon.FunctionType) (executionMessages, error) {
-	var metadata []normalizedBindValue
+	var metadata []bindValueMetadata
 	var rows [][]driverCommon.B1Array
 	oacs := e.previousOacs
 	if len(args) > 0 {
@@ -726,16 +726,16 @@ func buildAl8i4(iterations driverCommon.UB4, selectStmt bool, flags driverCommon
 
 // extractBindMetadata returns normalized metadata for the ordered bind values.
 
-func extractBindMetadata(args []sqldriver.Value) []normalizedBindValue {
-	metadata := make([]normalizedBindValue, len(args))
+func extractBindMetadata(args []sqldriver.Value) []bindValueMetadata {
+	metadata := make([]bindValueMetadata, len(args))
 	for i, value := range args {
-		metadata[i] = normalizeBindValue(value)
+		metadata[i] = extractBindValueMetadata(value)
 	}
 	return metadata
 }
 
 // encodeBindValues encodes one bind row from raw values and their normalized metadata.
-func (e *statementProcessor) encodeBindValues(args []sqldriver.Value, metadata []normalizedBindValue) ([][]driverCommon.B1Array, error) {
+func (e *statementProcessor) encodeBindValues(args []sqldriver.Value, metadata []bindValueMetadata) ([][]driverCommon.B1Array, error) {
 	rows := make([][]driverCommon.B1Array, 1)
 	rows[0] = make([]driverCommon.B1Array, len(args))
 	for i, value := range args {
@@ -743,7 +743,7 @@ func (e *statementProcessor) encodeBindValues(args []sqldriver.Value, metadata [
 		if err != nil {
 			return nil, err
 		}
-		_, normalizedValue := normalizeBindValueAndValue(value)
+		_, normalizedValue := normalizeBindValue(value)
 		payload, err := encoder.encodeToType(normalizedValue)
 		if err != nil {
 			return nil, err
@@ -755,7 +755,7 @@ func (e *statementProcessor) encodeBindValues(args []sqldriver.Value, metadata [
 
 // prepareOACs creates one bind OAC per normalized position using the largest
 // encoded payload length across the supplied rows.
-func (e *statementProcessor) prepareOACs(rows [][]driverCommon.B1Array, metadata []normalizedBindValue) ([]driverCommon.Marshallable, error) {
+func (e *statementProcessor) prepareOACs(rows [][]driverCommon.B1Array, metadata []bindValueMetadata) ([]driverCommon.Marshallable, error) {
 	oacs := make([]driverCommon.Marshallable, len(metadata))
 	for col, normalized := range metadata {
 		maxLength := 0

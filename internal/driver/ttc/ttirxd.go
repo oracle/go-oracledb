@@ -72,7 +72,7 @@ type tTIrxd struct {
 
 	// Outgoing bind payload and metadata for TTIRXD bind-row marshalling.
 	bindRow        []driverCommon.B1Array
-	bindMetadata   []normalizedBindValue
+	bindMetadata   []bindValueMetadata
 	columnContexts []columnContext
 
 	numberOfReturningPositions int
@@ -155,7 +155,7 @@ Parameters:
 - metadata: one normalized bind descriptor per bind position, aligned with row.
 */
 
-func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array, metadata []normalizedBindValue) {
+func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array, metadata []bindValueMetadata) {
 	rxd.bindRow = row
 	rxd.bindMetadata = metadata
 }

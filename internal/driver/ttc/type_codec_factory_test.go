@@ -133,7 +133,7 @@ func TestCodecFactory_getEncoderForGoType(t *testing.T) {
 			}
 			factory := &CodecFactoryImpl{ttcVersion: tc.protocol, encoders: encReg}
 
-			encoder, err := factory.getEncoderForGoType(normalizeBindValue(tc.value))
+			encoder, err := factory.getEncoderForGoType(extractBindValueMetadata(tc.value))
 			if tc.expectError {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -151,7 +151,7 @@ func TestCodecFactory_getEncoderForGoType(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			_, normalizedValue := normalizeBindValueAndValue(tc.value)
+			_, normalizedValue := normalizeBindValue(tc.value)
 			got, err := encoder.encodeToType(normalizedValue)
 			if err != nil {
 				t.Fatalf("unexpected encode error: %v", err)
@@ -179,7 +179,7 @@ func TestCodecFactory_getEncoderForDtyType(t *testing.T) {
 		t.Fatalf("register float NUMBER encoder: %v", err)
 	}
 	factory := &CodecFactoryImpl{ttcVersion: 1, encoders: registry}
-	encoder, err := factory.getEncoderForDtyType(DtyNum, normalizeBindValue(float64(1)))
+	encoder, err := factory.getEncoderForDtyType(DtyNum, extractBindValueMetadata(float64(1)))
 	if err != nil {
 		t.Fatalf("get float NUMBER encoder: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestCodecFactory_getEncoderForDtyType(t *testing.T) {
 		t.Fatalf("float DtyType encoder result = %v, want [1 2 3]", got)
 	}
 
-	encoder, err = factory.getEncoderForDtyType(DtyNum, normalizeBindValue(int64(1)))
+	encoder, err = factory.getEncoderForDtyType(DtyNum, extractBindValueMetadata(int64(1)))
 	if err != nil {
 		t.Fatalf("get integer NUMBER encoder: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestCodecFactory_getBindOac(t *testing.T) {
 			}
 			factory := &CodecFactoryImpl{ttcVersion: tc.protocol, bindOacs: bindReg}
 
-			oac, err := factory.getBindOac(normalizeBindValue(tc.bindValue), tc.maxLength)
+			oac, err := factory.getBindOac(extractBindValueMetadata(tc.bindValue), tc.maxLength)
 			if tc.expectError {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -486,7 +486,7 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, value := normalizeBindValueAndValue(tc.input)
+			got, value := normalizeBindValue(tc.input)
 			if tc.wantIsNil {
 				if !got.isNull || value != nil {
 					t.Fatalf("expected null normalized value, got metadata=%+v value=%v", got, value)

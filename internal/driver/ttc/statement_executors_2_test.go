@@ -141,7 +141,7 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	shelf.RegisterCodecFactory(factory)
 }
 
-func prepareBindDataForTest(sp *statementProcessor, args []sqldriver.Value) ([][]common.B1Array, []normalizedBindValue, []common.Marshallable, error) {
+func prepareBindDataForTest(sp *statementProcessor, args []sqldriver.Value) ([][]common.B1Array, []bindValueMetadata, []common.Marshallable, error) {
 	metadata := extractBindMetadata(args)
 	rows, err := sp.encodeBindValues(args, metadata)
 	if err != nil {

@@ -52,14 +52,14 @@ import (
 
 type bindCodecFactoryStub struct{ encoder *typeEncoder }
 
-func (s bindCodecFactoryStub) getEncoderForGoType(normalizedBindValue) (*typeEncoder, error) {
+func (s bindCodecFactoryStub) getEncoderForGoType(bindValueMetadata) (*typeEncoder, error) {
 	return s.encoder, nil
 }
-func (s bindCodecFactoryStub) getEncoderForDtyType(DtyType, normalizedBindValue) (*typeEncoder, error) {
+func (s bindCodecFactoryStub) getEncoderForDtyType(DtyType, bindValueMetadata) (*typeEncoder, error) {
 	return s.encoder, nil
 }
 func (bindCodecFactoryStub) getDecoder(DtyType) (*typeDecoder, error) { return nil, nil }
-func (bindCodecFactoryStub) getBindOac(normalizedBindValue, common.UB4) (common.Marshallable, error) {
+func (bindCodecFactoryStub) getBindOac(bindValueMetadata, common.UB4) (common.Marshallable, error) {
 	return nil, nil
 }
 func (bindCodecFactoryStub) getDefineOac(DtyType, columnContext, common.DriverProperties) common.Marshallable {
@@ -122,10 +122,10 @@ func rowToBytes(row []columnPayload) [][]byte {
 // codec factory injected by the message factory.
 func setCLRBindValues(rxd *tTIrxd, payloads ...common.B1Array) {
 	row := make([]common.B1Array, len(payloads))
-	metadata := make([]normalizedBindValue, len(payloads))
+	metadata := make([]bindValueMetadata, len(payloads))
 	for i, payload := range payloads {
 		row[i] = payload
-		metadata[i] = normalizedBindValue{isNull: payload == nil}
+		metadata[i] = bindValueMetadata{isNull: payload == nil}
 	}
 	rxd.setCodecFactory(bindCodecFactoryStub{encoder: newCLRBindEncoder(func(driver.Value) (common.B1Array, error) { return nil, nil })})
 	rxd.setBindValues(row, metadata)
@@ -174,7 +174,7 @@ func TestTTIrxd_MarshalTo_PreparedBindValue(t *testing.T) {
 	rxd.setCodecFactory(bindCodecFactoryStub{encoder: &typeEncoder{wrapColumn: func(ctx context.Context, mar common.Marshaller, _ common.B1Array) error {
 		return mar.MarshalUB1(ctx, 0x7F)
 	}}})
-	rxd.setBindValues([]common.B1Array{{0x01, 0x02, 0x03}}, []normalizedBindValue{{}})
+	rxd.setBindValues([]common.B1Array{{0x01, 0x02, 0x03}}, []bindValueMetadata{{}})
 
 	buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 64)
 	if err := rxd.MarshalTo(context.Background(), eng); err != nil {

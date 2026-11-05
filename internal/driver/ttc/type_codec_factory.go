@@ -75,12 +75,12 @@ Description:
 
 		// Bind/encode path: resolve OAC + encoder for a Go value.
 		bindValue := "hello"
-		normalized, normalizedValue := normalizeBindValueAndValue(bindValue)
+		metadata, normalizedValue := normalizeBindValue(bindValue)
 
-		encoder, _ := f.getEncoderForGoType(normalized)
+		encoder, _ := f.getEncoderForGoType(metadata)
 		payload, _ := encoder.encodeToType(normalizedValue)
 
-		oac, _ := f.getBindOac(normalized, driverCommon.UB4(len(payload)))
+		oac, _ := f.getBindOac(metadata, driverCommon.UB4(len(payload)))
 		_ = oac // e.g. used to describe bind metadata (type/length) in TTC messages
 
 		// Row/scan path: resolve a decoder for an Oracle database type id.
@@ -89,10 +89,10 @@ Description:
 		_ = v // decoded driver.Value (string, number, time.Time, etc.)
 */
 type codecFactory interface {
-	getEncoderForGoType(normalizedBindValue) (*typeEncoder, error)
-	getEncoderForDtyType(DtyType, normalizedBindValue) (*typeEncoder, error)
+	getEncoderForGoType(bindValueMetadata) (*typeEncoder, error)
+	getEncoderForDtyType(DtyType, bindValueMetadata) (*typeEncoder, error)
 	getDecoder(DtyType) (*typeDecoder, error)
-	getBindOac(normalizedBindValue, driverCommon.UB4) (driverCommon.Marshallable, error)
+	getBindOac(bindValueMetadata, driverCommon.UB4) (driverCommon.Marshallable, error)
 	getDefineOac(DtyType, columnContext, driverCommon.DriverProperties) driverCommon.Marshallable
 }
 
@@ -156,7 +156,7 @@ func newTypeDecoder(decode decoderFunc, sf scanTypeFunc, unwrap columnUnwrapFunc
 }
 
 /*
-normalizedBindValue stores the canonical bind metadata derived from an input bind value.
+bindValueMetadata stores the canonical metadata derived from an input bind value.
 
 Description:
   - Captures the effective Go type used for registry lookup after unwrapping sql.Out
@@ -165,7 +165,7 @@ Description:
   - Records whether the original bind was an sql.Out and whether it represents a pure
     OUT bind (sql.Out with In == false), which affects encoder and bind OAC behavior.
 */
-type normalizedBindValue struct {
+type bindValueMetadata struct {
 	goType    reflect.Type
 	isNull    bool
 	isOut     bool
@@ -173,8 +173,8 @@ type normalizedBindValue struct {
 }
 
 /*
-normalizeBindValue converts a raw bind value into the canonical form used by codec
-selection and bind metadata lookup.
+extractBindValueMetadata returns the metadata used for codec selection and bind
+OAC lookup without retaining the bind value itself.
 
 Description:
   - Detects sql.Out binds, switching lookup to the destination value type and tracking
@@ -188,18 +188,18 @@ Parameters:
   - bindValue: the raw bind value supplied by statement execution code.
 
 Returns:
-  - normalizedBindValue: the normalized bind metadata used by getEncoderForGoType and getBindOac.
+  - bindValueMetadata: the metadata used by getEncoderForGoType and getBindOac.
 */
-func normalizeBindValue(bindValue driver.Value) normalizedBindValue {
-	normalized, _ := normalizeBindValueAndValue(bindValue)
-	return normalized
+func extractBindValueMetadata(bindValue driver.Value) bindValueMetadata {
+	metadata, _ := normalizeBindValue(bindValue)
+	return metadata
 }
 
-// normalizeBindValueAndValue separates bind metadata from the normalized value
+// normalizeBindValue separates bind metadata from the normalized value
 // that an encoder receives. The metadata is retained by outgoing RXD messages;
 // the value is used only while encoding their payloads.
-func normalizeBindValueAndValue(bindValue driver.Value) (normalizedBindValue, driver.Value) {
-	n := normalizedBindValue{
+func normalizeBindValue(bindValue driver.Value) (bindValueMetadata, driver.Value) {
+	n := bindValueMetadata{
 		goType: reflect.TypeOf(bindValue),
 	}
 	value := bindValue
@@ -486,13 +486,13 @@ Returns:
 Errors:
   - Returns a common.OracleError with code common.InternalError when no encoder candidate exists for the bind type.
 */
-func (f *CodecFactoryImpl) getEncoderForGoType(normalized normalizedBindValue) (*typeEncoder, error) {
-	if normalized.isOutOnly || normalized.isNull {
+func (f *CodecFactoryImpl) getEncoderForGoType(metadata bindValueMetadata) (*typeEncoder, error) {
+	if metadata.isOutOnly || metadata.isNull {
 		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
-	common.Odl.Finest("New encoder requested", "goType", normalized.goType)
+	common.Odl.Finest("New encoder requested", "goType", metadata.goType)
 
-	candidates := f.encoders.getCandidates(encoderKey{goType: normalized.goType})
+	candidates := f.encoders.getCandidates(encoderKey{goType: metadata.goType})
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
 		common.Odl.Finest("Encoder returned", "candidate", bestCandidate)
@@ -500,26 +500,26 @@ func (f *CodecFactoryImpl) getEncoderForGoType(normalized normalizedBindValue) (
 	}
 
 	err := common.NewOracleError(oracleErrors.InternalError, nil)
-	common.Odl.Error("Encoder candidate missing", "goType", normalized.goType, "error", err)
+	common.Odl.Error("Encoder candidate missing", "goType", metadata.goType, "error", err)
 	return nil, err
 }
 
 // getEncoderForDtyType returns an ADT-specific encoder when one is registered
 // for the declared Oracle type and Go type. Otherwise it uses the ordinary
 // Go-type encoder.
-func (f *CodecFactoryImpl) getEncoderForDtyType(dty DtyType, normalized normalizedBindValue) (*typeEncoder, error) {
-	if normalized.isOutOnly || normalized.isNull {
+func (f *CodecFactoryImpl) getEncoderForDtyType(dty DtyType, metadata bindValueMetadata) (*typeEncoder, error) {
+	if metadata.isOutOnly || metadata.isNull {
 		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
 
-	candidates := f.encoders.getCandidates(encoderKey{dtyType: dty, goType: normalized.goType})
+	candidates := f.encoders.getCandidates(encoderKey{dtyType: dty, goType: metadata.goType})
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
-		common.Odl.Finest("DtyType encoder returned", "dtyType", dty, "goType", normalized.goType, "candidate", bestCandidate)
+		common.Odl.Finest("DtyType encoder returned", "dtyType", dty, "goType", metadata.goType, "candidate", bestCandidate)
 		return bestCandidate.makeFunc, nil
 	}
 
-	return f.getEncoderForGoType(normalized)
+	return f.getEncoderForGoType(metadata)
 }
 
 /*
@@ -606,10 +606,10 @@ Returns:
 Errors:
   - Returns a common.OracleError with code common.InternalError when no OAC candidate exists for the bind type.
 */
-func (f *CodecFactoryImpl) getBindOac(normalized normalizedBindValue, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
-	common.Odl.Finest("New bind OAC requested", "goType", normalized.goType, "maxLength", maxLength)
+func (f *CodecFactoryImpl) getBindOac(metadata bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
+	common.Odl.Finest("New bind OAC requested", "goType", metadata.goType, "maxLength", maxLength)
 
-	candidates := f.bindOacs.getCandidates(normalized.goType)
+	candidates := f.bindOacs.getCandidates(metadata.goType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
 		// bindOacTypeObj is the instance of bindOacType, that contains
@@ -620,7 +620,7 @@ func (f *CodecFactoryImpl) getBindOac(normalized normalizedBindValue, maxLength 
 		// In case of out parameters, we need to override the oac maxlength
 		// scale as per the type we are sending. This must be the max possible
 		// values to enable the server to return the scalar type.
-		if normalized.isOut {
+		if metadata.isOut {
 			oac.(*tTIoac).maxLength = bindOacTypeObj.maxLength
 			oac.(*tTIoac).scale = bindOacTypeObj.scale
 		}
@@ -629,7 +629,7 @@ func (f *CodecFactoryImpl) getBindOac(normalized normalizedBindValue, maxLength 
 	}
 
 	err := common.NewOracleError(oracleErrors.InternalError, nil)
-	common.Odl.Error("Bind OAC candidate missing", "goType", normalized.goType, "error", err)
+	common.Odl.Error("Bind OAC candidate missing", "goType", metadata.goType, "error", err)
 	return nil, err
 }
 
