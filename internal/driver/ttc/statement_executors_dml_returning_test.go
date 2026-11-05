@@ -221,6 +221,16 @@ func TestNeedToSendOACs_NoPreviousOACs(t *testing.T) {
 	}
 }
 
+// TestNeedToSendOACs_EmptyOACs verifies that requests without bind metadata
+// use OALL8 rather than attempting OEXFEN reuse.
+func TestNeedToSendOACs_EmptyOACs(t *testing.T) {
+	t.Parallel()
+	sp := &statementProcessor{previousOacs: []common.Marshallable{}}
+	if !sp.needToSendOACs(nil) {
+		t.Error("needToSendOACs must return true for an empty OAC list")
+	}
+}
+
 // TestNeedToSendOACs_CountChanged verifies that OACs are sent when the number of
 // bind positions changes between executions.
 //
