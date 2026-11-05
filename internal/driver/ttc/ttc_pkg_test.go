@@ -313,6 +313,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIOallRPA_Unmarshal_Drop", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Drop},
 	{Name: "TestTTIOallRPA_Unmarshal_Create", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Create},
 	{Name: "TestTTIOallRPA_Unmarshal_Insert", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Insert},
+	{Name: "TestTTIOallRPA_Unmarshal_DMLRows_Truncated", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_DMLRows_Truncated},
 	{Name: "TestTTIOallRPA_Unmarshal_AlterSessionDrop", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_AlterSessionDrop},
 	{Name: "TestTTIOallRPA_UnmarshalFrom_Fail_Truncated", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_UnmarshalFrom_Fail_Truncated},
 	{Name: "TestTTIOallRPA_UnmarshalFrom_FaultyBuffer", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_UnmarshalFrom_FaultyBuffer},
