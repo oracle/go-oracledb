@@ -176,17 +176,8 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 	}
 
 
-	// let network layer parse it now.
-	// build again a Data Source Name that network layer can understand
-	// TODO: make network layer use the same and do not parse again.
-	parsed, err := naming.ParseDSNString(fmt.Sprintf("%s?%s", connectDescriptor, confToUse.ToNSConnectionParameters()))
-	if err != nil {
-		common.Odl.Debug("Failed to parse DSN", "err", err)
-		return nil, err
-	}
-	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("new connector created", "configuration", confToUse.String())
-	}
+	naming.ParseDSNString(fmt.Sprintf("%s?%s", "", confToUse.ToNSConnectionParameters()))
+
 
 	return buildOracleConnector(drv, parsed, confToUse), nil
 }
