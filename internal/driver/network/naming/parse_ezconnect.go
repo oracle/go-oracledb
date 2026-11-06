@@ -130,7 +130,7 @@ var protocolPattern = regexp.MustCompile(`^([a-zA-Z0-9]+)://`)
 // Example: "host:1521/mydb" -> "(DESCRIPTION=(ADDRESS=...)...)"
 func parseEzConnect(url string) (*conversionResult, error) {
 	// Remove all whitespace
-	url = driverCommon.StripSpacesOutsideQuotes(url)
+	url = common.StripSpacesOutsideQuotes(url)
 
 	// Step 1: Split and parse extended parameters (?key=val&key2=val2)
 	cleanURL, recognizedParams, unrecognizedParams, err := splitAndParseExtendedParams(url)

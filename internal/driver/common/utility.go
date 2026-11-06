@@ -42,36 +42,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"strconv"
-	"strings"
 	"time"
 	"unicode/utf8"
 )
-
-// StripSpacesOutsideQuotes removes ASCII spaces that appear outside of double-quoted
-// strings. Spaces inside quotes are preserved.
-//
-// Example:
-//
-//	input:  host = "my host"  :1521
-//	output: host="my host":1521
-func StripSpacesOutsideQuotes(s string) string {
-	var result strings.Builder
-	inQuotes := false
-	for i := 0; i < len(s); i++ {
-		ch := s[i]
-		if ch == '"' {
-			inQuotes = !inQuotes
-			result.WriteByte(ch)
-			continue
-		}
-		if ch == ' ' && !inQuotes {
-			// skip spaces outside quotes
-			continue
-		}
-		result.WriteByte(ch)
-	}
-	return result.String()
-}
 
 // StringToB1Array converts a string into a B1 array.
 // The given string is taken as unicode string. The string

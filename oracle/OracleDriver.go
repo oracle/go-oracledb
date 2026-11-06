@@ -43,6 +43,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -232,19 +233,7 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 	// build again a Data Source Name that network layer can understand
 	// TODO: make network layer use the same and do not parse again.
 	// TODO : cleanup handle of serverType
-
-	// add ":pooled" if needed.
-	// TODO review how DNS vs configuration is handled.
-	if confToUse.ConnectionProperties.ServerType == common.ServerTypePooled {
-		if !strings.HasPrefix(confToUse.ConnectDescriptor, "(") &&
-			!strings.HasSuffix(confToUse.ConnectDescriptor, ")") {
-			// ez connect case. otherwise let naming module handle this
-			if !strings.HasSuffix(confToUse.ConnectDescriptor, ":pooled") {
-				confToUse.ConnectDescriptor = fmt.Sprintf("%s:pooled",
-					confToUse.ConnectDescriptor)
-			}
-		}
-	}
+	_handleDrcpConfiguration(confToUse)
 
 	var parsed *naming.ParsedConfig
 	var err error
@@ -258,4 +247,95 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 	}
 
 	return buildOracleConnector(drv, parsed, confToUse), nil
+}
+
+var poolClassRE = regexp.MustCompile(
+	`(?i)\(\s*POOL_CONNECTION_CLASS\s*=\s*([^)]*)\)`,
+)
+var poolPurityRE = regexp.MustCompile(
+	`(?i)\(\s*POOL_PURITY\s*=\s*([^)]*)\)`,
+)
+
+// _handleDrcpConfiguration handle DRCP configuration .
+// This is a temporary method while the naming module is not extracted from network layer
+// to driver layer. Both layers, driver and network, must be aware of the DRCP configuration.
+// Some of the information must be sent as part of the connection string. If the user uses only
+// the driver configuration, we must populate the connection string with drcp parameter
+// On the other hand if user use only the DSN to pass the config, the driver layer must be aware
+// of it and so the driver config nust be properly populated.
+// This method insures that information in config is correct.
+func _handleDrcpConfiguration(config *oracleconfig.OracleDriverConfig) {
+	cleanCD := common.StripSpacesOutsideQuotes(config.ConnectDescriptor)
+	var isEZConnect = !strings.HasPrefix(cleanCD, "(") && !strings.HasSuffix(cleanCD, ")")
+
+	// use for current method logic but we cannot use it later in the driver
+	// as it may change the case of user inputs.
+	lowerCasecleanCD := strings.ToLower(cleanCD)
+
+	// serverType parameter.
+	//  if ConnectionProperties.ServerType is not empty, we must make sure that the connect descriptor
+	//  has the information set. If the server type is specified in the connect descriptor we must
+	//  be sure that config.ConnectionProperties.ServerType is set accordingly.
+	if len(config.ConnectionProperties.ServerType) > 0 {
+		// we only care about pooled type
+		if config.ConnectionProperties.ServerType == common.ServerTypePooled {
+			if isEZConnect {
+				// add :pooled suffix if needed
+				if !strings.HasSuffix(lowerCasecleanCD, strings.ToLower(":"+config.ConnectionProperties.ServerType)) {
+					cleanCD = fmt.Sprintf("%s:%s", cleanCD, config.ConnectionProperties.ServerType)
+				}
+			} else {
+				// add (SERVER=POOLED) node if needed.
+				ucItem := fmt.Sprintf("(SERVER=%s)", strings.ToLower(config.ConnectionProperties.ServerType))
+				if !strings.Contains(lowerCasecleanCD, strings.ToLower(ucItem)) {
+					// inject that node into connect_data node
+					// locate the node.
+					cleanCD = strings.Replace(cleanCD, "(connect_data=", "(connect_data="+ucItem, 1)
+				}
+			}
+		}
+	} else {
+		// synchronize the other way around if we find server type information, insure ServerType parameter is on
+		// as for now we handle only DRCP related type as the others ones (shared/dedicated) has no influence
+		// on the driver layer.
+		if isEZConnect {
+			if strings.HasSuffix(lowerCasecleanCD, ":"+common.ServerTypePooled) {
+				config.ConnectionProperties.ServerType = common.ServerTypePooled
+			}
+		} else {
+			if strings.Contains(lowerCasecleanCD, "(server=pooled)") {
+				config.ConnectionProperties.ServerType = common.ServerTypePooled
+			}
+		}
+	}
+
+	// connection class
+	//  the class is sent as part of oauth keys. If specified in DNS, ensure that configuration is aware of that.
+	if len(config.ConnectionProperties.Drcp.ClassName) == 0 {
+		// nothing specified, check if there is something in the DSN
+		if !isEZConnect {
+			// in case of EZconnect, everything is already handle by DSN parameters
+			matches := poolClassRE.FindStringSubmatch(lowerCasecleanCD)
+			if matches != nil {
+				poolClass := strings.TrimSpace(matches[1])
+				config.ConnectionProperties.Drcp.ClassName = poolClass
+			}
+		}
+	}
+
+	// connection purity
+	//  the purity is sent as part of oauth keys. If specified in DNS, ensure that configuration is aware of that.
+	if len(config.ConnectionProperties.Drcp.Purity) == 0 {
+		// nothing specified, check if there is something in the DSN
+		if !isEZConnect {
+			// in case of EZconnect, everything is already handle by DSN parameters
+			matches := poolPurityRE.FindStringSubmatch(lowerCasecleanCD)
+			if matches != nil {
+				poolPurity := strings.TrimSpace(matches[1])
+				config.ConnectionProperties.Drcp.Purity = poolPurity
+			}
+		}
+	}
+
+	config.ConnectDescriptor = cleanCD
 }

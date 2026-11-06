@@ -43,16 +43,6 @@ import (
 	"testing"
 )
 
-func TestStripSpacesOutsideQuotes(t *testing.T) {
-	t.Parallel()
-	input := ` host = "my host"  : 1521 `
-	expected := `host="my host":1521`
-
-	if got := StripSpacesOutsideQuotes(input); got != expected {
-		t.Fatalf("StripSpacesOutsideQuotes(%q) = %q, want %q", input, got, expected)
-	}
-}
-
 func TestUtility_SimpleStringToB1Array(t *testing.T) {
 	t.Parallel()
 	res := StringToB1Array("foo")

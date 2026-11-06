@@ -46,25 +46,6 @@ Note: The DRCP specification defines parameters that the Go driver does not use 
 - `Boundary`: Enables implicit attachment. The Go driver attaches and detaches connections automatically.
 - `Tag`, `UseMultipleTag`, and `FixUpCallBackName`: Tagging is useful only with a client-side connection pool that supports it. Go’s `sql.DB` pool does not support tagging.
 
-### Configuration examples
-
-```go
-package main
-
-import "github.com/oracle/go-oracledb/v26/oracle"
-
-func main() {
-	cfg := oracle.NewOracleDriverConfig()
-	cfg.ConnectDescriptor = "tcp://localhost:1521/freepdb1"
-	cfg.Credentials.User = "myuser"
-	cfg.Credentials.Password = "mypassword"
-
-	// Enable DRCP and set the connection class and purity.
-	cfg.ConnectionProperties.ServerType = "POOLED"
-	cfg.ConnectionProperties.Drcp.ClassName = "Sales"
-	cfg.ConnectionProperties.Drcp.Purity = "SELF"
-}
-```
 
 ### Server Type Configuration
 
@@ -78,7 +59,7 @@ Set the server type in `OracleConnectionProperties`:
 ServerType = POOLED | SHARED | DEDICATED
 ```
 
-### How to enable DRCP?
+## How to enable DRCP?
 
 To use DRCP, set the server type to `POOLED`. You can do this in any of the following ways:
 
@@ -92,7 +73,40 @@ To use DRCP, set the server type to `POOLED`. You can do this in any of the foll
     (CONNECT_DATA=(SERVICE_NAME=freepdb1)(SERVER=POOLED))
   )
   ```
+### Configuration examples
 
-### Automatic Attachment and Detachment
+#### Using the driver configuration
+
+```go
+package main
+
+import (
+	"github.com/oracle/go-oracledb/v26/oracle"
+	"github.com/oracle/go-oracledb/v26/internal/common"
+)
+
+func main() {
+	cfg := oracle.NewOracleDriverConfig()
+	cfg.ConnectDescriptor = "tcp://localhost:1521/freepdb1"
+	cfg.Credentials.User = "myuser"
+	cfg.Credentials.Password = "mypassword"
+
+	// Enable DRCP and set the connection class and purity.
+	cfg.ConnectionProperties.ServerType = common.ServerTypePooled
+	cfg.ConnectionProperties.Drcp.ClassName = "Sales"
+	cfg.ConnectionProperties.Drcp.Purity = common.DrcpPuritySelf
+}
+```
+
+#### Using the DSN parameters
+
+```go
+dsn := fmt.Sprintf("myuser/mypassword@tcp://localhost:1521/freepdb1:pooled?pool_connection_class=%s&pool_purity=&s",
+            "Sales",
+            common.DrcpPuritySelf)
+db := sql.OpenDB(dsn)
+```
+
+## Automatic Attachment and Detachment
 
 The driver does not expose an attachment API; it attaches and detaches connections to and from the pool automatically.

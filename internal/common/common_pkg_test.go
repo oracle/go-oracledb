@@ -106,6 +106,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestRegistryGetAllReturnsEmptySnapshotWhenUninitialized", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetAllReturnsEmptySnapshotWhenUninitialized},
 	{Name: "TestRegistryGetSkipsNilItems", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetSkipsNilItems},
 	{Name: "TestPacketDumpHandlerFormatsPacket", Categories: "unitary", Exclusive: false, Fn: TestPacketDumpHandlerFormatsPacket},
+	{Name: "TestStripSpacesOutsideQuotes", Categories: "unitary", Exclusive: false, Fn: TestStripSpacesOutsideQuotes},
 	{Name: "TestOracleLoggerWithReturnsLoggerWithAttrs", Categories: "unitary", Exclusive: false, Fn: TestOracleLoggerWithReturnsLoggerWithAttrs},
 	{Name: "TestOdlTReturnsTaggedLogger", Categories: "unitary", Exclusive: false, Fn: TestOdlTReturnsTaggedLogger},
 	{Name: "TestOracleLoggerFineAndFinestLogCustomLevels", Categories: "unitary", Exclusive: false, Fn: TestOracleLoggerFineAndFinestLogCustomLevels},

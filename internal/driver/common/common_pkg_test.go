@@ -110,7 +110,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestProperties_String", Categories: "unitary", Exclusive: false, Fn: TestProperties_String},
 	{Name: "TestShelf_GetLocalizationService", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetLocalizationService},
 	{Name: "TestShelf_LocalizeError", Categories: "unitary", Exclusive: false, Fn: TestShelf_LocalizeError},
-	{Name: "TestStripSpacesOutsideQuotes", Categories: "unitary", Exclusive: false, Fn: TestStripSpacesOutsideQuotes},
 	{Name: "TestConstants_Protocol", Categories: "unitary", Exclusive: false, Fn: TestConstants_Protocol},
 	{Name: "TestConstants_ProtocolString", Categories: "unitary", Exclusive: false, Fn: TestConstants_ProtocolString},
 	{Name: "TestGenUUID", Categories: "unitary", Exclusive: false, Fn: TestGenUUID},
