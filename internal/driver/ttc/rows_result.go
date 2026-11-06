@@ -400,8 +400,10 @@ func (r *ttcRows) ColumnTypeDatabaseTypeName(index int) string {
 		return "BINARY_DOUBLE"
 	case DtyCur:
 		return "REFCURSOR"
-	case DtyRdd, DtyBuri:
+	case DtyRdd:
 		return "ROWID"
+	case DtyBuri:
+		return "UROWID"
 	case DtyINty:
 		return "Internal Named Type" // enough for now
 	case DtyIref:

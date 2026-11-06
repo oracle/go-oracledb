@@ -40,6 +40,7 @@ package common
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"strconv"
 	"strings"
 	"time"
@@ -220,4 +221,51 @@ func ToBinArray(hexStr string) []byte {
 	}
 
 	return bArray
+}
+
+// B1ArrayWriter Simple B1Array writer
+// tghe underlying can grow when necessary
+type B1ArrayWriter struct {
+	index int     // current index within the array
+	data  B1Array // actual data.
+}
+
+func (w *B1ArrayWriter) ensure(size int) {
+	end := w.index + size
+	if end > len(w.data) {
+		w.data = append(w.data, make(B1Array, end-len(w.data))...)
+	}
+}
+
+// PutUint puts an uint at the current position of the underlying buffer
+// arguments:
+//
+//	num the uint to be written
+func (w *B1ArrayWriter) PutUint(num uint) {
+	w.ensure(1)
+	w.data[w.index] = byte(num)
+	w.index += 1
+
+}
+
+func (w *B1ArrayWriter) PutUint16(num uint16) {
+	w.ensure(2)
+	binary.BigEndian.PutUint16(w.data[w.index:], num)
+	w.index += 2
+
+}
+func (w *B1ArrayWriter) PutUint32(num uint32) {
+	w.ensure(4)
+	binary.BigEndian.PutUint32(w.data[w.index:], num)
+	w.index += 4
+
+}
+func (w *B1ArrayWriter) PutUint64(num uint64) {
+	w.ensure(8)
+	binary.BigEndian.PutUint64(w.data[w.index:], num)
+	w.index += 8
+
+}
+func NewB1ArrayWriter(array B1Array) B1ArrayWriter {
+	return B1ArrayWriter{index: 0, data: array}
 }

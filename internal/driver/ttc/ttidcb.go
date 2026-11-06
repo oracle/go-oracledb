@@ -225,6 +225,7 @@ func (p *tTIdcb) receiveCommon(ctx context.Context, mar driverCommon.Marshaller,
 	}
 
 	for i := 0; i < int(p.numUDS); i++ {
+		common.Odl.Finest("tTIdcb: unmarshalling column descriptor", "index", i, "count", p.numUDS)
 		uds := p.newUDS()
 		if err := uds.UnmarshalFrom(ctx, mar); err != nil {
 			common.Odl.Warn("tTIdcb.receiveCommon: failed to unmarshal column", "index", i, "error", err)

@@ -68,7 +68,7 @@ const (
 	DtyLng      DtyType = 8  // long
 	DtyVCS      DtyType = 9  // variable character string
 	DtyTi5      DtyType = 10 // tiddef
-	DtyRiD      DtyType = 11 // riddef
+	DtyRiD      DtyType = 11 // rowid structure
 	DtyDat      DtyType = 12 // date data type
 	DtyIdt      DtyType = 13 // internal date format // some internal data types. not internal, and not kernel
 	DtyIju      DtyType = 14 // internal julian format
