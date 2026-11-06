@@ -43,6 +43,7 @@ import (
 	"database/sql"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
@@ -598,4 +599,350 @@ END;`, sql.Out{Dest: &raw})
 	if raw.DriverRows() != nil {
 		t.Fatal("NULL REF CURSOR left the previously returned cursor in the reused destination")
 	}
+}
+
+func openRefCursorTestConnection(t *testing.T) (context.Context, *sql.DB, *sql.Conn, *connectionWrapper) {
+	t.Helper()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	ctx := context.Background()
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire dedicated connection: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	wrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("wrap dedicated connection: %v", err)
+	}
+	return ctx, db, conn, wrapper
+}
+
+// TestDriver_RefCursorEmptyResult verifies that an opened cursor with no rows
+// is exposed as an empty sql.Rows without a fetch error.
+func TestDriver_RefCursorEmptyResult(t *testing.T) {
+	ctx, _, conn, wrapper := openRefCursorTestConnection(t)
+
+	var cursor datatype.Cursor
+	if _, err := conn.ExecContext(ctx, `
+BEGIN
+  OPEN :1 FOR SELECT 42 AS n FROM dual WHERE 1 = 0;
+END;`, sql.Out{Dest: &cursor}); err != nil {
+		t.Fatalf("open empty REF CURSOR: %v", err)
+	}
+
+	rows, err := wrapper.Fetch(ctx, &cursor)
+	if err != nil {
+		t.Fatalf("fetch empty REF CURSOR: %v", err)
+	}
+	if rows == nil {
+		t.Fatal("non-NULL empty REF CURSOR returned nil rows")
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		t.Fatal("empty REF CURSOR returned an unexpected row")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate empty REF CURSOR: %v", err)
+	}
+}
+
+// TestDriver_RefCursorInterleavedRows verifies that two REF CURSORs on one
+// physical connection keep independent positions when callers alternate reads.
+func TestDriver_RefCursorInterleavedRows(t *testing.T) {
+	ctx, _, conn, wrapper := openRefCursorTestConnection(t)
+
+	var first, second datatype.Cursor
+	if _, err := conn.ExecContext(ctx, `
+BEGIN
+  OPEN :1 FOR SELECT LEVEL AS n FROM dual CONNECT BY LEVEL <= 3;
+  OPEN :2 FOR SELECT LEVEL + 100 AS n FROM dual CONNECT BY LEVEL <= 3;
+END;`, sql.Out{Dest: &first}, sql.Out{Dest: &second}); err != nil {
+		t.Fatalf("open interleaved REF CURSORs: %v", err)
+	}
+
+	rowsA, err := wrapper.Fetch(ctx, &first)
+	if err != nil {
+		t.Fatalf("fetch first REF CURSOR: %v", err)
+	}
+	if rowsA == nil {
+		t.Fatal("first REF CURSOR returned nil rows")
+	}
+	defer rowsA.Close()
+
+	rowsB, err := wrapper.Fetch(ctx, &second)
+	if err != nil {
+		t.Fatalf("fetch second REF CURSOR while first is open: %v", err)
+	}
+	if rowsB == nil {
+		t.Fatal("second REF CURSOR returned nil rows")
+	}
+	defer rowsB.Close()
+
+	for i := int64(1); i <= 3; i++ {
+		if !rowsA.Next() {
+			t.Fatalf("first REF CURSOR row %d: %v", i, rowsA.Err())
+		}
+		var gotA int64
+		if err := rowsA.Scan(&gotA); err != nil {
+			t.Fatalf("scan first REF CURSOR row %d: %v", i, err)
+		}
+		if gotA != i {
+			t.Fatalf("first REF CURSOR row %d = %d, want %d", i, gotA, i)
+		}
+
+		if !rowsB.Next() {
+			t.Fatalf("second REF CURSOR row %d: %v", i, rowsB.Err())
+		}
+		var gotB int64
+		if err := rowsB.Scan(&gotB); err != nil {
+			t.Fatalf("scan second REF CURSOR row %d: %v", i, err)
+		}
+		if gotB != i+100 {
+			t.Fatalf("second REF CURSOR row %d = %d, want %d", i, gotB, i+100)
+		}
+	}
+	if rowsA.Next() || rowsB.Next() {
+		t.Fatal("a REF CURSOR returned more than three rows")
+	}
+	if err := rowsA.Err(); err != nil {
+		t.Fatalf("first REF CURSOR iteration: %v", err)
+	}
+	if err := rowsB.Err(); err != nil {
+		t.Fatalf("second REF CURSOR iteration: %v", err)
+	}
+}
+
+// TestDriver_RefCursorRowsAcrossFetchBoundary verifies every row is returned
+// from an explicit cursor whose row count exceeds common array-fetch sizes.
+func TestDriver_RefCursorRowsAcrossFetchBoundary(t *testing.T) {
+	ctx, _, conn, wrapper := openRefCursorTestConnection(t)
+
+	var cursor datatype.Cursor
+	if _, err := conn.ExecContext(ctx, `
+BEGIN
+  OPEN :1 FOR SELECT LEVEL AS n FROM dual CONNECT BY LEVEL <= 1001 ORDER BY LEVEL;
+END;`, sql.Out{Dest: &cursor}); err != nil {
+		t.Fatalf("open 1,001-row REF CURSOR: %v", err)
+	}
+
+	rows, err := wrapper.Fetch(ctx, &cursor)
+	if err != nil {
+		t.Fatalf("fetch 1,001-row REF CURSOR: %v", err)
+	}
+	if rows == nil {
+		t.Fatal("non-NULL REF CURSOR returned nil rows")
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		count++
+		var got int64
+		if err := rows.Scan(&got); err != nil {
+			t.Fatalf("scan row %d: %v", count, err)
+		}
+		if got != int64(count) {
+			t.Fatalf("row %d = %d, want %d", count, got, count)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate 1,001-row REF CURSOR: %v", err)
+	}
+	if count != 1001 {
+		t.Fatalf("row count = %d, want 1001", count)
+	}
+}
+
+// TestDriver_ImplicitResultsUpdateColumns verifies that NextResultSet exposes
+// the new column metadata and values when an implicit result changes schema.
+func TestDriver_ImplicitResultsUpdateColumns(t *testing.T) {
+	ctx, _, conn, _ := openRefCursorTestConnection(t)
+	rows, err := conn.QueryContext(ctx, `
+DECLARE
+  c SYS_REFCURSOR;
+BEGIN
+  OPEN c FOR SELECT 7 AS id, 'first' AS label FROM dual;
+  DBMS_SQL.RETURN_RESULT(c);
+  OPEN c FOR
+    SELECT DATE '2024-02-03' AS event_date,
+           CAST(2.5 AS BINARY_DOUBLE) AS measure,
+           CAST(17 AS NUMBER(9)) AS count_value,
+           'second' AS label,
+           CAST(NULL AS VARCHAR2(20)) AS optional_value
+      FROM dual;
+  DBMS_SQL.RETURN_RESULT(c);
+END;`)
+	if err != nil {
+		t.Fatalf("query implicit result sets: %v", err)
+	}
+	defer rows.Close()
+
+	firstColumns, err := rows.Columns()
+	if err != nil {
+		t.Fatalf("get first result columns: %v", err)
+	}
+	wantFirstColumns := []string{"ID", "LABEL"}
+	if !equalStringSlices(firstColumns, wantFirstColumns) {
+		t.Fatalf("first result columns = %v, want %v", firstColumns, wantFirstColumns)
+	}
+	if !rows.Next() {
+		t.Fatalf("first implicit result row: %v", rows.Err())
+	}
+	var id int64
+	var firstLabel string
+	if err := rows.Scan(&id, &firstLabel); err != nil {
+		t.Fatalf("scan first implicit result: %v", err)
+	}
+	if id != 7 || firstLabel != "first" {
+		t.Fatalf("first implicit result = (%d, %q), want (7, first)", id, firstLabel)
+	}
+	if rows.Next() {
+		t.Fatal("first implicit result returned an unexpected second row")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate first implicit result: %v", err)
+	}
+	if !rows.NextResultSet() {
+		t.Fatalf("second implicit result is missing: %v", rows.Err())
+	}
+
+	secondColumns, err := rows.Columns()
+	if err != nil {
+		t.Fatalf("get second result columns: %v", err)
+	}
+	wantSecondColumns := []string{"EVENT_DATE", "MEASURE", "COUNT_VALUE", "LABEL", "OPTIONAL_VALUE"}
+	if !equalStringSlices(secondColumns, wantSecondColumns) {
+		t.Fatalf("second result columns = %v, want %v", secondColumns, wantSecondColumns)
+	}
+	if !rows.Next() {
+		t.Fatalf("second implicit result row: %v", rows.Err())
+	}
+	var eventDate time.Time
+	var measure float64
+	var countValue int64
+	var secondLabel string
+	var optionalValue sql.NullString
+	if err := rows.Scan(&eventDate, &measure, &countValue, &secondLabel, &optionalValue); err != nil {
+		t.Fatalf("scan second implicit result: %v", err)
+	}
+	if eventDate.Year() != 2024 || eventDate.Month() != time.February || eventDate.Day() != 3 || eventDate.Hour() != 0 || eventDate.Minute() != 0 || eventDate.Second() != 0 {
+		t.Fatalf("event date = %v, want date fields 2024-02-03 00:00:00", eventDate)
+	}
+	if measure != 2.5 || countValue != 17 || secondLabel != "second" || optionalValue.Valid {
+		t.Fatalf("second implicit result = (%v, %v, %d, %q, %+v), want (2024-02-03, 2.5, 17, second, NULL)", eventDate, measure, countValue, secondLabel, optionalValue)
+	}
+	if rows.Next() {
+		t.Fatal("second implicit result returned an unexpected second row")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate second implicit result: %v", err)
+	}
+	if rows.NextResultSet() {
+		t.Fatal("unexpected third implicit result")
+	}
+}
+
+// TestDriver_ImplicitResultsWithScalarOut verifies scalar OUT binds remain
+// available when the same PL/SQL execution returns an implicit result set.
+func TestDriver_ImplicitResultsWithScalarOut(t *testing.T) {
+	ctx, _, conn, _ := openRefCursorTestConnection(t)
+	var answer int64
+	rows, err := conn.QueryContext(ctx, `
+DECLARE
+  c SYS_REFCURSOR;
+BEGIN
+  :1 := 42;
+  OPEN c FOR SELECT 7 AS n FROM dual;
+  DBMS_SQL.RETURN_RESULT(c);
+END;`, sql.Out{Dest: &answer})
+	if err != nil {
+		t.Fatalf("query implicit result with scalar OUT bind: %v", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		t.Fatalf("implicit result row: %v", rows.Err())
+	}
+	var got int64
+	if err := rows.Scan(&got); err != nil {
+		t.Fatalf("scan implicit result row: %v", err)
+	}
+	if got != 7 {
+		t.Fatalf("implicit result value = %d, want 7", got)
+	}
+	if rows.Next() {
+		t.Fatal("implicit result returned an unexpected second row")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate implicit result: %v", err)
+	}
+	if answer != 42 {
+		t.Fatalf("scalar OUT value = %d, want 42", answer)
+	}
+}
+
+// TestDriver_ImplicitResultsCloseEarlyKeepsConnectionUsable verifies closing
+// the first of five implicit result sets leaves the dedicated connection usable.
+func TestDriver_ImplicitResultsCloseEarlyKeepsConnectionUsable(t *testing.T) {
+	ctx, _, conn, _ := openRefCursorTestConnection(t)
+	rows, err := conn.QueryContext(ctx, `
+DECLARE
+  c SYS_REFCURSOR;
+BEGIN
+  OPEN c FOR SELECT 1 AS n FROM dual; DBMS_SQL.RETURN_RESULT(c);
+  OPEN c FOR SELECT 2 AS n FROM dual; DBMS_SQL.RETURN_RESULT(c);
+  OPEN c FOR SELECT 3 AS n FROM dual; DBMS_SQL.RETURN_RESULT(c);
+  OPEN c FOR SELECT 4 AS n FROM dual; DBMS_SQL.RETURN_RESULT(c);
+  OPEN c FOR SELECT 5 AS n FROM dual; DBMS_SQL.RETURN_RESULT(c);
+END;`)
+	if err != nil {
+		t.Fatalf("query five implicit result sets: %v", err)
+	}
+	if !rows.Next() {
+		_ = rows.Close()
+		t.Fatalf("first implicit result row: %v", rows.Err())
+	}
+	var first int64
+	if err := rows.Scan(&first); err != nil {
+		_ = rows.Close()
+		t.Fatalf("scan first implicit result: %v", err)
+	}
+	if first != 1 {
+		_ = rows.Close()
+		t.Fatalf("first implicit result = %d, want 1", first)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatalf("close before consuming remaining implicit results: %v", err)
+	}
+
+	var connectionValue int64
+	if err := conn.QueryRowContext(ctx, "SELECT 99 AS n FROM dual").Scan(&connectionValue); err != nil {
+		t.Fatalf("query after early close: %v", err)
+	}
+	if connectionValue != 99 {
+		t.Fatalf("query after early close = %d, want 99", connectionValue)
+	}
+}
+
+func equalStringSlices(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
