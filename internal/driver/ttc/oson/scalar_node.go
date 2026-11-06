@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -611,24 +612,91 @@ func _decodeScalarValue(scalar *scalarNode, opts drvCommon.JSONConversionOptions
 	}
 }
 
-// decodeSignedIntegerValue decodes an SB4 or SB8 Oracle NUMBER using the
-// signed integer type associated with its OSON opcode family.
+// decodeSignedIntegerValue decodes an integer-valued SB4 or SB8 Oracle NUMBER
+// using the signed integer type associated with its OSON opcode family.
 func decodeSignedIntegerValue[T ~int32 | ~int64](payload drvCommon.B1Array, opts drvCommon.JSONConversionOptions) (any, error) {
 	text, err := converters.DecodeExactDecimalAsString(payload)
 	if err != nil {
 		return nil, err
 	}
-	value, _ := strconv.ParseInt(text, 10, 64)
+
+	_, _, hasFraction := strings.Cut(text, ".")
+	if hasFraction {
+		common.Odl.Debug(
+			"decodeSignedIntegerValue: failed",
+			"reason", "Oracle NUMBER has a fractional part",
+			"number", text,
+		)
+		return nil, common.NewOracleError(
+			oracleErrors.ConverterExpectedFormat,
+			nil,
+			"NUMBER",
+			"Decode",
+			drvCommon.ReasonInvalidFormat,
+			"integer",
+		)
+	}
+
+	value, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		if parseErr, ok := err.(*strconv.NumError); ok &&
+			parseErr.Err == strconv.ErrRange {
+			const maxInt64 = int64(1<<63 - 1)
+
+			common.Odl.Debug(
+				"decodeSignedIntegerValue: failed",
+				"reason", "Oracle NUMBER is outside signed 64-bit range",
+				"number", text,
+			)
+			return nil, common.NewOracleError(
+				oracleErrors.ConverterRange,
+				err,
+				"NUMBER",
+				"Decode",
+				drvCommon.ReasonOutOfRange,
+				math.MinInt64,
+				maxInt64,
+			)
+		}
+
+		common.Odl.Debug(
+			"decodeSignedIntegerValue: failed",
+			"reason", "decoded Oracle NUMBER has invalid integer text",
+			"number", text,
+		)
+		return nil, common.NewOracleError(oracleErrors.InternalError, err)
+	}
+
+	// check overflow
 	result := T(value)
+	if int64(result) != value {
+		const minInt32 int64 = -1 << 31
+		const maxInt32 int64 = 1<<31 - 1
+
+		common.Odl.Debug(
+			"decodeSignedIntegerValue: failed",
+			"reason", "Oracle NUMBER is outside signed 32-bit range",
+			"number", text,
+		)
+		return nil, common.NewOracleError(
+			oracleErrors.ConverterRange,
+			nil,
+			"NUMBER",
+			"Decode",
+			drvCommon.ReasonOutOfRange,
+			minInt32,
+			maxInt32,
+		)
+	}
 
 	switch opts.NumberMode {
 	case drvCommon.JSONNumberAsJSONNumber:
 		return json.Number(text), nil
 	case drvCommon.JSONNumberAsFloat64:
 		return float64(value), nil
-	default:
-		return result, nil
 	}
+
+	return result, nil
 }
 
 // decodeOracleNumberValue decodes an Oracle NUMBER payload and preserves its
