@@ -20,10 +20,9 @@
 ** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
  */
 
-package ttc
+package converters
 
 import (
-	"database/sql/driver"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -87,37 +86,6 @@ var (
 	urowidTypePrefix = [...]byte{'A', '*', '-', '(', ')'}
 )
 
-// DecodeRowidDefColumn decodes an Oracle's  rowid bytes.
-//
-// Description:
-//
-//	Converts Oracle's rowid bytes to the printable rowid def representation returned by Oracle clients.
-//
-// Parameters:
-//   - columnContext: Column metadata used for error reporting (name/index).
-//   - data: Raw TTC payload bytes for the column.
-//     format : RBA (4 bytes) | partition ID (2) | table ID (1) | block number (4) | slot number (2)
-//
-// Returns:
-//   - driver.Value: time.Time containing the decoded date/time value.
-//   - error: Non-nil if decoding fails.
-func DecodeRowidDefColumn(columnContext columnContext, value any) (driver.Value, error) {
-	data, err := rawColumnData(value)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return nil, nil
-	}
-
-	rowid, err := rowidDefToString(data)
-	if err != nil {
-		common.Odl.Fine("rowid column parse error", "err", err)
-		return nil, rowDecodeError(columnContext, err, "ROWID")
-	}
-	return rowid, nil
-}
-
 func appendKgrd42b(dst []byte, value uint64, digits int) []byte {
 	start := len(dst)
 	dst = append(dst, make([]byte, digits)...)
@@ -129,7 +97,7 @@ func appendKgrd42b(dst []byte, value uint64, digits int) []byte {
 	return dst
 }
 
-func rowidDefToString(data []byte) (string, error) {
+func DecodeRowidDef(data []byte) (string, error) {
 	if len(data) != rowidDefComponentLength {
 		return "", common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil,
 			"ROWID", "Decode", driverCommon.ReasonInvalidLength, rowidDefComponentLength)
@@ -149,39 +117,8 @@ func rowidDefToString(data []byte) (string, error) {
 	return string(result), nil
 }
 
-// DecodeUrowidColumn decodes a Oracle's internal universal rowid bytes.
-//
-//Description:
-//
-//	Converts Oracle's internal universal rowid bytes to the printable rowid representation returned by Oracle clients.
-//
-//Parameters:
-//  - columnContext: Column metadata used for error reporting (name/index).
-//  - data: Raw TTC payload bytes for the column.
-//
-//Returns:
-//  - driver.Value: time.Time containing the decoded date/time value.
-//  - error: Non-nil if decoding fails.
-
-func DecodeUrowidColumn(columnContext columnContext, value any) (driver.Value, error) {
-	data, err := rawColumnData(value)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return nil, nil
-	}
-
-	rowid, err := urowidToString(data)
-	if err != nil {
-		common.Odl.Fine("urowid column parse error", "err", err)
-		return nil, rowDecodeError(columnContext, err, "UROWID")
-	}
-	return rowid, nil
-}
-
 /*
-urowidToString converts an internal UROWID value to its printable representation.
+DecodeUrowid converts an internal UROWID value to its printable representation.
 
 Description:
 
@@ -197,7 +134,7 @@ Returns:
   - string: Printable ROWID/UROWID value.
   - error: Non-nil if convertion failed
 */
-func urowidToString(data []byte) (string, error) {
+func DecodeUrowid(data []byte) (string, error) {
 	rowidType := data[urowidTypeOffset]
 
 	if rowidType == urowidPhysicalType {

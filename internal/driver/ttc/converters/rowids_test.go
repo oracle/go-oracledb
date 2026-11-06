@@ -20,7 +20,7 @@
 ** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
  */
 
-package ttc
+package converters
 
 import (
 	"errors"
@@ -29,7 +29,7 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-func TestUrowidToString(t *testing.T) {
+func TestDecodeUrowid(t *testing.T) {
 	tests := []struct {
 		name string
 		data []byte
@@ -75,25 +75,25 @@ func TestUrowidToString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := urowidToString(tt.data)
+			got, err := DecodeUrowid(tt.data)
 			if err != nil {
-				t.Fatalf("urowidToString() error = %v", err)
+				t.Fatalf("DecodeUrowid() error = %v", err)
 			}
 			if got != tt.want {
-				t.Errorf("urowidToString() = %q, want %q", got, tt.want)
+				t.Errorf("DecodeUrowid() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestUrowidToStringNegative(t *testing.T) {
+func TestDecodeUrowidNegative(t *testing.T) {
 	data := []byte{
 		0x01, // type
 		// other fields omitted
 	}
-	_, err := urowidToString(data)
+	_, err := DecodeUrowid(data)
 	if err == nil {
-		t.Fatalf("urowidToString() should have raised OGD-00023")
+		t.Fatalf("DecodeUrowid() should have raised OGD-00023")
 	}
 	var sqlErr oracleErrors.SQLError
 	ok := errors.As(err, &sqlErr)
