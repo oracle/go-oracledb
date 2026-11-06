@@ -345,6 +345,16 @@ func init() {
 		common.Odl.Warn("Failed to register function occa", "error", err)
 	}
 
+	// Register the OSESSSTATE request-boundary piggyback function
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oSessState}, 18, newOSessStatePfn18)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oSessState", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oSessState}, MinTTCProtocolVersion, newOSessStatePfn)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oSessState", "error", err)
+	}
+
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, MinTTCProtocolVersion, newTTIOallRPA)
 	if err != nil {
 		common.Odl.Warn("Failed to register OAll8 function reply", "error", err)
