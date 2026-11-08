@@ -52,7 +52,7 @@ func TestB1ArrayWriterWritesBigEndianValues(t *testing.T) {
 	t.Parallel()
 
 	writer := NewB1ArrayWriter(nil)
-	writer.PutUint(0xAB)
+	writer.PutUint8(0xAB)
 	writer.PutUint16(0x1234)
 	writer.PutUint32(0x12345678)
 	writer.PutUint64(0x0123456789ABCDEF)
@@ -80,7 +80,7 @@ func TestB1ArrayWriterGrowsPreallocatedSlice(t *testing.T) {
 	t.Parallel()
 
 	writer := NewB1ArrayWriter(make(B1Array, 0, 64))
-	writer.PutUint(0xAB)
+	writer.PutUint8(0xAB)
 
 	if writer.index != 1 {
 		t.Fatalf("written length = %d, want 1", writer.index)

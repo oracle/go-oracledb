@@ -254,7 +254,7 @@ func unwrapRowidDefColumn(ctx context.Context, mar driverCommon.Marshaller, env 
 
 		}
 
-		writer.PutUint(uint(tableID))
+		writer.PutUint8(uint8(tableID))
 
 		blockNumber, err := mar.UnmarshalUB4(ctx)
 		if err != nil {

@@ -224,26 +224,29 @@ func ToBinArray(hexStr string) []byte {
 }
 
 // B1ArrayWriter Simple B1Array writer
-// tghe underlying can grow when necessary
+// the underlying can grow when necessary
 type B1ArrayWriter struct {
 	index int     // current index within the array
 	data  B1Array // actual data.
 }
 
+// ensure grows the writer capacity if needed to accommodate size bytes.
+// parameters:
+//   - size : requried size.
 func (w *B1ArrayWriter) ensure(size int) {
 	end := w.index + size
-	if end > len(w.data) {
+	if end >= len(w.data) {
 		w.data = append(w.data, make(B1Array, end-len(w.data))...)
 	}
 }
 
-// PutUint puts an uint at the current position of the underlying buffer
+// PutUint8 puts an uint at the current position of the underlying buffer
 // arguments:
 //
 //	num the uint to be written
-func (w *B1ArrayWriter) PutUint(num uint) {
+func (w *B1ArrayWriter) PutUint8(num uint8) {
 	w.ensure(1)
-	w.data[w.index] = byte(num)
+	w.data[w.index] = num
 	w.index += 1
 
 }

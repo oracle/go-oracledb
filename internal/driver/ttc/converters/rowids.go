@@ -80,12 +80,18 @@ const (
 )
 
 var (
+	// IDS alphabet.
 	rowidBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
-	// no prefix for physical
+	// UROID prefix (not used for physical)
 	urowidTypePrefix = [...]byte{'A', '*', '-', '(', ')'}
 )
 
+// appendKgrd42b converts an integer into a fixed-width sequence of base-64 characters and appends it to dst.
+// parameters:
+//   - dst: destiniation byte array
+//   - value: the integer to convert
+//   - digits: how many base-64 characters to append for that integer.
 func appendKgrd42b(dst []byte, value uint64, digits int) []byte {
 	start := len(dst)
 	dst = append(dst, make([]byte, digits)...)
@@ -97,6 +103,21 @@ func appendKgrd42b(dst []byte, value uint64, digits int) []byte {
 	return dst
 }
 
+/*
+DecodeRowidDef converts an internal ROWID value to its printable representation.
+
+Description:
+
+	data layout is the following:
+	 [RBA 4 bytes][partitionID 2 bytes][blockNumber 4 bytes][slotNumber 2 bytes]
+
+Parameters:
+  - data: Internal ROWID bytes.
+
+Returns:
+  - string: Printable ROWID value.
+  - error: Non-nil if conversion failed
+*/
 func DecodeRowidDef(data []byte) (string, error) {
 	if len(data) != rowidDefComponentLength {
 		return "", common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil,
@@ -131,8 +152,8 @@ Parameters:
   - data: Internal UROWID bytes, beginning with the type indicator.
 
 Returns:
-  - string: Printable ROWID/UROWID value.
-  - error: Non-nil if convertion failed
+  - string: Printable UROWID value.
+  - error: Non-nil if conversion failed
 */
 func DecodeUrowid(data []byte) (string, error) {
 	rowidType := data[urowidTypeOffset]
