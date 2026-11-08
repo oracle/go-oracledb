@@ -387,6 +387,9 @@ func dumpActivePooledConnections(privdb *sql.DB, t *testing.T) {
 	}
 }
 
+// _DRCP_SetupPool setup a DRCP pool
+// parameters
+//   - poolName the name of the new pool
 func _DRCP_SetupPool(t *testing.T, poolName string) error {
 	t.Helper()
 
@@ -428,6 +431,10 @@ func _DRCP_SetupPool(t *testing.T, poolName string) error {
 	}
 	return nil
 }
+
+// _DRCP_CleanupPool remove a DRCP pool
+// parameters
+//   - poolName the name of the pool to be removed
 func _DRCP_CleanupPool(t *testing.T, poolName string) error {
 	t.Helper()
 
@@ -608,20 +615,20 @@ func TestDriver_DRCP_Purity(t *testing.T) {
 			name:      "using config",
 			cfunc:     getDBUsingConfig,
 			className: "TestDriverDRCPPurity" + drvCommon.GenRandomString(2),
-			purity:    common.DrcpPuritySelf,
+			purity:    common.DrcpPurityNew,
 		},
-		//{
-		//	name:  "using EZconnect",
-		//	cfunc: getDBUsingEZConnect,
-		//	className:  "TestDriverDRCPPurity" + drvCommon.GenRandomString(2),
-		//	purity: common.DrcpPuritySelf,
-		//},
-		//{
-		//	name:  "using descriptor",
-		//	cfunc: getDBUsingDescriptor,
-		//	className:  "TestDriverDRCPPurity" + drvCommon.GenRandomString(2),
-		//	purity: common.DrcpPuritySelf,
-		//},
+		{
+			name:      "using EZconnect",
+			cfunc:     getDBUsingEZConnect,
+			className: "TestDriverDRCPPurity" + drvCommon.GenRandomString(2),
+			purity:    common.DrcpPurityNew,
+		},
+		{
+			name:      "using descriptor",
+			cfunc:     getDBUsingDescriptor,
+			className: "TestDriverDRCPPurity" + drvCommon.GenRandomString(2),
+			purity:    common.DrcpPurityNew,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
