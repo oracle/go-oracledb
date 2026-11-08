@@ -43,6 +43,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -54,15 +55,17 @@ func getDBUsingConfig(poolName string, className string, purity string, config *
 
 	drvConfig := NewOracleDriverConfig()
 
-	drvConfig.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
-	drvConfig.Credentials.User = TestingConfig.Credentials.Username
-	drvConfig.Credentials.Password = TestingConfig.Credentials.Password
+	drvConfig.Credentials.LogonMode = config.Credentials.LogonMode
+	drvConfig.Credentials.User = config.Credentials.Username
+	drvConfig.Credentials.Password = config.Credentials.Password
 
 	drvConfig.ConnectionProperties.ServerType = common.ServerTypePooled
 
 	drvConfig.ConnectionProperties.Drcp.ClassName = className
+	drvConfig.ConnectionProperties.Drcp.PoolName = poolName
+	drvConfig.ConnectionProperties.Drcp.Purity = purity
 
-	drvConfig.ConnectDescriptor = TestingConfig.GetConnectionDSN()
+	drvConfig.ConnectDescriptor = config.GetConnectionDSN()
 	connector, err := NewOracleConnector(drvConfig)
 	if err != nil {
 		return nil, err
@@ -71,6 +74,7 @@ func getDBUsingConfig(poolName string, className string, purity string, config *
 	db := sql.OpenDB(connector)
 	return db, nil
 }
+
 func getDBUsingEZConnect(poolName string, className string, purity string, config *TestConfig) (*sql.DB, error) {
 
 	var err error
@@ -83,9 +87,9 @@ func getDBUsingEZConnect(poolName string, className string, purity string, confi
 		config.Database.Port,
 		config.Database.ServiceName)
 
-	var  added = false
+	var added = false
 	if className != "" {
-		dsn = dsn + "POOL_CONNECTION_CLASS=" + className
+		dsn = dsn + "oracle.go.ConnectionProperties.Drcp.ClassName=" + className
 		added = true
 	}
 	if purity != "" {
@@ -94,16 +98,24 @@ func getDBUsingEZConnect(poolName string, className string, purity string, confi
 		} else {
 			added = true
 		}
-		dsn = dsn + "POOL_PURITY=" + purity
+		dsn = dsn + "oracle.go.ConnectionProperties.Drcp.Purity=" + purity
+	}
+	if poolName != "" {
+		if added {
+			dsn = dsn + "&"
+		} else {
+			added = true
+		}
+		dsn = dsn + "oracle.go.ConnectionProperties.Drcp.PoolName=" + poolName
 	}
 	if config.Credentials.LogonMode != "" {
 		if added {
 			dsn = dsn + "&"
 		}
-		dsn = fmt.Sprintf("%soracle.go.Credentials.logonMode=%s",
+		dsn = fmt.Sprintf("%soracle.go.Credentials.logon_mode=%s",
 			dsn, config.Credentials.LogonMode)
 	}
-	db,err  = sql.Open("oracledb",dsn)
+	db, err = sql.Open("oracledb", dsn)
 	db.SetMaxOpenConns(1)
 	return db, err
 }
@@ -122,16 +134,18 @@ func getDBUsingDescriptor(poolName string, className string, purity string, conf
 	if purity != "" {
 		dsn = fmt.Sprintf("%s(POOL_PURITY=%s)", dsn, purity)
 	}
+	if poolName != "" {
+		dsn = fmt.Sprintf("%s(POOL_NAME=%s)", dsn, poolName)
+	}
 	dsn = dsn + "))"
 	if config.Credentials.LogonMode != "" {
-		dsn = fmt.Sprintf("%s?oracle.go.Credentials.logonMode=%s",
+		dsn = fmt.Sprintf("%s?oracle.go.Credentials.logon_mode=%s",
 			dsn, config.Credentials.LogonMode)
 	}
-	db,err  = sql.Open("oracledb",dsn)
+	db, err = sql.Open("oracledb", dsn)
 	db.SetMaxOpenConns(1)
 	return db, err
 }
-
 
 // TestDriver_DRCP_Basic executes a trivial SELECT to validate DRCP query flow.
 // Expectations: we should be attached and detached accordingly.
@@ -142,29 +156,29 @@ func TestDriver_DRCP_Basic(t *testing.T) {
 	}
 
 	tests := []struct {
-		name  string
-		cfunc func (poolName string, className string, purity string, config *TestConfig) (*sql.DB, error)
+		name      string
+		cfunc     func(poolName string, className string, purity string, config *TestConfig) (*sql.DB, error)
 		className string
 	}{
-		//{
-		//	name:  "using config",
-		//	cfunc: getDBUsingConfig,
-		//	className: "TestDriver_DRCP_Basic_" + drvCommon.GenRandomString(2),
-		//},
 		{
-			name:  "using EZconnect",
-			cfunc: getDBUsingEZConnect,
-			className: "TestDriver_DRCP_Basic_" + drvCommon.GenRandomString(2),
+			name:      "using config",
+			cfunc:     getDBUsingConfig,
+			className: "TestDriverDRCPBasic" + drvCommon.GenRandomString(2),
 		},
-		//{
-		//	name:  "using deescriptor",
-		//	cfunc: getDBUsingDescriptor,
-		//	className: "TestDriver_DRCP_Basic_" + drvCommon.GenRandomString(2),
-		//},
+		{
+			name:      "using EZconnect",
+			cfunc:     getDBUsingEZConnect,
+			className: "TestDriverDRCPBasic" + drvCommon.GenRandomString(2),
+		},
+		{
+			name:      "using descriptor",
+			cfunc:     getDBUsingDescriptor,
+			className: "TestDriverDRCPBasic" + drvCommon.GenRandomString(2),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, err := tt.cfunc("",tt.className,"", TestingConfig)
+			db, err := tt.cfunc("", tt.className, "", TestingConfig)
 			if err != nil {
 				t.Fatalf("open of DB failed [%v]", err)
 			}
@@ -179,8 +193,6 @@ func TestDriver_DRCP_Basic(t *testing.T) {
 				t.Fatalf("get sql connection failed: %v", err)
 			}
 
-			t.Logf("grabbed cnx from DB [%v]", cnx)
-
 			rows, err := cnx.QueryContext(context.Background(), "SELECT 1 FROM DUAL")
 			if err != nil {
 				t.Fatalf("select from DUAL failed: %v", err)
@@ -188,7 +200,7 @@ func TestDriver_DRCP_Basic(t *testing.T) {
 			rows.Close()
 
 			// Checking out a connection from the pool will attach a connection to a DRCP pooled server.
-			if !isDrcpAttached(t, TestingConfig,tt.className, "", "") {
+			if !isDrcpAttached(t, tt.className, "", "") {
 				t.Fatalf("Should be attached now")
 			}
 
@@ -199,7 +211,7 @@ func TestDriver_DRCP_Basic(t *testing.T) {
 				t.Fatalf("close of DRCP connection failed: %v", err)
 			}
 
-			if isDrcpAttached(t, TestingConfig, tt.className, "", "") {
+			if isDrcpAttached(t, tt.className, "", "") {
 				t.Fatalf("Should be detached now")
 			}
 
@@ -220,38 +232,47 @@ func TestDriver_DRCP_ClassAutoGen(t *testing.T) {
 		t.Skip("No configuration available")
 	}
 
-	config := NewOracleDriverConfig()
-	config.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
-	config.Credentials.User = TestingConfig.Credentials.Username
-	config.Credentials.Password = TestingConfig.Credentials.Password
-
-	config.ConnectionProperties.ServerType = common.ServerTypePooled
-
-	config.ConnectDescriptor = TestingConfig.GetConnectionDSN()
-	connector, err := NewOracleConnector(config)
-	if err != nil {
-		t.Fatalf("create connector failed: %v", err)
+	tests := []struct {
+		name  string
+		cfunc func(poolName string, className string, purity string, config *TestConfig) (*sql.DB, error)
+	}{
+		{
+			name:  "using config",
+			cfunc: getDBUsingConfig,
+		},
+		{
+			name:  "using EZconnect",
+			cfunc: getDBUsingEZConnect,
+		},
+		{
+			name:  "using descriptor",
+			cfunc: getDBUsingDescriptor,
+		},
 	}
-
-	db := sql.OpenDB(connector)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close db: %v", err)
-		}
-	}()
-	db.SetMaxOpenConns(1)
-
-	cnx, err := db.Conn(context.Background())
-	if err != nil {
-		t.Fatalf("get dedicated sql connection failed: %v", err)
-	}
-	defer cnx.Close()
-	err = cnx.PingContext(context.Background())
-	if err != nil {
-		t.Fatalf("Can't ping on connection: %v", err)
-	}
-	if !isDrcpAttached(t, TestingConfig, "SHARED", "", "") {
-		t.Fatalf("Should be attached now")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := tt.cfunc("", "", "", TestingConfig)
+			if err != nil {
+				t.Fatalf("open of DB failed [%v]", err)
+			}
+			defer func() {
+				if err := db.Close(); err != nil {
+					t.Errorf("close db: %v", err)
+				}
+			}()
+			cnx, err := db.Conn(context.Background())
+			if err != nil {
+				t.Fatalf("get dedicated sql connection failed: %v", err)
+			}
+			defer cnx.Close()
+			err = cnx.PingContext(context.Background())
+			if err != nil {
+				t.Fatalf("Can't ping on connection: %v", err)
+			}
+			if !isDrcpAttached(t, "SHARED", "", "") {
+				t.Fatalf("Should be attached now")
+			}
+		})
 	}
 
 }
@@ -269,7 +290,7 @@ func TestDriver_DRCP_ClassAutoGen(t *testing.T) {
 // returns:
 //
 //	true if attached, false otherwise.
-func isDrcpAttached(t *testing.T, config *TestConfig, expectedClass string, expectedPool string, expectedPurity string) bool {
+func isDrcpAttached(t *testing.T, expectedClass string, expectedPool string, expectedPurity string) bool {
 	t.Helper()
 
 	var attachedClass sql.NullString
@@ -297,20 +318,24 @@ func isDrcpAttached(t *testing.T, config *TestConfig, expectedClass string, expe
 		}
 	}()
 
-	t.Logf("isDrcpAttached looking for class=[%s]", expectedClass)
+	dumpActivePooledConnections(privdb, t)
+
+	t.Logf("isDrcpAttached looking for class=[%q], pool=[%q], purity=[%q]", expectedClass, expectedPool, expectedPurity)
 	query := `SELECT cclass_name, pool_name, purity, tag, connection_status
 		   FROM v$cpool_conn_info
 		  WHERE UPPER(cclass_name) LIKE '%.' || UPPER(:1)`
+
 	args := []any{expectedClass}
 
 	if expectedPool != "" {
 		query += fmt.Sprintf(` AND pool_name = :%d`, len(args)+1)
-		args = append(args, expectedPool)
+		args = append(args, strings.ToUpper(expectedPool))
 	}
 	if expectedPurity != "" {
 		query += fmt.Sprintf(` AND purity = :%d`, len(args)+1)
 		args = append(args, expectedPurity)
 	}
+
 	rows := privdb.QueryRowContext(context.Background(), query, args...)
 	if rows.Err() != nil {
 		if rows.Err().(oracleErrors.SQLError).ErrorCode() == string(oracleErrors.TableOrViewNotFound) {
@@ -339,6 +364,111 @@ func isDrcpAttached(t *testing.T, config *TestConfig, expectedClass string, expe
 	return true
 }
 
+func dumpActivePooledConnections(privdb *sql.DB, t *testing.T) {
+	var attachedClass sql.NullString
+	var poolName sql.NullString
+	var purity sql.NullString
+	var tag sql.NullString
+	var connection_status sql.NullString
+
+	allRows, _ := privdb.QueryContext(context.Background(),
+		"SELECT cclass_name, pool_name, purity, tag, connection_status FROM v$cpool_conn_info")
+	defer allRows.Close()
+
+	for allRows.Next() {
+		err := allRows.Scan(&attachedClass, &poolName, &purity, &tag, &connection_status)
+		if err == nil {
+			t.Logf("class=%q, pool=%q, purity=%q, tag=%q, connection_status=%q",
+				attachedClass.String, poolName.String, purity.String, tag.String, connection_status.String)
+		} else {
+			t.Logf("v$cpool_conn_info Scan failed %v", err)
+		}
+
+	}
+}
+
+func _DRCP_SetupPool(t *testing.T, poolName string) error {
+	t.Helper()
+
+	drvConfig := NewOracleDriverConfig()
+
+	drvConfig.Credentials.User = TestingConfig.Credentials.Username
+	drvConfig.Credentials.Password = TestingConfig.Credentials.Password
+	drvConfig.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
+	drvConfig.ConnectDescriptor = TestingConfig.GetConnectionDSN()
+
+	privConnector, err := NewOracleConnector(drvConfig)
+	if err != nil {
+		t.Fatalf("create priv connector failed: %v", err)
+	}
+
+	privdb := sql.OpenDB(privConnector)
+	defer func() {
+		if err := privdb.Close(); err != nil {
+			t.Errorf("close privdb: %v", err)
+		}
+	}()
+
+	_, err = privdb.ExecContext(context.Background(),
+		"BEGIN DBMS_CONNECTION_POOL.ADD_POOL(:1); END;",
+		poolName,
+	)
+	if err != nil {
+		t.Logf("add pool failed: %v", err)
+		return err
+	}
+
+	_, err = privdb.ExecContext(context.Background(),
+		"BEGIN DBMS_CONNECTION_POOL.START_POOL(:1); END;",
+		poolName,
+	)
+	if err != nil {
+		t.Logf("start pool failed: %v", err)
+		return err
+	}
+	return nil
+}
+func _DRCP_CleanupPool(t *testing.T, poolName string) error {
+	t.Helper()
+
+	drvConfig := NewOracleDriverConfig()
+
+	drvConfig.Credentials.User = TestingConfig.Credentials.Username
+	drvConfig.Credentials.Password = TestingConfig.Credentials.Password
+	drvConfig.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
+	drvConfig.ConnectDescriptor = TestingConfig.GetConnectionDSN()
+
+	privConnector, err := NewOracleConnector(drvConfig)
+	if err != nil {
+		t.Fatalf("create priv connector failed: %v", err)
+	}
+
+	privdb := sql.OpenDB(privConnector)
+	defer func() {
+		if err := privdb.Close(); err != nil {
+			t.Errorf("close privdb: %v", err)
+		}
+	}()
+
+	t.Logf("stopping pool %q", poolName)
+	privdb.ExecContext(context.Background(),
+		"BEGIN DBMS_CONNECTION_POOL.STOP_POOL(:1); END;",
+		poolName,
+	)
+
+	t.Logf("removing pool %q", poolName)
+	_, err = privdb.ExecContext(context.Background(),
+		"BEGIN DBMS_CONNECTION_POOL.REMOVE_POOL(:1); END;",
+		poolName,
+	)
+	if err != nil {
+		t.Logf("remove pool failed: %v", err)
+		return err
+	}
+	t.Logf("pool %q dropped", poolName)
+	return nil
+}
+
 // TestDriver_DRCP_PoolName attempt to use DRCP with a specific pool name.
 // Expectations: we should be attached to the specified pool
 func TestDriver_DRCP_PoolName(t *testing.T) {
@@ -347,49 +477,72 @@ func TestDriver_DRCP_PoolName(t *testing.T) {
 		t.Skip("No configuration available")
 	}
 
-	config := NewOracleDriverConfig()
+	testPoolName := "TestDriverDRCPPoolName"
 
-	config.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
-
-	config.Credentials.User = TestingConfig.Credentials.Username
-	config.Credentials.Password = TestingConfig.Credentials.Password
-
-	config.ConnectionProperties.ServerType = common.ServerTypePooled
-	config.ConnectionProperties.Drcp.ClassName = "TestDriver_DRCP_PoolName" + drvCommon.GenRandomString(2)
-	config.ConnectionProperties.Drcp.PoolName = "MYPOOL"
-
-	// we cannot rely on tConf.GetConnectionDSN() as it build connect descriptor that ignore what is in the conf
-	//  that would drop the pool name info
-	config.ConnectDescriptor = fmt.Sprintf("tcp://%s:%d/%s?oracle.go.Credentials.logonMode=sysdba",
-		TestingConfig.Database.Host, TestingConfig.Database.Port, TestingConfig.Database.ServiceName)
-	connector, err := NewOracleConnector(config)
+	err := _DRCP_SetupPool(t, testPoolName)
 	if err != nil {
-		t.Fatalf("create connector failed: %v", err)
+		t.Fatalf("setup pool failed: %v", err)
 	}
 
-	db := sql.OpenDB(connector)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close db: %v", err)
-		}
-	}()
-	db.SetMaxOpenConns(1)
+	defer _DRCP_CleanupPool(t, testPoolName)
 
-	cnx, err := db.Conn(context.Background())
-	if err != nil {
-		t.Fatalf("get dedicated sql connection failed: %v", err)
+	tests := []struct {
+		name      string
+		cfunc     func(poolName string, className string, purity string, config *TestConfig) (*sql.DB, error)
+		className string
+		poolName  string
+	}{
+		{
+			name:      "using config",
+			cfunc:     getDBUsingConfig,
+			className: "TestDriverDRCPPoolName" + drvCommon.GenRandomString(2),
+			poolName:  testPoolName,
+		},
+		{
+			name:      "using EZconnect",
+			cfunc:     getDBUsingEZConnect,
+			className: "TestDriverDRCPPoolName" + drvCommon.GenRandomString(2),
+			poolName:  testPoolName,
+		},
+		{
+			name:      "using descriptor",
+			cfunc:     getDBUsingDescriptor,
+			className: "TestDriverDRCPPoolName" + drvCommon.GenRandomString(2),
+			poolName:  testPoolName,
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("running %q.", tt.name)
+			db, err := tt.cfunc(tt.poolName, tt.className, "", TestingConfig)
+			if err != nil {
+				t.Fatalf("open of DB failed [%v]", err)
+			}
+			defer func() {
+				if err := db.Close(); err != nil {
+					t.Errorf("close db: %v", err)
+				}
+			}()
+			cnx, err := db.Conn(context.Background())
+			if err != nil {
+				t.Fatalf("get dedicated sql connection failed: %v", err)
+			}
+			defer cnx.Close()
+			rows, err := cnx.QueryContext(context.Background(), "SELECT 1 FROM DUAL")
+			if err != nil {
+				t.Fatalf("select from DUAL failed: %v", err)
+			}
+			rows.Close()
+			t.Logf("new connection created [%v]", cnx)
 
-	cnx.QueryContext(context.Background(), "SELECT 1 FROM DUAL")
+			// here we are already attached as going out of th pool attaches us.
+			if !isDrcpAttached(t, tt.className, tt.poolName, "") {
+				t.Errorf("Should be attached now")
+			}
 
-	t.Logf("new connection created [%v]", cnx)
-
-	// here we are already attached as going out of th pool attaches us.
-	if !isDrcpAttached(t, TestingConfig, config.ConnectionProperties.Drcp.ClassName, config.ConnectionProperties.Drcp.PoolName, "") {
-		t.Fatalf("Should be attached now")
+			t.Logf("TestDriver_DRCP_PoolName/%s Success", tt.poolName)
+		})
 	}
-
-	t.Logf("TestDriver_DRCP_PoolName Success")
 }
 
 // TestDriver_DRCP_WrongPoolName attempt to use DRCP with a pool name that do not exists.
@@ -413,13 +566,10 @@ func TestDriver_DRCP_WrongPoolName(t *testing.T) {
 	config.Credentials.Password = tConf.Credentials.Password
 
 	config.ConnectionProperties.ServerType = common.ServerTypePooled
-	config.ConnectionProperties.Drcp.ClassName = "TestDriver_DRCP_WrongPoolName" + drvCommon.GenRandomString(2)
-	config.ConnectionProperties.Drcp.PoolName = "I_DO_NOT_EXIST"
+	config.ConnectionProperties.Drcp.ClassName = "TestDriverDRCPWrongPoolName" + drvCommon.GenRandomString(2)
+	config.ConnectionProperties.Drcp.PoolName = "IDONOTEXIST"
 
-	// we cannot rely on tConf.GetConnectionDSN() as it build connect descriptor that ignore what is in the conf
-	//  that would drop the pool name info
-	config.ConnectDescriptor = fmt.Sprintf("tcp://%s:%d/%s?oracle.go.Credentials.logonMode=sysdba",
-		tConf.Database.Host, tConf.Database.Port, tConf.Database.ServiceName)
+	config.ConnectDescriptor = tConf.GetConnectionDSN()
 	connector, err := NewOracleConnector(config)
 	if err != nil {
 		t.Fatalf("create connector failed: %v", err)
@@ -448,45 +598,54 @@ func TestDriver_DRCP_Purity(t *testing.T) {
 		t.Skip("No configuration available")
 	}
 
-	config := NewOracleDriverConfig()
+	tests := []struct {
+		name      string
+		cfunc     func(poolName string, className string, purity string, config *TestConfig) (*sql.DB, error)
+		className string
+		purity    string
+	}{
+		{
+			name:      "using config",
+			cfunc:     getDBUsingConfig,
+			className: "TestDriverDRCPPurity" + drvCommon.GenRandomString(2),
+			purity:    common.DrcpPuritySelf,
+		},
+		//{
+		//	name:  "using EZconnect",
+		//	cfunc: getDBUsingEZConnect,
+		//	className:  "TestDriverDRCPPurity" + drvCommon.GenRandomString(2),
+		//	purity: common.DrcpPuritySelf,
+		//},
+		//{
+		//	name:  "using descriptor",
+		//	cfunc: getDBUsingDescriptor,
+		//	className:  "TestDriverDRCPPurity" + drvCommon.GenRandomString(2),
+		//	purity: common.DrcpPuritySelf,
+		//},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := tt.cfunc("", tt.className, tt.purity, TestingConfig)
+			defer func() {
+				if err := db.Close(); err != nil {
+					t.Errorf("close db: %v", err)
+				}
+			}()
+			cnx, err := db.Conn(context.Background())
+			if err != nil {
+				t.Fatalf("get dedicated sql connection failed: %v", err)
+			}
 
-	config.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
+			t.Logf("new connection created [%v]", cnx)
 
-	config.Credentials.User = TestingConfig.Credentials.Username
-	config.Credentials.Password = TestingConfig.Credentials.Password
-
-	config.ConnectionProperties.ServerType = common.ServerTypePooled
-	config.ConnectionProperties.Drcp.ClassName = "TestDriver_DRCP_Purity" + drvCommon.GenRandomString(2)
-	config.ConnectionProperties.Drcp.Purity = common.DrcpPuritySelf
-
-	// we cannot rely on tConf.GetConnectionDSN() as it build connect descriptor that ignore what is in the conf
-	//  that would drop the pool name info
-	config.ConnectDescriptor = fmt.Sprintf("tcp://%s:%d/%s?oracle.go.Credentials.logonMode=sysdba",
-		TestingConfig.Database.Host, TestingConfig.Database.Port, TestingConfig.Database.ServiceName)
-	connector, err := NewOracleConnector(config)
-	if err != nil {
-		t.Fatalf("create connector failed: %v", err)
+			// here we are already attached as going out of th pool attaches us.
+			if !isDrcpAttached(t, tt.className, "",
+				tt.purity) {
+				t.Errorf("Should be attached now")
+			}
+			cnx.Close()
+			t.Logf("TestDriver_DRCP_Purity Success")
+		})
 	}
 
-	db := sql.OpenDB(connector)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close db: %v", err)
-		}
-	}()
-
-	cnx, err := db.Conn(context.Background())
-	if err != nil {
-		t.Fatalf("get dedicated sql connection failed: %v", err)
-	}
-
-	t.Logf("new connection created [%v]", cnx)
-
-	// here we are already attached as going out of th pool attaches us.
-	if !isDrcpAttached(t, TestingConfig, config.ConnectionProperties.Drcp.ClassName, config.ConnectionProperties.Drcp.PoolName,
-		common.DrcpPuritySelf) {
-		t.Fatalf("Should be attached now")
-	}
-
-	t.Logf("TestDriver_DRCP_PoolName Success")
 }

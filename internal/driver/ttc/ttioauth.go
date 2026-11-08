@@ -522,8 +522,9 @@ func (o *oAuth) setDRCPKeyValsForOAUTH() {
 	if len(o.connectionClass) > 0 {
 		o.keyValList.PushBack(&driverCommon.KeyValue{Key: _drcpClassNameKey, Value: o.connectionClass})
 	}
-
-	o.keyValList.PushBack(&driverCommon.KeyValue{Key: _drcpPurityKey, Value: o.connectionPurity})
+	if len(o.connectionPurity) > 0 {
+		o.keyValList.PushBack(&driverCommon.KeyValue{Key: _drcpPurityKey, Value: o.connectionPurity})
+	}
 }
 
 var _authOraEditionKey = driverCommon.StringToB1Array(authOraEdition)
@@ -700,10 +701,10 @@ func (o *oAuth) setDrcpConnectionClass(class driverCommon.B1Array) {
 
 // setDrcpPurity sets the DRCP connecton class of this oauth
 func (o *oAuth) setDrcpPurity(purity string) {
-	if purity == common.DrcpPuritySelf {
+	if strings.EqualFold(purity, common.DrcpPuritySelf) {
 		o.connectionPurity = _drcpPuritySelfName
 	}
-	if purity == common.DrcpPurityNew {
+	if strings.EqualFold(purity, common.DrcpPurityNew) {
 		o.connectionPurity = _drcpPurityNewName
 	}
 }

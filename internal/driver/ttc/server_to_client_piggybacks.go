@@ -118,7 +118,7 @@ func (sessionUpdater serverToClientPiggybackUpdater) updateSessionRetProperties(
 	if sessionUpdater.logger.Enabled(common.BackgroundContext, common.OlFine) {
 		sessionUpdater.logger.Fine("ttiSPFOCSessret/flags",
 			"sessgetTagMismatch", ttiSPFOCSessret.sessretflags&sessgetTagMismatch > 0,
-			"sessgetPurityNew", ttiSPFOCSessret.sessretflags&sessgetTagMismatch > 0,
+			"sessgetPurityNew", ttiSPFOCSessret.sessretflags&sessgetPurityNew > 0,
 			"sessgetSessionChanged", ttiSPFOCSessret.sessretflags&sessgetSessionChanged > 0,
 			"sessgetStmtCacheDestroy", ttiSPFOCSessret.sessretflags&sessgetStmtCacheDestroy > 0)
 	}

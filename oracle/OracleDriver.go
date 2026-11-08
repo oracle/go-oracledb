@@ -255,6 +255,9 @@ var poolClassRE = regexp.MustCompile(
 var poolPurityRE = regexp.MustCompile(
 	`(?i)\(\s*POOL_PURITY\s*=\s*([^)]*)\)`,
 )
+var poolNameRE = regexp.MustCompile(
+	`(?i)\(\s*POOL_NAME\s*=\s*([^)]*)\)`,
+)
 
 // _handleDrcpConfiguration handle DRCP configuration .
 // This is a temporary method while the naming module is not extracted from network layer
@@ -299,7 +302,7 @@ func _handleDrcpConfiguration(config *oracleconfig.OracleDriverConfig) {
 		// as for now we handle only DRCP related type as the others ones (shared/dedicated) has no influence
 		// on the driver layer.
 		if isEZConnect {
-			if strings.HasSuffix(lowerCasecleanCD, ":"+common.ServerTypePooled) {
+			if strings.HasSuffix(lowerCasecleanCD, strings.ToLower(":"+common.ServerTypePooled)) {
 				config.ConnectionProperties.ServerType = common.ServerTypePooled
 			}
 		} else {
@@ -312,7 +315,7 @@ func _handleDrcpConfiguration(config *oracleconfig.OracleDriverConfig) {
 	// connection class
 	//  the class is sent as part of oauth keys. If specified in DNS, ensure that configuration is aware of that.
 	if len(config.ConnectionProperties.Drcp.ClassName) == 0 {
-		// nothing specified, check if there is something in the DSN
+		// nothing specified, check if there is something in the DSN so we can sync up the conf.
 		if !isEZConnect {
 			// in case of EZconnect, everything is already handle by DSN parameters
 			matches := poolClassRE.FindStringSubmatch(lowerCasecleanCD)
@@ -335,6 +338,21 @@ func _handleDrcpConfiguration(config *oracleconfig.OracleDriverConfig) {
 				config.ConnectionProperties.Drcp.Purity = poolPurity
 			}
 		}
+	}
+
+	if len(config.ConnectionProperties.Drcp.PoolName) != 0 {
+		// ensure this is properly added to the DNS in case of long string
+		// descriptor
+		if !isEZConnect {
+			// add (POOL_NAME=...) node if needed.
+			ucItem := fmt.Sprintf("(POOL_NAME=%s)", config.ConnectionProperties.Drcp.PoolName)
+			if !strings.Contains(lowerCasecleanCD, strings.ToLower(ucItem)) {
+				// inject that node into connect_data node
+				// locate the node.
+				cleanCD = strings.Replace(cleanCD, "(connect_data=", "(connect_data="+ucItem, 1)
+			}
+		}
+
 	}
 
 	config.ConnectDescriptor = cleanCD

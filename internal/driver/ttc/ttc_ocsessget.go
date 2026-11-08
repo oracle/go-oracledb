@@ -192,7 +192,6 @@ func (rpa *ttiOCSessgetRpa) UnMarshalFrom(ctx context.Context, engine driverComm
 	// 0x2 — PURITY_NEW
 	// 0x4 — SESSION_CHANGED
 	// 0x8 — STMTCACHE_DESTROY
-	// TODO deal with TAG_MISMATCH as user may want to know
 	rpa.sessgetFlags, err = engine.UnmarshalUB4(ctx)
 	if err != nil {
 		common.Odl.Warn("Failed to unmarshall OCSSESSGET RPA flags", "error", err)
