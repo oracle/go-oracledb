@@ -40,12 +40,13 @@ package oson
 
 import (
 	"encoding/json"
-	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
-	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"math"
 	"reflect"
 	"testing"
+
+	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestDecodeNumberModes verifies NUMBER decoding honors the configured number
@@ -68,6 +69,62 @@ func TestDecodeNumberModes(t *testing.T) {
 	}
 	if _, ok := got.(float64); !ok {
 		t.Fatalf("float mode returned %T, want float64", got)
+	}
+
+	// Compact signed integer
+	signed32Overflow := drvCommon.B1Array{
+		0xff, 0x4a, 0x5a, 0x01,
+		0x00, 0x16,
+		0x00, 0x07,
+		0x46, 0xc5, 0x16, 0x30, 0x31, 0x25, 0x31,
+	}
+	signed32Fraction := drvCommon.B1Array{
+		0xff, 0x4a, 0x5a, 0x01,
+		0x00, 0x16,
+		0x00, 0x04,
+		0x43, 0xc1, 0x02, 0x33,
+	}
+	signed64Overflow := drvCommon.B1Array{
+		0xff, 0x4a, 0x5a, 0x01,
+		0x00, 0x16,
+		0x00, 0x0c,
+		0x5b, 0xca, 0x13, 0x2d, 0x44, 0x2d, 0x08, 0x26, 0x0a, 0x38, 0x11, 0x10,
+	}
+	conversionCases := []struct {
+		name    string
+		doc     drvCommon.B1Array
+		mode    drvCommon.JSONNumberMode
+		want    any
+		wantErr oracleErrors.ErrorCode
+	}{
+		{"signed32 overflow/default", signed32Overflow, drvCommon.JSONNumberDefault, nil, oracleErrors.ConverterRange},
+		{"signed32 overflow/json number", signed32Overflow, drvCommon.JSONNumberAsJSONNumber, nil, oracleErrors.ConverterRange},
+		{"signed32 overflow/float64", signed32Overflow, drvCommon.JSONNumberAsFloat64, nil, oracleErrors.ConverterRange},
+		{"signed32 fraction/default", signed32Fraction, drvCommon.JSONNumberDefault, nil, oracleErrors.ConverterExpectedFormat},
+		{"signed32 fraction/json number", signed32Fraction, drvCommon.JSONNumberAsJSONNumber, nil, oracleErrors.ConverterExpectedFormat},
+		{"signed32 fraction/float64", signed32Fraction, drvCommon.JSONNumberAsFloat64, nil, oracleErrors.ConverterExpectedFormat},
+		{"signed64 overflow/default", signed64Overflow, drvCommon.JSONNumberDefault, nil, oracleErrors.ConverterRange},
+		{"signed64 overflow/json number", signed64Overflow, drvCommon.JSONNumberAsJSONNumber, nil, oracleErrors.ConverterRange},
+		{"signed64 overflow/float64", signed64Overflow, drvCommon.JSONNumberAsFloat64, nil, oracleErrors.ConverterRange},
+	}
+	for _, test := range conversionCases {
+		t.Run(test.name, func(t *testing.T) {
+			root, err := Parse(test.doc)
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			got, err := root.GetValue(drvCommon.JSONConversionOptions{NumberMode: test.mode})
+			if test.wantErr != "" {
+				assertOracleErrorCode(t, err, test.wantErr)
+				return
+			}
+			if err != nil {
+				t.Fatalf("GetValue() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("GetValue() = %#v, want %#v", got, test.want)
+			}
+		})
 	}
 }
 

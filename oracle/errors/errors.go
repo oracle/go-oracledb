@@ -16,6 +16,7 @@ type ErrorCode string
 const (
 	// ORA-XXXXX errors
 	InvalidCredential      ErrorCode = "ORA-01017"
+	InvalidDateYear        ErrorCode = "ORA-01841"
 	NoDataFound            ErrorCode = "ORA-01403"
 	ConnectionLost         ErrorCode = "ORA-03113"
 	AliasNotFound          ErrorCode = "ORA-12154"

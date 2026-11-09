@@ -51,6 +51,7 @@ func initMessagesEs() {
 		message string
 	}{
 		{oracleErrors.InvalidCredential, "credenciales no válidas o usuario no autorizado: %s"},
+		{oracleErrors.InvalidDateYear, "el año completo debe estar entre -4713 y +9999, y no puede ser 0"},
 		{oracleErrors.ConnectionLost, "conexión a la base de datos cerrada por el extremo remoto"},
 		{oracleErrors.AliasNotFound, "no se puede conectar a la base de datos. No se encontró el alias %s."},
 		{oracleErrors.NoListenerAvailable, "no se puede conectar. No hay ningún listener en %s"},
