@@ -60,25 +60,26 @@ type connectionInstantiator struct {
 //   - config: the Oracle driver configuration for the connection attempt.
 //   - ns: the established network session used by TTC.
 //   - providerRegistry: the provider registry available to the authenticator for this attempt.
-//   - mode: normal negotiation or fallback using the server's pending TTIPRO.
+//   - serverProtocolPending: whether fallback must read the server's pending TTIPRO.
 //
 // Returns:
 //   - the TTC connection instantiator bound to ns.
 //   - an error if the authenticator or instantiator cannot be initialized.
-func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], mode driverCommon.ConnectionMode) (driverCommon.ConnectionInstantiator, error) {
+func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], serverProtocolPending bool) (driverCommon.ConnectionInstantiator, error) {
 
 	createNegotiator := func(buffer driverCommon.DataBuffer) Negotiator {
 		return GetNegotiator(
 			buffer,
-			mode,
+			driverCommon.ConnectionNormal,
 			nil,
+			serverProtocolPending,
 		)
 	}
 	createAuthenticator := func() (Authenticator, error) {
 		return GetAuthenticator(
 			config,
 			providerRegistry,
-			mode,
+			driverCommon.ConnectionNormal,
 		)
 	}
 

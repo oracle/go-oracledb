@@ -52,9 +52,8 @@ const (
 type ConnectionMode uint8
 
 const (
-	ConnectionNormal      ConnectionMode = iota // Normal TTC negotiation and authentication.
-	ConnectionRenegotiate                       // Consume pending server TTIPRO after TTIRENEG.
-	ConnectionCookie                            // Reuse cached TTC negotiation data.
+	ConnectionNormal ConnectionMode = iota // Normal TTC negotiation and authentication.
+	ConnectionCookie                       // Reuse cached TTC negotiation data.
 )
 
 // NetworkSession implementors can disconnect a network connection

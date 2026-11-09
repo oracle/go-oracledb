@@ -133,7 +133,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken},
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForOAuth", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForOAuth},
 	{Name: "TestGetConnection", Categories: "unitary", Exclusive: false, Fn: TestGetConnection},
-	{Name: "TestNewTTCConnectionInstantiatorNegotiationMode", Categories: "unitary", Exclusive: false, Fn: TestNewTTCConnectionInstantiatorNegotiationMode},
+	{Name: "TestNewTTCConnectionInstantiatorNegotiationStart", Categories: "unitary", Exclusive: false, Fn: TestNewTTCConnectionInstantiatorNegotiationStart},
 	{Name: "TestConnectionPinger_Ping", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_Ping},
 	{Name: "TestConnectionPinger_IsValid", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValid},
 	{Name: "TestConnectionPinger_IsValidWithInband", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValidWithInband},

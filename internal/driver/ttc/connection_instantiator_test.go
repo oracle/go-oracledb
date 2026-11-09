@@ -50,17 +50,16 @@ import (
 	"golang.org/x/text/language"
 )
 
-// TestNewTTCConnectionInstantiatorNegotiationMode verifies that the constructor
-// passes normal and renegotiation modes to its negotiator.
-func TestNewTTCConnectionInstantiatorNegotiationMode(t *testing.T) {
+// TestNewTTCConnectionInstantiatorNegotiationStart verifies that the constructor
+// passes the pending server TTIPRO state to its normal negotiator.
+func TestNewTTCConnectionInstantiatorNegotiationStart(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name      string
-		mode      driverCommon.ConnectionMode
-		wantReneg bool
+		name                  string
+		serverProtocolPending bool
 	}{
-		{name: "normal", mode: driverCommon.ConnectionNormal, wantReneg: false},
-		{name: "renegotiation", mode: driverCommon.ConnectionRenegotiate, wantReneg: true},
+		{name: "normal", serverProtocolPending: false},
+		{name: "renegotiation", serverProtocolPending: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			config := oracleconfig.NewOracleDriverConfig()
@@ -74,7 +73,7 @@ func TestNewTTCConnectionInstantiatorNegotiationMode(t *testing.T) {
 				DataBuffer:     NewArrayDataBuffer(16),
 			}
 
-			instantiator, err := NewTTCConnectionInstantiator(config, ns, nil, tc.mode)
+			instantiator, err := NewTTCConnectionInstantiator(config, ns, nil, tc.serverProtocolPending)
 			if err != nil {
 				t.Fatalf("create connection instantiator: %v", err)
 			}
@@ -86,8 +85,11 @@ func TestNewTTCConnectionInstantiatorNegotiationMode(t *testing.T) {
 			if !ok {
 				t.Fatalf("negotiator type = %T, want *connectionNegotiator", ci.negotiator)
 			}
-			if negotiator.serverProtocolPending != tc.wantReneg {
-				t.Fatalf("negotiator serverProtocolPending = %t, want %t", negotiator.serverProtocolPending, tc.wantReneg)
+			if negotiator.serverProtocolPending != tc.serverProtocolPending {
+				t.Fatalf("negotiator serverProtocolPending = %t, want %t", negotiator.serverProtocolPending, tc.serverProtocolPending)
+			}
+			if _, ok := ci.authenticator.(*passwordAuthenticator); !ok {
+				t.Fatalf("authenticator type = %T, want *passwordAuthenticator", ci.authenticator)
 			}
 		})
 	}

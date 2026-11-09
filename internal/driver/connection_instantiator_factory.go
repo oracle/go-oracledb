@@ -55,7 +55,7 @@ func GetConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns drive
 	if reneg {
 		// Bypass the cached cookie and consume the server's pending TTIPRO.
 		common.Odl.Fine("Selecting normal TTC instantiator for server-requested renegotiation")
-		return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry, driverCommon.ConnectionRenegotiate)
+		return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry, true)
 	}
 
 	if ttc.IsTTCCookieEligible(config.DriverProperties, databaseUUID) {
@@ -72,6 +72,6 @@ func GetConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns drive
 	}
 
 	common.Odl.Fine("Selecting normal TTC instantiator: cookie optimization ineligible or cache miss")
-	return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry, driverCommon.ConnectionNormal)
+	return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry, false)
 
 }

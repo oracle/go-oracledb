@@ -24,6 +24,7 @@ func NewTTCCookieConnectionInstantiator(config *oracleconfig.OracleDriverConfig,
 			buffer,
 			driverCommon.ConnectionCookie,
 			cookie,
+			false,
 		)
 	}
 

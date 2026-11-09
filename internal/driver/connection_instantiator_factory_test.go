@@ -86,7 +86,7 @@ func TestGetConnectionInstantiatorCacheHit(t *testing.T) {
 }
 
 // TestGetConnectionInstantiatorSelectsNormal verifies the cases that must not
-// select the cookie instantiator. The constructor's mode wiring is tested in TTC.
+// select the cookie instantiator. Pending server PRO wiring is tested in TTC.
 func TestGetConnectionInstantiatorSelectsNormal(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

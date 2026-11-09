@@ -84,17 +84,16 @@ func (shared *connectionInstantiatorCommon) prepareForAuthentication(sessCtx *dr
 
 // *** Negotiator Factory ***
 
-// GetNegotiator selects normal, cookie, or server-requested re-negotiation.
+// GetNegotiator selects normal or cookie negotiation.
+// serverProtocolPending indicates a pending server TTIPRO during normal fallback.
 // TODO : we should not have to pass the buffer here...
-func GetNegotiator(dataBuffer driverCommon.DataBuffer, mode driverCommon.ConnectionMode, cookie *ttiCookie) Negotiator {
+func GetNegotiator(dataBuffer driverCommon.DataBuffer, mode driverCommon.ConnectionMode, cookie *ttiCookie, serverProtocolPending bool) Negotiator {
 	var n Negotiator
 	switch mode {
 	case driverCommon.ConnectionCookie:
 		n = newCookieConnectionNegotiator(dataBuffer, cookie)
 	case driverCommon.ConnectionNormal:
-		n = newConnectionNegotiator(dataBuffer, false)
-	case driverCommon.ConnectionRenegotiate:
-		n = newConnectionNegotiator(dataBuffer, true)
+		n = newConnectionNegotiator(dataBuffer, serverProtocolPending)
 	}
 
 	return n
@@ -139,7 +138,7 @@ func GetAuthenticator(parameters *oracleconfig.OracleDriverConfig, providerRegis
 			switch mode {
 			case driverCommon.ConnectionCookie:
 				return newCookieTokenAuthenticator(tokenProvider), nil
-			case driverCommon.ConnectionNormal, driverCommon.ConnectionRenegotiate:
+			case driverCommon.ConnectionNormal:
 				return newTokenAuthenticator(tokenProvider), nil
 			}
 		}
@@ -171,7 +170,7 @@ func createPasswordAuthenticator(parameters *oracleconfig.OracleDriverConfig, co
 		return newCookiePasswordAuthenticator(parameters.Credentials.User,
 			parameters.Credentials.Password,
 			parameters.ConnectDescriptor), nil
-	case driverCommon.ConnectionNormal, driverCommon.ConnectionRenegotiate:
+	case driverCommon.ConnectionNormal:
 		if hasLogonMode {
 			return newPasswordAuthenticatorWithLogonMode(parameters.Credentials.User,
 				parameters.Credentials.Password,
