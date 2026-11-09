@@ -121,14 +121,15 @@ func rowToBytes(row []columnPayload) [][]byte {
 // payloads. Production RXD messages resolve the same wrapper through the
 // codec factory injected by the message factory.
 func setCLRBindValues(rxd *tTIrxd, payloads ...common.B1Array) {
-	row := make([]common.B1Array, len(payloads))
-	metadata := make([]bindValueMetadata, len(payloads))
+	bindValues := make([]encodedBindValue, len(payloads))
 	for i, payload := range payloads {
-		row[i] = payload
-		metadata[i] = bindValueMetadata{isNull: payload == nil}
+		bindValues[i] = encodedBindValue{
+			payload:  payload,
+			metadata: bindValueMetadata{isNull: payload == nil},
+		}
 	}
 	rxd.setCodecFactory(bindCodecFactoryStub{encoder: newCLRBindEncoder(func(driver.Value) (common.B1Array, error) { return nil, nil })})
-	rxd.setBindValues(row, metadata)
+	rxd.setBindValues(bindValues)
 }
 
 // TestTTIrxd_GetMsgCode verifies that GetMsgCode returns TTIRXD for tTIrxd message.
@@ -174,7 +175,7 @@ func TestTTIrxd_MarshalTo_PreparedBindValue(t *testing.T) {
 	rxd.setCodecFactory(bindCodecFactoryStub{encoder: &typeEncoder{wrapColumn: func(ctx context.Context, mar common.Marshaller, _ common.B1Array) error {
 		return mar.MarshalUB1(ctx, 0x7F)
 	}}})
-	rxd.setBindValues([]common.B1Array{{0x01, 0x02, 0x03}}, []bindValueMetadata{{}})
+	rxd.setBindValues([]encodedBindValue{{payload: common.B1Array{0x01, 0x02, 0x03}}})
 
 	buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 64)
 	if err := rxd.MarshalTo(context.Background(), eng); err != nil {

@@ -568,7 +568,11 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 		if err != nil {
 			return nil, err
 		}
-		bindMessage.(*tTIrxd).setBindValues(row, metadata)
+		bindValues := make([]encodedBindValue, len(row))
+		for i, payload := range row {
+			bindValues[i] = encodedBindValue{payload: payload, metadata: metadata[i]}
+		}
+		bindMessage.(*tTIrxd).setBindValues(bindValues)
 		messages = append(messages, bindMessage)
 	}
 	return messages, nil

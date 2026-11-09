@@ -70,9 +70,8 @@ type tTIrxd struct {
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
 	bvcFound bool
 
-	// Outgoing bind payload and metadata for TTIRXD bind-row marshalling.
-	bindRow        []driverCommon.B1Array
-	bindMetadata   []bindValueMetadata
+	// Outgoing bind values for TTIRXD bind-row marshalling.
+	bindValues     []encodedBindValue
 	columnContexts []columnContext
 
 	numberOfReturningPositions int
@@ -81,6 +80,13 @@ type tTIrxd struct {
 	// session character set
 	sessCharSet  driverCommon.UB2
 	sessNCharSet driverCommon.UB2
+}
+
+// encodedBindValue pairs an encoded bind payload with the metadata used to
+// select its encoder and TTC column wrapper.
+type encodedBindValue struct {
+	payload  driverCommon.B1Array
+	metadata bindValueMetadata
 }
 
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
@@ -150,14 +156,11 @@ func (rxd *tTIrxd) setSessionCharacterSet(sessCharSet driverCommon.UB2) {
 setBindValues sets the prepared outgoing bind values for marshalling as an RXD message.
 
 Parameters:
-- row: one prepared bind value per bind position for a single row. Each value
-  contains its encoded payload.
-- metadata: one normalized bind descriptor per bind position, aligned with row.
+- values: one encoded bind value per bind position for a single row.
 */
 
-func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array, metadata []bindValueMetadata) {
-	rxd.bindRow = row
-	rxd.bindMetadata = metadata
+func (rxd *tTIrxd) setBindValues(values []encodedBindValue) {
+	rxd.bindValues = values
 }
 
 /*
@@ -166,12 +169,12 @@ It resolves each encoder from the message's protocol-matched codec factory and
 uses that encoder's transport wrapper for the corresponding payload.
 */
 func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
-	for i := range rxd.bindRow {
-		encoder, err := rxd.getFactory().getEncoderForGoType(rxd.bindMetadata[i])
+	for _, bind := range rxd.bindValues {
+		encoder, err := rxd.getFactory().getEncoderForGoType(bind.metadata)
 		if err != nil {
 			return err
 		}
-		if err := encoder.wrapColumn(ctx, engine, rxd.bindRow[i]); err != nil {
+		if err := encoder.wrapColumn(ctx, engine, bind.payload); err != nil {
 			return err
 		}
 	}
