@@ -311,7 +311,7 @@ func TestPushBindRowsIfAny_EncodeBindValues_Error(t *testing.T) {
 	// float64 encodes successfully while createMessages builds the RXD row.
 	args := []sqldriver.Value{float64(1.25)}
 	sp := &statementProcessor{shelf: shelf}
-	created, err := sp.createMessages(&qualifiedSQLStatement{}, args, oAll8, executionMessageConfig{})
+	created, err := sp.createMessages(&qualifiedSQLStatement{}, args, executionMessageConfig{functionType: oAll8})
 	if err != nil {
 		t.Fatalf("unexpected createMessages error, got %v", err)
 	}
@@ -361,7 +361,7 @@ func TestPushBindRowsIfAny_GetMessage_RXD_Error(t *testing.T) {
 	// Supported bind so createMessages reaches the RXD allocation.
 	args := []sqldriver.Value{int64(1)}
 	sp := &statementProcessor{shelf: shelf}
-	_, err := sp.createMessages(&qualifiedSQLStatement{}, args, oAll8, executionMessageConfig{})
+	_, err := sp.createMessages(&qualifiedSQLStatement{}, args, executionMessageConfig{functionType: oAll8})
 	if err == nil || !strings.Contains(err.Error(), "fail RXD") {
 		t.Fatalf("expected get-rxd push error, got %v", err)
 	}
@@ -390,7 +390,7 @@ func TestPushBindRowsIfAny_Push_RXD_Error(t *testing.T) {
 	// Supported bind so createMessages creates an RXD row; Push should fail.
 	args := []sqldriver.Value{int64(1)}
 	sp := &statementProcessor{shelf: shelf}
-	created, err := sp.createMessages(&qualifiedSQLStatement{}, args, oAll8, executionMessageConfig{})
+	created, err := sp.createMessages(&qualifiedSQLStatement{}, args, executionMessageConfig{functionType: oAll8})
 	if err != nil {
 		t.Fatalf("unexpected createMessages error, got %v", err)
 	}

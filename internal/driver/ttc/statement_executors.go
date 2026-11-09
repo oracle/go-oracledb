@@ -236,7 +236,7 @@ func (e *refCursorExecutor) Fetch(ctx context.Context, rows *ttcRowsRefCursor) e
 	e.selectExecutor.al8i4 = buildAl8i4(_maxfetchSize, true, 0, 0)
 	// Create an OALL8 message with the cursor ID.
 	messages, err := e.selectExecutor.createMessages(
-		&qualifiedSQLStatement{cursorID: e.cursorID}, nil, oAll8, executionMessageConfig{},
+		&qualifiedSQLStatement{cursorID: e.cursorID}, nil, executionMessageConfig{functionType: oAll8},
 	)
 	if err != nil {
 		return common.NewOracleError(oracleErrors.RunQueryError, err, "create-messages")
@@ -437,12 +437,12 @@ func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualif
 	// Set the prefetch option before building OALL8 when the server supports it.
 	prefetchEnabled := e.enableImplicitResultPrefetch()
 	e.initForTransaction()
-	config := executionMessageConfig{}
+	config := executionMessageConfig{functionType: oAll8}
 	if prefetchEnabled {
 		rowsToFetchCount := driverCommon.UB4(implicitResultPrefetchRowCount)
 		config.rowsToFetchCount = &rowsToFetchCount
 	}
-	messages, err := e.createMessages(query, binds, oAll8, config)
+	messages, err := e.createMessages(query, binds, config)
 	if err != nil {
 		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "create-messages")
 	}
@@ -482,7 +482,7 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 	}
 	e.opts = e.buildOAll8Options(false)
 	e.al8i4 = buildAl8i4(0, true, _al8exImplResultsClient, e.opts&statementParsedByServer)
-	messages, err := e.createMessages(query, args, oExfen, executionMessageConfig{})
+	messages, err := e.createMessages(query, args, executionMessageConfig{functionType: oExfen})
 	if err != nil {
 		return nil, common.NewOracleError(oracleErrors.RunQueryError, err, "create-messages")
 	}
@@ -503,8 +503,9 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 	// define needs to be sent in other cases
 	e.opts = e.buildOAll8Options(true)
 	e.al8i4 = buildAl8i4(_maxfetchSize, true, 0, e.opts&statementParsedByServer)
-	messages, err = e.createMessages(query, nil, oAll8, executionMessageConfig{
-		defineOACs: e.buildDefineOACs(),
+	messages, err = e.createMessages(query, nil, executionMessageConfig{
+		functionType: oAll8,
+		defineOACs:   e.buildDefineOACs(),
 	})
 	if err != nil {
 		return nil, common.NewOracleError(oracleErrors.RunQueryError, err, "create-messages")
@@ -521,6 +522,7 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 // executionMessageConfig carries OALL8 settings that must be applied during
 // construction, before the message list is returned to its caller.
 type executionMessageConfig struct {
+	functionType     driverCommon.FunctionType
 	currentRank      *driverCommon.UB4
 	rowsToFetchCount *driverCommon.UB4
 	defineOACs       []driverCommon.Marshallable
@@ -528,7 +530,7 @@ type executionMessageConfig struct {
 
 // createMessages returns the TTC messages for one request in wire order: the
 // OALL8 or OEXFEN request first, followed by one TTIRXD message per bind row.
-func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args []sqldriver.Value, requestFunction driverCommon.FunctionType, config executionMessageConfig) ([]driverCommon.Message[driverCommon.MessageType], error) {
+func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args []sqldriver.Value, config executionMessageConfig) ([]driverCommon.Message[driverCommon.MessageType], error) {
 	var metadata []bindValueMetadata
 	var rows [][]driverCommon.B1Array
 	oacs := e.previousOacs
@@ -546,7 +548,7 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 	}
 
 	sendOACs := e.needToSendOACs(oacs)
-	usesOALL8 := requestFunction == oAll8 || sendOACs
+	usesOALL8 := config.functionType == oAll8 || sendOACs
 	var (
 		message driverCommon.Message[driverCommon.MessageType]
 		err     error
@@ -579,8 +581,10 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 }
 
 func (e *statementProcessor) createOAll8Message(query *qualifiedSQLStatement, oacs []driverCommon.Marshallable, sendOACs bool, config executionMessageConfig) (driverCommon.Message[driverCommon.MessageType], error) {
+	common.Odl.Fine("createOAll8Message: called", "stmt", query)
 	message, err := e.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIFUN, oAll8)
 	if err != nil {
+		common.Odl.Error("createOAll8Message: GetMessageForFunction failed", "error", err, "stage", "get-oall8")
 		return nil, err
 	}
 
@@ -620,8 +624,10 @@ func (e *statementProcessor) createOAll8Message(query *qualifiedSQLStatement, oa
 }
 
 func (e *statementProcessor) createOexfenMessage(query *qualifiedSQLStatement) (driverCommon.Message[driverCommon.MessageType], error) {
+	common.Odl.Fine("createOexfenMessage: called", "stmt", query)
 	message, err := e.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIFUN, oExfen)
 	if err != nil {
+		common.Odl.Error("createOexfenMessage: GetMessageForFunction failed", "error", err, "stage", "get-oexfen")
 		return nil, err
 	}
 	oexfen := message.(*tTIOexfen)
@@ -677,7 +683,10 @@ func (e *statementExecutorDML) ExecContext(ctx context.Context, query *qualified
 	e.initExecRunner(args)
 	e.initForTransaction()
 	rank := e._currentRank
-	messages, err := e.createMessages(query, args, oAll8, executionMessageConfig{currentRank: &rank})
+	messages, err := e.createMessages(query, args, executionMessageConfig{
+		functionType: oAll8,
+		currentRank:  &rank,
+	})
 	if err != nil {
 		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "create-messages")
 	}
@@ -975,7 +984,7 @@ func (e *statementExecutorExec) ExecContext(ctx context.Context, query *qualifie
 		return nil, err
 	}
 	e.initForTransaction()
-	messages, err := e.createMessages(query, args, oAll8, executionMessageConfig{})
+	messages, err := e.createMessages(query, args, executionMessageConfig{functionType: oAll8})
 	if err != nil {
 		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "create-messages")
 	}
@@ -997,12 +1006,12 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 	e.initExecRunner(args)
 	prefetchEnabled := e.enableImplicitResultPrefetch()
 	e.initForTransaction()
-	config := executionMessageConfig{}
+	config := executionMessageConfig{functionType: oAll8}
 	if prefetchEnabled {
 		rowsToFetchCount := driverCommon.UB4(implicitResultPrefetchRowCount)
 		config.rowsToFetchCount = &rowsToFetchCount
 	}
-	messages, err := e.createMessages(query, args, oAll8, config)
+	messages, err := e.createMessages(query, args, config)
 	if err != nil {
 		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "create-messages")
 	}
