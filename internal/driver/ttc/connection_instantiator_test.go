@@ -228,7 +228,7 @@ type lobPrefetchTestNetworkSession struct {
 }
 
 // TestConnectionNegotiatorConfiguredLobPrefetchSize verifies that connection
-// configuration reaches the final marshaller before shelf properties are installed.
+// properties are installed on the shelf and configure the final marshaller during negotiation.
 func TestConnectionNegotiatorConfiguredLobPrefetchSize(t *testing.T) {
 	t.Parallel()
 	const prefetchSize = 8192
@@ -249,8 +249,9 @@ func TestConnectionNegotiatorConfiguredLobPrefetchSize(t *testing.T) {
 		t.Fatalf("negotiate: %v", err)
 	}
 
-	if shelf.GetConnectionProperties() != nil {
-		t.Fatal("connection properties should not be installed before authentication preparation")
+	props := shelf.GetConnectionProperties()
+	if props == nil || props.GetDefaultLobPrefetchSize() != prefetchSize {
+		t.Fatal("configured connection properties were not installed during negotiation")
 	}
 	marshaller := shelf.GetMarshaller().(*MarshalEngine)
 	if got := marshaller._defaultLobPrefetchSize; got != prefetchSize {

@@ -49,13 +49,13 @@ import (
 
 // connectionNegotiator implements the Negotiator interface for TTC connections.
 type connectionNegotiator struct {
-	_dataBuffer            driverCommon.DataBuffer
-	defaultLobPrefetchSize int
+	_dataBuffer          driverCommon.DataBuffer
+	connectionProperties driverCommon.DriverProperties
 }
 
 // newConnectionNegotiator creates a new instance of connectionNegotiator.
-func newConnectionNegotiator(defaultLobPrefetchSize int) *connectionNegotiator {
-	return &connectionNegotiator{defaultLobPrefetchSize: defaultLobPrefetchSize}
+func newConnectionNegotiator(connectionProperties driverCommon.DriverProperties) *connectionNegotiator {
+	return &connectionNegotiator{connectionProperties: connectionProperties}
 }
 
 // Negotiate performs the connection negotiation process over the provided DataBuffer.
@@ -65,10 +65,10 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 
 	common.Odl.Fine("connectionNegotiator: Negotiation start")
 	// 1. Create Shelf & Session Context
-	shelf, sessCtx := _createShelfAndSessionContext()
+	shelf, sessCtx := _createShelfAndSessionContext(cn.connectionProperties)
 
 	// 2. Fetch new Marshaller & TTC Msg Streamer
-	_createAndRegisterMarshaller(cn._dataBuffer, shelf, true, cn.defaultLobPrefetchSize)
+	_createAndRegisterMarshaller(cn._dataBuffer, shelf, true)
 	msgStmr := _createAndRegisterMessageStreamer(shelf)
 
 	// 3. Create and register Initial MessageFactory
@@ -98,7 +98,7 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	)
 
 	// 7. Update Marshaller with Datatype Reps
-	_createAndRegisterMarshaller(cn._dataBuffer, shelf, false, cn.defaultLobPrefetchSize)
+	_createAndRegisterMarshaller(cn._dataBuffer, shelf, false)
 
 	// Determine negotiated TTC version (minimum of client and server)
 	clientVersion := dty.GetClientTTCVersion()
@@ -237,8 +237,9 @@ func (cn *connectionNegotiator) _negotiateProtocol(
 }
 
 // _createShelfAndSessionContext manages creation of Shelf and SessionContext.
-func _createShelfAndSessionContext() (*ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext) {
+func _createShelfAndSessionContext(connectionProperties driverCommon.DriverProperties) (*ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext) {
 	shelf := newShelf[driverCommon.MessageType]()
+	shelf.UpdateConnectionProperties(connectionProperties)
 	common.Odl.Fine("connectionNegotiator: Shelf created")
 
 	sessCtx := driverCommon.NewSessionContext()
@@ -278,9 +279,8 @@ func _createAndRegisterMarshaller(
 	buf driverCommon.DataBuffer,
 	shelf *ttiShelf[driverCommon.MessageType],
 	isNative bool,
-	defaultLobPrefetchSize int,
 ) {
-	var mar *MarshalEngine
+	var mar driverCommon.Marshaller
 	if isNative {
 		mar = NewNativeMarshalEngine(buf, driverCommon.BIG_ENDIAN)
 		common.Odl.Fine("connectionNegotiator: Creating Native Marshaller")
@@ -288,7 +288,11 @@ func _createAndRegisterMarshaller(
 		mar = NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 		common.Odl.Fine("connectionNegotiator: Creating TTC Marshaller")
 	}
-	mar.setDefaultLobPrefetchSize(int64(defaultLobPrefetchSize))
+	if props := shelf.GetConnectionProperties(); props != nil {
+		if marshalEngine, ok := mar.(*MarshalEngine); ok {
+			marshalEngine.setDefaultLobPrefetchSize(int64(props.GetDefaultLobPrefetchSize()))
+		}
+	}
 	shelf.RegisterMarshaller(mar)
 	common.Odl.Fine("connectionNegotiator: Marshaller created/updated and registered")
 }
