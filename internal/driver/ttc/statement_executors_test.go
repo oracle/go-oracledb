@@ -64,7 +64,6 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 	mar := createMarshaller(buf, failOn, callN)
 
 	shelf := newShelf[common.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
-	shelf.RegisterMarshaller(mar)
 
 	funcReg := NewRegistry[functionRegistryKey]()
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, NewOall)
@@ -97,7 +96,7 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 	}
 	shelf.RegisterMessageFactory(factory)
 
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(mar))
 	shelf.RegisterMessageStreamer(streamer)
 	return shelf, streamer
 }
@@ -120,7 +119,6 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	shelf := newShelf[common.MessageType]().RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
-	shelf.RegisterMarshaller(mar)
 
 	// Local registries limited to what this test needs.
 	funcReg := NewRegistry[functionRegistryKey]()
@@ -153,7 +151,7 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	shelf.RegisterMessageFactory(factory)
 
 	// Real streamer bound to this shelf
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(mar))
 	shelf.RegisterMessageStreamer(streamer)
 
 	return shelf, streamer, buf
@@ -973,9 +971,6 @@ func TestStatementExecutor_Others_Factory_GetMessageForFunction_Error(t *testing
 	ctx := context.Background()
 
 	shelf := newShelf[common.MessageType]()
-	// Register a basic marshaller to satisfy downstream interfaces (won't be used due to early failure).
-	mar := NewMarshalEngine(NewArrayDataBuffer(256), common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-	shelf.RegisterMarshaller(mar)
 
 	f := &factoryForOall8{returnErr: errors.New("boom")}
 	shelf.RegisterMessageFactory(f)
@@ -1001,8 +996,6 @@ func TestStatementExecutor_DML_Factory_GetMessageForFunction_Error(t *testing.T)
 	ctx := context.Background()
 
 	shelf := newShelf[common.MessageType]()
-	mar := NewMarshalEngine(NewArrayDataBuffer(256), common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-	shelf.RegisterMarshaller(mar)
 
 	f := &factoryForOall8{returnErr: errors.New("boom")}
 	shelf.RegisterMessageFactory(f)
@@ -1027,8 +1020,6 @@ func TestStatementExecutor_Select_Factory_GetMessageForFunction_Error(t *testing
 	ctx := context.Background()
 
 	shelf := newShelf[common.MessageType]()
-	mar := NewMarshalEngine(NewArrayDataBuffer(256), common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-	shelf.RegisterMarshaller(mar)
 
 	f := &factoryForOall8{returnErr: errors.New("boom")}
 	shelf.RegisterMessageFactory(f)
@@ -1053,8 +1044,6 @@ func TestStatementExecutor_PLSQL_Factory_GetMessageForFunction_Error(t *testing.
 	ctx := context.Background()
 
 	shelf := newShelf[common.MessageType]()
-	mar := NewMarshalEngine(NewArrayDataBuffer(256), common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-	shelf.RegisterMarshaller(mar)
 
 	f := &factoryForOall8{returnErr: errors.New("boom")}
 	shelf.RegisterMessageFactory(f)
@@ -1143,7 +1132,7 @@ func TestStatementExecutor_Select_DoesNotReuseStaleBVCStateAcrossExecutions(t *t
 	if err != nil {
 		t.Fatalf("create DCB probe message: %v", err)
 	}
-	if err := dcbMessage.(common.Unmarshallable).UnmarshalFrom(ctx, probeShelf.GetMarshaller()); err != nil {
+	if err := dcbMessage.(common.Unmarshallable).UnmarshalFrom(ctx, NewMarshalEngine(probeBuffer, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})); err != nil {
 		t.Fatalf("decode DCB probe message: %v", err)
 	}
 	responseWithoutDCB := append([]byte(nil), fullResponse[probeBuffer.currentReadPosition:]...)

@@ -80,6 +80,8 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestMarshallerFactory_GetMarshaller", Categories: "unitary", Exclusive: false, Fn: TestMarshallerFactory_GetMarshaller},
+	{Name: "TestMarshallerFactory_GetMarshallerForMessageType", Categories: "unitary", Exclusive: false, Fn: TestMarshallerFactory_GetMarshallerForMessageType},
 	{Name: "TestConnectionSetupAppliesLobPrefetchAfterNegotiation", Categories: "unitary", Exclusive: false, Fn: TestConnectionSetupAppliesLobPrefetchAfterNegotiation},
 	{Name: "TestCookieTokenAuthenticator_Success", Categories: "unitary", Exclusive: false, Fn: TestCookieTokenAuthenticator_Success},
 	{Name: "TestCookieTokenAuthenticator_TTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestCookieTokenAuthenticator_TTIRENEG},

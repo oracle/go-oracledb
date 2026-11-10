@@ -80,7 +80,7 @@ func TestConnectionSetupAppliesLobPrefetchAfterNegotiation(t *testing.T) {
 	t.Skip("TODO: apply LOB prefetch configuration after connection properties become available")
 
 	negotiation := &connectionNegotiatorCommon{_dataBuffer: NewArrayDataBuffer(128)}
-	shelf, sessionContext, _, _ := negotiation.initializeNegotiationResources()
+	shelf, sessionContext, streamer, _ := negotiation.initializeNegotiationResources()
 	config := oracleconfig.NewOracleDriverConfig()
 	config.DriverProperties.DefaultLobPrefetchSize = 8192
 	setup := &connectionInstantiatorCommon{
@@ -92,7 +92,7 @@ func TestConnectionSetupAppliesLobPrefetchAfterNegotiation(t *testing.T) {
 	setup.prepareForAuthentication(sessionContext, shelf)
 
 	for _, messageType := range []driverCommon.MessageType{TTIFUN, TTIPRO} {
-		marshaller := shelf.GetMarshallerForMessageType(messageType).(*MarshalEngine)
+		marshaller := streamer.marshallerFactory.GetMarshallerForMessageType(messageType).(*MarshalEngine)
 		if got := marshaller._defaultLobPrefetchSize; got != 8192 {
 			t.Errorf("message %v: LOB prefetch size = %d, want 8192", messageType, got)
 		}

@@ -133,6 +133,7 @@ func TestCookieNegotiationSelectsMarshallers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Negotiate: %v", err)
 	}
+	factory := shelf.GetMessageStreamer().(*MessageStreamer).marshallerFactory
 	for _, tc := range []struct {
 		messageType driverCommon.MessageType
 		wantTypeRep byte
@@ -142,7 +143,7 @@ func TestCookieNegotiationSelectsMarshallers(t *testing.T) {
 		{TTIDTY, Native},
 		{TTIFUN, Universal},
 	} {
-		marshaller := shelf.GetMarshallerForMessageType(tc.messageType).(*MarshalEngine)
+		marshaller := factory.GetMarshallerForMessageType(tc.messageType).(*MarshalEngine)
 		if got := marshaller._numericTypeRep[UB2Index].typeRep; got != tc.wantTypeRep {
 			t.Errorf("message %v: UB2 representation = %d, want %d", tc.messageType, got, tc.wantTypeRep)
 		}
@@ -150,7 +151,7 @@ func TestCookieNegotiationSelectsMarshallers(t *testing.T) {
 			t.Errorf("message %v: marshaller does not use the connection buffer", tc.messageType)
 		}
 	}
-	if shelf.GetMarshallerForMessageType(TTIFUN) != shelf.GetMarshaller() {
+	if factory.GetMarshallerForMessageType(TTIFUN) != factory.GetMarshallerForMessageType(defaultMarshallerMessageType) {
 		t.Error("authentication does not use the default marshaller")
 	}
 }

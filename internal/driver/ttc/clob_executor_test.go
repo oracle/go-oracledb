@@ -65,7 +65,6 @@ func newLobTestShelf(bufSize int) (*driverCommon.Shelf[driverCommon.MessageType]
 
 	ttiShelf := newShelf[driverCommon.MessageType]()
 	shelf := ttiShelf.Shelf
-	ttiShelf.RegisterMarshaller(mar)
 
 	funcReg := NewRegistry[functionRegistryKey]()
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oLobOps}, 1, newTTIlob)
@@ -82,7 +81,7 @@ func newLobTestShelf(bufSize int) (*driverCommon.Shelf[driverCommon.MessageType]
 	}
 	ttiShelf.RegisterMessageFactory(factory)
 
-	streamer := NewMessageStreamer(ttiShelf)
+	streamer := NewMessageStreamer(ttiShelf, NewMarshallerFactory(mar))
 	// The captured LOB fixtures contain the data and RPA payloads. Add a zero-status
 	// OER after a successfully decoded RPA so the fixture includes the terminal frame.
 	streamer.RegisterPostUnmarshallCallback(TTIRPA, func(

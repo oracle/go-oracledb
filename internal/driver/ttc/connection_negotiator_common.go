@@ -19,8 +19,8 @@ func (shared *connectionNegotiatorCommon) initializeNegotiationResources() (*tti
 	shelf, sessCtx := _createShelfAndSessionContext()
 
 	// 2. Fetch new Marshaller & TTC Msg Streamer
-	_createAndRegisterMarshallers(shared._dataBuffer, shelf)
-	msgStmr := _createAndRegisterMessageStreamer(shelf)
+	marshallerFactory := _createMarshallerFactory(shared._dataBuffer, shelf)
+	msgStmr := _createAndRegisterMessageStreamer(shelf, marshallerFactory)
 
 	// 3. Create and register Initial MessageFactory
 	msgfactory := _createAndRegisterMessageFactory(shelf, -1)
@@ -68,8 +68,9 @@ func _createShelfAndSessionContext() (*ttiShelf[driverCommon.MessageType], *driv
 // _createAndRegisterMessageStreamer creates a new message streamer and registers it to the shelf.
 func _createAndRegisterMessageStreamer(
 	shelf *ttiShelf[driverCommon.MessageType],
+	marshallerFactory *MarshallerFactory,
 ) *MessageStreamer {
-	msgStmr := NewMessageStreamer(shelf)
+	msgStmr := NewMessageStreamer(shelf, marshallerFactory)
 	shelf.RegisterMessageStreamer(msgStmr)
 	common.Odl.Fine("connectionNegotiator: MessageStreamer created and registered")
 	return msgStmr
@@ -92,12 +93,12 @@ func _createAndRegisterCodecFactory(
 	common.Odl.Fine("connectionNegotiator: codecFactory created and registered")
 }
 
-// _createAndRegisterMarshallers registers the default marshaller and the native
-// marshaller used by negotiation messages, both using the connection buffer.
-func _createAndRegisterMarshallers(
+// _createMarshallerFactory creates default and native message registrations
+// using marshallers bound to the same connection buffer.
+func _createMarshallerFactory(
 	buf driverCommon.DataBuffer,
 	shelf *ttiShelf[driverCommon.MessageType],
-) {
+) *MarshallerFactory {
 
 	native := NewNativeMarshalEngine(buf, driverCommon.BIG_ENDIAN)
 	common.Odl.Fine("connectionNegotiator: Creating Native Marshaller")
@@ -109,7 +110,8 @@ func _createAndRegisterMarshallers(
 		native.setDefaultLobPrefetchSize(int64(props.GetDefaultLobPrefetchSize()))
 		universal.setDefaultLobPrefetchSize(int64(props.GetDefaultLobPrefetchSize()))
 	}
-	shelf.RegisterMarshaller(universal)
-	shelf.RegisterMarshaller(native, TTIPRO, TTICOOKIE, TTIDTY)
+	factory := NewMarshallerFactory(universal)
+	factory.RegisterMarshaller(native, TTIPRO, TTICOOKIE, TTIDTY)
 	common.Odl.Fine("connectionNegotiator: Marshaller created/updated and registered")
+	return factory
 }

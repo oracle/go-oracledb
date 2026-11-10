@@ -110,8 +110,9 @@ type MessageStreamerInterface interface {
 
 // MessageStreamer TTC message implementation of Streamer interface
 type MessageStreamer struct {
-	incomingMessages *list.List
-	outgoingMessages *list.List
+	marshallerFactory *MarshallerFactory
+	incomingMessages  *list.List
+	outgoingMessages  *list.List
 	// Add a shelf field to hold context.
 	shelf          *ttiShelf[driverCommon.MessageType]
 	postUCallbacks map[driverCommon.MessageType]StreamerPostUnmarshallCallback
@@ -128,13 +129,14 @@ const incomingMessagesListMaxLength = 1024
 
 // NewMessageStreamer creates a message streamer, associates it with shelf, and
 // registers it as a connection validator.
-func NewMessageStreamer(shelf *ttiShelf[driverCommon.MessageType]) *MessageStreamer {
+func NewMessageStreamer(shelf *ttiShelf[driverCommon.MessageType], marshallerFactory *MarshallerFactory) *MessageStreamer {
 	streamer := &MessageStreamer{
-		incomingMessages: list.New(),
-		outgoingMessages: list.New(),
-		preUCallbacks:    make(map[driverCommon.MessageType]StreamerPreUnmarshallCallback),
-		postUCallbacks:   make(map[driverCommon.MessageType]StreamerPostUnmarshallCallback),
-		shelf:            shelf,
+		marshallerFactory: marshallerFactory,
+		incomingMessages:  list.New(),
+		outgoingMessages:  list.New(),
+		preUCallbacks:     make(map[driverCommon.MessageType]StreamerPreUnmarshallCallback),
+		postUCallbacks:    make(map[driverCommon.MessageType]StreamerPostUnmarshallCallback),
+		shelf:             shelf,
 	}
 	// register the streamer as a state validator
 	shelf.registerStateValidator(streamer)
@@ -186,7 +188,7 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 	nextHeader := &messageHeader{}
 	for {
 		// read next message header
-		errHeader := nextHeader.UnmarshalFrom(ctx, ms.shelf.GetMarshaller())
+		errHeader := nextHeader.UnmarshalFrom(ctx, ms.marshallerFactory.GetMarshallerForMessageType(defaultMarshallerMessageType))
 		if errHeader != nil {
 			common.Odl.Warn("Failed to unmarshal next message header", "error", errHeader)
 			return nil, common.NewOracleError(oracleErrors.StreamerReadError, errHeader, nil)
@@ -231,7 +233,7 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 			common.Odl.Warn("Message does not implmente common.Unmarshallable", "msg", msg)
 			return nil, common.NewOracleError(oracleErrors.StreamerReadError, nil, nil)
 		}
-		uerr := marshallable.UnmarshalFrom(ctx, ms.shelf.GetMarshallerForMessageType(msg.GetMsgCode()))
+		uerr := marshallable.UnmarshalFrom(ctx, ms.marshallerFactory.GetMarshallerForMessageType(msg.GetMsgCode()))
 		if uerr != nil {
 			common.Odl.Info(fmt.Sprintf("can't unmarshal message: %v", uerr))
 			processingError = uerr
@@ -339,13 +341,13 @@ func (ms *MessageStreamer) Flush(ctx context.Context) error {
 			messageType: outgoingMsg.GetMsgCode(),
 		}
 
-		err = header.MarshalTo(ctx, ms.shelf.GetMarshaller())
+		err = header.MarshalTo(ctx, ms.marshallerFactory.GetMarshallerForMessageType(defaultMarshallerMessageType))
 		if err != nil {
 			common.Odl.Warn("Failed to flush, can't marshall message code", "error", err)
 			return common.NewOracleError(oracleErrors.StreamerWriteError, err, nil)
 		}
 
-		err = marshalable.MarshalTo(ctx, ms.shelf.GetMarshallerForMessageType(outgoingMsg.GetMsgCode()))
+		err = marshalable.MarshalTo(ctx, ms.marshallerFactory.GetMarshallerForMessageType(outgoingMsg.GetMsgCode()))
 		if err != nil {
 			common.Odl.Warn("Failed to flush, can't mashall message", "error", err)
 			return common.NewOracleError(oracleErrors.StreamerWriteError, err, nil)
@@ -353,7 +355,7 @@ func (ms *MessageStreamer) Flush(ctx context.Context) error {
 		ms.outgoingMessages.Remove(outgoing)
 	}
 
-	err = ms.shelf.GetMarshaller().Flush(ctx)
+	err = ms.marshallerFactory.GetMarshallerForMessageType(defaultMarshallerMessageType).Flush(ctx)
 	if err != nil {
 		common.Odl.Warn("Failed to flush, can't flush underlying layer", "error", err)
 		return common.NewOracleError(oracleErrors.StreamerWriteError, err, nil)

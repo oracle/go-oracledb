@@ -104,7 +104,6 @@ func newAuthTestShelf(bufSize int) (*ttiShelf[driverCommon.MessageType], *Messag
 	mar := NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	shelf := newShelf[driverCommon.MessageType]()
-	shelf.RegisterMarshaller(mar)
 
 	// Function registry for TTIFUN implementors used by the authenticator.
 	funcReg := NewRegistry[functionRegistryKey]()
@@ -137,7 +136,7 @@ func newAuthTestShelf(bufSize int) (*ttiShelf[driverCommon.MessageType], *Messag
 	shelf.RegisterMessageFactory(factory)
 
 	// Streamer bound to this shelf.
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(mar))
 	shelf.RegisterMessageStreamer(streamer)
 
 	return shelf, streamer, buf

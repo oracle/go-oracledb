@@ -52,12 +52,8 @@ type Capability struct {
 	IsSet bool
 }
 
-// Message type zero is reserved for the default marshaller.
-const defaultMarshallerMessageType MessageType = 0
-
 // Shelf as a global storage to share driver infrastructure
 type Shelf[T any] struct {
-	marshallers          map[MessageType]Marshaller
 	msgFactory           Factory
 	msgStmr              Streamer[T]
 	localizationService  common.LocalizationService
@@ -68,29 +64,11 @@ type Shelf[T any] struct {
 // NewShelf Creates a new Shelf
 func NewShelf[T any]() *Shelf[T] {
 	return &Shelf[T]{
-		marshallers:          nil,
 		msgFactory:           nil,
 		msgStmr:              nil,
 		localizationService:  nil,
 		connectionProperties: nil,
 	}
-}
-
-// RegisterMarshaller registers the default marshaller when no message types are
-// supplied, or overrides the marshaller for the supplied message types.
-// Other registrations are left unchanged. Returns the shelf itself.
-func (s *Shelf[T]) RegisterMarshaller(mar Marshaller, messageTypes ...MessageType) *Shelf[T] {
-	if s.marshallers == nil {
-		s.marshallers = make(map[MessageType]Marshaller)
-	}
-	if len(messageTypes) == 0 {
-		s.marshallers[defaultMarshallerMessageType] = mar
-	} else {
-		for _, messageType := range messageTypes {
-			s.marshallers[messageType] = mar
-		}
-	}
-	return s
 }
 
 // RegisterMessageFactory Registers a message factory to the Shelf
@@ -99,20 +77,6 @@ func (s *Shelf[T]) RegisterMarshaller(mar Marshaller, messageTypes ...MessageTyp
 func (s *Shelf[T]) RegisterMessageFactory(msgFactory Factory) *Shelf[T] {
 	s.msgFactory = msgFactory
 	return s
-}
-
-// GetMarshaller returns the registered default marshaller, or nil.
-func (s *Shelf[T]) GetMarshaller() Marshaller {
-	return s.marshallers[defaultMarshallerMessageType]
-}
-
-// GetMarshallerForMessageType returns the marshaller registered for the message
-// type, or the default marshaller when no override is registered.
-func (s *Shelf[T]) GetMarshallerForMessageType(messageType MessageType) Marshaller {
-	if mar, ok := s.marshallers[messageType]; ok {
-		return mar
-	}
-	return s.GetMarshaller()
 }
 
 // RegisterMessageStreamer Registers a message streamer to the Shelf

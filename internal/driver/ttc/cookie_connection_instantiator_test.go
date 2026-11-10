@@ -83,7 +83,7 @@ type cookieInstantiatorTestSetup struct {
 
 func newCookieInstantiatorTestSetup() *cookieInstantiatorTestSetup {
 	shelf := newShelf[driverCommon.MessageType]()
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(nil))
 	shelf.RegisterMessageStreamer(streamer)
 
 	negotiator := &mockNegotiator{sessCtx: driverCommon.NewSessionContext(), shelf: shelf}
