@@ -286,6 +286,10 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 		if len(purity) != 0 {
 			oauthMsg.(*oAuth).setDrcpPurity(
 				purity)
+		} else {
+			common.Odl.Finest("DRCP purity omitted, setting it to SELF")
+			oauthMsg.(*oAuth).setDrcpPurity(
+				common.DrcpPuritySelf)
 		}
 	}
 	oauthMsg.(*oAuth).setLogonMode(pa._logonMode)

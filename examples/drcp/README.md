@@ -11,14 +11,14 @@ This example shows how to use Oracle Database Resident Connection Pooling (DRCP)
 
 At least one DRCP pool should be started on the remote server.
 
-Start the default DRCP pool (SYS_DEFAULT_CONNECTION_POOL)
+Start the default DRCP pool (SYS_DEFAULT_CONNECTION_POOL).
 ```sql
 sqlplus /nolog
 SQL> connect / as sysdba
 SQL> execute dbms_connection_pool.start_pool()
 ```
 
-Start a named DRCP pool `MYPOOL`
+Start a named DRCP pool `MYPOOL`.
 
 ```sql
 sqlplus /nolog
@@ -44,11 +44,11 @@ Set these environment variables:
 - `ORACLE_USER`: the database username.
 - `ORACLE_PASSWORD`: the database password.
 
-For example, in macOS or Linux:
+For example, on macOS or Linux:
 
 ```sh
-# In this example, we set the server type in the configuration (see cfg.ConnectionProperties.ServerType in main.go)
-export ORACLE_DSN='tcp://127.0.0.1:1521/freepdb1'
+# The ':pooled' suffix must be added to the DSN to activate DRCP.
+export ORACLE_DSN='tcp://127.0.0.1:1521/freepdb1:pooled'
 export ORACLE_USER='myuser'
 export ORACLE_PASSWORD='mypassword'
 ```

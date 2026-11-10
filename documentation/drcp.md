@@ -32,10 +32,10 @@ type DatabaseResidentConnectionPooling struct {
 }
 ```
 
-**ClassName:** The DRCP connection class. The class name identifies a type of connection that can be shared across application processes or applications. This parameter is optional; if omitted, the default class, `_SYS.SHARED_`, is used.
+**ClassName:** The DRCP connection class. The class name identifies a type of connection that can be shared across application processes or applications. This parameter is optional; if omitted, the default class, `SYS.SHARED`, is used.
 
 **Purity:** Session purity. This attribute controls the reusability of pooled sessions in DRCP. It tells DRCP whether to provide a fresh session (NEW) or allow reuse of an existing pooled session (SELF).
-Reusing a session can be more efficient, but applications should account for its session state. If ommitted the server use the default value "NEW"
+Reusing a session can be more efficient, but applications should account for its session state. If omitted, "SELF" is sent to the server.
 
 **PoolName:** The name of the DRCP pool to use. If omitted, the default pool (`SYS_DEFAULT_CONNECTION_POOL`) is used.
 
@@ -101,7 +101,7 @@ func main() {
 #### Using the DSN parameters
 
 ```go
-dsn := fmt.Sprintf("myuser/mypassword@tcp://localhost:1521/freepdb1:pooled?pool_connection_class=%s&pool_purity=&s",
+dsn := fmt.Sprintf("myuser/mypassword@tcp://localhost:1521/freepdb1:pooled?pool_connection_class=%s&pool_purity=%s",
             "Sales",
             common.DrcpPuritySelf)
 db := sql.OpenDB(dsn)
@@ -109,4 +109,6 @@ db := sql.OpenDB(dsn)
 
 ## Automatic Attachment and Detachment
 
-The driver does not expose an attachment API; it attaches and detaches connections to and from the pool automatically.
+The connection is implicitly attached to a remote database session by the server. 
+When the connection is released back to the sql.DB pool, it is detached from the remote session, making that session available for reuse through DRCP.
+Applications do not need to attach or detach sessions explicitly.

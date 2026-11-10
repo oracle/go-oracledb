@@ -45,7 +45,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/oracle"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 )
@@ -67,8 +66,6 @@ func main() {
 	cfg.Credentials.Password = password
 
 	// Set DRCP related properties
-	//  Enable DRCP
-	cfg.ConnectionProperties.ServerType = common.ServerTypePooled
 	//  Sets the connection class
 	cfg.ConnectionProperties.Drcp.ClassName = "Sales"
 
