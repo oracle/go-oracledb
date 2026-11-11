@@ -89,7 +89,7 @@ func TestParseRejectsForwardingCycle(t *testing.T) {
 		extendedTreeSegmentStartOffset: 3,
 		extendedTreeSegmentByteLength:  3,
 	}
-	if _, err := newNodeAt(buf, header, 0); err == nil {
+	if _, err := newNodeAt(buf, header, 0, nil); err == nil {
 		t.Fatal("newNodeAt() error = nil, want forwarding-cycle error")
 	}
 }
