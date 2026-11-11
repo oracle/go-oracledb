@@ -35,15 +35,26 @@
 package oracle
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	stdjson "encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"math"
+	"math/big"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 	ojson "github.com/oracle/go-oracledb/v26/oracle/datatype/json"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestDriver_OSON_RebindFetchedDocument verifies a document fetched from a
@@ -392,4 +403,559 @@ func setupOSONTable(t *testing.T) (*sql.DB, context.Context, string) {
 	}
 	t.Cleanup(func() { _ = dropTable(ctx, db, table) })
 	return db, ctx, table
+}
+
+// setupOSONBoundaryTable verifies the selected database version before applying
+// version-specific boundary expectations, then creates and cleans up its table.
+// Missing optional configuration skips; an unusable explicit selection fails.
+func setupOSONBoundaryTable(t *testing.T) (*sql.DB, context.Context, string) {
+	t.Helper()
+	if TestingConfig == nil {
+		if oracleTest.ConfigName == "" && oracleTest.ConfigFileName == "" {
+			t.Skip("native JSON functional test requires an explicitly selected database configuration")
+		}
+		t.Fatalf("cannot load selected OSON configuration %q; set -driver.config.filename and -driver.config.name", oracleTest.ConfigName)
+	}
+	if !TestingConfig.Enabled {
+		t.Fatalf("selected OSON configuration %q is disabled", TestingConfig.ConfigName)
+	}
+	connector, err := openTestConnectorWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("create selected OSON connector: %v", err)
+	}
+	db := sql.OpenDB(connector)
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close OSON test database: %v", err)
+		}
+	})
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer probeCancel()
+	var version string
+	if err := db.QueryRowContext(probeCtx, "SELECT version_full FROM product_component_version WHERE product LIKE 'Oracle%Database%'").Scan(&version); err != nil {
+		t.Fatalf("detect actual database version: %v", err)
+	}
+	parts := strings.Split(version, ".")
+	if len(parts) < 3 {
+		t.Fatalf("unexpected database version %q", version)
+	}
+	var actual Version
+	for i, dst := range []*int{&actual.Major, &actual.Minor, &actual.Micro} {
+		value, err := strconv.Atoi(parts[i])
+		if err != nil {
+			t.Fatalf("parse database version %q: %v", version, err)
+		}
+		*dst = value
+	}
+	t.Logf("OSON environment: config=%s actual_database_version=%s", TestingConfig.ConfigName, version)
+	if configured := TestingConfig.DatabaseVersion; configured != actual {
+		t.Fatalf("configured database_version=%d.%d.%d disagrees with actual database version %s", configured.Major, configured.Minor, configured.Micro, version)
+	}
+	if actual.Major < 21 {
+		t.Skipf("native JSON requires Oracle Database 21c or later; actual database version=%s", version)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	t.Cleanup(cancel)
+	table := createObjectName("t_oson")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":  "NUMBER PRIMARY KEY",
+		"doc": "JSON",
+	}); err != nil {
+		t.Fatalf("create native JSON table failed: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := dropTable(cleanupCtx, db, table); err != nil {
+			t.Errorf("drop OSON test table %s: %v", table, err)
+		}
+	})
+	return db, ctx, table
+}
+
+// TestDriver_OSON_F12_StringAndBinaryBoundaries verifies values, rather than
+// just opcode selection, across scalar and tree length boundaries (OSON-F12).
+func TestDriver_OSON_F12_StringAndBinaryBoundaries(t *testing.T) {
+	db, ctx, table := setupOSONBoundaryTable(t)
+	var charset string
+	if err := db.QueryRowContext(ctx, "SELECT value FROM nls_database_parameters WHERE parameter='NLS_CHARACTERSET'").Scan(&charset); err != nil {
+		t.Fatalf("read database character set: %v", err)
+	}
+	t.Logf("OSON Unicode reference: database_character_set=%s, reference=AL32UTF8 BLOB", charset)
+	t.Run("sql_generated_unicode_reference", func(t *testing.T) {
+		want := map[string]any{"text": "é🙂 日本語 العربية e\u0301"}
+		// ASCII-only input keeps client-side text conversion out of this control.
+		const query = `SELECT doc, JSON_SERIALIZE(doc RETURNING BLOB ERROR ON ERROR)
+FROM (SELECT JSON('{"text":"\u00e9\ud83d\ude42 \u65e5\u672c\u8a9e \u0627\u0644\u0639\u0631\u0628\u064a\u0629 e\u0301"}') doc FROM DUAL)`
+		var doc ojson.JSON
+		var reference []byte
+		if err := db.QueryRowContext(ctx, query).Scan(&doc, &reference); err != nil {
+			t.Fatalf("fetch SQL-generated Unicode control: %v", err)
+		}
+		value, err := doc.GetValue()
+		if err != nil || !osonBoundaryValueEqual(value, want) {
+			t.Fatalf("SQL-generated Unicode value mismatch: value=%v error=%v", value, err)
+		}
+		rendered, err := stdjson.Marshal(doc)
+		if err != nil {
+			t.Fatalf("render SQL-generated Unicode: %v", err)
+		}
+		expected, err := stdjson.Marshal(want)
+		if err != nil {
+			t.Fatalf("render Unicode control expectation: %v", err)
+		}
+		if !utf8.Valid(reference) {
+			t.Fatal("SQL-generated BLOB reference is not valid UTF-8")
+		}
+		assertOSONSemanticJSON(t, string(rendered), string(expected))
+		assertOSONSemanticJSON(t, string(reference), string(expected))
+	})
+	id := 0
+	for _, length := range []int{0, 1, 30, 31, 32, 255, 256, 65532, 65533, 65535, 65536} {
+		text := strings.Repeat("é🙂", length/6) + strings.Repeat("x", length%6)
+		binaryValue := make([]byte, length)
+		for i := range binaryValue {
+			binaryValue[i] = byte(i*73 + 19)
+		}
+		for _, shape := range []string{"root", "nested"} {
+			for _, scalar := range []struct {
+				name  string
+				value any
+			}{{"string", text}, {"binary", binaryValue}} {
+				id++
+				t.Run(fmt.Sprintf("%s/%s/bytes_%d", shape, scalar.name, length), func(t *testing.T) {
+					want := scalar.value
+					if shape == "nested" {
+						want = map[string]any{"payload": scalar.value, "unchanged": "sentinel"}
+					}
+					osonBoundaryRoundTrip(t, db, ctx, table, id, want)
+				})
+			}
+		}
+	}
+	for _, value := range []string{"日本語 العربية e\u0301 🙂", " quote\" slash\\ line\n tab\t zero\x00 \r end ", "  keep  internal\n whitespace  "} {
+		id++
+		t.Run(fmt.Sprintf("unicode_and_escapes_%d", id), func(t *testing.T) {
+			osonBoundaryRoundTrip(t, db, ctx, table, id, map[string]any{"a.b": value, "items[0]": []any{value}})
+		})
+	}
+}
+
+// TestDriver_OSON_F13_DictionaryAndContainerBoundaries exercises complete
+// materialization across count, field-ID and dictionary heap widths (OSON-F13).
+func TestDriver_OSON_F13_DictionaryAndContainerBoundaries(t *testing.T) {
+	db, ctx, table := setupOSONBoundaryTable(t)
+	major := TestingConfig.DatabaseVersion.Major // setup verified this against the server.
+	if major == 21 && !t.Run("sql_field_name_limit_control", func(t *testing.T) {
+		osonCheck21cFieldNameLimit(t, db, ctx)
+	}) {
+		t.Fatal("independent SQL field-name controls failed; native-bind rejections cannot be assessed")
+	}
+	roundTrip := func(t *testing.T, id int, want any) {
+		t.Helper()
+		// Decide the expectation before executing the insert, never from its error.
+		if osonBoundaryExpectsLongKeyRejection(major, want) {
+			osonBoundaryRejectLongKeys(t, db, ctx, table, id, want)
+			return
+		}
+		osonBoundaryRoundTrip(t, db, ctx, table, id, want)
+	}
+	id := 0
+	for _, count := range []int{255, 256, 65535, 65536} {
+		for _, shape := range []string{"array", "object"} {
+			id++
+			t.Run(fmt.Sprintf("%s/count_%d", shape, count), func(t *testing.T) {
+				var value any
+				if shape == "array" {
+					values := make([]any, count)
+					for i := range values {
+						values[i] = strconv.Itoa(i)
+					}
+					value = values
+				} else {
+					values := make(map[string]any, count)
+					for i := 0; i < count; i++ {
+						values[fmt.Sprintf("field_%05d", i)] = strconv.Itoa(i)
+					}
+					value = values
+				}
+				roundTrip(t, id, value)
+			})
+		}
+	}
+	for _, length := range []int{255, 256} {
+		id++
+		t.Run(fmt.Sprintf("key_bytes_%d", length), func(t *testing.T) {
+			key := strings.Repeat("é", length/2) + strings.Repeat("x", length%2)
+			roundTrip(t, id, map[string]any{key: "long-key-value", "short": "sentinel"})
+		})
+	}
+	for _, tier := range []string{"primary", "secondary"} {
+		for _, heapSize := range []int{65534, 65535, 65536} {
+			id++
+			t.Run(fmt.Sprintf("%s/heap_bytes_%d", tier, heapSize), func(t *testing.T) {
+				values := make(map[string]any)
+				if tier == "primary" {
+					// 255*(1+255)+(1+lastLength) = requested heap size.
+					for i := 0; i < 256; i++ {
+						length := 255
+						if i == 255 {
+							length = heapSize - 255*256 - 1
+						}
+						key := fmt.Sprintf("%03d_", i) + strings.Repeat("p", length-4)
+						values[key] = strconv.Itoa(i)
+					}
+				} else {
+					// 253*(2+256)+(2+lastLength) = requested heap size.
+					for i := 0; i < 254; i++ {
+						length := 256
+						if i == 253 {
+							length = heapSize - 253*258 - 2
+						}
+						key := fmt.Sprintf("%03d_", i) + strings.Repeat("s", length-4)
+						values[key] = strconv.Itoa(i)
+					}
+				}
+				roundTrip(t, id, values)
+			})
+		}
+	}
+	for _, count := range []int{255, 256} {
+		id++
+		t.Run(fmt.Sprintf("mixed_dictionaries/fields_%d", count), func(t *testing.T) {
+			values := make(map[string]any, count)
+			for i := 0; i < count; i++ {
+				key := fmt.Sprintf("field_%03d", i)
+				if i >= 127 {
+					key += strings.Repeat("é", 128)
+				}
+				values[key] = strconv.Itoa(i)
+			}
+			roundTrip(t, id, values)
+		})
+	}
+}
+
+// osonBoundaryMaxFieldNameBytes returns the largest UTF-8 key length in the
+// object and array fixtures accepted by the boundary tests.
+func osonBoundaryMaxFieldNameBytes(value any) int {
+	maximum := 0
+	switch value := value.(type) {
+	case map[string]any:
+		for key, child := range value {
+			maximum = max(maximum, len(key), osonBoundaryMaxFieldNameBytes(child))
+		}
+	case []any:
+		for _, child := range value {
+			maximum = max(maximum, osonBoundaryMaxFieldNameBytes(child))
+		}
+	}
+	return maximum
+}
+
+// osonBoundaryExpectsLongKeyRejection classifies fixtures before database I/O.
+// The native-JSON environment check handles unsupported database versions first.
+func osonBoundaryExpectsLongKeyRejection(major int, value any) bool {
+	return major == 21 && osonBoundaryMaxFieldNameBytes(value) > 255
+}
+
+// osonLongFieldDatabaseError accepts the two observed native-bind rejections.
+// Callers must first classify a 21c overlong key and verify the SQL limit controls.
+func osonLongFieldDatabaseError(err error) bool {
+	var coded oracleErrors.SQLError
+	return errors.As(err, &coded) && (coded.ErrorCode() == "ORA-40441" || coded.ErrorCode() == "ORA-40476")
+}
+
+// osonCheck21cFieldNameLimit verifies the 255/256-byte boundary using ASCII SQL
+// input, independently of native OSON binds, and fails t on any unexpected result.
+func osonCheck21cFieldNameLimit(t *testing.T, db *sql.DB, ctx context.Context) {
+	t.Helper()
+	for _, length := range []int{255, 256} {
+		key := strings.Repeat("k", length)
+		// Controlled ASCII literals avoid input-side charset conversion and OSON binds.
+		query := `SELECT JSON_SERIALIZE(JSON('{"` + key + `":"synthetic-value"}') RETURNING BLOB ERROR ON ERROR) FROM DUAL`
+		var reference []byte
+		err := db.QueryRowContext(ctx, query).Scan(&reference)
+		if length == 256 {
+			var coded oracleErrors.SQLError
+			if err == nil || !errors.As(err, &coded) || coded.ErrorCode() != "ORA-40476" {
+				t.Fatalf("21c SQL 256-byte field control: error=%v, want ORA-40476", err)
+			}
+			t.Log("SQL control: 256-byte field rejected with ORA-40476")
+			continue
+		}
+		if err != nil {
+			t.Fatalf("21c SQL 255-byte field control: %v", err)
+		}
+		if !utf8.Valid(reference) {
+			t.Fatal("SQL field-name reference is not valid UTF-8")
+		}
+		expected, err := stdjson.Marshal(map[string]any{key: "synthetic-value"})
+		if err != nil {
+			t.Fatalf("render SQL field-name expectation: %v", err)
+		}
+		assertOSONSemanticJSON(t, string(reference), string(expected))
+		t.Log("SQL control: 255-byte field accepted and preserved")
+	}
+}
+
+// osonBoundaryRejectLongKeys requires the expected 21c rejection, no inserted
+// row and a healthy connection; the caller must have verified the SQL controls.
+func osonBoundaryRejectLongKeys(t *testing.T, db *sql.DB, ctx context.Context, table string, id int, want any) {
+	t.Helper()
+	doc, err := ojson.NewJSON(want)
+	if err != nil {
+		t.Fatalf("construct long-field document: %v", err)
+	}
+	value, err := doc.GetValue()
+	if err != nil || !osonBoundaryValueEqual(value, want) {
+		t.Fatalf("local long-field materialization changed the fixture: error=%v", err)
+	}
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire connection for expected field-name rejection: %v", err)
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("release field-name control connection: %v", err)
+		}
+	}()
+	_, err = conn.ExecContext(ctx, "insert into "+table+" (id,doc) values (:1,:2)", id, doc)
+	if !osonLongFieldDatabaseError(err) {
+		t.Fatalf("21c field-name rejection: maximum_key_bytes=%d error=%v, want ORA-40441 or ORA-40476", osonBoundaryMaxFieldNameBytes(want), err)
+	}
+	var count, control int
+	if countErr := conn.QueryRowContext(ctx, "select count(*) from "+table+" where id=:1", id).Scan(&count); countErr != nil || count != 0 {
+		t.Fatalf("expected rejected insert to leave no row: count=%d error=%v", count, countErr)
+	}
+	if controlErr := conn.QueryRowContext(ctx, "SELECT 1 FROM DUAL").Scan(&control); controlErr != nil || control != 1 {
+		t.Fatalf("same-connection recovery failed: result=%d error=%v", control, controlErr)
+	}
+	t.Logf("Expected 21c long-field rejection: maximum_key_bytes=%d error=%v; no row inserted; same-connection SELECT 1 passed", osonBoundaryMaxFieldNameBytes(want), err)
+}
+
+// TestOSONBoundaryFieldNamePolicy checks byte-based fixture expectations and
+// rejects unrelated error codes without contacting a database.
+func TestOSONBoundaryFieldNamePolicy(t *testing.T) {
+	large := make(map[string]any, 1024)
+	for i := 0; i < 1024; i++ {
+		large[fmt.Sprintf("field_%04d", i)] = strings.Repeat("v", 16)
+	}
+	for _, test := range []struct {
+		name    string
+		value   any
+		maximum int
+	}{
+		{"ascii_255", map[string]any{strings.Repeat("a", 255): "value"}, 255},
+		{"ascii_256", map[string]any{strings.Repeat("a", 256): "value"}, 256},
+		{"utf8_255", map[string]any{strings.Repeat("é", 127) + "x": "value"}, 255},
+		{"utf8_256", map[string]any{strings.Repeat("é", 128): "value"}, 256},
+		{"nested_object", map[string]any{"short": map[string]any{strings.Repeat("é", 128): "value"}}, 256},
+		{"object_in_array", []any{"scalar", map[string]any{strings.Repeat("a", 256): "value"}}, 256},
+		{"large_short_key_object", large, 10},
+		{"long_scalar_is_not_a_key", map[string]any{"short": strings.Repeat("x", 65536)}, 5},
+		{"binary_is_not_a_container", make([]byte, 65536), 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := osonBoundaryMaxFieldNameBytes(test.value); got != test.maximum {
+				t.Fatalf("maximum key bytes=%d, want %d", got, test.maximum)
+			}
+			for _, major := range []int{21, 23, 26} {
+				want := major == 21 && test.maximum > 255
+				if got := osonBoundaryExpectsLongKeyRejection(major, test.value); got != want {
+					t.Fatalf("database major=%d rejection=%v, want %v", major, got, want)
+				}
+			}
+		})
+	}
+	t.Run("only_typed_field_rejections_are_accepted", func(t *testing.T) {
+		for _, test := range []struct {
+			name string
+			err  error
+			want bool
+		}{
+			{"syntax_code", common.NewOERMessageError("ORA-40441", "native OSON rejection"), true},
+			{"key_length_code", common.NewOERMessageError("ORA-40476", "key too long"), true},
+			{"wrapped_key_length", fmt.Errorf("bind: %w", common.NewOERMessageError("ORA-40476", "key too long")), true},
+			{"successful_insert", nil, false},
+			{"authentication", common.NewOERMessageError("ORA-01017", "invalid credentials"), false},
+			{"network_timeout", common.NewOERMessageError("ORA-12170", "connection timed out"), false},
+			{"canceled", context.Canceled, false},
+			{"deadline", context.DeadlineExceeded, false},
+			{"text_is_not_a_database_error", errors.New("ORA-40441"), false},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				if got := osonLongFieldDatabaseError(test.err); got != test.want {
+					t.Fatalf("accepted=%v, want %v", got, test.want)
+				}
+			})
+		}
+	})
+}
+
+// osonBoundaryRoundTrip checks native values, the sentinel and both JSON renderings.
+// A BLOB reference uses AL32UTF8 instead of the database character set.
+func osonBoundaryRoundTrip(t *testing.T, db *sql.DB, ctx context.Context, table string, id int, want any) {
+	t.Helper()
+	doc, err := ojson.NewJSON(want)
+	if err != nil {
+		t.Fatalf("construct %T: %v", want, err)
+	}
+	if _, err = db.ExecContext(ctx, "insert into "+table+" (id,doc) values (:1,:2)", id, doc); err != nil {
+		t.Fatalf("bind %T: %v", want, err)
+	}
+	var got ojson.JSON
+	var sentinel int
+	var serverText []byte
+	if err = db.QueryRowContext(ctx, "select doc,id+100,json_serialize(doc returning blob error on error) from "+table+" where id=:1", id).Scan(&got, &sentinel, &serverText); err != nil {
+		t.Fatalf("fetch %T: %v", want, err)
+	}
+	value, err := got.GetValue()
+	if err != nil {
+		t.Fatalf("materialize %T: %v", want, err)
+	}
+	if sentinel != id+100 || !osonBoundaryValueEqual(value, want) {
+		t.Fatalf("boundary mismatch: got type=%T want type=%T sentinel=%d want=%d", value, want, sentinel, id+100)
+	}
+	rendered, err := stdjson.Marshal(got)
+	if err != nil {
+		t.Fatalf("render fetched %T: %v", want, err)
+	}
+	expected, err := stdjson.Marshal(osonBoundaryRenderedValue(want))
+	if err != nil {
+		t.Fatalf("render expected %T: %v", want, err)
+	}
+	assertOSONSemanticJSON(t, string(rendered), string(expected))
+	if !utf8.Valid(serverText) {
+		t.Fatalf("SQL BLOB reference for %T is not valid UTF-8", want)
+	}
+	assertOSONSemanticJSON(t, string(serverText), string(expected))
+}
+
+// osonBoundaryValueEqual compares materialized fixture types and contents,
+// retaining byte slices as binary values rather than treating them as arrays.
+func osonBoundaryValueEqual(got, want any) bool {
+	switch expected := want.(type) {
+	case []byte:
+		value, ok := got.([]byte)
+		return ok && bytes.Equal(value, expected)
+	case map[string]any:
+		value, ok := got.(map[string]any)
+		if !ok || len(value) != len(expected) {
+			return false
+		}
+		for key, item := range expected {
+			other, present := value[key]
+			if !present || !osonBoundaryValueEqual(other, item) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		value, ok := got.([]any)
+		if !ok || len(value) != len(expected) {
+			return false
+		}
+		for i, item := range expected {
+			if !osonBoundaryValueEqual(value[i], item) {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(got, want)
+	}
+}
+
+// osonBoundaryRenderedValue converts binary fixtures to Oracle JSON hexadecimal
+// strings while preserving all other values and container structure.
+func osonBoundaryRenderedValue(value any) any {
+	switch v := value.(type) {
+	case []byte:
+		return fmt.Sprintf("%X", v)
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			out[key] = osonBoundaryRenderedValue(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = osonBoundaryRenderedValue(item)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+// assertOSONSemanticJSON permits equivalent decimal/exponent spellings, but
+// never compares exact JSON numbers by converting them to floating point.
+func assertOSONSemanticJSON(t *testing.T, got, want string) {
+	t.Helper()
+	decode := func(text string) any {
+		decoder := stdjson.NewDecoder(strings.NewReader(text))
+		decoder.UseNumber()
+		var value any
+		if err := decoder.Decode(&value); err != nil {
+			t.Fatalf("decode JSON assertion input (%d bytes): %v", len(text), err)
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			t.Fatalf("JSON assertion input has trailing data: %v", err)
+		}
+		return value
+	}
+	if !osonSemanticEqual(decode(got), decode(want)) {
+		t.Fatalf("JSON mismatch: got %s; want %s", osonBoundedText(got), osonBoundedText(want))
+	}
+}
+
+// osonBoundedText limits failure output for large boundary documents.
+func osonBoundedText(s string) string {
+	if len(s) > 512 {
+		return fmt.Sprintf("%s... (%d bytes)", s[:512], len(s))
+	}
+	return s
+}
+
+// osonSemanticEqual compares JSON values recursively, using exact rational
+// arithmetic for numbers so equivalent decimal spellings compare equally.
+func osonSemanticEqual(got, want any) bool {
+	switch expected := want.(type) {
+	case stdjson.Number:
+		actual, ok := got.(stdjson.Number)
+		if !ok {
+			return false
+		}
+		a, aOK := new(big.Rat).SetString(actual.String())
+		b, bOK := new(big.Rat).SetString(expected.String())
+		return aOK && bOK && a.Cmp(b) == 0
+	case map[string]any:
+		actual, ok := got.(map[string]any)
+		if !ok || len(actual) != len(expected) {
+			return false
+		}
+		for key, value := range expected {
+			candidate, exists := actual[key]
+			if !exists || !osonSemanticEqual(candidate, value) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		actual, ok := got.([]any)
+		if !ok || len(actual) != len(expected) {
+			return false
+		}
+		for i, value := range expected {
+			if !osonSemanticEqual(actual[i], value) {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(got, want)
+	}
 }
