@@ -1700,3 +1700,52 @@ func TestDriver_Select_NullFromComputedExpression(t *testing.T) {
 		}
 	}
 }
+
+// TestDriver_Select_NamedArgMultipleSameParamRefs verifies one named bind can
+// be used three times and the driver returns the matching row.
+func TestDriver_Select_NamedArgMultipleSameParamRefs(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("t_named_arg_multi_ref")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":   "NUMBER PRIMARY KEY",
+		"name": "VARCHAR2(100)",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO "+table+" (id, name) VALUES (:1, :2)",
+		int64(1), "multi-ref",
+	); err != nil {
+		t.Fatalf("insert seed row failed: %v", err)
+	}
+
+	var id int64
+	var name string
+	if err := db.QueryRowContext(ctx,
+		`SELECT id, name FROM `+table+` WHERE :name = :name AND name = :name`,
+		sql.Named("name", "multi-ref"),
+	).Scan(&id, &name); err != nil {
+		t.Fatalf("named-arg multi-ref query failed: %v", err)
+	}
+
+	if id != 1 || name != "multi-ref" {
+		t.Fatalf("unexpected named-arg multi-ref row: got (%d, %q), want (%d, %q)", id, name, 1, "multi-ref")
+	}
+}

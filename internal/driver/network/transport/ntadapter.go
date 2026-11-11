@@ -45,9 +45,14 @@ import (
 )
 
 type NTAdapter interface {
+	// Connect opens a network connection to address.
 	Connect(ctx context.Context, address Address) error
+	// Send writes all bytes in buf to the network connection.
 	Send(ctx context.Context, buf []byte) error
+	// Receive reads bytes2Read bytes into buf. It returns an error when the
+	// buffer is too small, the read fails, or the context is cancelled.
 	Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error)
+	// Disconnect closes the network connection, if one is open.
 	Disconnect() error
 }
 
