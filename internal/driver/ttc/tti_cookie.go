@@ -40,7 +40,9 @@ package ttc
 
 import (
 	"context"
+	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -51,8 +53,20 @@ import (
 const ttiCookieVersion byte = 1
 const zeroByte = 0
 
-// LRU cache for TTC cookies
-var ttcCookieCache = common.NewSafeLRUCache[*ttiCookie](50)
+const defaultTTCCookieCacheSize = 50 // Matches JDBC's default.
+const ttcCookieCacheSizeEnv = "ORACLE_GO_DRIVER_TTC_COOKIE_CACHE_SIZE"
+
+// Process-wide cache; capacity is read once during package initialization.
+var ttcCookieCache = newTTCCookieCache()
+
+// newTTCCookieCache uses the default capacity when the startup setting is absent or invalid.
+func newTTCCookieCache() *common.SafeLRUCache[*ttiCookie] {
+	maxSize := defaultTTCCookieCacheSize
+	if configuredSize, err := strconv.Atoi(os.Getenv(ttcCookieCacheSizeEnv)); err == nil && configuredSize > 0 {
+		maxSize = configuredSize
+	}
+	return common.NewSafeLRUCache[*ttiCookie](maxSize)
+}
 
 type ttiCookie struct {
 	connectionProtocolVersion       driverCommon.UB2

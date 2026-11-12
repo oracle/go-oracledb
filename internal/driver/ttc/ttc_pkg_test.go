@@ -106,6 +106,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTICookieMarshalWire", Categories: "unitary", Exclusive: false, Fn: TestTTICookieMarshalWire},
 	{Name: "TestTTICookieCopiesRuntimeCapabilities", Categories: "unitary", Exclusive: false, Fn: TestTTICookieCopiesRuntimeCapabilities},
 	{Name: "TestTTICookieEligibility", Categories: "unitary", Exclusive: false, Fn: TestTTICookieEligibility},
+	{Name: "TestNewTTCCookieCache", Categories: "unitary", Exclusive: true, Fn: TestNewTTCCookieCache},
 	{Name: "TestMessageStreamer_PullUsesMessageSpecificMarshallers", Categories: "unitary", Exclusive: false, Fn: TestMessageStreamer_PullUsesMessageSpecificMarshallers},
 	{Name: "TestMessageStreamer_FlushUsesMessageSpecificMarshallers", Categories: "unitary", Exclusive: false, Fn: TestMessageStreamer_FlushUsesMessageSpecificMarshallers},
 	{Name: "TestColumnDecoderRegistrations", Categories: "unitary", Exclusive: false, Fn: TestColumnDecoderRegistrations},

@@ -41,6 +41,7 @@ package ttc
 import (
 	"bytes"
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -189,5 +190,37 @@ func TestTTICookieMarshalWire(t *testing.T) {
 	}
 	if cookie.GetMsgCode() != TTICOOKIE {
 		t.Fatal("unexpected cookie message code")
+	}
+}
+
+// TestNewTTCCookieCache verifies the startup setting controls capacity and invalid
+// values fall back to the default, using eviction to check the resulting capacity.
+func TestNewTTCCookieCache(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		value    string
+		wantSize int
+	}{
+		{name: "default", wantSize: 50},
+		{name: "configured", value: "2", wantSize: 2},
+		{name: "zero", value: "0", wantSize: 50},
+		{name: "negative", value: "-1", wantSize: 50},
+		{name: "invalid", value: "invalid", wantSize: 50},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(ttcCookieCacheSizeEnv, tc.value)
+
+			cache := newTTCCookieCache()
+			for i := 0; i <= tc.wantSize; i++ {
+				cache.Put(strconv.Itoa(i), &ttiCookie{})
+			}
+
+			if _, found := cache.Get("0"); found {
+				t.Fatalf("oldest entry was not evicted at capacity %d", tc.wantSize)
+			}
+			if _, found := cache.Get("1"); !found {
+				t.Fatalf("cache evicted an entry within capacity %d", tc.wantSize)
+			}
+		})
 	}
 }
