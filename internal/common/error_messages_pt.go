@@ -51,6 +51,7 @@ func initMessagesPt() {
 		message string
 	}{
 		{oracleErrors.InvalidCredential, "credencial inválida ou usuário não autorizado: %s"},
+		{oracleErrors.InvalidDateYear, "o ano completo deve estar entre -4713 e +9999 e não pode ser 0"},
 		{oracleErrors.ConnectionLost, "conexão com o banco de dados encerrada pelo peer"},
 		{oracleErrors.AliasNotFound, "não foi possível conectar ao banco de dados. Alias %s não encontrado."},
 		{oracleErrors.NoListenerAvailable, "não foi possível conectar. Nenhum listener em %s"},

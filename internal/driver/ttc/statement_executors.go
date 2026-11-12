@@ -712,7 +712,7 @@ func (e *statementExecutorDML) ExecContext(ctx context.Context, query *qualified
 // unregisterDMLCallbacks removes the DML-specific TTC callbacks registered for statement execution.
 func (e *statementExecutorDML) unregisterDMLCallbacks() {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
-	stmr.UnRegisterPostUnmarshallCallback(TTIRPA)
+	stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
 	stmr.UnRegisterPreUnmarshallCallback(TTIRXD)
 	stmr.UnRegisterPreUnmarshallCallback(TTIIOV)
 	stmr.UnRegisterPostUnmarshallCallback(TTIIOV)
@@ -994,6 +994,9 @@ func (e *statementExecutorExec) ExecContext(ctx context.Context, query *qualifie
 	if err != nil {
 		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "create-messages")
 	}
+	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	registerOallRpaCallbacks(stmr, e.shelf)
+	defer stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
 	execResult, err := e.runExec(ctx, messages)
 	if err != nil {
 		return nil, err
@@ -1034,6 +1037,7 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 // unregisterPlSqlCallbacks removes the TTC callbacks registered for PL/SQL OUT and IN OUT bind handling.
 func (e *statementExecutorPlSql) unregisterPlSqlCallbacks() {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
 	stmr.UnRegisterPreUnmarshallCallback(TTIRXD)
 	stmr.UnRegisterPreUnmarshallCallback(TTIIOV)
 	stmr.UnRegisterPostUnmarshallCallback(TTIIOV)
@@ -1063,6 +1067,7 @@ Notes:
 func (e *statementExecutorPlSql) registerPlSqlCallbacks(ctx context.Context, numberOfBindPositions int) {
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTIRXD, e.createRXD)
+	registerOallRpaCallbacks(stmr, e.shelf)
 	e.registerIOVCallbacks(ctx, numberOfBindPositions)
 }
 
@@ -1128,8 +1133,6 @@ func (e *statementExecutorExec) runExec(ctx context.Context, messages []driverCo
 		common.Odl.Error("runExec: Flush failed", "error", err, "stage", "flush", "msgCode", message.GetMsgCode())
 		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "flush")
 	}
-	registerRunExecCallbacks(stmr, e.shelf)
-	defer unregisterRunExecCallbacks(stmr)
 
 	oerFound := false
 	for {
@@ -1432,22 +1435,14 @@ func (e *statementExecutorDML) registerDMLCallbacks(ctx context.Context, numberO
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 	stmr.RegisterPreUnmarshallCallback(TTIRXD, e.createRXD)
 
-	common.Odl.Fine("registerDMLOallRpaCallbacks: registering II-RPA callback")
-	// For DML, capture optional per-iteration row counts carried after TTIRPA by calling UnmarshalDMLRows.
-	// Register a post-unmarshal callback for TTIRPA (oAll8) so we can consume the trailing AL8PIDMLRC section.
-	stmr.RegisterPostUnmarshallCallback(TTIRPA, func(msg driverCommon.Message[driverCommon.MessageType], prevErr error) (bool, error) {
-		if prevErr != nil {
-			return false, prevErr
+	stmr.RegisterPreUnmarshallCallback(TTIRPA, func(t *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
+		msg, err := e.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIRPA, oAll8)
+		if err != nil {
+			common.Odl.Error("registerOallRpaCallback: GetMessageForFunction(TTIRPA,oAll8) failed", "error", err, "stage", "get-oallrpa")
+			return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "registerOallRpaCallback failed")
 		}
-		if rpa, ok := msg.(*ttioallrpa); ok {
-			// map DML row count parsing failure -> OGD-00060 RunExecError("unmarshal-dml-rows")
-			if err := rpa.UnmarshalDMLRows(ctx, e.shelf.GetMarshaller()); err != nil {
-				common.Odl.Error("StatementExecutorDML.ExecContext: UnmarshalDMLRows failed",
-					"error", err, "stage", "unmarshal-dml-rows")
-				return false, common.NewOracleError(oracleErrors.RunExecError, err, "ExecContext failed")
-			}
-		}
-		return true, nil
+		msg.(*ttioallrpa).enableUnmarshalRowCounts()
+		return msg, nil
 	})
 	e.registerIOVCallbacks(ctx, numberOfBindPositions)
 }
@@ -1569,17 +1564,6 @@ func unregisterRunQueryCallbacks(stmr MessageStreamerInterface) {
 	stmr.UnRegisterPostUnmarshallCallback(TTIRXH)
 }
 
-// registerRunExecCallbacks sets up required pre-unmarshal OALLRPA callback for exec context.
-func registerRunExecCallbacks(stmr MessageStreamerInterface, shelf *ttiShelf[driverCommon.MessageType]) {
-	registerOallRpaCallbacks(stmr, shelf)
-}
-
-// unregisterRunExecCallbacks removes TTIRPA OALLRPA callback just for exec context.
-func unregisterRunExecCallbacks(stmr MessageStreamerInterface) {
-	stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
-	stmr.UnRegisterPostUnmarshallCallback(TTIRPA)
-}
-
 // registerOallRpaCallbacks registers OALLRPA for TTIRPA (used in both query and exec contexts).
 func registerOallRpaCallbacks(stmr MessageStreamerInterface, shelf *ttiShelf[driverCommon.MessageType]) {
 	common.Odl.Fine("registerOallRpaCallback: registering II-RPA callback")
@@ -1591,26 +1575,6 @@ func registerOallRpaCallbacks(stmr MessageStreamerInterface, shelf *ttiShelf[dri
 			return nil, common.NewOracleError(oracleErrors.CallbackFactoryError, err, "registerOallRpaCallback failed")
 		}
 		return msg, nil
-	})
-}
-
-// registerDMLOallRpaCallbacks registers OALLRPA for TTIRPA (used in both query and exec contexts).
-func registerDMLOallRpaCallbacks(ctx context.Context, stmr MessageStreamerInterface, shelf *ttiShelf[driverCommon.MessageType]) {
-	common.Odl.Fine("registerDMLOallRpaCallbacks: registering II-RPA callback")
-	stmr.RegisterPostUnmarshallCallback(TTIRPA, func(msg driverCommon.Message[driverCommon.MessageType], prevErr error) (bool, error) {
-		if prevErr != nil {
-			return false, prevErr
-		}
-		if rpa, ok := msg.(*ttioallrpa); ok {
-			// map DML row count parsing failure -> OGD-00060 RunExecError("unmarshal-dml-rows")
-			// todo: once ttcResult is implemented, consume the rows returned.
-			if err := rpa.UnmarshalDMLRows(ctx, shelf.GetMarshaller()); err != nil {
-				common.Odl.Error("StatementExecutorDML.ExecContext: UnmarshalDMLRows failed",
-					"error", err, "stage", "unmarshal-dml-rows")
-				return false, common.NewOracleError(oracleErrors.RunExecError, err, "ExecContext failed")
-			}
-		}
-		return true, nil
 	})
 }
 

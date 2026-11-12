@@ -52,14 +52,17 @@ const (
 )
 
 // encodeTimestampTZ encodes an OSON TIMESTAMP WITH TIME ZONE value.
-func encodeTimestampTZ(value time.Time) common.B1Array {
+func encodeTimestampTZ(value time.Time) (common.B1Array, error) {
 	_, offset := value.Zone()
 	utc := value.UTC()
-	payload, _ := converters.EncodeTimestamp(utc)
+	payload, err := converters.EncodeTimestamp(utc)
+	if err != nil {
+		return nil, err
+	}
 	hour := offset / 3600
 	minute := (offset - hour*3600) / 60
 	payload = append(payload, byte(hour+_osonTimestampTZHourBias), byte(minute+_osonTimestampTZMinuteBias))
-	return payload
+	return payload, nil
 }
 
 // decodeTimestampTZ decodes an OSON TIMESTAMP WITH TIME ZONE value.

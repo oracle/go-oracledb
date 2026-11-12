@@ -106,6 +106,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_Select_BooleanTypes_23c", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BooleanTypes_23c},
 	{Name: "TestDriver_Select_CharacterTypes", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_CharacterTypes},
 	{Name: "TestDriver_Select_DATE", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_DATE},
+	{Name: "TestDriver_Select_DATE_BC", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_DATE_BC},
 	{Name: "TestDriver_Select_TIMESTAMP", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TIMESTAMP},
 	{Name: "TestDriver_Select_TimestampWithTimeZone", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TimestampWithTimeZone},
 	{Name: "TestDriver_Select_TimestampWithLocalTimeZone", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_TimestampWithLocalTimeZone},
