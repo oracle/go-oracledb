@@ -440,7 +440,7 @@ func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualif
 	config := executionMessageConfig{functionType: oAll8}
 	if prefetchEnabled {
 		rowsToFetchCount := driverCommon.UB4(implicitResultPrefetchRowCount)
-		config.rowsToFetchCount = &rowsToFetchCount
+		config.rowsToFetchCount = rowsToFetchCount
 	}
 	messages, err := e.createMessages(query, binds, config)
 	if err != nil {
@@ -519,21 +519,25 @@ func (e *statementExecutorSelect) QueryContext(ctx context.Context, query *quali
 	return state.rows, nil
 }
 
-// executionMessageConfig carries OALL8 settings that must be applied during
-// construction, before the message list is returned to its caller.
+// executionMessageConfig carries OALL8 settings applied while a request is
+// constructed. A zero rowsToFetchCount retains OALL8's normal fetch setup.
 type executionMessageConfig struct {
 	functionType     driverCommon.FunctionType
-	currentRank      *driverCommon.UB4
-	rowsToFetchCount *driverCommon.UB4
+	currentRank      driverCommon.UB4
+	rowsToFetchCount driverCommon.UB4
 	defineOACs       []driverCommon.Marshallable
 }
 
-// createMessages returns the TTC messages for one request in wire order: the
+// createMessages builds all TTC messages for one execution in wire order: the
 // OALL8 or OEXFEN request first, followed by one TTIRXD message per bind row.
+// It builds bind OACs only when input values are supplied; follow-up requests
+// such as SELECT define/fetch carry only the metadata in config.
 func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args []sqldriver.Value, config executionMessageConfig) ([]driverCommon.Message[driverCommon.MessageType], error) {
-	var metadata []bindValueMetadata
-	var rows [][]driverCommon.B1Array
-	oacs := e.previousOacs
+	var (
+		metadata []bindValueMetadata
+		rows     [][]driverCommon.B1Array
+		oacs     []driverCommon.Marshallable
+	)
 	if len(args) > 0 {
 		var err error
 		metadata = extractBindMetadata(args)
@@ -546,14 +550,17 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 			return nil, err
 		}
 	}
-
 	sendOACs := e.needToSendOACs(oacs)
-	usesOALL8 := config.functionType == oAll8 || sendOACs
+	functionType := config.functionType
+	if sendOACs {
+		functionType = oAll8
+	}
+
 	var (
 		message driverCommon.Message[driverCommon.MessageType]
 		err     error
 	)
-	if usesOALL8 {
+	if functionType == oAll8 {
 		message, err = e.createOAll8Message(query, oacs, sendOACs, config)
 	} else {
 		message, err = e.createOexfenMessage(query)
@@ -562,9 +569,6 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 		return nil, err
 	}
 	messages := []driverCommon.Message[driverCommon.MessageType]{message}
-	if rows == nil {
-		return messages, nil
-	}
 	for _, row := range rows {
 		bindMessage, err := e.shelf.GetMessageFactory().(Factory).GetMessage(TTIRXD)
 		if err != nil {
@@ -580,6 +584,8 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 	return messages, nil
 }
 
+// createOAll8Message constructs an OALL8 request. It includes bind OACs only
+// when they must be sent and includes define OACs for a SELECT define/fetch.
 func (e *statementProcessor) createOAll8Message(query *qualifiedSQLStatement, oacs []driverCommon.Marshallable, sendOACs bool, config executionMessageConfig) (driverCommon.Message[driverCommon.MessageType], error) {
 	common.Odl.Fine("createOAll8Message: called", "stmt", query)
 	message, err := e.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIFUN, oAll8)
@@ -606,11 +612,9 @@ func (e *statementProcessor) createOAll8Message(query *qualifiedSQLStatement, oa
 		}
 		e.previousOacs = oacs
 	}
-	if config.currentRank != nil {
-		oall.setCurrentRank(*config.currentRank)
-	}
-	if config.rowsToFetchCount != nil {
-		oall.setRowsToFetchCount(*config.rowsToFetchCount)
+	oall.setCurrentRank(config.currentRank)
+	if config.rowsToFetchCount != 0 {
+		oall.setRowsToFetchCount(config.rowsToFetchCount)
 	}
 	if config.defineOACs != nil {
 		// Define/fetch carries descriptors for the columns discovered in the
@@ -623,6 +627,8 @@ func (e *statementProcessor) createOAll8Message(query *qualifiedSQLStatement, oa
 	return message, nil
 }
 
+// createOexfenMessage constructs an OEXFEN request that reuses the server
+// cursor and previously established bind metadata.
 func (e *statementProcessor) createOexfenMessage(query *qualifiedSQLStatement) (driverCommon.Message[driverCommon.MessageType], error) {
 	common.Odl.Fine("createOexfenMessage: called", "stmt", query)
 	message, err := e.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIFUN, oExfen)
@@ -685,7 +691,7 @@ func (e *statementExecutorDML) ExecContext(ctx context.Context, query *qualified
 	rank := e._currentRank
 	messages, err := e.createMessages(query, args, executionMessageConfig{
 		functionType: oAll8,
-		currentRank:  &rank,
+		currentRank:  rank,
 	})
 	if err != nil {
 		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "create-messages")
@@ -1009,7 +1015,7 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 	config := executionMessageConfig{functionType: oAll8}
 	if prefetchEnabled {
 		rowsToFetchCount := driverCommon.UB4(implicitResultPrefetchRowCount)
-		config.rowsToFetchCount = &rowsToFetchCount
+		config.rowsToFetchCount = rowsToFetchCount
 	}
 	messages, err := e.createMessages(query, args, config)
 	if err != nil {
