@@ -49,12 +49,13 @@ import (
 
 // connectionNegotiator implements the Negotiator interface for TTC connections.
 type connectionNegotiator struct {
-	_dataBuffer driverCommon.DataBuffer
+	_dataBuffer          driverCommon.DataBuffer
+	connectionProperties driverCommon.DriverProperties
 }
 
 // newConnectionNegotiator creates a new instance of connectionNegotiator.
-func newConnectionNegotiator() *connectionNegotiator {
-	return &connectionNegotiator{}
+func newConnectionNegotiator(connectionProperties driverCommon.DriverProperties) *connectionNegotiator {
+	return &connectionNegotiator{connectionProperties: connectionProperties}
 }
 
 // Negotiate performs the connection negotiation process over the provided DataBuffer.
@@ -64,7 +65,7 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 
 	common.Odl.Fine("connectionNegotiator: Negotiation start")
 	// 1. Create Shelf & Session Context
-	shelf, sessCtx := _createShelfAndSessionContext()
+	shelf, sessCtx := _createShelfAndSessionContext(cn.connectionProperties)
 
 	// 2. Fetch new Marshaller & TTC Msg Streamer
 	_createAndRegisterMarshaller(cn._dataBuffer, shelf, true)
@@ -236,8 +237,9 @@ func (cn *connectionNegotiator) _negotiateProtocol(
 }
 
 // _createShelfAndSessionContext manages creation of Shelf and SessionContext.
-func _createShelfAndSessionContext() (*ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext) {
+func _createShelfAndSessionContext(connectionProperties driverCommon.DriverProperties) (*ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext) {
 	shelf := newShelf[driverCommon.MessageType]()
+	shelf.UpdateConnectionProperties(connectionProperties)
 	common.Odl.Fine("connectionNegotiator: Shelf created")
 
 	sessCtx := driverCommon.NewSessionContext()

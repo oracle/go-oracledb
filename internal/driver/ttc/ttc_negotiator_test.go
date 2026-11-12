@@ -252,7 +252,7 @@ func TestConnectionNegotiator_Negotiate_Fail(t *testing.T) {
 				failWhere: tc.failWhere,
 				failErr:   errors.New(tc.expectedErr),
 			}
-			negotiator := newConnectionNegotiator()
+			negotiator := newConnectionNegotiator(nil)
 			var err error
 			switch tc.step {
 			case stepProtocol:
@@ -402,7 +402,7 @@ func TestConnectionNegotiator_Negotiate_Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			negotiator := newConnectionNegotiator()
+			negotiator := newConnectionNegotiator(nil)
 			ctx := context.Background()
 			data := tc.buffer()
 			negotiator.SetDataBuffer(data)
@@ -424,7 +424,7 @@ func TestConnectionNegotiator_Negotiate_Success(t *testing.T) {
 // negotiated EOCS capabilities are passed to the shelf's message factory and
 // select EOCS-aware TTIOER and TTISTA implementations.
 func TestConnectionNegotiator_Negotiate_SelectsEOCSMessages(t *testing.T) {
-	negotiator := newConnectionNegotiator()
+	negotiator := newConnectionNegotiator(nil)
 	data := NewTestDataBuffer()
 	data.OnWriteDefaults = successOnWriteEOCS(6)
 	negotiator.SetDataBuffer(data)

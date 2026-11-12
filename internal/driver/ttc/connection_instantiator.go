@@ -74,7 +74,7 @@ type connectionInstantiator struct {
 //   - an error if the authenticator or instantiator cannot be initialized.
 func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
 	dataBuffer := ns.(driverCommon.DataBuffer)
-	negotiator := GetNegotiator(dataBuffer)
+	negotiator := GetNegotiator(dataBuffer, config.DriverProperties)
 	localizationService := common.NewLocalizationService(config.Locale.ClientLanguage)
 
 	authenticator, err := GetAuthenticator(config, providerRegistry)
@@ -119,8 +119,7 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 	sessCtx.GetClientProperties().SetProperty(driverCommon.RemotePort, connInstantiator.ns.GetRemotePort())
 	sessCtx.GetClientProperties().SetProperty(driverCommon.ConnectDescriptor, connInstantiator.drvierConfig.ConnectDescriptor)
 
-	// Add connection properties to shelf for downstream consumers
-	shelf.UpdateConnectionProperties(connInstantiator.drvierConfig.DriverProperties)
+	// Register connection services for downstream consumers
 	shelf.RegisterLocalizationService(connInstantiator.localizationService)
 	shelf.registerProviderRegistry(connInstantiator.providerRegistry)
 
@@ -206,10 +205,10 @@ func createPasswordAuthenticator(parameters *oracleconfig.OracleDriverConfig) (A
 
 // *** Negotiator Factory ***
 
-// GetNegotiator returns the default Negotiator implementation.
+// GetNegotiator returns the default Negotiator implementation with the connection properties.
 // TODO : we should not have to pass the buffer here...
-func GetNegotiator(transport driverCommon.DataBuffer) Negotiator {
-	n := newConnectionNegotiator()
+func GetNegotiator(transport driverCommon.DataBuffer, connectionProperties driverCommon.DriverProperties) Negotiator {
+	n := newConnectionNegotiator(connectionProperties)
 	n.SetDataBuffer(transport)
 	return n
 }

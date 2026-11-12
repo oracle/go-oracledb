@@ -221,3 +221,40 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 		t.Fatalf("expected error %q, got %q", expected, err.Error())
 	}
 }
+
+type lobPrefetchTestNetworkSession struct {
+	*mockNetworkSession
+	*TestDataBuffer
+}
+
+// TestConnectionNegotiatorConfiguredLobPrefetchSize verifies that connection
+// properties are installed on the shelf and configure the final marshaller during negotiation.
+func TestConnectionNegotiatorConfiguredLobPrefetchSize(t *testing.T) {
+	t.Parallel()
+	const prefetchSize = 8192
+	config := oracleconfig.NewOracleDriverConfig()
+	config.Credentials.User = "foo"
+	config.Credentials.Password = "bar"
+	config.DriverProperties.DefaultLobPrefetchSize = prefetchSize
+	buffer := NewTestDataBuffer()
+	buffer.OnWriteDefaults = successOnWriteEOCS(6)
+	ns := &lobPrefetchTestNetworkSession{mockNetworkSession: &mockNetworkSession{}, TestDataBuffer: buffer}
+
+	instantiator, err := NewTTCConnectionInstantiator(config, ns, nil)
+	if err != nil {
+		t.Fatalf("create instantiator: %v", err)
+	}
+	_, shelf, err := instantiator.(*connectionInstantiator).negotiator.Negotiate(context.Background())
+	if err != nil {
+		t.Fatalf("negotiate: %v", err)
+	}
+
+	props := shelf.GetConnectionProperties()
+	if props == nil || props.GetDefaultLobPrefetchSize() != prefetchSize {
+		t.Fatal("configured connection properties were not installed during negotiation")
+	}
+	marshaller := shelf.GetMarshaller().(*MarshalEngine)
+	if got := marshaller._defaultLobPrefetchSize; got != prefetchSize {
+		t.Fatalf("LOB prefetch size = %d, want %d", got, prefetchSize)
+	}
+}
