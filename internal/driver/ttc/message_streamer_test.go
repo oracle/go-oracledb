@@ -193,8 +193,7 @@ func TestMessageStreamer_Flush(t *testing.T) {
 		common.LITTLE_ENDIAN)
 
 	shelf := newShelf[common.MessageType]()
-	shelf.RegisterMarshaller(marshaller)
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(marshaller))
 
 	msg := &mockMessage{msgType: TTIPRO}
 	err := streamer.Push(context.Background(), msg)
@@ -215,13 +214,105 @@ func TestMessageStreamer_Flush(t *testing.T) {
 	}
 }
 
+// TestMessageStreamer_FlushUsesMessageSpecificMarshallers verifies that one flush
+// encodes each queued message with its assigned marshaller or the default.
+func TestMessageStreamer_FlushUsesMessageSpecificMarshallers(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fakeBuffer := NewArrayDataBuffer(2048)
+	nativeMarshaller := NewNativeMarshalEngine(fakeBuffer, common.BIG_ENDIAN)
+	universalMarshaller := NewMarshalEngine(fakeBuffer, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+
+	shelf := newShelf[common.MessageType]()
+
+	factory := NewMarshallerFactory(universalMarshaller)
+	factory.RegisterMarshaller(nativeMarshaller, TTIPRO, TTIDTY)
+	streamer := NewMessageStreamer(shelf, factory)
+
+	messages := []struct {
+		messageType common.MessageType
+		marshaller  common.Marshaller
+	}{
+		{TTIPRO, nativeMarshaller},
+		{TTIRPA, universalMarshaller},
+		{TTIDTY, nativeMarshaller},
+	}
+	for _, message := range messages {
+		if err := streamer.Push(ctx, &mockMessage{msgType: message.messageType}); err != nil {
+			t.Fatalf("Push(%v) failed: %v", message.messageType, err)
+		}
+	}
+	if err := streamer.Flush(ctx); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	for _, message := range messages {
+		header := &messageHeader{}
+		if err := header.UnmarshalFrom(ctx, universalMarshaller); err != nil {
+			t.Fatalf("read header for %v: %v", message.messageType, err)
+		}
+		if header.GetType() != message.messageType {
+			t.Fatalf("message type = %v, want %v", header.GetType(), message.messageType)
+		}
+		if err := (&mockMessage{}).UnmarshalFrom(ctx, message.marshaller); err != nil {
+			t.Fatalf("decode payload for %v: %v", message.messageType, err)
+		}
+	}
+}
+
+// TestMessageStreamer_PullUsesMessageSpecificMarshallers verifies that Pull
+// decodes independently prepared payloads with their assigned marshaller or the default.
+func TestMessageStreamer_PullUsesMessageSpecificMarshallers(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	fakeBuffer := NewArrayDataBuffer(2048)
+	nativeMarshaller := NewNativeMarshalEngine(fakeBuffer, common.BIG_ENDIAN)
+	universalMarshaller := NewMarshalEngine(fakeBuffer, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+
+	shelf := _prepareShelf()
+	factory := NewMarshallerFactory(universalMarshaller)
+	factory.RegisterMarshaller(nativeMarshaller, TTIPRO, TTIDTY)
+	streamer := NewMessageStreamer(shelf, factory)
+
+	messages := []struct {
+		messageType common.MessageType
+		marshaller  common.Marshaller
+	}{
+		{TTIPRO, nativeMarshaller},
+		{TTIRPA, universalMarshaller},
+		{TTIDTY, nativeMarshaller},
+	}
+	for _, message := range messages {
+		header := &messageHeader{messageType: message.messageType}
+		if err := header.MarshalTo(ctx, universalMarshaller); err != nil {
+			t.Fatalf("write header for %v: %v", message.messageType, err)
+		}
+		if err := (&mockMessage{}).MarshalTo(ctx, message.marshaller); err != nil {
+			t.Fatalf("write payload for %v: %v", message.messageType, err)
+		}
+	}
+
+	for _, message := range messages {
+		received, err := streamer.Pull(ctx, TTIPRO, TTIRPA, TTIDTY)
+		if err != nil {
+			t.Fatalf("Pull(%v) failed: %v", message.messageType, err)
+		}
+		if received.GetMsgCode() != message.messageType {
+			t.Fatalf("message type = %v, want %v", received.GetMsgCode(), message.messageType)
+		}
+	}
+
+}
+
 // Simple push null test
 // 1 - push a null message
 // expectations:
 //   - receive an error
 func TestMessageStreamer_NullPull(t *testing.T) {
 	t.Parallel()
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 	err := streamer.Push(nil, nil)
 	if err == nil {
 		t.Errorf("pushing nil message did not raise an error")
@@ -239,7 +330,7 @@ func TestMessageStreamer_NullPull(t *testing.T) {
 func TestMessageStreamer_SimpleTypedPull(t *testing.T) {
 	t.Parallel()
 
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	streamer.Push(context.Background(), NewMockTTIpro())
 	streamer.Push(context.Background(), NewMockTTIdty())
@@ -304,7 +395,7 @@ func TestMessageStreamer_SimpleTypedPull(t *testing.T) {
 func TestMessageStreamer_CallbackRegisterPreUnmarshal(t *testing.T) {
 	t.Parallel()
 
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	isCBCalled := false
 	isExpectedType := false
@@ -358,7 +449,7 @@ func TestMessageStreamer_CallbackRegisterPreUnmarshal(t *testing.T) {
 func TestMessageStreamer_CallbackRegisterPostUnmarshal(t *testing.T) {
 	t.Parallel()
 
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	pushedMsg := NewMockTTIpro()
 
@@ -417,7 +508,7 @@ func TestMessageStreamer_CallbackRegisterPostUnmarshal(t *testing.T) {
 func TestMessageStreamer_CallbackUnregister(t *testing.T) {
 	t.Parallel()
 
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	isPreCBCalled := false
 	isPostCBCalled := false
@@ -451,10 +542,7 @@ func TestMessageStreamer_CallbackUnregister(t *testing.T) {
 // prepares a testing shelf
 func _prepareShelf() *ttiShelf[common.MessageType] {
 
-	marshaller := newMockMarshaller()
-
 	shelf := newShelf[common.MessageType]()
-	shelf.RegisterMarshaller(marshaller)
 	var messageRegistry = NewRegistry[common.MessageType]()
 	var functionRegistry = NewRegistry[functionRegistryKey]()
 	messageRegistry.Register(TTIPRO, -1, NewMockTTIpro)
@@ -496,7 +584,6 @@ func TestMessageStreamer_Drain(t *testing.T) {
 	marshaller := NewNativeMarshalEngine(aData, common.BIG_ENDIAN)
 
 	shelf := newShelf[common.MessageType]()
-	shelf.RegisterMarshaller(marshaller)
 	var messageRegistry = NewRegistry[common.MessageType]()
 	messageRegistry.Register(TTIPRO, -1, NewMockTTIpro)
 	messageRegistry.Register(TTIDTY, -1, NewMockTTIdty)
@@ -505,7 +592,7 @@ func TestMessageStreamer_Drain(t *testing.T) {
 		msgregistry:  messageRegistry,
 		funcregistry: nil,
 	})
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(marshaller))
 
 	// Add some messages
 	streamer.Push(context.Background(), NewMockTTIdty())
@@ -539,7 +626,7 @@ func TestMessageStreamer_IsValidReturnsFalseAndRaisesStaleEvent(t *testing.T) {
 	t.Parallel()
 
 	shelf := newShelf[common.MessageType]()
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(newMockMarshaller()))
 	listener := &testEventListener{}
 	shelf.getEventService().register(listener, streamerStaleEvent)
 	streamer.incomingMessages.PushBack(NewMockMessage(TTIOER))
@@ -563,7 +650,7 @@ func TestMessageStreamer_IsValidReturnsFalseAndRaisesStaleEvent(t *testing.T) {
 func TestMessageStreamer_SimplePush(t *testing.T) {
 	t.Parallel()
 
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	myMockedTTIpro := NewMockTTIpro()
 	streamer.Push(context.Background(), myMockedTTIpro)
@@ -592,7 +679,7 @@ func TestMessageStreamer_SimplePush(t *testing.T) {
 func TestMessageStreamer_PullFromIncomings(t *testing.T) {
 	t.Parallel()
 
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 	streamer.Push(context.Background(), NewMockTTIpro())
 	streamer.Push(context.Background(), NewMockTTIdty())
 
@@ -620,7 +707,7 @@ func TestMessageStreamer_PullFromIncomings(t *testing.T) {
 func TestMessageStreamer_OrderedPush(t *testing.T) {
 	t.Parallel()
 
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	streamer.Push(context.Background(), NewMockTTIpro())
 	streamer.Push(context.Background(), NewMockTTIdty())
@@ -685,7 +772,7 @@ func TestMessageStreamer_PullWithTimeoutAndIncomings(t *testing.T) {
 func TestMessageStreamer_CallbackPullWithPreUnmarshallAlloc(t *testing.T) {
 	t.Parallel()
 
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	myMockedTTIpro := NewMockTTIpro()
 
@@ -724,7 +811,7 @@ func TestMessageStreamer_CallbackPullWithPreUnmarshallAlloc(t *testing.T) {
 //   - pull return a non nil message at step #4
 func TestMessageStreamer_CallbackPullWithPreUnmarshallError(t *testing.T) {
 	t.Parallel()
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	var customError = errors.New("this is a test error")
 	streamer.RegisterPreUnmarshallCallback(TTIPRO, func(*messageHeader) (common.Message[common.MessageType], error) {
@@ -766,7 +853,6 @@ func TestMessageStreamer_UnmarshallError(t *testing.T) {
 	tMsg.setUnmarshallFailure(customError)
 
 	shelf := newShelf[common.MessageType]()
-	shelf.RegisterMarshaller(marshaller)
 	var messageRegistry = NewRegistry[common.MessageType]()
 	messageRegistry.Register(TTIPRO, -1, func() common.Message[common.MessageType] {
 		return tMsg
@@ -777,7 +863,7 @@ func TestMessageStreamer_UnmarshallError(t *testing.T) {
 		funcregistry: nil,
 	})
 
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(marshaller))
 
 	streamer.Push(context.Background(), tMsg)
 	streamer.Flush(context.Background())
@@ -801,7 +887,6 @@ func TestMessageStreamer_PullReturnsErrorForNonUnmarshallableFunction(t *testing
 	t.Parallel()
 	marshaller := newMockMarshaller()
 	shelf := newShelf[common.MessageType]()
-	shelf.RegisterMarshaller(marshaller)
 
 	messageRegistry := NewRegistry[common.MessageType]()
 	functionRegistry := NewRegistry[functionRegistryKey]()
@@ -822,7 +907,7 @@ func TestMessageStreamer_PullReturnsErrorForNonUnmarshallableFunction(t *testing
 		funcregistry: functionRegistry,
 	})
 
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(marshaller))
 	if err := streamer.Push(context.Background(), marshalOnly); err != nil {
 		t.Fatalf("Push returned error: %v", err)
 	}
@@ -856,7 +941,7 @@ func TestMessageStreamer_PullReturnsErrorForNonUnmarshallableFunction(t *testing
 
 func TestMessageStreamer_CallbackPullWithPostUnmarshallKeepFalse(t *testing.T) {
 	t.Parallel()
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	streamer.RegisterPostUnmarshallCallback(TTIPRO, func(message common.Message[common.MessageType], err error) (bool, error) {
 		return false, errors.New("this is a test error")
@@ -882,7 +967,7 @@ func TestMessageStreamer_CallbackPullWithPostUnmarshallKeepFalse(t *testing.T) {
 
 func TestMessageStreamer_CallbackPullWithPostUnmarshallKeepTrueAndError(t *testing.T) {
 	t.Parallel()
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 
 	expectedError := errors.New("this is a test error")
 	streamer.RegisterPostUnmarshallCallback(TTIPRO, func(message common.Message[common.MessageType], err error) (bool, error) {
@@ -904,7 +989,7 @@ func TestMessageStreamer_CallbackPullWithPostUnmarshallKeepTrueAndError(t *testi
 
 func TestMessageStreamer_getMessage(t *testing.T) {
 	t.Parallel()
-	streamer := NewMessageStreamer(_prepareShelf())
+	streamer := NewMessageStreamer(_prepareShelf(), NewMarshallerFactory(newMockMarshaller()))
 	// message TTIPRO
 	header := messageHeader{
 		messageType: TTIPRO,

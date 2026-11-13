@@ -59,12 +59,16 @@ func TestMain(m *testing.M) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestDriver_TTCCookieConnectionTiming", Categories: "performance", Exclusive: true, Fn: TestDriver_TTCCookieConnectionTiming},
+	{Name: "TestDriver_TTCCookieTTIRENEG", Categories: "functional", Exclusive: true, Fn: TestDriver_TTCCookieTTIRENEG},
+	{Name: "TestDriver_TTCCookieOCIToken", Categories: "functional", Exclusive: true, Fn: TestDriver_TTCCookieOCIToken},
 	{Name: "TestDriver_ConfigurationWithConnectorBasic", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorBasic},
 	{Name: "TestDriver_ConfigurationWithConnectorWithEnvOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithEnvOverwrite},
 	{Name: "TestDriver_ConfigurationWithConnectorWithFlagOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithFlagOverwrite},
 	{Name: "TestConfiguration_AssignFromEmptyMap", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromEmptyMap},
 	{Name: "TestConfiguration_AssignFromMapUnknownKey", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapUnknownKey},
 	{Name: "TestConfiguration_AssignFromMap", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMap},
+	{Name: "TestConfiguration_TTCCookieOptimization", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_TTCCookieOptimization},
 	{Name: "TestConfiguration_AssignFromMapValidatedIntString", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapValidatedIntString},
 	{Name: "TestConfiguration_AssignFromEnv", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnv},
 	{Name: "TestConfiguration_AssignFromEnvValidatedIntString", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnvValidatedIntString},
@@ -245,7 +249,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_SQLNullTypes_PLSQL_InOut_NullInputs", Categories: "functional", Exclusive: false, Fn: TestDriver_SQLNullTypes_PLSQL_InOut_NullInputs},
 
 	{Name: "TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails},
-	{Name: "TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails},
+	{Name: "TestConnectorConnectTerminatesOnInstantiatorErrors", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectTerminatesOnInstantiatorErrors},
+	{Name: "TestConnectorConnectFallsBackOnTTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectFallsBackOnTTIRENEG},
 	{Name: "TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess},
 	{Name: "TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess},
 	{Name: "TestDriver_InsertForeignKeyViolation", Categories: "functional", Exclusive: false, Fn: TestDriver_InsertForeignKeyViolation},

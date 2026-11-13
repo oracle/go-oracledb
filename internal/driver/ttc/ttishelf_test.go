@@ -107,7 +107,7 @@ func TestNewMessageStreamerRegistersConnectionValidator(t *testing.T) {
 	t.Parallel()
 
 	shelf := newShelf[driverCommon.MessageType]()
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(nil))
 	validators := shelf._validatorRegistry.GetAll()
 
 	if len(validators) != 1 {

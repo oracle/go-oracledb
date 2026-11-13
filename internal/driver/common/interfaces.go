@@ -48,6 +48,14 @@ const (
 	NSFIMM = 0x0040 // non graceful disconnect
 )
 
+// ConnectionMode selects the connection-establishment flow.
+type ConnectionMode uint8
+
+const (
+	ConnectionNormal ConnectionMode = iota // Normal TTC negotiation and authentication.
+	ConnectionCookie                       // Reuse cached TTC negotiation data.
+)
+
 // NetworkSession implementors can disconnect a network connection
 type NetworkSession interface {
 	// Disconnect disconnects the network connection
@@ -71,6 +79,9 @@ type NetworkSession interface {
 	// GetRemotePort returns the remote network port when it is available, or 0
 	// otherwise.
 	GetRemotePort() int
+
+	// GetDatabaseUUID returns the server-provided database UUID, or an empty string.
+	GetDatabaseUUID() string
 }
 
 // DataBuffer The Marshaller uses this interface to marshal data

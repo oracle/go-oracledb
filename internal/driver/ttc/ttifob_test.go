@@ -52,8 +52,7 @@ func TestTTIFOB_MessageStreamerFlushesOnlyMessageCode(t *testing.T) {
 	buf := NewArrayDataBuffer(8)
 	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 	shelf := newShelf[common.MessageType]()
-	shelf.RegisterMarshaller(mar)
-	streamer := NewMessageStreamer(shelf)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(mar))
 
 	msg := newTTIfob()
 	if msg.GetMsgCode() != TTIFOB {

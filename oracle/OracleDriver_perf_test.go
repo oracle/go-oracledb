@@ -280,3 +280,78 @@ func BenchmarkInsertMultipleValues(b *testing.B) {
 		conn.Close()
 	}
 }
+
+// TestDriver_TTCCookieConnectionTiming compares connection times with TTC cookie
+// optimization disabled and enabled, using 20 fresh connections per configuration.
+// Run against a database that supports TTC cookies; functional tests cover correctness.
+func TestDriver_TTCCookieConnectionTiming(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const samples = 20
+
+	newConnector := func(cookieEnabled bool) *connector {
+		t.Helper()
+		config := NewOracleDriverConfig()
+		config.ConnectDescriptor = TestingConfig.GetConnectionString()
+		config.DriverProperties.TTCCookieOptimizationEnabled = cookieEnabled
+		driverConnector, err := NewOracleConnector(config)
+		if err != nil {
+			t.Fatalf("create connector (cookie enabled=%t): %v", cookieEnabled, err)
+		}
+		testConnector, ok := driverConnector.(*connector)
+		if !ok {
+			t.Fatalf("unexpected connector type: %T", driverConnector)
+		}
+		if testConnector.connectorConfig.DriverProperties.TTCCookieOptimizationEnabled != cookieEnabled {
+			t.Fatalf("cookie enabled=%t was overridden by external configuration", cookieEnabled)
+		}
+		return testConnector
+	}
+
+	measureConnection := func(label string, c *connector) time.Duration {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		start := time.Now()
+		conn, err := c.Connect(ctx)
+		elapsed := time.Since(start)
+		if err != nil {
+			// Connect cleans up failed attempts; only close successful connections.
+			t.Fatalf("%s connect failed: %v", label, err)
+		}
+		// Connection teardown is deliberately outside the measured interval.
+		if err := conn.Close(); err != nil {
+			t.Fatalf("%s close: %v", label, err)
+		}
+		return elapsed
+	}
+
+	disabled := newConnector(false)
+	enabled := newConnector(true)
+
+	// Warm up both configurations and allow the enabled one to populate the cache.
+	// These connection times are not included in the averages.
+	measureConnection("disabled warm-up", disabled)
+	measureConnection("enabled warm-up", enabled)
+
+	// Measure one connection per configuration in each iteration.
+	var disabledTotal, enabledTotal time.Duration
+	for i := 0; i < samples; i++ {
+		disabledTime := measureConnection("disabled", disabled)
+		enabledTime := measureConnection("enabled", enabled)
+		disabledTotal += disabledTime
+		enabledTotal += enabledTime
+		t.Logf("connection %02d: cookie disabled=%v, cookie enabled=%v", i+1, disabledTime, enabledTime)
+	}
+
+	// Report the gain without asserting a threshold: network timings vary.
+	disabledAverage := disabledTotal / samples
+	enabledAverage := enabledTotal / samples
+	gainPercent := (float64(disabledAverage-enabledAverage) / float64(disabledAverage)) * 100
+	t.Logf("cookie optimization disabled average: %v", disabledAverage)
+	t.Logf("cookie optimization enabled average: %v", enabledAverage)
+	t.Logf("cookie optimization gain: %.2f%%", gainPercent)
+}

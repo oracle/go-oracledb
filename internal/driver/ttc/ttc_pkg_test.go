@@ -80,6 +80,35 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestMarshallerFactory_GetMarshaller", Categories: "unitary", Exclusive: false, Fn: TestMarshallerFactory_GetMarshaller},
+	{Name: "TestMarshallerFactory_GetMarshallerForMessageType", Categories: "unitary", Exclusive: false, Fn: TestMarshallerFactory_GetMarshallerForMessageType},
+	{Name: "TestConnectionSetupAppliesLobPrefetchAfterNegotiation", Categories: "unitary", Exclusive: false, Fn: TestConnectionSetupAppliesLobPrefetchAfterNegotiation},
+	{Name: "TestCookieTokenAuthenticator_Success", Categories: "unitary", Exclusive: false, Fn: TestCookieTokenAuthenticator_Success},
+	{Name: "TestCookieTokenAuthenticator_TTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestCookieTokenAuthenticator_TTIRENEG},
+	{Name: "TestCookieTokenAuthenticator_ServerError", Categories: "unitary", Exclusive: false, Fn: TestCookieTokenAuthenticator_ServerError},
+	{Name: "TestCookiePasswordAuthenticator_Success", Categories: "unitary", Exclusive: false, Fn: TestCookiePasswordAuthenticator_Success},
+	{Name: "TestCookiePasswordAuthenticator_TTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestCookiePasswordAuthenticator_TTIRENEG},
+	{Name: "TestCookiePasswordAuthenticator_ServerError", Categories: "unitary", Exclusive: false, Fn: TestCookiePasswordAuthenticator_ServerError},
+	{Name: "TestReadCookieAuthenticationResponse_Success", Categories: "unitary", Exclusive: false, Fn: TestReadCookieAuthenticationResponse_Success},
+	{Name: "TestReadCookieAuthenticationResponse_Failure", Categories: "unitary", Exclusive: false, Fn: TestReadCookieAuthenticationResponse_Failure},
+	{Name: "TestReadCookieAuthenticationResponse_TTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestReadCookieAuthenticationResponse_TTIRENEG},
+	{Name: "TestNewTTCCookieConnectionInstantiator", Categories: "unitary", Exclusive: false, Fn: TestNewTTCCookieConnectionInstantiator},
+	{Name: "TestCookieConnectionInstantiatorGetConnection", Categories: "unitary", Exclusive: false, Fn: TestCookieConnectionInstantiatorGetConnection},
+	{Name: "TestNewTTICookieFromTTIpro", Categories: "unitary", Exclusive: false, Fn: TestNewTTICookieFromTTIpro},
+	{Name: "TestTTICookieMarshalTo_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTICookieMarshalTo_Fail},
+	{Name: "TestCookieNegotiationQueuesMessages", Categories: "unitary", Exclusive: false, Fn: TestCookieNegotiationQueuesMessages},
+	{Name: "TestCookieNegotiationUsesCachedSettings", Categories: "unitary", Exclusive: false, Fn: TestCookieNegotiationUsesCachedSettings},
+	{Name: "TestCookieNegotiationSelectsMarshallers", Categories: "unitary", Exclusive: false, Fn: TestCookieNegotiationSelectsMarshallers},
+	{Name: "TestCookieNegotiationPreparesDTYResponse", Categories: "unitary", Exclusive: false, Fn: TestCookieNegotiationPreparesDTYResponse},
+	{Name: "TestCookieNegotiationCompletesDTYResponse", Categories: "unitary", Exclusive: false, Fn: TestCookieNegotiationCompletesDTYResponse},
+	{Name: "TestUnregisterCookieNegotiationCallbacks", Categories: "unitary", Exclusive: false, Fn: TestUnregisterCookieNegotiationCallbacks},
+	{Name: "TestGetConnectionUsesInjectedCookieCache", Categories: "unitary", Exclusive: false, Fn: TestGetConnectionUsesInjectedCookieCache},
+	{Name: "TestTTICookieMarshalWire", Categories: "unitary", Exclusive: false, Fn: TestTTICookieMarshalWire},
+	{Name: "TestTTICookieCopiesRuntimeCapabilities", Categories: "unitary", Exclusive: false, Fn: TestTTICookieCopiesRuntimeCapabilities},
+	{Name: "TestTTICookieEligibility", Categories: "unitary", Exclusive: false, Fn: TestTTICookieEligibility},
+	{Name: "TestNewTTCCookieCache", Categories: "unitary", Exclusive: true, Fn: TestNewTTCCookieCache},
+	{Name: "TestMessageStreamer_PullUsesMessageSpecificMarshallers", Categories: "unitary", Exclusive: false, Fn: TestMessageStreamer_PullUsesMessageSpecificMarshallers},
+	{Name: "TestMessageStreamer_FlushUsesMessageSpecificMarshallers", Categories: "unitary", Exclusive: false, Fn: TestMessageStreamer_FlushUsesMessageSpecificMarshallers},
 	{Name: "TestColumnDecoderRegistrations", Categories: "unitary", Exclusive: false, Fn: TestColumnDecoderRegistrations},
 	{Name: "TestColumnUnwrapExecutors", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapExecutors},
 	{Name: "TestColumnUnwrapPLSQLFailures", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapPLSQLFailures},
@@ -107,6 +136,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken},
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForOAuth", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForOAuth},
 	{Name: "TestGetConnection", Categories: "unitary", Exclusive: false, Fn: TestGetConnection},
+	{Name: "TestNewTTCConnectionInstantiatorNegotiationStart", Categories: "unitary", Exclusive: false, Fn: TestNewTTCConnectionInstantiatorNegotiationStart},
 	{Name: "TestConnectionPinger_Ping", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_Ping},
 	{Name: "TestConnectionPinger_IsValid", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValid},
 	{Name: "TestConnectionPinger_IsValidWithInband", Categories: "unitary", Exclusive: false, Fn: TestConnectionPinger_IsValidWithInband},
@@ -275,12 +305,15 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestValidateJWTExpirationNonExpiredAndMalformed", Categories: "unitary", Exclusive: false, Fn: TestValidateJWTExpirationNonExpiredAndMalformed},
 	{Name: "TestTokenAuthenticatorAuthenticateBuildsOAuthMessage", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorAuthenticateBuildsOAuthMessage},
 	{Name: "TestTokenAuthenticatorAuthenticateRequiresRPAForSuccessfulOER", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorAuthenticateRequiresRPAForSuccessfulOER},
-	{Name: "TestTokenAuthenticatorSettersAndHeaderValidation", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorSettersAndHeaderValidation},
+	{Name: "TestTokenAuthenticatorSetters", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorSetters},
+	{Name: "TestTokenAuthenticatorCommonHeaderValidation", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorCommonHeaderValidation},
 	{Name: "TestTokenAuthenticatorSignHeaderErrors", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorSignHeaderErrors},
 	{Name: "TestTokenAuthenticatorAuthenticateStreamerErrors", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorAuthenticateStreamerErrors},
 	{Name: "TestOAuth_prepareForTokenOAUTH", Categories: "unitary", Exclusive: false, Fn: TestOAuth_prepareForTokenOAUTH},
 	{Name: "TestConnectionNegotiator_Negotiate_Fail", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_Fail},
 	{Name: "TestConnectionNegotiator_Negotiate_Success", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_Success},
+	{Name: "TestConnectionNegotiator_Renegotiate_Success", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Renegotiate_Success},
+	{Name: "TestConnectionNegotiator_Renegotiate_Fail", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Renegotiate_Fail},
 	{Name: "TestConnectionNegotiator_Negotiate_SelectsEOCSMessages", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_SelectsEOCSMessages},
 	{Name: "TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey", Categories: "unitary", Exclusive: false, Fn: TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey},
 	{Name: "TestStatement_QueryContext_JSONConstructor_AdditionalNamedBindShapes", Categories: "unitary", Exclusive: false, Fn: TestStatement_QueryContext_JSONConstructor_AdditionalNamedBindShapes},
@@ -1119,6 +1152,11 @@ type mockNetworkSession struct {
 	inband          bool
 	remoteAddress   string
 	remotePort      int
+	databaseUUID    string
+}
+
+func (m *mockNetworkSession) GetDatabaseUUID() string {
+	return m.databaseUUID
 }
 
 // newTestConnection creates a connection without querying DBTIMEZONE. Tests that
@@ -1171,13 +1209,14 @@ func (m *mockNetworkSession) Disconnect(ctx context.Context, flags int) error {
 type mockNegotiator struct {
 	sessCtx         *common.SessionContext
 	shelf           *ttiShelf[common.MessageType]
+	cookie          *ttiCookie
 	err             error
 	negotiateCalled bool
 }
 
-func (m *mockNegotiator) Negotiate(ctx context.Context) (*common.SessionContext, *ttiShelf[common.MessageType], error) {
+func (m *mockNegotiator) Negotiate(ctx context.Context) (*common.SessionContext, *ttiShelf[common.MessageType], *ttiCookie, error) {
 	m.negotiateCalled = true
-	return m.sessCtx, m.shelf, m.err
+	return m.sessCtx, m.shelf, m.cookie, m.err
 }
 
 // *** Authenticator ***

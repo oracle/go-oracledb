@@ -144,6 +144,7 @@ const (
 	NSPACFL2     = 41 // Accept flag2 (4 bytes)
 	NSPACV310DAT = 32 // Start of accept data, V3.10 packet
 	NSPACV315DAT = 41 // Start of accept data, V3.15 packet
+	NSPACUUIDLEN = 16 // Database UUID field length in bytes
 
 	// Refuse Packet
 	NSPRFURS = 8  // User (application) reason for refusal
