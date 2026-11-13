@@ -302,7 +302,7 @@ func TestOall8_MarshalTo_Select_MatchesGolden(t *testing.T) {
 	m.setCursorID(0)
 	m.setMaxLength(maxLength)
 	// to match dump values.
-	m.maxClientBuffer = maxValue
+	m.maxClientBuffer = maxValueClientBuffer
 	m.rowsToFetch = 10
 
 	m.setCurrentRank(0)

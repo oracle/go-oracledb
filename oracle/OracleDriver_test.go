@@ -97,6 +97,40 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 	}
 }
 
+// TestDriver_Functional_SelectDualCharacterValues verifies that character
+// results from DUAL are fetched and returned without changing their values.
+// This allows to verify that maxRowsToFetch does not exceed the maximum
+// value allowed by the server.
+func TestDriver_Functional_SelectDualCharacterValues(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	for _, tc := range []struct {
+		query string
+		want  any
+	}{
+		{query: "SELECT DUMMY FROM DUAL", want: "X"},
+		{query: "SELECT 'x' FROM DUAL", want: "x"},
+		{query: "SELECT CAST(1 AS BOOLEAN) FROM DUAL", want: true},
+		{query: "SELECT CAST(0 AS BOOLEAN) FROM DUAL", want: false},
+	} {
+		var got any
+		if err := db.QueryRowContext(context.Background(), tc.query).Scan(&got); err != nil {
+			t.Fatalf("query %q failed: %v", tc.query, err)
+		}
+		if got != tc.want {
+			t.Errorf("query %q returned %q, want %q", tc.query, got, tc.want)
+		}
+	}
+}
+
 // TestDriver_Functional_NetworkCompression verifies Oracle Net compression
 // through the public OracleDriverConfig.ConnectionProperties API.
 //
