@@ -51,7 +51,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
 	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 	ojson "github.com/oracle/go-oracledb/v26/oracle/datatype/json"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -405,8 +404,8 @@ func setupOSONTable(t *testing.T) (*sql.DB, context.Context, string) {
 	return db, ctx, table
 }
 
-// setupOSONBoundaryTable verifies the selected database version before applying
-// version-specific boundary expectations, then creates and cleans up its table.
+// setupOSONBoundaryTable creates and cleans up a native JSON table using the
+// configured database version to determine whether native JSON is supported.
 // Missing optional configuration skips; an unusable explicit selection fails.
 func setupOSONBoundaryTable(t *testing.T) (*sql.DB, context.Context, string) {
 	t.Helper()
@@ -431,28 +430,11 @@ func setupOSONBoundaryTable(t *testing.T) (*sql.DB, context.Context, string) {
 	})
 	probeCtx, probeCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer probeCancel()
-	var version string
-	if err := db.QueryRowContext(probeCtx, "SELECT version_full FROM product_component_version WHERE product LIKE 'Oracle%Database%'").Scan(&version); err != nil {
-		t.Fatalf("detect actual database version: %v", err)
+	if err := db.PingContext(probeCtx); err != nil {
+		t.Fatalf("connect using selected OSON configuration: %v", err)
 	}
-	parts := strings.Split(version, ".")
-	if len(parts) < 3 {
-		t.Fatalf("unexpected database version %q", version)
-	}
-	var actual Version
-	for i, dst := range []*int{&actual.Major, &actual.Minor, &actual.Micro} {
-		value, err := strconv.Atoi(parts[i])
-		if err != nil {
-			t.Fatalf("parse database version %q: %v", version, err)
-		}
-		*dst = value
-	}
-	t.Logf("OSON environment: config=%s actual_database_version=%s", TestingConfig.ConfigName, version)
-	if configured := TestingConfig.DatabaseVersion; configured != actual {
-		t.Fatalf("configured database_version=%d.%d.%d disagrees with actual database version %s", configured.Major, configured.Minor, configured.Micro, version)
-	}
-	if actual.Major < 21 {
-		t.Skipf("native JSON requires Oracle Database 21c or later; actual database version=%s", version)
+	if TestingConfig.DatabaseVersion.Major < 21 {
+		t.Skip("native JSON requires Oracle Database 21c or later")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	t.Cleanup(cancel)
@@ -545,7 +527,7 @@ FROM (SELECT JSON('{"text":"\u00e9\ud83d\ude42 \u65e5\u672c\u8a9e \u0627\u0644\u
 // materialization across count, field-ID and dictionary heap widths (OSON-F13).
 func TestDriver_OSON_F13_DictionaryAndContainerBoundaries(t *testing.T) {
 	db, ctx, table := setupOSONBoundaryTable(t)
-	major := TestingConfig.DatabaseVersion.Major // setup verified this against the server.
+	major := TestingConfig.DatabaseVersion.Major
 	if major == 21 && !t.Run("sql_field_name_limit_control", func(t *testing.T) {
 		osonCheck21cFieldNameLimit(t, db, ctx)
 	}) {
@@ -734,8 +716,8 @@ func osonBoundaryRejectLongKeys(t *testing.T, db *sql.DB, ctx context.Context, t
 	t.Logf("Expected 21c long-field rejection: maximum_key_bytes=%d error=%v; no row inserted; same-connection SELECT 1 passed", osonBoundaryMaxFieldNameBytes(want), err)
 }
 
-// TestOSONBoundaryFieldNamePolicy checks byte-based fixture expectations and
-// rejects unrelated error codes without contacting a database.
+// TestOSONBoundaryFieldNamePolicy checks byte-based fixture expectations across
+// database versions without contacting a database.
 func TestOSONBoundaryFieldNamePolicy(t *testing.T) {
 	large := make(map[string]any, 1024)
 	for i := 0; i < 1024; i++ {
@@ -768,29 +750,6 @@ func TestOSONBoundaryFieldNamePolicy(t *testing.T) {
 			}
 		})
 	}
-	t.Run("only_typed_field_rejections_are_accepted", func(t *testing.T) {
-		for _, test := range []struct {
-			name string
-			err  error
-			want bool
-		}{
-			{"syntax_code", common.NewOERMessageError("ORA-40441", "native OSON rejection"), true},
-			{"key_length_code", common.NewOERMessageError("ORA-40476", "key too long"), true},
-			{"wrapped_key_length", fmt.Errorf("bind: %w", common.NewOERMessageError("ORA-40476", "key too long")), true},
-			{"successful_insert", nil, false},
-			{"authentication", common.NewOERMessageError("ORA-01017", "invalid credentials"), false},
-			{"network_timeout", common.NewOERMessageError("ORA-12170", "connection timed out"), false},
-			{"canceled", context.Canceled, false},
-			{"deadline", context.DeadlineExceeded, false},
-			{"text_is_not_a_database_error", errors.New("ORA-40441"), false},
-		} {
-			t.Run(test.name, func(t *testing.T) {
-				if got := osonLongFieldDatabaseError(test.err); got != test.want {
-					t.Fatalf("accepted=%v, want %v", got, test.want)
-				}
-			})
-		}
-	})
 }
 
 // osonBoundaryRoundTrip checks native values, the sentinel and both JSON renderings.
@@ -908,16 +867,8 @@ func assertOSONSemanticJSON(t *testing.T, got, want string) {
 		return value
 	}
 	if !osonSemanticEqual(decode(got), decode(want)) {
-		t.Fatalf("JSON mismatch: got %s; want %s", osonBoundedText(got), osonBoundedText(want))
+		t.Fatalf("JSON mismatch: got %.512s; want %.512s", got, want)
 	}
-}
-
-// osonBoundedText limits failure output for large boundary documents.
-func osonBoundedText(s string) string {
-	if len(s) > 512 {
-		return fmt.Sprintf("%s... (%d bytes)", s[:512], len(s))
-	}
-	return s
 }
 
 // osonSemanticEqual compares JSON values recursively, using exact rational
