@@ -453,29 +453,16 @@ func TestDriver_Select_Query_cursor_leak(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
-	defer db.Close()
-	var limit int = 10000
-	for limit > 0 {
-		rows, err := db.QueryContext(context.Background(), "SELECT 1 FROM DUAL")
-		if err != nil {
-			t.Fatalf("select failed: %v", err)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close database: %v", err)
 		}
-
-		for rows.Next() {
-			var one int
-
-			if err := rows.Scan(&one); err != nil {
-				t.Fatalf("scan failed: %v", err)
-			}
+	}()
+	for operation := 0; operation < 10000; operation++ {
+		if err := executeSelectDual(context.Background(), db); err != nil {
+			t.Fatalf("operation %d: %v", operation+1, err)
 		}
-
-		if err := rows.Err(); err != nil {
-			t.Fatalf("rows err: %v", err)
-		}
-		rows.Close()
-		limit--
 	}
-
 }
 
 // TestDriver_PreparedStatement_Query_cursor_leak

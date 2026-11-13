@@ -73,27 +73,13 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
-	defer db.Close()
-
-	rows, err := db.QueryContext(context.Background(), "SELECT 1 FROM DUAL")
-	if err != nil {
-		t.Fatalf("select from DUAL failed: %v", err)
-	}
-	defer rows.Close()
-
-	if !rows.Next() {
-		t.Fatalf("no row returned from DUAL")
-	}
-	var val int
-	if err := rows.Scan(&val); err != nil {
-		t.Fatalf("scan failed: %v", err)
-	}
-
-	if val != 1 {
-		t.Fatalf("unexpected value from DUAL: got %d, want 1", val)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("rows err: %v", err)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close database: %v", err)
+		}
+	}()
+	if err := executeSelectDual(context.Background(), db); err != nil {
+		t.Fatal(err)
 	}
 }
 

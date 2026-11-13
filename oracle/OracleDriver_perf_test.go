@@ -158,25 +158,34 @@ func BenchmarkSimpleOpen(b *testing.B) {
 // BenchmarkSimpleSelectDual measures repeated execution of SELECT 1 FROM
 // DUAL on a single checked-out connection.
 func BenchmarkSimpleSelectDual(b *testing.B) {
-	var val int
-
+	if TestingConfig == nil {
+		b.Skip("requires a database test configuration")
+	}
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
-		b.Logf("Error opening connection: %s", err.Error())
-		b.Fail()
-	} else {
-		defer db.Close()
-		conn, _ := db.Conn(context.Background())
-		b.ResetTimer()
-		for b.Loop() {
-			rows, _ := conn.QueryContext(context.Background(), "SELECT 1 FROM DUAL")
-			rows.Next()
-			_ = rows.Scan(&val)
-			rows.Close()
-		}
-		conn.Close()
+		b.Fatal(err)
 	}
-
+	defer func() {
+		if err := db.Close(); err != nil {
+			b.Errorf("close database: %v", err)
+		}
+	}()
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			b.Errorf("return connection: %v", err)
+		}
+	}()
+	// Measurements include database/sql and validation, not just driver code.
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := executeSelectDual(context.Background(), conn); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 // BenchmarkSimpleSelect measures repeated scanning of rows from a simple
