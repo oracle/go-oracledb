@@ -86,6 +86,8 @@ func (config OracleDriverProperties) GetDefaultLobPrefetchSize() int {
 	return config.DefaultLobPrefetchSize
 }
 
+// GetCursorCacheSize returns the maximum number of server cursors retained by
+// each pooled connection.
 func (config OracleDriverProperties) GetCursorCacheSize() int {
 	return config.CursorCacheSize
 }

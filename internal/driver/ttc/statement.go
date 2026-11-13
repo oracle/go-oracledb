@@ -135,16 +135,19 @@ type Statement struct {
 	cursorCachedAt         uint64
 }
 
+// cursorCacheKey returns the server cursor ID used as this connection's cache key.
 func (s *Statement) cursorCacheKey() string {
 	return strconv.FormatInt(int64(s.qualifiedQuery.cursorID), 10)
 }
 
+// markCursorUsed records this statement's most recent successful execution.
 func (s *Statement) markCursorUsed() {
 	if s.qualifiedQuery.cursorID != 0 {
 		s.cursorLastUsed = s.shelf.nextCursorUseSequence()
 	}
 }
 
+// markCursorClosed invalidates the server cursor held by this statement.
 func (s *Statement) markCursorClosed() {
 	s.qualifiedQuery.cursorID = 0
 	s.cursorCachedAt = 0

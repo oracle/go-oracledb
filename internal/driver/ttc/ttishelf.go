@@ -80,6 +80,8 @@ type ttiShelf[T any] struct {
 	_cursorUseSequence       uint64
 }
 
+// initializeCursorCache creates this connection's cursor cache, or disables
+// caching when maxSize is zero.
 func (s *ttiShelf[T]) initializeCursorCache(maxSize int) {
 	if maxSize <= 0 {
 		s._cursorCache = nil
@@ -115,6 +117,7 @@ func (s *ttiShelf[T]) cacheCursors() []*Statement {
 	return evicted
 }
 
+// removeCachedCursor removes a statement cursor before it is explicitly closed.
 func (s *ttiShelf[T]) removeCachedCursor(statement *Statement) {
 	if s._cursorCache == nil || statement.qualifiedQuery.cursorID == 0 {
 		return
@@ -123,12 +126,14 @@ func (s *ttiShelf[T]) removeCachedCursor(statement *Statement) {
 	statement.cursorCachedAt = 0
 }
 
+// clearCachedCursors forgets all locally cached cursors after server reset.
 func (s *ttiShelf[T]) clearCachedCursors() {
 	if s._cursorCache != nil {
 		s._cursorCache.Clear()
 	}
 }
 
+// nextCursorUseSequence returns a monotonic sequence used to order cursor use.
 func (s *ttiShelf[T]) nextCursorUseSequence() uint64 {
 	s._cursorUseSequence++
 	return s._cursorUseSequence

@@ -47,6 +47,8 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
+// resetStateLevel2 indicates that the server resets session state, including
+// open cursors, when a connection is returned to the pool.
 const resetStateLevel2 = 0x02
 
 // addCursorLifecycleCallbacks configures cursor cleanup before the end-request
@@ -71,6 +73,8 @@ func addCursorLifecycleCallbacks(callbacks *requestCallbacks, c *connection) {
 	})
 }
 
+// resetStateEnabled reports whether the negotiated session reset level closes
+// cursors on the server, so the client must invalidate them locally instead.
 func (c *connection) resetStateEnabled() bool {
 	if c.sessCtx == nil {
 		return false
@@ -91,6 +95,7 @@ func (c *connection) resetStateEnabled() bool {
 	return err == nil && level&resetStateLevel2 != 0
 }
 
+// cacheCursors closes only cursors evicted from this connection's cache.
 func (c *connection) cacheCursors(context.Context) error {
 	for _, statement := range c.shelf.cacheCursors() {
 		if err := statement._closeCursor(); err != nil {
@@ -100,6 +105,8 @@ func (c *connection) cacheCursors(context.Context) error {
 	return nil
 }
 
+// invalidateCursors clears local cursor state after server reset state has
+// closed the corresponding cursors.
 func (c *connection) invalidateCursors(context.Context) error {
 	for _, statement := range c.shelf.GetStatements(false) {
 		statement.markCursorClosed()
