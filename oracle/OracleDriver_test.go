@@ -97,11 +97,11 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 	}
 }
 
-// TestDriver_Functional_SelectDualCharacterValues verifies that character
+// TestDriver_Functional_SelectDualSmallValues verifies that small values
 // results from DUAL are fetched and returned without changing their values.
 // This allows to verify that maxRowsToFetch does not exceed the maximum
 // value allowed by the server.
-func TestDriver_Functional_SelectDualCharacterValues(t *testing.T) {
+func TestDriver_Functional_SelectDualSmallValues(t *testing.T) {
 	t.Parallel()
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
