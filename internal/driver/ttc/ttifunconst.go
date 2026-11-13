@@ -59,6 +59,8 @@ const (
 	oLobOps common.FunctionType = 96
 	// oExfen (OEXFEN) is the fast path execute+fetch function.
 	oExfen common.FunctionType = 78
+	// oSessState (OSESSSTATE) sends session request-boundary state.
+	oSessState common.FunctionType = 176
 	// occa is the function code for close cursor/cancel,
 	occa common.FunctionType = 105
 )
