@@ -76,7 +76,6 @@ const (
 // It returns false if the connection is invalid or a callback returns
 // driver.ErrBadConn.
 func (c *connection) IsValid() bool {
-
 	// Check if inband notification has been received.
 	c._isValid = c._isValid && !c.ns.CheckInbandNotification()
 

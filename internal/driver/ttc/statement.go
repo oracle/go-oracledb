@@ -41,6 +41,7 @@ package ttc
 import (
 	"context"
 	"database/sql/driver"
+	"strconv"
 	"sync"
 	"time"
 
@@ -130,6 +131,23 @@ type Statement struct {
 	queryStatementExecutor QueryWithContext
 	execStatementExecutor  ExecWithContext
 	_rows                  driver.Rows // reference on created Rows.
+	cursorLastUsed         uint64
+	cursorCachedAt         uint64
+}
+
+func (s *Statement) cursorCacheKey() string {
+	return strconv.FormatInt(int64(s.qualifiedQuery.cursorID), 10)
+}
+
+func (s *Statement) markCursorUsed() {
+	if s.qualifiedQuery.cursorID != 0 {
+		s.cursorLastUsed = s.shelf.nextCursorUseSequence()
+	}
+}
+
+func (s *Statement) markCursorClosed() {
+	s.qualifiedQuery.cursorID = 0
+	s.cursorCachedAt = 0
 }
 
 /*
@@ -219,6 +237,7 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 	selectedRows, e := s.queryStatementExecutor.QueryContext(subContext, s.qualifiedQuery, args)
 	if e == nil {
 		s._rows = selectedRows
+		s.markCursorUsed()
 	}
 
 	if err := s.shelf.checkCurrentState(ctx); err != nil {
@@ -249,7 +268,7 @@ func (s *Statement) _closeCursor() error {
 		common.Odl.Error("Statement.Close: Push(OCCA) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
-	s.qualifiedQuery.cursorID = 0
+	s.markCursorClosed()
 	return nil
 }
 
@@ -266,6 +285,7 @@ func (s *Statement) Close() error {
 		}
 		s._rows = nil
 	}
+	s.shelf.removeCachedCursor(s)
 	// close cursors
 	err := s._closeCursor()
 	if err != nil {
@@ -318,6 +338,9 @@ func (s *Statement) ExecContext(ctx context.Context, args []driver.NamedValue) (
 		defer stopTransAfterFunction()
 	}
 	result, err := s.execStatementExecutor.ExecContext(subContext, s.qualifiedQuery, args)
+	if err == nil {
+		s.markCursorUsed()
+	}
 	if err := s.shelf.checkCurrentState(ctx); err != nil {
 		return nil, err
 	}

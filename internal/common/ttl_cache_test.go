@@ -286,6 +286,19 @@ func TestLRUCacheOverMaxSize(t *testing.T) {
 	}
 }
 
+func TestLRUCachePutAndEvictReportsLeastRecentValue(t *testing.T) {
+	cache := NewLRUCache[string](1)
+	cache.Put("first", "one")
+
+	previous, replaced, evicted, evictedOK := cache.PutAndEvict("second", "two")
+	if replaced || previous != "" {
+		t.Fatalf("new key unexpectedly replaced %q", previous)
+	}
+	if !evictedOK || evicted != "one" {
+		t.Fatalf("evicted = (%q, %t), want (one, true)", evicted, evictedOK)
+	}
+}
+
 // TestLRUCacheGetUpdatesRecency the overflow behavior.
 //   - create a cache of size 3
 //   - add three elements
