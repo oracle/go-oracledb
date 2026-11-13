@@ -260,7 +260,7 @@ func (sa *sessionAtts) prepare(protocol driverCommon.Protocol) error {
 	if sa.connectTimeout == 0 && sa.nt.Transportconnecttimeout == 0 {
 		sa.nt.Transportconnecttimeout = DEFAULT_TRANSPORT_CONNECT_TIMEOUT
 	}
-	common.Odl.Debug("connection timeout set", "tm",
+	common.Odl.Finest("connection timeout set", "tm",
 		sa.nt.Transportconnecttimeout)
 
 	return nil

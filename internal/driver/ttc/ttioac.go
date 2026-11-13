@@ -384,7 +384,8 @@ func (p *tTIoac) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}
 
-	if p.maxLength, err = mar.UnmarshalUB4(ctx); err != nil {
+	p.maxLength, err = mar.UnmarshalUB4(ctx)
+	if err != nil {
 		common.Odl.Warn("UnmarshalFrom: failed to unmarshal maxLength", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "OAC")
 	}

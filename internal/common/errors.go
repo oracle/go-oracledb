@@ -98,7 +98,7 @@ type LocalizationService interface {
 func NewLocalizationService(userLanguage language.Tag) LocalizationService {
 	matcher := language.NewMatcher(messageLanguages)
 	matchedLanguage, matchedIndex, confidence := matcher.Match(userLanguage)
-	Odl.Debug(fmt.Sprintf("Matched language %s with confidence %v", matchedLanguage, confidence))
+	Odl.Finest(fmt.Sprintf("Matched language %s with confidence %v", matchedLanguage, confidence))
 	initializeLanguageMessages(language.English)
 	initializeLanguageMessages(messageLanguages[matchedIndex])
 	return &localizationService{
