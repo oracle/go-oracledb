@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
@@ -48,6 +49,22 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+type bindCodecFactoryStub struct{ encoder *typeEncoder }
+
+func (s bindCodecFactoryStub) getEncoderForGoType(bindValueMetadata) (*typeEncoder, error) {
+	return s.encoder, nil
+}
+func (s bindCodecFactoryStub) getEncoderForDtyType(DtyType, bindValueMetadata) (*typeEncoder, error) {
+	return s.encoder, nil
+}
+func (bindCodecFactoryStub) getDecoder(DtyType) (*typeDecoder, error) { return nil, nil }
+func (bindCodecFactoryStub) getBindOac(bindValueMetadata, common.UB4) (common.Marshallable, error) {
+	return nil, nil
+}
+func (bindCodecFactoryStub) getDefineOac(DtyType, columnContext, common.DriverProperties) common.Marshallable {
+	return nil
+}
 
 var validRow1Dump = []string{
 	`"07 02 C1 02 03 61 62 63"`,
@@ -100,6 +117,21 @@ func rowToBytes(row []columnPayload) [][]byte {
 	return out
 }
 
+// setCLRBindValues configures an outgoing RXD test message with ordinary CLR
+// payloads. Production RXD messages resolve the same wrapper through the
+// codec factory injected by the message factory.
+func setCLRBindValues(rxd *tTIrxd, payloads ...common.B1Array) {
+	bindValues := make([]encodedBindValue, len(payloads))
+	for i, payload := range payloads {
+		bindValues[i] = encodedBindValue{
+			payload:  payload,
+			metadata: bindValueMetadata{isNull: payload == nil},
+		}
+	}
+	rxd.setCodecFactory(bindCodecFactoryStub{encoder: newCLRBindEncoder(func(driver.Value) (common.B1Array, error) { return nil, nil })})
+	rxd.setBindValues(bindValues)
+}
+
 // TestTTIrxd_GetMsgCode verifies that GetMsgCode returns TTIRXD for tTIrxd message.
 func TestTTIrxd_GetMsgCode(t *testing.T) {
 	t.Parallel()
@@ -118,7 +150,7 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 
 	// Encoded bind data set before calling MarshalTo (nil, then 3-byte value)
 	val := common.B1Array{0x01, 0x02, 0x03}
-	rxd.setBindValues([]common.B1Array{nil, val})
+	setCLRBindValues(rxd, nil, val)
 
 	// Use ArrayBasedDataBuffer via NewMarshalEngineTest so we can inspect bytes directly
 	buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 64)
@@ -135,12 +167,32 @@ func TestTTIrxd_MarshalTo_Success(t *testing.T) {
 	}
 }
 
+// TestTTIrxd_MarshalTo_PreparedBindValue verifies that a prepared bind can
+// replace the default CLR representation for one bind position.
+func TestTTIrxd_MarshalTo_PreparedBindValue(t *testing.T) {
+	t.Parallel()
+	rxd := newTTIrxd().(*tTIrxd)
+	rxd.setCodecFactory(bindCodecFactoryStub{encoder: &typeEncoder{wrapColumn: func(ctx context.Context, mar common.Marshaller, _ common.B1Array) error {
+		return mar.MarshalUB1(ctx, 0x7F)
+	}}})
+	rxd.setBindValues([]encodedBindValue{{payload: common.B1Array{0x01, 0x02, 0x03}}})
+
+	buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 64)
+	if err := rxd.MarshalTo(context.Background(), eng); err != nil {
+		t.Fatalf("MarshalTo returned error: %v", err)
+	}
+
+	if got := buf.bytes[:buf.currentWritePosition]; !reflect.DeepEqual(got, []byte{0x7F}) {
+		t.Fatalf("prepared bind representation mismatch: got %v want %v", got, []byte{0x7F})
+	}
+}
+
 // TestTTIrxd_MarshalTo_FailOnNullIndicator simulates a failure when writing the null indicator byte.
 // Uses FaultyArrayBasedDataBuffer (via createMarshaller) to fail WriteByte on first call.
 func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.setBindValues([]common.B1Array{nil})
+	setCLRBindValues(rxd, nil)
 
 	// Fail the first WriteByteWithContext call (which writes the null indicator)
 	mar := createMarshaller(make([]byte, 8), failOnWriteByte, 1)
@@ -164,7 +216,7 @@ func TestTTIrxd_MarshalTo_FailOnNullIndicator(t *testing.T) {
 func TestTTIrxd_MarshalTo_FailOnCLRDataWrite(t *testing.T) {
 	t.Parallel()
 	rxd := newTTIrxd().(*tTIrxd)
-	rxd.setBindValues([]common.B1Array{{0xAA, 0xBB, 0xCC}})
+	setCLRBindValues(rxd, common.B1Array{0xAA, 0xBB, 0xCC})
 
 	// First WriteBytesWithContext call should fail (after successful length byte write)
 	mar := createMarshaller(make([]byte, 8), failOnWriteBytes, 1)
