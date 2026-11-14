@@ -112,12 +112,12 @@ func TestLobDefinitionConstructors(t *testing.T) {
 		sendAmount bool
 		nullO2U    bool
 	}{
-		{name: "get length", definition: NewLobDefinitionForGetLengthOperation(source), operation: kplobGetLength, sendAmount: true},
-		{name: "chunk size", definition: NewLobDefinitionForGetChunkSizeOperation(source), operation: kplobPageSize, sendAmount: true},
-		{name: "trim", definition: NewLobDefinitionForTrimOperation(source, 17), operation: kplobTrim, lobAmt: 17, sendAmount: true},
-		{name: "open", definition: NewLobDefinitionForOpenOperation(source, LobOpenModeReadWrite, kplobOpen), operation: kplobOpen, lobAmt: driverCommon.UB8(LobOpenModeReadWrite), sendAmount: true},
-		{name: "close", definition: NewLobDefinitionForCloseOperation(source, kplobClose), operation: kplobClose},
-		{name: "is open", definition: NewLobDefinitionForIsOpenOperation(source, kplobIsOpen), operation: kplobIsOpen, nullO2U: true},
+		{name: "get length", definition: newLobDefinitionForGetLengthOperation(source), operation: kplobGetLength, sendAmount: true},
+		{name: "chunk size", definition: newLobDefinitionForGetChunkSizeOperation(source), operation: kplobPageSize, sendAmount: true},
+		{name: "trim", definition: newLobDefinitionForTrimOperation(source, 17), operation: kplobTrim, lobAmt: 17, sendAmount: true},
+		{name: "open", definition: newLobDefinitionForOpenOperation(source, lobOpenModeReadWrite, kplobOpen), operation: kplobOpen, lobAmt: driverCommon.UB8(lobOpenModeReadWrite), sendAmount: true},
+		{name: "close", definition: newLobDefinitionForCloseOperation(source, kplobClose), operation: kplobClose},
+		{name: "is open", definition: newLobDefinitionForIsOpenOperation(source, kplobIsOpen), operation: kplobIsOpen, nullO2U: true},
 	}
 
 	for _, tc := range readCases {
@@ -142,7 +142,7 @@ func TestLobDefinitionConstructors(t *testing.T) {
 	}
 
 	t.Run("temporary create", func(t *testing.T) {
-		def := NewLobDefinitionForTemporaryCreate(32, 1, 2, 60, true, 873)
+		def := newLobDefinitionForTemporaryCreate(32, 1, 2, 60, true, 873)
 		if def.operation != kplobTmpCreate {
 			t.Fatalf("operation = %v, want %v", def.operation, kplobTmpCreate)
 		}
