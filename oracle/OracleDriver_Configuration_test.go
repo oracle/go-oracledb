@@ -230,14 +230,14 @@ func TestDriver_OpenConnectorUsesFallbackConnectDescriptor(t *testing.T) {
 	}
 
 	oracleConnector := connector.(*oracleConnector)
-	if oracleConnector.connectorConfig.ConnectDescriptor != "localhost:1521/freepdb1" {
-		t.Fatalf("expected effective connect descriptor, got %q", oracleConnector.connectorConfig.ConnectDescriptor)
+	if oracleConnector.connectionPlans.BaseConfig.ConnectDescriptor != "localhost:1521/freepdb1" {
+		t.Fatalf("expected effective connect descriptor, got %q", oracleConnector.connectionPlans.BaseConfig.ConnectDescriptor)
 	}
-	if oracleConnector.connectorConfig.ConnectionProperties.ConnectTimeout != 12 {
-		t.Fatalf("expected connect timeout from fallback DSN query, got %d", oracleConnector.connectorConfig.ConnectionProperties.ConnectTimeout)
+	if got := oracleConnector.connectionPlans.QuerySettings["oracle.go.connectionproperties.connecttimeout"]; got != "12" {
+		t.Fatalf("expected connect timeout query setting 12, got %q", got)
 	}
-	if oracleConnector.config.ConnectString == "" {
-		t.Fatal("expected parsed network connect string")
+	if len(oracleConnector.connectionPlans.Plan.Descriptions) == 0 {
+		t.Fatal("expected a parsed connection description")
 	}
 }
 
@@ -250,19 +250,19 @@ func TestDriver_OpenConnectorStoresConnectDescriptorFromDSN(t *testing.T) {
 	}
 
 	oracleConnector := connector.(*oracleConnector)
-	if oracleConnector.connectorConfig.ConnectDescriptor != "localhost:1521/freepdb1" {
-		t.Fatalf("expected DSN connect descriptor, got %q", oracleConnector.connectorConfig.ConnectDescriptor)
+	if oracleConnector.connectionPlans.BaseConfig.ConnectDescriptor != "localhost:1521/freepdb1" {
+		t.Fatalf("expected DSN connect descriptor, got %q", oracleConnector.connectionPlans.BaseConfig.ConnectDescriptor)
 	}
-	if oracleConnector.connectorConfig.Credentials.User != "user" {
-		t.Fatalf("expected DSN user, got %q", oracleConnector.connectorConfig.Credentials.User)
+	if oracleConnector.connectionPlans.BaseConfig.Credentials.User != "user" {
+		t.Fatalf("expected DSN user, got %q", oracleConnector.connectionPlans.BaseConfig.Credentials.User)
 	}
-	if oracleConnector.connectorConfig.Credentials.Password != "pass" {
-		t.Fatalf("expected DSN password, got %q", oracleConnector.connectorConfig.Credentials.Password)
+	if oracleConnector.connectionPlans.BaseConfig.Credentials.Password != "pass" {
+		t.Fatalf("expected DSN password, got %q", oracleConnector.connectionPlans.BaseConfig.Credentials.Password)
 	}
 }
 
 // TestDriver_OpenConnectorUsesNSProperty verifies that Oracle Net properties
-// from the configuration object are applied to parsed connection options.
+// from the configuration object are retained in the connection plans' base config.
 func TestDriver_OpenConnectorUsesNSProperty(t *testing.T) {
 	t.Parallel()
 	const walletLocation = "/tmp/wallet location"
@@ -277,28 +277,17 @@ func TestDriver_OpenConnectorUsesNSProperty(t *testing.T) {
 	}
 
 	oracleConnector := connector.(*oracleConnector)
-	iterator := oracleConnector.config.NewConnectionAttemptIterator(context.Background())
-	if !iterator.HasNext() {
-		t.Fatal("expected a connection attempt")
-	}
-	option := iterator.Next()
-	desc := option.Description
-	if desc == nil {
-		t.Fatal("expected parsed description")
-	}
-	if desc.Security.WalletLocation != walletLocation {
-		t.Fatalf("expected wallet location %q, got %q", walletLocation, desc.Security.WalletLocation)
+	if got := oracleConnector.connectionPlans.BaseConfig.ConnectionProperties.WalletLocation; got != walletLocation {
+		t.Fatalf("expected wallet location %q in base configuration, got %q", walletLocation, got)
 	}
 }
 
-// TestDriver_OpenConnectorUsesNSParamOverConfig verifies
-// that a ns property takes precedence
-// over the configuration object.
+// TestDriver_OpenConnectorUsesNSParamOverConfig verifies that an Oracle Net
+// query setting is retained separately from the base configuration.
 func TestDriver_OpenConnectorUsesNSParamOverConfig(t *testing.T) {
 	t.Parallel()
 	const configTransportConnectTimeout = 2
 	const dsnTransportConnectTimeout = 7
-	const expectedTransportConnectTimeoutMS = dsnTransportConnectTimeout * 1000
 
 	config := NewOracleDriverConfig()
 	config.ConnectDescriptor = "tcps://127.0.0.1:2484/freepdb1?transport_connect_timeout=7"
@@ -310,34 +299,16 @@ func TestDriver_OpenConnectorUsesNSParamOverConfig(t *testing.T) {
 	}
 
 	oracleConnector := connector.(*oracleConnector)
-	if oracleConnector.connectorConfig.ConnectionProperties.TransportConnectTimeout != dsnTransportConnectTimeout {
-		t.Fatalf(
-			"expected connector config transport connect timeout %d, got %d",
-			dsnTransportConnectTimeout,
-			oracleConnector.connectorConfig.ConnectionProperties.TransportConnectTimeout,
-		)
+	if got := oracleConnector.connectionPlans.QuerySettings["transport_connect_timeout"]; got != "7" {
+		t.Fatalf("expected DSN transport connect timeout setting 7, got %q", got)
 	}
-
-	iterator := oracleConnector.config.NewConnectionAttemptIterator(context.Background())
-	if !iterator.HasNext() {
-		t.Fatal("expected a connection attempt")
-	}
-	option := iterator.Next()
-	desc := option.Description
-	if desc == nil {
-		t.Fatal("expected parsed description")
-	}
-	if desc.TransportConnectTimeout != expectedTransportConnectTimeoutMS {
-		t.Fatalf(
-			"expected transport connect timeout %dms, got %dms",
-			expectedTransportConnectTimeoutMS,
-			desc.TransportConnectTimeout,
-		)
+	if oracleConnector.connectionPlans.BaseConfig.ConnectionProperties.TransportConnectTimeout != configTransportConnectTimeout {
+		t.Fatalf("expected base transport connect timeout %d, got %d", configTransportConnectTimeout, oracleConnector.connectionPlans.BaseConfig.ConnectionProperties.TransportConnectTimeout)
 	}
 }
 
 // TestDriver_OpenConnectorUsesParam verifies that fully-qualified DSN query
-// parameters are applied to parsed connection options.
+// parameters are retained in the connection plans.
 func TestDriver_OpenConnectorUsesParam(t *testing.T) {
 	t.Parallel()
 	const walletLocation = "/tmp/foo"
@@ -348,22 +319,13 @@ func TestDriver_OpenConnectorUsesParam(t *testing.T) {
 	}
 
 	oracleConnector := connector.(*oracleConnector)
-	iterator := oracleConnector.config.NewConnectionAttemptIterator(context.Background())
-	if !iterator.HasNext() {
-		t.Fatal("expected a connection attempt")
-	}
-	option := iterator.Next()
-	desc := option.Description
-	if desc == nil {
-		t.Fatal("expected parsed description")
-	}
-	if desc.Security.WalletLocation != walletLocation {
-		t.Fatalf("expected wallet location %q, got %q", walletLocation, desc.Security.WalletLocation)
+	if got := oracleConnector.connectionPlans.QuerySettings["oracle.go.connectionproperties.walletlocation"]; got != walletLocation {
+		t.Fatalf("expected wallet location query setting %q, got %q", walletLocation, got)
 	}
 }
 
 // TestDriver_OpenConnectorUsesNSParam verifies that Oracle Net DSN query
-// parameters are applied to parsed connection options and credentials.
+// parameters are retained in the connection plans.
 func TestDriver_OpenConnectorUsesNSParam(t *testing.T) {
 	t.Parallel()
 	const walletLocation = "/tmp/foo"
@@ -376,21 +338,12 @@ func TestDriver_OpenConnectorUsesNSParam(t *testing.T) {
 
 	oracleConnector := connector.(*oracleConnector)
 
-	iterator := oracleConnector.config.NewConnectionAttemptIterator(context.Background())
-	if !iterator.HasNext() {
-		t.Fatal("expected a connection attempt")
-	}
-	option := iterator.Next()
-	desc := option.Description
-	if desc == nil {
-		t.Fatal("expected parsed description")
-	}
-	if desc.Security.WalletLocation != walletLocation {
-		t.Fatalf("expected wallet location %q, got %q", walletLocation, desc.Security.WalletLocation)
+	if got := oracleConnector.connectionPlans.QuerySettings["wallet_location"]; got != walletLocation {
+		t.Fatalf("expected wallet location query setting %q, got %q", walletLocation, got)
 	}
 
-	if oracleConnector.connectorConfig.Credentials.LogonMode != logonMode {
-		t.Fatalf("expected logon mode  %q, got %q", logonMode, oracleConnector.connectorConfig.Credentials.LogonMode)
+	if got := oracleConnector.connectionPlans.QuerySettings["logon_mode"]; got != logonMode {
+		t.Fatalf("expected logon mode query setting %q, got %q", logonMode, got)
 	}
 }
 
@@ -408,17 +361,8 @@ func TestDriver_OpenConnectorPreservesQuotedInParameters(t *testing.T) {
 	}
 
 	oracleConnector := connector.(*oracleConnector)
-	iterator := oracleConnector.config.NewConnectionAttemptIterator(context.Background())
-	if !iterator.HasNext() {
-		t.Fatal("expected a connection attempt")
-	}
-
-	option := iterator.Next()
-	if option.Description == nil {
-		t.Fatal("expected parsed description")
-	}
-	if got := option.Description.Security.SSLServerCertDN; got != expected {
-		t.Fatalf("expected SSL server certificate DN %q, got %q", expected, got)
+	if got := oracleConnector.connectionPlans.QuerySettings["ssl_server_cert_dn"]; got != expected {
+		t.Fatalf("expected SSL server certificate DN %q in query settings, got %q", expected, got)
 	}
 }
 

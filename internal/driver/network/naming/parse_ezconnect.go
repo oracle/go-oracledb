@@ -40,39 +40,12 @@ package naming
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
-
-const (
-	defaultOraclePort = "1521"
-	defaultProtocol   = driverCommon.ProtocolTCP
-)
-
-// HostPort represents a database host and port combination
-type hostPort struct {
-	host string
-	port string
-}
-
-// AddressGroup represents a group of addresses (for ADDRESS_LIST)
-type addressGroup struct {
-	hosts []hostPort
-}
-
-// ParsedURL contains the parsed components of an EZConnect URL
-type parsedURL struct {
-	protocol      driverCommon.Protocol
-	addressGroups []addressGroup
-	serviceName   string
-	serverMode    string
-	instanceName  string
-}
 
 // ConversionResult contains the TNS string and any unrecognized parameters
 type conversionResult struct {
@@ -111,6 +84,7 @@ var parameterDestinations = map[string]string{
 
 	// CONNECT_DATA parameters
 	"POOL_CONNECTION_CLASS": "CONNECT_DATA",
+	"POOL_NAME":             "CONNECT_DATA",
 	"POOL_PURITY":           "CONNECT_DATA",
 	"SERVICE_TAG":           "CONNECT_DATA",
 	"CONNECTION_ID_PREFIX":  "CONNECT_DATA",
@@ -121,9 +95,6 @@ var parameterDestinations = map[string]string{
 	"SSL_SERVER_DN_MATCH": "SECURITY",
 	"WALLET_LOCATION":     "SECURITY",
 }
-
-// Pre-compiled regex for protocol extraction
-var protocolPattern = regexp.MustCompile(`^([a-zA-Z0-9]+)://`)
 
 // ParseEzConnect converts an EZConnect URL to long TNS format
 // Example: "host:1521/mydb" -> "(DESCRIPTION=(ADDRESS=...)...)"
@@ -235,174 +206,6 @@ func parseExtendedParams(paramStr string) (map[string]string, map[string]string,
 	}
 
 	return recognizedParams, unrecognizedParams, nil
-}
-
-// parseMainURL parses the core EZConnect format
-// Format: [protocol://]host[:port][,host2[:port2]][;host3][/service][:server][/instance]
-func parseMainURL(url string) (*parsedURL, error) {
-	result := &parsedURL{}
-
-	var err error
-	// Extract protocol if present (tcp:// or tcps://)
-	if matches := protocolPattern.FindStringSubmatch(url); matches != nil {
-		result.protocol, err = driverCommon.NormalizeProtocol(matches[1])
-		if err != nil {
-			return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, matches[1], "protocol")
-		}
-		url = protocolPattern.ReplaceAllString(url, "")
-
-	} else {
-		result.protocol = defaultProtocol
-	}
-
-	// Split by '/' to separate hosts from service/instance
-	parts := strings.Split(url, "/")
-	hostPart := parts[0]
-
-	// Parse host groups (semicolon separates groups for ADDRESS_LIST)
-	addressGroups, err := parseAddressGroups(hostPart)
-	if err != nil {
-		return nil, err
-	}
-	result.addressGroups = addressGroups
-
-	// Parse service name, server mode, and instance
-	if len(parts) > 1 && parts[1] != "" {
-		// Service name is before any ':'
-		serviceAndMode := parts[1]
-		colonIdx := strings.Index(serviceAndMode, ":")
-
-		if colonIdx != -1 {
-			result.serviceName = serviceAndMode[:colonIdx]
-			result.serverMode = strings.ToUpper(serviceAndMode[colonIdx+1:])
-		} else {
-			result.serviceName = serviceAndMode
-		}
-	}
-
-	// Parse instance name (if present in parts[2])
-	if len(parts) > 2 && parts[2] != "" {
-		result.instanceName = parts[2]
-	}
-
-	return result, nil
-}
-
-// parseAddressGroups parses semicolon-separated address groups
-// Each group contains comma-separated hosts
-func parseAddressGroups(hostStr string) ([]addressGroup, error) {
-	if hostStr == "" {
-		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, "", "host")
-	}
-
-	// Split by semicolon to get address groups
-	groupStrs := strings.Split(hostStr, ";")
-	groups := make([]addressGroup, 0, len(groupStrs))
-
-	for _, groupStr := range groupStrs {
-		groupStr = strings.TrimSpace(groupStr)
-		if groupStr == "" {
-			continue
-		}
-
-		hosts, err := parseHostList(groupStr)
-		if err != nil {
-			return nil, err
-		}
-
-		groups = append(groups, addressGroup{hosts: hosts})
-	}
-
-	if len(groups) == 0 {
-		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, hostStr, "host")
-	}
-
-	return groups, nil
-}
-
-// parseHostList parses comma-separated host:port combinations
-// Supports IPv6 addresses in brackets: [::1]:1521
-func parseHostList(hostStr string) ([]hostPort, error) {
-	if hostStr == "" {
-		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, "", "host")
-	}
-
-	var hosts []hostPort
-	var currentHost strings.Builder
-	var currentPort strings.Builder
-	inBrackets := false
-	parsingPort := false
-
-	for i := 0; i < len(hostStr); i++ {
-		ch := hostStr[i]
-
-		if ch == '[' {
-			inBrackets = true
-			currentHost.WriteByte(ch)
-		} else if ch == ']' {
-			inBrackets = false
-			currentHost.WriteByte(ch)
-		} else if ch == ':' {
-			if inBrackets {
-				currentHost.WriteByte(ch)
-			} else {
-				parsingPort = true
-			}
-		} else if ch == ',' {
-			host := strings.TrimSpace(currentHost.String())
-			port := strings.TrimSpace(currentPort.String())
-
-			if port == "" {
-				port = defaultOraclePort
-			}
-
-			// Validate port number
-			portNum, err := strconv.Atoi(port)
-			if err != nil {
-				return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, err, port, "port")
-			}
-			if portNum < 1 || portNum > 65535 {
-				return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, port, "port")
-			}
-
-			hosts = append(hosts, hostPort{host: host, port: port})
-
-			currentHost.Reset()
-			currentPort.Reset()
-			parsingPort = false
-		} else {
-			if parsingPort {
-				currentPort.WriteByte(ch)
-			} else {
-				currentHost.WriteByte(ch)
-			}
-		}
-	}
-
-	// Add the last host
-	host := strings.TrimSpace(currentHost.String())
-	port := strings.TrimSpace(currentPort.String())
-
-	if host == "" {
-		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, "", "host")
-	}
-
-	if port == "" {
-		port = defaultOraclePort
-	}
-
-	// Validate port number
-	portNum, err := strconv.Atoi(port)
-	if err != nil {
-		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, err, port, "port")
-	}
-	if portNum < 1 || portNum > 65535 {
-		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, port, "port")
-	}
-
-	hosts = append(hosts, hostPort{host: host, port: port})
-
-	return hosts, nil
 }
 
 // buildTNS constructs the final TNS format string

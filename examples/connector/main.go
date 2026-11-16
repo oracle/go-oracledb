@@ -65,6 +65,9 @@ func main() {
 	cfg.ConnectDescriptor = connectDescriptor
 	cfg.Credentials.User = user
 	cfg.Credentials.Password = password
+	cfg.ConnectionProperties.SendBufSize = 1024
+	cfg.ConnectionProperties.SSLServerDNMatch = true
+	cfg.ConnectDescriptor = "(DESCRIPTION_LIST=(LOAD_BALANCE=off)(FAILOVER=on)(DESCRIPTION=(CONNECT_TIMEOUT=5)(RETRY_COUNT=2)(ADDRESS_LIST=(LOAD_BALANCE=on)(ADDRESS=(PROTOCOL=tcps)(HOST=db-a.example.com)(PORT=2484))(ADDRESS=(PROTOCOL=tcps)(HOST=db-b.example.com)(PORT=2484)))(CONNECT_DATA=(SERVICE_NAME=orders.example.com))(SECURITY=(SSL_SERVER_DN_MATCH=yes)(SSL_SERVER_CERT_DN=\"CN=orders-primary, OU=DB\")))(DESCRIPTION=(CONNECT_TIMEOUT=30)(RETRY_COUNT=0)(ADDRESS=(PROTOCOL=tcps)(HOST=db-dr.example.com)(PORT=2484))(CONNECT_DATA=(SERVICE_NAME=orders.example.com))(SECURITY=(SSL_SERVER_DN_MATCH=yes)(SSL_SERVER_CERT_DN=\"CN=orders-dr, OU=DB\"))))"
 
 	// sql.OpenDB accepts the connector returned by the driver API.
 	connector, err := oracle.NewOracleConnector(cfg)

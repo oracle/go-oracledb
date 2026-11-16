@@ -41,13 +41,10 @@ package oracle
 import (
 	"database/sql"
 	"database/sql/driver"
-	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -152,7 +149,7 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 
 	var confToUse *oracleconfig.OracleDriverConfig
 	if drv.connectorConfig != nil {
-		confToUse = drv.connectorConfig.Clone()
+		confToUse = drv.connectorConfig
 	} else {
 		confToUse = NewOracleDriverConfig()
 	}
@@ -165,8 +162,12 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, err, dsn)
 	}
 
+	connectionPlans, err := oracleconfig.HandleDsn(dsn, confToUse)
+	if err != nil {
+		common.Odl.Debug("Failed to parse DSN", "err", err)
+		return nil, err
+	}
 
-	err := oracleconfig.HandleDsn(dsn, confToUse)
 	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
 		common.Odl.Debug("new connector created", "configuration", confToUse)
 	}
@@ -175,9 +176,7 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, validateErr, dsn)
 	}
 
+	common.Odl.Fine("connection descriptions", "count", len(connectionPlans.Plan.Descriptions))
 
-	naming.ParseDSNString(fmt.Sprintf("%s?%s", "", confToUse.ToNSConnectionParameters()))
-
-
-	return buildOracleConnector(drv, parsed, confToUse), nil
+	return buildOracleConnector(drv, connectionPlans), nil
 }

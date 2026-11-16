@@ -185,6 +185,7 @@ type ConnectData struct {
 	ServiceName        string
 	SID                string
 	Server             string
+	PoolName           string // DRCP pool selected with (POOL_NAME=...).
 	InstanceName       string
 	FailoverMode       string
 	HS                 string
@@ -506,6 +507,8 @@ func extractConnectData(node *Node) (*ConnectData, error) {
 			connectData.SID = child.Value
 		case "SERVER":
 			connectData.Server = child.Value
+		case "POOL_NAME":
+			connectData.PoolName = child.Value
 		case "INSTANCE_NAME":
 			connectData.InstanceName = child.Value
 		case "FAILOVER_MODE":

@@ -49,6 +49,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -621,7 +622,8 @@ func NewOracleDriverConfig() *OracleDriverConfig {
 		newConfig._allConfigurationField.PushBack(&_fieldListElem{
 			name:         fmt.Sprintf("%s.%s", newConfig._configKeysPrefix, publicName),
 			element:      e.Type().Field(i),
-			elementValue: e.Field(i)})
+			elementValue: e.Field(i),
+			nsNameUpper:  strings.ToUpper(e.Type().Field(i).Tag.Get("ns_name"))})
 	}
 	var toBedropped *list.Element
 	for item := newConfig._allConfigurationField.Front(); item != nil; item = item.Next() {
@@ -641,7 +643,8 @@ func NewOracleDriverConfig() *OracleDriverConfig {
 				newConfig._allConfigurationField.PushBack(&_fieldListElem{
 					name:         fullQualifiedName,
 					element:      field.element.Type.Field(i),
-					elementValue: field.elementValue.Field(i)})
+					elementValue: field.elementValue.Field(i),
+					nsNameUpper:  strings.ToUpper(field.element.Type.Field(i).Tag.Get("ns_name"))})
 			}
 			toBedropped = item
 		}
@@ -811,6 +814,75 @@ func (config *OracleDriverConfig) loadFromMap(configItems map[string]string) err
 	return nil
 }
 
+// loadFromNode reads configuration values from name-value descriptor nodes.
+// Node names matching an ns_name field tag use the shared string conversion
+// and validation logic.
+func (config *OracleDriverConfig) loadFromNode(root *Node) error {
+	if root == nil {
+		return common.NewOracleError(oracleErrors.NamingContextError, nil, "", "root")
+	}
+	return config.loadNodeValues(root)
+}
+
+// loadNodeValues recursively visits the descriptor tree and assigns leaf values
+// whose names match a configuration field's ns_name tag. MY_WALLET_DIRECTORY
+// is treated as an alias for WALLET_LOCATION.
+func (config *OracleDriverConfig) loadNodeValues(node *Node) error {
+	name := node.Name
+	if name == "MY_WALLET_DIRECTORY" {
+		name = "WALLET_LOCATION"
+	}
+
+	if len(node.Children) == 0 {
+		for item := config._allConfigurationField.Front(); item != nil; item = item.Next() {
+			field := item.Value.(*_fieldListElem)
+			if field.nsNameUpper != "" && name == field.nsNameUpper {
+				value := node.Value
+				// TODO : introduce translator on fields for this.
+				if name == "CONNECT_TIMEOUT" || name == "TRANSPORT_CONNECT_TIMEOUT" {
+					seconds, err := descriptorTimeoutSeconds(value)
+					if err != nil {
+						return common.NewOracleError(oracleErrors.NamingContextError, err, value, node.Name)
+					}
+					value = strconv.Itoa(seconds)
+				}
+				if err := setFieldValueFromString(field, value); err != nil {
+					return common.NewOracleError(oracleErrors.NamingContextError, err, node.Value, node.Name)
+				}
+				break
+			}
+		}
+	}
+
+	for i := range node.Children {
+		if err := config.loadNodeValues(&node.Children[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// descriptorTimeoutSeconds parses a timeout as integer seconds or a Go
+// duration and rounds positive fractional seconds up to the next whole second.
+func descriptorTimeoutSeconds(value string) (int, error) {
+	if seconds, err := strconv.Atoi(value); err == nil {
+		if seconds < 0 {
+			return 0, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil, value, "duration", "non-negative")
+		}
+		return seconds, nil
+	}
+
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration < 0 {
+		return 0, common.NewOracleError(oracleErrors.InvalidConnectionParameter, err, value, "duration", "non-negative")
+	}
+	seconds := int(duration / time.Second)
+	if duration%time.Second != 0 {
+		seconds++
+	}
+	return seconds, nil
+}
+
 // implements Stringer intterface
 func (config OracleDriverConfig) String() string {
 	return toString(&config)
@@ -881,6 +953,7 @@ type _fieldListElem struct {
 	name         string              // field fully qualified name ex oracle.go.Language
 	element      reflect.StructField // field reference within OracleDriverConfig struct
 	elementValue reflect.Value       // field value
+	nsNameUpper  string              // uppercase Oracle Net name, when one is defined
 }
 
 func shouldExpandConfigurationField(field *_fieldListElem) bool {
@@ -1015,7 +1088,7 @@ func (config *OracleDriverConfig) AssignFromMap(items map[string]string) error {
 // QueryStringToMap converts a query string (key1=value1&key2=value2&...)
 // to a key/value map
 // returns :
-//   - the key/valeu map
+//   - the key/valeu map. map keys are normalized to lower-case, map values are unquoted if needed.
 //   - the error if parsing has failed
 func QueryStringToMap(s string) (map[string]string, error) {
 	result := make(map[string]string)
@@ -1025,7 +1098,13 @@ func QueryStringToMap(s string) (map[string]string, error) {
 		if len(keyValuePair) != 2 {
 			return nil, common.NewOracleError(oracleErrors.NamingParseFailed, fmt.Errorf("error parsing connection property [%s]", part))
 		} else {
-			result[strings.TrimSpace(keyValuePair[0])] = strings.TrimSpace(keyValuePair[1])
+			// Strip a single pair of wrapping double quotes, but preserve whitespace
+			// inside them.
+			unquotedVal := strings.TrimSpace(keyValuePair[1])
+			if len(unquotedVal) >= 2 && unquotedVal[0] == '"' && unquotedVal[len(unquotedVal)-1] == '"' {
+				unquotedVal = unquotedVal[1 : len(unquotedVal)-1]
+			}
+			result[strings.ToLower((strings.TrimSpace(keyValuePair[0])))] = unquotedVal
 		}
 	}
 	return result, nil
