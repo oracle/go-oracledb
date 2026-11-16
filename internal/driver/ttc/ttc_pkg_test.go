@@ -1141,6 +1141,9 @@ func newTestConnection(
 	sessCtx *common.SessionContext,
 	ns common.NetworkSession,
 ) *connection {
+	if sessCtx == nil {
+		sessCtx = common.NewSessionContext()
+	}
 	conn := &connection{
 		shelf:     shelf,
 		sessCtx:   sessCtx,

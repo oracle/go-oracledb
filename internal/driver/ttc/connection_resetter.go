@@ -80,9 +80,6 @@ func (c *connection) initializeCursorCache() {
 // resetStateEnabled reports whether the negotiated session reset level closes
 // cursors on the server, so the client must invalidate them locally instead.
 func (c *connection) resetStateEnabled() bool {
-	if c.sessCtx == nil {
-		return false
-	}
 	value := c.sessCtx.GetSessionProperties().GetProperty(authResetState)
 	var resetState string
 	switch value := value.(type) {
