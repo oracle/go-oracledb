@@ -126,7 +126,7 @@ func (spf *ttiSPFOCSessret) UnMarshalFrom(ctx context.Context, engine driverComm
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, "keyword/value")
 		}
 		spf.keyValueArr = keyValueList
-		err = ((driverCommon.UnMarshallable)(keyValueList)).UnMarshalFrom(ctx, engine)
+		err = ((driverCommon.Unmarshallable)(keyValueList)).UnmarshalFrom(ctx, engine)
 		if err != nil {
 			common.Odl.Warn("Unable to unmarshal Server-To-Client Piggyback, cant' unmarshal key/value pairs", "error", err)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, "keyword/value")

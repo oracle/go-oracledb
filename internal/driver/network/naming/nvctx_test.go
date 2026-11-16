@@ -419,12 +419,12 @@ func TestExtractConnectData_SuccessEmptyAndError(t *testing.T) {
 func TestExtractSecurity_SuccessEmptyAndError(t *testing.T) {
 	t.Parallel()
 	t.Run("success", func(t *testing.T) {
-		root := mustParse(t, "(SECURITY=(SSL_SERVER_CERT_DN=cert)(SSL_SERVER_DN_MATCH=yes)(SSL_ALLOW_WEAK_DN_MATCH=no)(WALLET_LOCATION=/loc)(MY_WALLET_DIRECTORY=/dir))")
+		root := mustParse(t, "(SECURITY=(SSL_SERVER_CERT_DN=cert)(SSL_SERVER_DN_MATCH=yes)(SSL_ALLOW_WEAK_DN_MATCH=no)(WALLET_LOCATION=/loc)(MY_WALLET_DIRECTORY=/dir)(TOKEN_AUTH=OCI_TOKEN)(TOKEN_LOCATION=/token/location))")
 		sec, err := extractSecurity(root)
 		if err != nil {
 			t.Fatalf("extractSecurity failed: %v", err)
 		}
-		if sec.SSLServerCertDN != "cert" || sec.SSLServerDNMatch != true || sec.SSLAllowWeakDNMatch != false || sec.WalletLocation != "/loc" || sec.MyWalletDirectory != "/dir" {
+		if sec.SSLServerCertDN != "cert" || sec.SSLServerDNMatch != true || sec.SSLAllowWeakDNMatch != false || sec.WalletLocation != "/loc" || sec.MyWalletDirectory != "/dir" || sec.TokenAuth != "OCI_TOKEN" || sec.TokenLocation != "/token/location" {
 			t.Errorf("unexpected security: %+v", sec)
 		}
 	})

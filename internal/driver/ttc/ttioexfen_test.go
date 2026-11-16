@@ -67,7 +67,7 @@ func newOexfenEngine(capacity int) (*ArrayBasedDataBuffer, *MarshalEngine) {
 
 func buildOexfen(commit bool) *tTIOexfen {
 	m := newOexfen18().(*tTIOexfen)
-	m.setCursorId(8) // as per dump
+	m.setCursorID(8) // as per dump
 	m.setFetchSize() // 2_000_000_000 = 0x77 35 94 00 per dump
 	if commit {
 		m.setOptions(commitAfterExecution)
@@ -132,7 +132,7 @@ func TestOexfen_MarshalTo_MatchesGolden(t *testing.T) {
 
 // decodeOexfenExeflg scans the marshalled OEXFEN payload, skipping the
 // TTIFUN18 header (3 bytes), then decoding:
-//   - cursorId (SB4 UNIVERSAL)
+//   - cursor ID (SB4 UNIVERSAL)
 //   - iterations/exenit (UB4 UNIVERSAL)
 //   - exerof (UB4 UNIVERSAL)
 //
@@ -143,7 +143,7 @@ func decodeOexfenExeflg(pkt []byte) (int, bool) {
 	}
 	idx := 3 // skip ttiFunHeader18 header: func, seq, token
 
-	// cursorId SB4 (UNIVERSAL)
+	// cursor ID SB4 (UNIVERSAL)
 	_, n, ok := decodeUniversalAt(pkt, idx)
 	if !ok {
 		return 0, false
@@ -220,13 +220,13 @@ func TestOexfen_MarshalTo_Failures(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "Failed to marshal message") {
+		if !strings.Contains(err.Error(), "failed to marshal message") {
 			t.Fatalf("expected header error, got %v", err)
 		}
 	})
 
 	// Capacity-based failures to hit subsequent stages exactly:
-	// Header (3 bytes), cursorId (universal {0x01,0x04} => 2 bytes),
+	// Header (3 bytes), cursor ID (universal {0x01,0x04} => 2 bytes),
 	// iterations (universal {0x04,0x77,0x35,0x94,0x00} => 5 bytes),
 	// exerof (universal {0x01,0x60} => 2 bytes), exeflg (universal {0x01,0x01} or {0x00})
 	tests := []struct {
@@ -234,10 +234,10 @@ func TestOexfen_MarshalTo_Failures(t *testing.T) {
 		capacity int
 		wantSub  string
 	}{
-		{"Fail_Cursor", 3, "Failed to marshal message"},
-		{"Fail_Iterations", 5, "Failed to marshal message"},
-		{"Fail_Exerof", 10, "Failed to marshal message"},
-		{"Fail_Exeflg", 12, "Failed to marshal message"},
+		{"Fail_Cursor", 3, "failed to marshal message"},
+		{"Fail_Iterations", 5, "failed to marshal message"},
+		{"Fail_Exerof", 10, "failed to marshal message"},
+		{"Fail_Exeflg", 12, "failed to marshal message"},
 	}
 
 	for _, tc := range tests {

@@ -119,9 +119,9 @@ func NewOracleConnector(config *oracleconfig.OracleDriverConfig) (driver.Connect
 	var connector driver.Connector
 	var err error
 	if config != nil {
-		connector, err = drv.openConnector(config.ConnectDescriptor)
+		connector, err = drv.OpenConnector(config.ConnectDescriptor)
 	} else {
-		connector, err = drv.openConnector("")
+		connector, err = drv.OpenConnector("")
 	}
 
 	if err != nil {
@@ -133,7 +133,7 @@ func NewOracleConnector(config *oracleconfig.OracleDriverConfig) (driver.Connect
 // Open implements database/sql/driver.Driver interface for OracleDriver.
 // It establishes a new Oracle connection using the given Data Source Name.
 func (drv *Driver) Open(dsn string) (driver.Conn, error) {
-	connector, err := drv.openConnector(dsn)
+	connector, err := drv.OpenConnector(dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +142,8 @@ func (drv *Driver) Open(dsn string) (driver.Conn, error) {
 
 var _initLoggingOnce sync.Once
 
-// openConnector returns a new database/sql/driver.Connector for this OracleDriver, using the Data Source Name.
-func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
+// OpenConnector returns a new database/sql/driver.Connector for this OracleDriver, using the Data Source Name.
+func (drv *Driver) OpenConnector(dsn string) (driver.Connector, error) {
 
 	_initLoggingOnce.Do(func() {
 		// This is delayed until now because we cannot assume the start sequence of the application.
@@ -239,7 +239,7 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 	var err error
 	parsed, err = naming.ParseDSNString(fmt.Sprintf("%s?%s", confToUse.ConnectDescriptor, confToUse.ToNSConnectionParameters()))
 	if err != nil {
-		common.Odl.Debug("Failed  to parse DNS", "err", err)
+		common.Odl.Debug("Failed to parse DSN", "err", err)
 		return nil, err
 	}
 	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {

@@ -58,10 +58,11 @@ for driver routing decisions.
 type sqlKind int
 
 const (
-	select_ sqlKind = iota // SELECT statements (read-only queries)
-	dml                    // DML statements: INSERT/UPDATE/DELETE/MERGE
-	plsql                  // PL/SQL blocks and CALL statements
-	other                  // All other statements (e.g., DDL, ALTER SESSION, TRUNCATE, COMMIT)
+	select_   sqlKind = iota // SELECT statements (read-only queries)
+	dml                      // DML statements: INSERT/UPDATE/DELETE/MERGE
+	plsql                    // PL/SQL blocks and CALL statements
+	other                    // All other statements (e.g., DDL, ALTER SESSION, TRUNCATE, COMMIT)
+	refcursor                // internal query used to expose a REF CURSOR as *sql.Rows
 )
 
 // String returns the canonical, upper-case name of the sqlKind (e.g., "SELECT").
@@ -73,6 +74,8 @@ func (k sqlKind) String() string {
 		return "DML"
 	case plsql:
 		return "PLSQL"
+	case refcursor:
+		return "REFCURSOR"
 	default:
 		return "OTHER"
 	}
@@ -83,7 +86,7 @@ type qualifiedSQLStatement struct {
 	query    driverCommon.B1Array // the original SQL query
 	kind     sqlKind              // the kind of the SQL query
 	binds    *bindDetails         // the binds of the SQL query
-	cursorId driverCommon.SB4     // id of the cursorId while this query is executed
+	cursorID driverCommon.SB4     // ID of the cursor while this query is executed
 }
 
 // newQualifiedSQLStatement creates a new qualifiedSQLStatement

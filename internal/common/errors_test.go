@@ -77,7 +77,7 @@ func TestErrorBasic3113Fr(t *testing.T) {
 	t.Parallel()
 	ms := NewLocalizationService(language.CanadianFrench)
 	err := ms.LocalizeError(NewOracleError(oracleErrors.ConnectionLost, nil, nil)).(oracleErrors.SQLError)
-	expected := fmt.Sprintf("%s - %s", oracleErrors.ConnectionLost, "connexion de base de donn\u00E9es ferm\u00E9e par l'homologue")
+	expected := fmt.Sprintf("%s - %s", oracleErrors.ConnectionLost, "connexion de base de donn\u00E9es ferm\u00E9e par le pair")
 	if err.Error() != expected {
 		t.Errorf("unexpected error message [%s], should be [%s]", err.Error(), expected)
 	}
@@ -114,20 +114,20 @@ func TestError3113Fr(t *testing.T) {
 	c := errors.New("my db is gone")
 	ms := NewLocalizationService(language.French)
 	err := ms.LocalizeError(NewOracleError(oracleErrors.ConnectionLost, c, nil)).(oracleErrors.SQLError)
-	expected := fmt.Sprintf("%s - %s: %s", oracleErrors.ConnectionLost, "connexion de base de donn\u00E9es ferm\u00E9e par l'homologue",
+	expected := fmt.Sprintf("%s - %s: %s", oracleErrors.ConnectionLost, "connexion de base de donn\u00E9es ferm\u00E9e par le pair",
 		c.Error())
 	if err.Error() != expected {
 		t.Errorf("unexpected error message [%s], should be [%s]", err.Error(), expected)
 	}
 }
 
-// tests message of 3113 error with missing language, fallback to English
-func TestError3113pt(t *testing.T) {
+// tests message of 3113 error using European Portuguese
+func TestError3113Portuguese(t *testing.T) {
 	t.Parallel()
 	c := errors.New("my db is gone")
 	ms := NewLocalizationService(language.EuropeanPortuguese)
 	err := ms.LocalizeError(NewOracleError(oracleErrors.ConnectionLost, c, nil)).(oracleErrors.SQLError)
-	expected := fmt.Sprintf("%s - %s: %s", oracleErrors.ConnectionLost, "database connection closed by peer",
+	expected := fmt.Sprintf("%s - %s: %s", oracleErrors.ConnectionLost, "conexão com o banco de dados encerrada pelo peer",
 		c.Error())
 	if err.Error() != expected {
 		t.Errorf("unexpected error message [%s], should be [%s]", err.Error(), expected)
@@ -177,6 +177,30 @@ func TestError3113InvalidLanguage(t *testing.T) {
 		c.Error())
 	if err.Error() != expected {
 		t.Errorf("unexpected error message [%s], should be [%s]", err.Error(), expected)
+	}
+}
+
+// TestDriverErrorMessagesAreLocalized verifies driver-specific error messages have
+// English translations.
+func TestDriverErrorMessagesAreLocalized(t *testing.T) {
+	t.Parallel()
+	ms := NewLocalizationService(language.English)
+	tests := []struct {
+		code oracleErrors.ErrorCode
+		args []interface{}
+		want string
+	}{
+		{oracleErrors.ImplicitResultMessageCreationFailed, nil, "failed to create implicit result message"},
+		{oracleErrors.RefCursorConnectionMismatch, nil, "REF CURSOR must be fetched using the connection on which it was opened"},
+		{oracleErrors.InvalidRefCursorOutParameter, nil, "REF CURSOR OUT binds require *datatype.Cursor"},
+		{oracleErrors.InvalidRefCursorArgument, nil, "invalid REF CURSOR argument"},
+	}
+	for _, test := range tests {
+		err := ms.LocalizeError(NewOracleError(test.code, nil, test.args...)).(oracleErrors.SQLError)
+		want := fmt.Sprintf("%s - %s", test.code, test.want)
+		if err.Error() != want {
+			t.Errorf("%s message = %q, want %q", test.code, err.Error(), want)
+		}
 	}
 }
 

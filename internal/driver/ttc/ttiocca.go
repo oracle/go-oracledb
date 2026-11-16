@@ -46,11 +46,11 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// tTIOcca represents the OCCA (cursorId close/cancel) TTC function request.
+// tTIOcca represents the OCCA TTC function request for closing or canceling cursors.
 
 type tTIOcca struct {
 	headerMarshaller driverCommon.Marshallable
-	cursorIDs        []driverCommon.UB4 // array of cursorId IDs
+	cursorIDs        []driverCommon.UB4 // array of cursor IDs
 }
 
 // newOcca18 creates a new instance of OCCA message with sequence number and token.
@@ -73,7 +73,7 @@ func (m *tTIOcca) GetMsgCode() driverCommon.MessageType { return TTIPFN }
 // GetFuncCode returns the TTC function code associated with OCCA.
 func (m *tTIOcca) GetFuncCode() driverCommon.FunctionType { return occa }
 
-// setCursorIDs sets the cursorId ids to be closed or canceled.
+// setCursorIDs sets the cursor IDs to be closed or canceled.
 func (m *tTIOcca) setCursorIDs(ids []driverCommon.UB4) { m.cursorIDs = ids }
 
 // MarshalTo serializes the OCCA function message.
@@ -84,20 +84,20 @@ func (m *tTIOcca) MarshalTo(ctx context.Context, engine driverCommon.Marshaller)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OCCA")
 	}
 
-	// PTR (cursorId pointer sentinel)
+	// PTR (cursor ID pointer sentinel)
 	if err := engine.MarshalPTR(ctx); err != nil {
 		common.Odl.Warn("Error marshalling OCCA cursorId ptr", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OCCA")
 	}
 
-	// UB4 offset (number of cursorId ids)
+	// UB4 offset (number of cursor IDs)
 	offset := driverCommon.UB4(len(m.cursorIDs))
 	if err := engine.MarshalUB4(ctx, offset); err != nil {
 		common.Odl.Warn("Error marshalling OCCA offset", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OCCA")
 	}
 
-	// UB4 cursorId repeated offset times
+	// UB4 cursor ID repeated offset times
 	for i := 0; i < int(offset); i++ {
 		if err := engine.MarshalUB4(ctx, m.cursorIDs[i]); err != nil {
 			common.Odl.Warn("Error marshalling OCCA cursorID", "error", err)

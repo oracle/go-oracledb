@@ -77,45 +77,45 @@ func (p *tTIrxh) GetMsgCode() driverCommon.MessageType {
 	return TTIRXH
 }
 
-// UnMarshalFrom reads the RXH header data for the TTC protocol from the provided Marshaller,
+// UnmarshalFrom reads the RXH header data for the TTC protocol from the provided Marshaller,
 // unmarshalling it into the receiver. Returns an error if decoding fails at any stage.
-func (p *tTIrxh) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+func (p *tTIrxh) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	var err error
-	common.Odl.Debug("TTIrxh: UnMarshalFrom start")
+	common.Odl.Debug("TTIrxh: UnmarshalFrom start")
 
 	if p.rxhflags, err = mar.UnmarshalUB1(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal rxhflags", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal rxhflags", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
 	if p.numRequest, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal numRequest", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal numRequest", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
 	if p.iterationNum, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal iterationNum", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal iterationNum", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
 	p.numRequest = p.numRequest + p.iterationNum*256
 	if p.numItersThisTime, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Debug("UnMarshalFrom: failed to unmarshal numItersThisTime", "error", err)
+		common.Odl.Debug("UnmarshalFrom: failed to unmarshal numItersThisTime", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
 	if p.uacBufLength, err = mar.UnmarshalUB2(ctx); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal uacBufLength", "error", err)
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal uacBufLength", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
-	if err = p.rowBitVector.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal bitVectorBytes", "error", err)
+	if err = p.rowBitVector.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal bitVectorBytes", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
-	if err = p.logicalRowID.UnMarshalFrom(ctx, mar); err != nil {
-		common.Odl.Warn("UnMarshalFrom: failed to unmarshal logicalRowId", "error", err)
+	if err = p.logicalRowID.UnmarshalFrom(ctx, mar); err != nil {
+		common.Odl.Warn("UnmarshalFrom: failed to unmarshal logicalRowId", "error", err)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 

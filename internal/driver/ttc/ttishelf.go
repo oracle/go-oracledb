@@ -69,6 +69,7 @@ type ttiShelf[T any] struct {
 	codecFactory             codecFactory
 	_providerRegistry        internalCommon.Registry[providers.Provider]
 	_statements              map[*Statement]weak.Pointer[Statement]
+	_refCursors              map[*ttcRowsRefCursor]struct{}
 	_currentTransaction      *transaction
 	_cancelExecutionFunction StmtCancellationFunction
 	_serverTimeZoneOffset    int16 // server time zone in seconds
@@ -85,9 +86,32 @@ func newShelf[T any]() *ttiShelf[T] {
 		Shelf:              base,
 		codecFactory:       nil,
 		_statements:        make(map[*Statement]weak.Pointer[Statement]),
+		_refCursors:        make(map[*ttcRowsRefCursor]struct{}),
 		_eventService:      newEventService(),
 		_validatorRegistry: internalCommon.NewRegistry[stateValidator](),
 	}
+}
+
+// addRefCursor records a REF CURSOR opened on this shelf's connection. Cursor
+// IDs are scoped to a server session, so object identity is required to prove
+// that a cursor belongs to this physical connection.
+func (s *ttiShelf[T]) addRefCursor(cursor *ttcRowsRefCursor) {
+	if cursor == nil || cursor.cursorID == 0 {
+		return
+	}
+	s._refCursors[cursor] = struct{}{}
+}
+
+// hasRefCursor reports whether this exact REF CURSOR instance belongs to the
+// shelf's connection and has not yet been closed.
+func (s *ttiShelf[T]) hasRefCursor(cursor *ttcRowsRefCursor) bool {
+	_, ok := s._refCursors[cursor]
+	return ok
+}
+
+// removeRefCursor forgets a REF CURSOR after its OCCA close has been queued.
+func (s *ttiShelf[T]) removeRefCursor(cursor *ttcRowsRefCursor) {
+	delete(s._refCursors, cursor)
 }
 
 // RegisterCodecFactory registers a codecFactory for the negotiated TTC protocol version.

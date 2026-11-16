@@ -104,6 +104,8 @@ func (sa *sessionAtts) setFrom(source interface{}) {
 	var transportConnectTimeout float64
 	var recvTimeout float64
 	var sendTimeout float64
+	var recvBufSize float64
+	var sendBufSize float64
 	var tcpNoDelay bool
 	var sslAllowWeakDNMatch bool
 	var sslServerDNMatch bool
@@ -125,6 +127,8 @@ func (sa *sessionAtts) setFrom(source interface{}) {
 		transportConnectTimeout = float64(src.TransportConnectTimeout)
 		recvTimeout = float64(src.RecvTimeout)
 		sendTimeout = float64(src.SendTimeout)
+		recvBufSize = float64(src.RecvBufSize)
+		sendBufSize = float64(src.SendBufSize)
 		tcpNoDelay = true
 		sslAllowWeakDNMatch = src.Security.IsSSLAllowWeakDNMatchEnabled()
 		sslServerDNMatch = src.Security.IsSSLServerDNMatchEnabled()
@@ -175,6 +179,13 @@ func (sa *sessionAtts) setFrom(source interface{}) {
 	}
 	if sendTimeout > 0 {
 		sa.nt.SendTimeout = int(sendTimeout)
+	}
+
+	if recvBufSize > 0 {
+		sa.nt.RecvBufSize = int(recvBufSize)
+	}
+	if sendBufSize > 0 {
+		sa.nt.SendBufSize = int(sendBufSize)
 	}
 
 	sa.nt.TCPNODelay = tcpNoDelay

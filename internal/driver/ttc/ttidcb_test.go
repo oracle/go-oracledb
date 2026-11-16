@@ -76,19 +76,19 @@ func TestTTIdcb_GetMsgCode(t *testing.T) {
 	}
 }
 
-// TestTTIdcb24UnMarshalFrom_Success tests the UnMarshalFrom method for a tTIdcb24 instance
+// TestTTIdcb24UnmarshalFrom_Success tests the UnmarshalFrom method for a tTIdcb24 instance
 // using a valid encoded payload. The test asserts successful unmarshalling with no error,
 // and checks that numUDS and the first column name match expected values.
-func TestTTIdcb24UnMarshalFrom_Success(t *testing.T) {
+func TestTTIdcb24UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	validBuf := makeTtidcbPayload(validTtidcbDump)
 
 	mar := createMarshaller(validBuf, 0, 0)
 	ttidcb := newTTIdcb24().(*tTIdcb)
-	err := ttidcb.UnMarshalFrom(ctx, mar)
+	err := ttidcb.UnmarshalFrom(ctx, mar)
 	if err != nil {
-		t.Fatalf("UnMarshalFrom (valid path) failed: %v", err)
+		t.Fatalf("UnmarshalFrom (valid path) failed: %v", err)
 	}
 	expectedNumUDS := common.UB4(2)
 	if ttidcb.numUDS != expectedNumUDS {
@@ -112,9 +112,9 @@ func TestTTIdcb24UnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-// TestTTIdcb24UnMarshalFrom_Fail exercises error paths in tTIdcb24.UnMarshalFrom using injection of
+// TestTTIdcb24UnmarshalFrom_Fail exercises error paths in tTIdcb24.UnmarshalFrom using injection of
 // simulated read errors at various positions in the marshalling sequence.
-func TestTTIdcb24UnMarshalFrom_Fail(t *testing.T) {
+func TestTTIdcb24UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	type faultyTest struct {
 		name      string
@@ -142,7 +142,7 @@ func TestTTIdcb24UnMarshalFrom_Fail(t *testing.T) {
 			ctx := context.Background()
 			mar := createMarshaller(payload, tc.failOn, tc.failCount)
 			ttidcb := newTTIdcb24().(*tTIdcb)
-			err := ttidcb.UnMarshalFrom(ctx, mar)
+			err := ttidcb.UnmarshalFrom(ctx, mar)
 			if err == nil {
 				t.Errorf("expected error, got nil for case: %s", tc.name)
 			} else {
@@ -200,8 +200,8 @@ func TestTTIdcb_PerColumnUDS_NoAliasing(t *testing.T) {
 	mar := createMarshaller(payload, 0, 0)
 	ttidcb := newTTIdcb24().(*tTIdcb)
 
-	if err := ttidcb.UnMarshalFrom(ctx, mar); err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+	if err := ttidcb.UnmarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 	if int(ttidcb.numUDS) != len(ttidcb.udsArr) || len(ttidcb.udsArr) != 2 {
 		t.Fatalf("udsArr length mismatch: numUDS=%d, len(udsArr)=%d", ttidcb.numUDS, len(ttidcb.udsArr))
@@ -238,7 +238,7 @@ func TestTTIdcb_PerColumnUDS_NoAliasing(t *testing.T) {
 }
 
 // getColumnNameBytes obtains the base columnName slice from any supported UDS.
-func getColumnNameBytes(u common.UnMarshallable) []byte {
+func getColumnNameBytes(u common.Unmarshallable) []byte {
 	switch v := u.(type) {
 	case *tTIuds:
 		return v.columnName
@@ -259,7 +259,7 @@ func getColumnNameBytes(u common.UnMarshallable) []byte {
 }
 
 // mutateBaseColumnNameFirstByte mutates the first byte of the base columnName if present.
-func mutateBaseColumnNameFirstByte(u common.UnMarshallable, b byte) {
+func mutateBaseColumnNameFirstByte(u common.Unmarshallable, b byte) {
 	switch v := u.(type) {
 	case *tTIuds:
 		if len(v.columnName) > 0 {

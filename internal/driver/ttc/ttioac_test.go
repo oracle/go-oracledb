@@ -78,8 +78,8 @@ func TestTTIoac_NewTTIoac(t *testing.T) {
 	}
 }
 
-// TestTTIoac_UnMarshalFrom_Success tests that UnMarshalFrom succeeds on a valid TTC payload.
-func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
+// TestTTIoac_UnmarshalFrom_Success tests that UnmarshalFrom succeeds on a valid TTC payload.
+func TestTTIoac_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -94,9 +94,9 @@ func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
 			payload := makeTtioacUnmarshalPayload(tc.dump)
 			mar := createMarshaller(payload, 0, 0)
 			obj := &tTIoac{}
-			err := obj.UnMarshalFrom(context.Background(), mar)
+			err := obj.UnmarshalFrom(context.Background(), mar)
 			if err != nil {
-				t.Fatalf("UnMarshalFrom failed: %v", err)
+				t.Fatalf("UnmarshalFrom failed: %v", err)
 			}
 			switch tc.name {
 			case "valid chr unmarshal":
@@ -123,8 +123,8 @@ func TestTTIoac_UnMarshalFrom_Success(t *testing.T) {
 	}
 }
 
-// TestTTIoac_UnMarshalFrom_Fail covers error scenarios using a faulty data buffer
-func TestTTIoac_UnMarshalFrom_Fail(t *testing.T) {
+// TestTTIoac_UnmarshalFrom_Fail covers error scenarios using a faulty data buffer
+func TestTTIoac_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	type faultyTest struct {
 		name      string
@@ -151,7 +151,7 @@ func TestTTIoac_UnMarshalFrom_Fail(t *testing.T) {
 			payload := makeTtioacUnmarshalPayload(validTtioacChrUnmarshalDump)
 			mar := createMarshaller(payload, failOnReadByte, tc.failCount)
 			obj := &tTIoac{}
-			err := obj.UnMarshalFrom(ctx, mar)
+			err := obj.UnmarshalFrom(ctx, mar)
 			if err == nil {
 				t.Errorf("expected error, got nil for case: %s", tc.name)
 			} else {
@@ -180,7 +180,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 		maxLength    common.UB4
 		codepointLen common.UB4
 		collationID  common.UB4
-		nbArrayElts  common.UB4
+		nbArrayElts  common.SB4
 		versionNum   common.UB2
 		flagsCont    common.UB8
 		toid         []byte
@@ -197,7 +197,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 			maxLength:    common.UB4(42),
 			codepointLen: common.UB4(100),
 			collationID:  common.UB4(56),
-			nbArrayElts:  common.UB4(7),
+			nbArrayElts:  common.SB4(7),
 			versionNum:   common.UB2(2),
 			flagsCont:    common.UB8(9),
 			toid:         []byte{1, 2, 3},
@@ -213,7 +213,7 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 			maxLength:    common.UB4(22),
 			codepointLen: common.UB4(88),
 			collationID:  common.UB4(9),
-			nbArrayElts:  common.UB4(3),
+			nbArrayElts:  common.SB4(3),
 			versionNum:   common.UB2(1),
 			flagsCont:    common.UB8(0),
 			toid:         []byte{},
@@ -242,6 +242,76 @@ func TestTTIoac_MarshalTo_Success(t *testing.T) {
 				t.Fatalf("MarshalTo failed for %s case: %v", tc.name, err)
 			}
 		})
+	}
+}
+
+// TestTTIoac_SignedArrayElementCount verifies the OAC oacmal field accepts
+// Oracle's negative sentinel values used by described (non-array) columns.
+// TestTTIoac_SignedArrayElementCount preserves the signed OAC array count sentinel.
+func TestTTIoac_SignedArrayElementCount(t *testing.T) {
+	ctx := context.Background()
+	dataBuffer, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
+	original := newTTIoac(DtyChr, 42)
+	original.nbArrayElements = -1
+	if err := original.MarshalTo(ctx, mar); err != nil {
+		t.Fatalf("MarshalTo failed: %v", err)
+	}
+	dataBuffer.currentReadPosition = 0
+	decoded := &tTIoac{}
+	if err := decoded.UnmarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("UnmarshalFrom failed for negative oacmal: %v", err)
+	}
+	if decoded.nbArrayElements != -1 {
+		t.Fatalf("nbArrayElements = %d, want -1", decoded.nbArrayElements)
+	}
+}
+
+// TestTTIoac_AddFlagsContinuation combines continuation flag bits.
+func TestTTIoac_AddFlagsContinuation(t *testing.T) {
+	oac := &tTIoac{flagsContinuation: 0x01}
+	oac.addFlagsContinuation(0x04)
+	if oac.flagsContinuation != 0x05 {
+		t.Fatalf("flagsContinuation = %#x, want %#x", oac.flagsContinuation, common.UB8(0x05))
+	}
+}
+
+// TestTTIoac_UnmarshalNormalizesNumberLength applies the TTC NUMBER length default.
+func TestTTIoac_UnmarshalNormalizesNumberLength(t *testing.T) {
+	testTTIoacUnmarshalLengthNormalization(t, DtyNum, _oacMaxLengthNumber)
+}
+
+// TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength applies TTC temporal length defaults.
+func TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		typ  DtyType
+		want common.UB4
+	}{
+		{name: "DATE", typ: DtyDat, want: _oacMaxLengthDate},
+		{name: "TIMESTAMP WITH TIME ZONE", typ: DtyStz, want: _oacMaxLengthStampTZ},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			testTTIoacUnmarshalLengthNormalization(t, test.typ, test.want)
+		})
+	}
+}
+
+// testTTIoacUnmarshalLengthNormalization verifies the datatype-specific OAC length default.
+func testTTIoacUnmarshalLengthNormalization(t *testing.T, typ DtyType, want common.UB4) {
+	t.Helper()
+	ctx := context.Background()
+	dataBuffer, mar := NewMarshalEngineTest(common.BIG_ENDIAN, Universal, Universal, 1024)
+	original := newTTIoac(typ, 1)
+	if err := original.MarshalTo(ctx, mar); err != nil {
+		t.Fatalf("marshal OAC: %v", err)
+	}
+	dataBuffer.currentReadPosition = 0
+	decoded := &tTIoac{}
+	if err := decoded.UnmarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("unmarshal OAC: %v", err)
+	}
+	if decoded.maxLength != want {
+		t.Fatalf("maxLength = %d, want %d", decoded.maxLength, want)
 	}
 }
 

@@ -157,16 +157,14 @@ func (o *o5Logon) _buildO5LogonKey(verifier int, ka []byte, start1 int,
 	keyLen := 0
 
 	if o.useO7LMR {
-		// The Ka and Kb exchanged are 32bytes long but a substring of them is used
-		// for each verifier type based on its keysize requirement.
-		// The o5Logon key generation algorithm is PBKDEF2 with SHA-1
+		// Ka and Kb are each 32 bytes long, but only a substring is used for each verifier type,
+		// based on its key-size requirement.
+		// The o5Logon key generation algorithm is PBKDF2 with SHA-1.
 		switch verifier {
 		case ZtvtSmd5, ZtvtMd5, ZtvtOrcl7:
 			keyLen = 16 // AES128_KEY_SIZE_BYTES
-			break
 		case ZtvtSh1, ZtvtSSH1:
 			keyLen = 24 // AES192_KEY_SIZE_BYTES
-			break
 		case ZtvtSha512:
 			keyLen = 32 // AES256_KEY_SIZE_BYTES
 		}
@@ -449,7 +447,7 @@ func (o *o5Logon) generateOAuthResponse(
 		}
 	}
 
-	// Step #2: decrypt Ka using verifier (Server Sesssion key decription)
+	// Step #2: Decrypt Ka using the verifier (server session-key decryption).
 	ka, err := o.decryptAES(verifier, string(encryptedKANibbles), o.sessKeyStr)
 	if err != nil {
 		return err
@@ -461,7 +459,7 @@ func (o *o5Logon) generateOAuthResponse(
 		return err
 	}
 
-	// Step #4: constructs O5logon key (concatenate Ka and Kb (Ka XOR Kb, and MD5 digest))
+	// Step #4: Construct the O5logon key by combining Ka and Kb (Ka XOR Kb) with the MD5 digest.
 	o.o5logonKey, err = o._buildO5LogonKey(verifierType, ka, fixedResponseLength,
 		kb, fixedResponseLength, PBKDF2SderCount, saltPBKDF2Nibbles)
 	if err != nil {
@@ -469,10 +467,10 @@ func (o *o5Logon) generateOAuthResponse(
 	}
 
 	// Step 4.1 - Generate SPEEDY KEY
-	// The SPEEDY KEY is a AES encryption of the ((PBKDF2 key of password) and a confounder).
-	// The SPEEDY KEY is sent for O7L_MR login as a time saving measure. The server can get
-	// the client verifier by unencrypting the SPEEDY KEY and doing a SHA512. The server does not
-	// have to calculate the PBKDF2 key of the password again.
+	// The SPEEDY KEY is an AES-encrypted combination of the password's PBKDF2 key and a confounder.
+	// It is sent for O7L_MR login as a time-saving measure. The server can obtain the client verifier
+	// by decrypting the SPEEDY KEY and calculating a SHA-512 hash. The server does not need to
+	// recalculate the password's PBKDF2 key.
 
 	if err = o.generateSpeedKey(confounderLen, verifierType, pkEncryptedNibbles, pkEncryptedNibblesLength, pk); err != nil {
 		return err

@@ -80,6 +80,8 @@ func TestSessionAttsSetFromDescription(t *testing.T) {
 		ExpireTime:              2,
 		ConnectTimeout:          3,
 		RecvTimeout:             4,
+		RecvBufSize:             8192,
+		SendBufSize:             16384,
 		ConnectionIDPrefix:      "prefix",
 		Enable:                  "broken",
 		Security: naming.Security{
@@ -110,6 +112,9 @@ func TestSessionAttsSetFromDescription(t *testing.T) {
 	}
 	if satt.nt.RecvTimeout != 4 {
 		t.Fatalf("unexpected recv timeout: %d", satt.recvTimeout)
+	}
+	if satt.nt.RecvBufSize != 8192 || satt.nt.SendBufSize != 16384 {
+		t.Fatalf("unexpected socket buffer sizes: recv=%d send=%d", satt.nt.RecvBufSize, satt.nt.SendBufSize)
 	}
 	if !satt.nt.EnabledDCD {
 		t.Fatalf("expected EnabledDCD to be true")

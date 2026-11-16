@@ -122,6 +122,7 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 	sessCtx.GetClientProperties().SetProperty(driverCommon.ConnectDescriptor, connInstantiator.driverConfig.ConnectDescriptor)
 
 	sessCtx.GetClientProperties().SetProperty(driverCommon.SessionUuid, connInstantiator.uuid)
+	sessCtx.GetClientProperties().SetProperty(driverCommon.ConnectDescriptor, connInstantiator.driverConfig.ConnectDescriptor)
 
 	// Add connection properties to shelf for downstream consumers
 	shelf.UpdateDriverConfig(connInstantiator.driverConfig)
@@ -148,8 +149,35 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 	// snapshot session
 	sessCtx.GetSessionProperties().Snapshot()
 
+	common.Odl.Finest("Create the connection")
+	conn, err := connInstantiator.newConnectionFunc(ctx, shelf, sessCtx, connInstantiator.ns)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build and register request-boundary callbacks for the connection.
+	common.Odl.Finest("Build and register request-boundary callbacks")
+	callbacks := buildRequestBoundaryCallbacks(conn)
+	conn.initializeRequestBoundaryCallbacks(callbacks.requestStartCallbacks, callbacks.requestEndCallbacks)
+
+	// Run connection-initialization callbacks
+	common.Odl.Finest("Running connection initialization callbacks")
+	if err := runRequestBoundaryCallbacks(ctx, callbacks.newConnectionCallbacks); err != nil {
+		return nil, err
+	}
+
 	common.Odl.Debug("Connect end")
-	return connInstantiator.newConnectionFunc(ctx, shelf, sessCtx, connInstantiator.ns)
+	return conn, nil
+}
+
+// buildRequestBoundaryCallbacks builds request-boundary callbacks for the connection.
+func buildRequestBoundaryCallbacks(conn *connection) *requestCallbacks {
+	callbacks := newRequestBoundaryCallbacks()
+
+	// Add begin-request and end-request callbacks.
+	addBeginEndRequestCallbacks(callbacks, conn)
+
+	return callbacks
 }
 
 // *** Authenticator Factory ***

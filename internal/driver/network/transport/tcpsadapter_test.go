@@ -192,17 +192,34 @@ func TestVerifyDNWithMultiValuedRDN(t *testing.T) {
 	}
 }
 
-// TestVerifyDNAllowsAliases verifies that S and E use the same OIDs as ST and emailAddress.
+// TestVerifyDNAllowsAliases verifies that S and the PKCS #9 email aliases use
+// the same OIDs as ST and emailAddress, while MAIL uses the LDAP mail OID.
 func TestVerifyDNAllowsAliases(t *testing.T) {
 	t.Parallel()
-	cert := testCertificateWithSubject(t, pkix.RDNSequence{
-		{{Type: asn1.ObjectIdentifier{2, 5, 4, 6}, Value: "US"}},
-		{{Type: asn1.ObjectIdentifier{2, 5, 4, 8}, Value: "California"}},
-		{{Type: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}, Value: "admin@example.com"}},
-	})
 
-	if err := verifyDN(cert, `E=admin@example.com,S=California,C=US`); err != nil {
-		t.Fatalf("verifyDN with S and E aliases failed: %v", err)
+	tests := []struct {
+		name string
+		oid  asn1.ObjectIdentifier
+	}{
+		{name: "E", oid: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}},
+		{name: "EMAIL", oid: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}},
+		{name: "EmailAddress", oid: asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 1}},
+		{name: "MAIL", oid: asn1.ObjectIdentifier{0, 9, 2342, 19200300, 100, 1, 3}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cert := testCertificateWithSubject(t, pkix.RDNSequence{
+				{{Type: asn1.ObjectIdentifier{2, 5, 4, 6}, Value: "US"}},
+				{{Type: asn1.ObjectIdentifier{2, 5, 4, 8}, Value: "California"}},
+				{{Type: tt.oid, Value: "admin@example.com"}},
+			})
+			dn := tt.name + `=admin@example.com,S=California,C=US`
+			if err := verifyDN(cert, dn); err != nil {
+				t.Fatalf("verifyDN with S and %s failed: %v", tt.name, err)
+			}
+		})
 	}
 }
 

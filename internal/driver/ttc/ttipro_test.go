@@ -244,8 +244,8 @@ func TestTTIproUnmarshalFrom_Success(t *testing.T) {
 			buf := NewArrayDataBuffer(1024)
 			buf.WriteBytesWithContext(context.Background(), tt.payload)
 			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-			unmarshallable, _ := p.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := p.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -322,10 +322,10 @@ func TestTTIproUnmarshalFrom_FailInvalidData(t *testing.T) {
 		payload     []byte
 		expectedErr string
 	}{
-		{name: "InvalidVersion", expectedErr: "Failed to unmarshal message: Protocol message"},
+		{name: "InvalidVersion", expectedErr: "failed to unmarshal message: Protocol message"},
 		{name: "CharSetElemPresentButTooShort", expectedErr: "EOF"},
-		{name: "FDOZeroLength", expectedErr: "Failed to unmarshal message: Protocol message"},
-		{name: "FDOInvalidOffset", expectedErr: "Failed to unmarshal message: Protocol message"},
+		{name: "FDOZeroLength", expectedErr: "failed to unmarshal message: Protocol message"},
+		{name: "FDOInvalidOffset", expectedErr: "failed to unmarshal message: Protocol message"},
 	}
 
 	for _, tt := range failures {
@@ -335,8 +335,8 @@ func TestTTIproUnmarshalFrom_FailInvalidData(t *testing.T) {
 			buf := NewArrayDataBuffer(1024)
 			buf.WriteBytesWithContext(context.Background(), payload)
 			engine := NewNativeMarshalEngine(buf, common.BIG_ENDIAN)
-			unmarshallable, _ := p.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := p.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 			if err == nil {
 				t.Errorf("expected error but got none")
 				return
@@ -379,8 +379,8 @@ func TestTTIproUnmarshalFrom_FailUnmarshal(t *testing.T) {
 				FailOnReadBytesCall:  rerr.failBytesCount,
 			}
 			engine := NewNativeMarshalEngine(faulty, common.BIG_ENDIAN)
-			unmarshallable, _ := p.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := p.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 			if err == nil || !regexp.MustCompile(rerr.wantErr).MatchString(err.Error()) {
 				t.Errorf("expected error %q but got %v", rerr.wantErr, err)
 			}

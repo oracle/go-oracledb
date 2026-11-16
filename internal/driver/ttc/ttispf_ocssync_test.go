@@ -79,9 +79,9 @@ func TestTTISPF_Unmarshal_Success(t *testing.T) {
 	engine := NewMarshalEngine(data, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 	msg := newttiSPFOCSSync()
-	unmarshallable, _ := msg.(common.UnMarshallable)
-	if err := unmarshallable.UnMarshalFrom(context.Background(), engine); err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+	unmarshallable, _ := msg.(common.Unmarshallable)
+	if err := unmarshallable.UnmarshalFrom(context.Background(), engine); err != nil {
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	props := msg.(*ttiSPFOCSSync).getKeyValueArr()
@@ -144,8 +144,8 @@ func TestTTISPF_Unmarshal_Fail_TruncatedPayloads(t *testing.T) {
 			engine := NewMarshalEngine(data, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
 			msg := newttiSPFOCSSync()
-			unmarshallable, _ := msg.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := msg.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 			if err == nil {
 				t.Fatalf("expected error for truncated payload (n=%d), got nil", tc.n)
 			}
@@ -179,8 +179,8 @@ func TestTTISPF_Unmarshal_Fail_FaultyBuffer(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			mar := createMarshaller(full, c.failOn, c.call)
 			msg := newttiSPFOCSSync()
-			unmarshallable, _ := msg.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), mar)
+			unmarshallable, _ := msg.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), mar)
 			if err == nil {
 				t.Fatalf("expected error but got nil")
 			}

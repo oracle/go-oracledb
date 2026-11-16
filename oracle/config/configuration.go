@@ -194,7 +194,7 @@ func (config *OracleDriverConfig) ToNSConnectionParameters() string {
 		subsb.Reset()
 		NsNAme := field.element.Tag.Get("ns_name")
 		if len(NsNAme) != 0 {
-			// we discard convertion error as we trust default value
+			// we discard conversion error as we trust default value
 			switch field.elementValue.Kind() {
 			case reflect.String:
 				v := field.elementValue.String()
@@ -203,8 +203,13 @@ func (config *OracleDriverConfig) ToNSConnectionParameters() string {
 				}
 				// skip empty strings
 				if strings.Count(v, " ") != 0 || strings.Count(v, "=") != 0 {
-					// quote it then
-					parameterValue = fmt.Sprintf("\"%s\"", v)
+					// quote it if not already quoted
+					isQuoted := len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"'
+					if isQuoted {
+						parameterValue = v
+					} else {
+						parameterValue = fmt.Sprintf("\"%s\"", v)
+					}
 				} else {
 					parameterValue = v
 				}
@@ -291,7 +296,7 @@ func NewOracleLoggingConfig() *OracleLoggingConfig {
 		field := item.Value.(*_fieldListElem)
 		defaultValue := field.element.Tag.Get("default")
 		if len(defaultValue) != 0 {
-			// we discard convertion error as we trust default value
+			// we discard conversion error as we trust default value
 			switch field.elementValue.Kind() {
 			case reflect.String:
 				field.elementValue.Set(reflect.ValueOf(defaultValue))
@@ -485,6 +490,7 @@ func (config *OracleLoggingConfig) AssignFromFlags() error {
 // database session.
 type OracleNLSParameters struct {
 	// ClientLanguage selects the language used for driver error messages.
+	// English, French, and Spanish are supported; other languages fall back to English.
 	ClientLanguage language.Tag `default:"en" cliVisible:"true" validator:"validateLanguage" help:"driver language to be used"`
 	// Language sets the default database language for the session.
 	Language string `default:"AMERICAN" help:"specifies the default language of the database"`
@@ -505,6 +511,14 @@ type OracleCredentials struct {
 	LogonMode string `propertyName:"logon_mode" default:"" validator:"validateLogonMode" help:"specifies the logon mode for the connection"`
 	// Password stores the database password configuration.
 	Password string `cliVisible:"false" sensitive:"true"`
+
+	// TokenAuth specifies the token authentication mechanism requested by the
+	// connect descriptor.
+	TokenAuth string `ns_name:"token_auth" default:"" validator:"validateTokenAuth" help:"specifies the token authentication mechanism"`
+
+	// TokenLocation specifies the location of token material used by token
+	// authentication.
+	TokenLocation string `ns_name:"token_location" default:"" validator:"validateTokenLocation" help:"specifies the location of token material"`
 }
 
 func (config OracleCredentials) String() string {
@@ -882,7 +896,7 @@ func (config *OracleDriverConfig) loadFromEnviron() error {
 	return nil
 }
 
-// _getEnvironmentVarName map a configuration item name to a environment variable name
+// _getEnvironmentVarName maps a configuration item name to an environment variable name.
 // ex : a.b.c is mapped to A_B_C
 func _getEnvironmentVarName(name string) string {
 	return strings.ToUpper(strings.ReplaceAll(name, ".", "_"))
@@ -972,6 +986,8 @@ func init() {
 	_fieldsValidators["validateUserName"] = validateUserName
 	_fieldsValidators["validateServerType"] = validateServerType
 	_fieldsValidators["validateDRCPPurity"] = validateDRCPPurity
+	_fieldsValidators["validateTokenAuth"] = validateTokenAuth
+	_fieldsValidators["validateTokenLocation"] = validateTokenLocation
 
 	// populates flags for each driver config items
 	NewOracleDriverConfig().populateFlags()
@@ -1161,8 +1177,8 @@ func validateDRCPPurity(value reflect.Value, valueName string) (any, error) {
 
 // validateZeroOrPositive validator for positive non-zero integer value.
 // errors:
-//   - value is not assignable to a int
-//   - int value is less or equal to zero
+//   - the value is not assignable to an int
+//   - the integer value is less than or equal to zero
 func validateZeroOrPositive(value reflect.Value, valueName string) (any, error) {
 	switch value.Kind() {
 	case reflect.String:
@@ -1227,7 +1243,7 @@ func validateLanguage(value reflect.Value, valueName string) (any, error) {
 		oracleErrors.InvalidConnectionParameter,
 		nil,
 		value,
-		valueName, "one of language Tag",
+		valueName, "a language tag",
 	)
 }
 
@@ -1252,6 +1268,64 @@ func validateLogonModeValue(value reflect.Value, valueName string) (any, error) 
 		value,
 		valueName,
 		[]string{common.KpzLogonSysdba.String(), common.KpzLogonSysoper.String()},
+	)
+}
+
+var acceptedTokenAuthValues = []string{"OCI_TOKEN", "OAUTH"}
+
+// validateTokenAuth accepts supported token authentication mechanisms.
+// An empty value means token authentication was not configured.
+func validateTokenAuth(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() == reflect.String {
+		tokenAuth := value.String()
+		if tokenAuth == "" {
+			return "", nil
+		}
+		for _, acceptedValue := range acceptedTokenAuthValues {
+			if strings.EqualFold(tokenAuth, acceptedValue) {
+				return tokenAuth, nil
+			}
+		}
+	}
+
+	return nil, common.NewOracleError(
+		oracleErrors.InvalidConnectionParameter,
+		nil,
+		value,
+		valueName,
+		acceptedTokenAuthValues,
+	)
+}
+
+// validateTokenLocation verifies that configured token material currently
+// resolves to a regular file or directory. An empty value means it is unset.
+func validateTokenLocation(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() != reflect.String {
+		return nil, common.NewOracleError(
+			oracleErrors.InvalidConnectionParameter,
+			nil,
+			value,
+			valueName,
+			"an existing regular file or directory",
+		)
+	}
+
+	tokenLocation := value.String()
+	if tokenLocation == "" {
+		return "", nil
+	}
+
+	fileInfo, err := os.Stat(tokenLocation)
+	if err == nil && (fileInfo.IsDir() || fileInfo.Mode().IsRegular()) {
+		return tokenLocation, nil
+	}
+
+	return nil, common.NewOracleError(
+		oracleErrors.InvalidConnectionParameter,
+		err,
+		tokenLocation,
+		valueName,
+		"an existing regular file or directory",
 	)
 }
 

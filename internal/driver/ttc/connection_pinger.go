@@ -42,6 +42,8 @@ import (
 	"context"
 	"database/sql/driver"
 	"time"
+
+	"github.com/oracle/go-oracledb/v26/internal/common"
 )
 
 // Implementation of Pinger and Validator interfaces
@@ -68,9 +70,11 @@ const (
 	_pingTimeout time.Duration = 10000000000 // 10s
 )
 
-// IsValid checks if the connection is valid
+// IsValid checks whether the connection is valid and runs its request-end
+// callbacks before it is returned to the pool.
 //
-// Returns: true if the connection is valid otherwise false
+// It returns false if the connection is invalid or a callback returns
+// driver.ErrBadConn.
 func (c *connection) IsValid() bool {
 
 	c._logger.Info("IsValid() called", "cnx", (*c).String())
@@ -99,6 +103,15 @@ func (c *connection) IsValid() bool {
 			c._isValid = false
 			return c._isValid
 		}
+	}
+
+	// Use one timeout context for all request-end callbacks.
+	ctx, cancel := context.WithTimeout(common.BackgroundContext, _pingTimeout)
+	defer cancel()
+	// Run request-end callbacks. A bad-connection error invalidates the connection.
+	common.Odl.Finest("Running request-end callbacks on IsValid")
+	if err := runRequestBoundaryCallbacks(ctx, c._requestEndCallbacks); err != nil {
+		return false
 	}
 
 	return c._isValid
