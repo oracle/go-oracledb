@@ -59,19 +59,19 @@ func TestListenerEncoding(t *testing.T) {
 		subkeys []publicSharding.Subkey
 		want    string
 	}{
-		{"varchar", []publicSharding.Subkey{{publicSharding.VARCHAR, "abc"}}, "1 0 1,YWJj"},
-		{"unicode", []publicSharding.Subkey{{publicSharding.VARCHAR, "é"}}, "1 0 1,w6k="},
-		{"national", []publicSharding.Subkey{{publicSharding.NVARCHAR, "é"}}, "1 0 1,AOk="},
-		{"surrogate", []publicSharding.Subkey{{publicSharding.NCHAR, "😀"}}, "1 0 96,2D3eAA=="},
-		{"zero", []publicSharding.Subkey{{publicSharding.NUMBER, 0}}, "1 0 2,gA=="},
-		{"positive", []publicSharding.Subkey{{publicSharding.NUMBER, 120}}, "1 0 2,wgIV"},
-		{"negative", []publicSharding.Subkey{{publicSharding.NUMBER, -1}}, "1 0 2,PmRm"},
-		{"fraction", []publicSharding.Subkey{{publicSharding.NUMBER, 1.5}}, "1 0 2,wQIz"},
-		{"char", []publicSharding.Subkey{{publicSharding.CHAR, "US"}}, "1 0 96,VVM="},
-		{"raw", []publicSharding.Subkey{{publicSharding.RAW, []byte{0, 255}}}, "1 0 23,AP8="},
-		{"compound", []publicSharding.Subkey{{publicSharding.VARCHAR, "abc"}, {publicSharding.NUMBER, 120}}, "1 0 1 2,YWJj,wgIV"},
-		{"date", []publicSharding.Subkey{{publicSharding.DATE, time.Date(2026, 11, 11, 12, 30, 45, 0, time.UTC)}}, "1 0 12,eH4LCw0fLg=="},
-		{"timestamp", []publicSharding.Subkey{{publicSharding.TIMESTAMP, time.Date(2026, 11, 11, 12, 30, 45, 1, time.UTC)}}, "1 0 180,eH4LCw0fLgAAAAE="},
+		{"varchar", []publicSharding.Subkey{{Type: publicSharding.VARCHAR, Value: "abc"}}, "1 0 1,YWJj"},
+		{"unicode", []publicSharding.Subkey{{Type: publicSharding.VARCHAR, Value: "é"}}, "1 0 1,w6k="},
+		{"national", []publicSharding.Subkey{{Type: publicSharding.NVARCHAR, Value: "é"}}, "1 0 1,AOk="},
+		{"surrogate", []publicSharding.Subkey{{Type: publicSharding.NCHAR, Value: "😀"}}, "1 0 96,2D3eAA=="},
+		{"zero", []publicSharding.Subkey{{Type: publicSharding.NUMBER, Value: 0}}, "1 0 2,gA=="},
+		{"positive", []publicSharding.Subkey{{Type: publicSharding.NUMBER, Value: 120}}, "1 0 2,wgIV"},
+		{"negative", []publicSharding.Subkey{{Type: publicSharding.NUMBER, Value: -1}}, "1 0 2,PmRm"},
+		{"fraction", []publicSharding.Subkey{{Type: publicSharding.NUMBER, Value: 1.5}}, "1 0 2,wQIz"},
+		{"char", []publicSharding.Subkey{{Type: publicSharding.CHAR, Value: "US"}}, "1 0 96,VVM="},
+		{"raw", []publicSharding.Subkey{{Type: publicSharding.RAW, Value: []byte{0, 255}}}, "1 0 23,AP8="},
+		{"compound", []publicSharding.Subkey{{Type: publicSharding.VARCHAR, Value: "abc"}, {Type: publicSharding.NUMBER, Value: 120}}, "1 0 1 2,YWJj,wgIV"},
+		{"date", []publicSharding.Subkey{{Type: publicSharding.DATE, Value: time.Date(2026, 11, 11, 12, 30, 45, 0, time.UTC)}}, "1 0 12,eH4LCw0fLg=="},
+		{"timestamp", []publicSharding.Subkey{{Type: publicSharding.TIMESTAMP, Value: time.Date(2026, 11, 11, 12, 30, 45, 1, time.UTC)}}, "1 0 180,eH4LCw0fLgAAAAE="},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,7 +93,7 @@ func TestListenerEncoding(t *testing.T) {
 // TestKeyRejectsInvalidValues verifies rejection of empty keys, unsupported
 // types or values, non-finite numbers, and keys exceeding the encoded size limit.
 func TestKeyRejectsInvalidValues(t *testing.T) {
-	cases := [][]publicSharding.Subkey{nil, {{publicSharding.VARCHAR, ""}}, {{publicSharding.VARCHAR, "\xff"}}, {{publicSharding.NUMBER, nil}}, {{publicSharding.NUMBER, "123"}}, {{publicSharding.NUMBER, true}}, {{publicSharding.NUMBER, math.NaN()}}, {{publicSharding.NUMBER, math.Inf(1)}}, {{publicSharding.RAW, []byte(nil)}}, {{publicSharding.DATE, "today"}}, {{publicSharding.KeyType(99), 1}}, {{publicSharding.VARCHAR, strings.Repeat("a", 65536)}}}
+	cases := [][]publicSharding.Subkey{nil, {{Type: publicSharding.VARCHAR, Value: ""}}, {{Type: publicSharding.VARCHAR, Value: "\xff"}}, {{Type: publicSharding.NUMBER, Value: nil}}, {{Type: publicSharding.NUMBER, Value: "123"}}, {{Type: publicSharding.NUMBER, Value: true}}, {{Type: publicSharding.NUMBER, Value: math.NaN()}}, {{Type: publicSharding.NUMBER, Value: math.Inf(1)}}, {{Type: publicSharding.RAW, Value: []byte(nil)}}, {{Type: publicSharding.DATE, Value: "today"}}, {{Type: publicSharding.KeyType(99), Value: 1}}, {{Type: publicSharding.VARCHAR, Value: strings.Repeat("a", 65536)}}}
 	for i, c := range cases {
 		key, err := publicSharding.NewKey(c...)
 		if err == nil {

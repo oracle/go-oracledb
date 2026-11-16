@@ -51,14 +51,14 @@ import (
 // copy caller-owned RAW bytes, and redact values during formatting.
 func TestKeyStoresOrderedSubkeys(t *testing.T) {
 	raw := []byte{1, 2, 3}
-	input := []publicSharding.Subkey{{publicSharding.RAW, raw}, {publicSharding.NUMBER, 120}}
+	input := []publicSharding.Subkey{{Type: publicSharding.RAW, Value: raw}, {Type: publicSharding.NUMBER, Value: 120}}
 	key, err := publicSharding.NewKey(input...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw[0] = 99
 	input[1].Value = 200
-	want := []publicSharding.Subkey{{publicSharding.RAW, []byte{1, 2, 3}}, {publicSharding.NUMBER, 120}}
+	want := []publicSharding.Subkey{{Type: publicSharding.RAW, Value: []byte{1, 2, 3}}, {Type: publicSharding.NUMBER, Value: 120}}
 	if !reflect.DeepEqual(key.Subkeys(), want) {
 		t.Fatal("input mutation changed key or order")
 	}
@@ -78,7 +78,7 @@ func TestKeyStoresOrderedSubkeys(t *testing.T) {
 // TestKeyDefersEncoding verifies that construction stores values without encoding
 // them, while still rejecting a key with no subkeys.
 func TestKeyDefersEncoding(t *testing.T) {
-	if _, err := publicSharding.NewKey(publicSharding.Subkey{publicSharding.NUMBER, "not a number"}); err != nil {
+	if _, err := publicSharding.NewKey(publicSharding.Subkey{Type: publicSharding.NUMBER, Value: "not a number"}); err != nil {
 		t.Fatal("constructor attempted encoding", err)
 	}
 	if _, err := publicSharding.NewKey(); err == nil {
