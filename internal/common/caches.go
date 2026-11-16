@@ -311,28 +311,20 @@ func (c *LRUCache[T]) Get(key string) (value T, found bool) {
 // Put adds or replaces a cached value and marks the entry as recently used.
 // It returns the previous value for key, or the zero value when key is new.
 func (c *LRUCache[T]) Put(key string, value T) T {
-	previous, _, _, _ := c.PutAndEvict(key, value)
-	return previous
-}
-
-// PutAndEvict adds or replaces a value and returns the previous value for key
-// and the least-recently-used value evicted to make room, when either exists.
-func (c *LRUCache[T]) PutAndEvict(key string, value T) (previous T, replaced bool, evicted T, evictedOK bool) {
 	// Existing keys are updated in place and promoted to most recently used.
 	if element, ok := c.entries[key]; ok {
 		entry := element.Value.(lruCacheEntry[T])
-		previous = entry.value
+		previous := entry.value
 		entry.value = value
 		element.Value = entry
 		c.order.MoveToFront(element)
-		return previous, true, evicted, false
+		return previous
 	}
 
 	// Evict the least recently used entry when the cache exceeds its capacity.
 	if c.order.Len() == c.maxSize {
 		Odl.Debug("cache overflow")
-		evicted = c.removeOldest()
-		evictedOK = true
+		c.removeOldest()
 	}
 
 	// New keys are inserted at the front of the list.
@@ -343,7 +335,8 @@ func (c *LRUCache[T]) PutAndEvict(key string, value T) (previous T, replaced boo
 	c.entries[key] = element
 
 	// New keys do not have a previous value.
-	return previous, false, evicted, evictedOK
+	var zero T
+	return zero
 }
 
 // Remove deletes a cached value by key and reports whether an entry was removed.
@@ -365,17 +358,15 @@ func (c *LRUCache[T]) Clear() {
 }
 
 // removeOldest evicts the least-recently-used cache entry.
-func (c *LRUCache[T]) removeOldest() T {
+func (c *LRUCache[T]) removeOldest() {
 	element := c.order.Back()
 	if element == nil {
-		var zero T
-		return zero
+		return
 	}
 
 	entry := element.Value.(lruCacheEntry[T])
 	delete(c.entries, entry.key)
 	c.order.Remove(element)
-	return entry.value
 }
 
 // SafeLRUCache Thread-safe version of the TTLCache

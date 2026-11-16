@@ -77,12 +77,14 @@ type ttiShelf[T any] struct {
 	_eventService            *eventService
 	_validatorRegistry       internalCommon.Registry[stateValidator]
 	_cursorCache             *internalCommon.LRUCache[*Statement]
+	_cursorCacheSize         int
 	_cursorUseSequence       uint64
 }
 
 // initializeCursorCache creates this connection's cursor cache, or disables
 // caching when maxSize is zero.
 func (s *ttiShelf[T]) initializeCursorCache(maxSize int) {
+	s._cursorCacheSize = maxSize
 	if maxSize <= 0 {
 		s._cursorCache = nil
 		return
@@ -102,16 +104,37 @@ func (s *ttiShelf[T]) cacheCursors() []*Statement {
 		return statements[i].cursorLastUsed < statements[j].cursorLastUsed
 	})
 
+	cached := 0
+	for _, statement := range statements {
+		if statement.qualifiedQuery.cursorID != 0 && statement.cursorCachedAt != 0 {
+			cached++
+		}
+	}
+
 	var evicted []*Statement
 	for _, statement := range statements {
 		if statement.qualifiedQuery.cursorID == 0 || statement.cursorCachedAt == statement.cursorLastUsed {
 			continue
 		}
-		_, _, displaced, evictedOK := s._cursorCache.PutAndEvict(statement.cursorCacheKey(), statement)
+
+		alreadyCached := statement.cursorCachedAt != 0
+		if !alreadyCached && cached == s._cursorCacheSize {
+			for _, displaced := range statements {
+				if displaced.qualifiedQuery.cursorID == 0 || displaced.cursorCachedAt == 0 {
+					continue
+				}
+				s._cursorCache.Remove(displaced.cursorCacheKey())
+				displaced.cursorCachedAt = 0
+				evicted = append(evicted, displaced)
+				cached--
+				break
+			}
+		}
+
+		s._cursorCache.Put(statement.cursorCacheKey(), statement)
 		statement.cursorCachedAt = statement.cursorLastUsed
-		if evictedOK && displaced != statement {
-			displaced.cursorCachedAt = 0
-			evicted = append(evicted, displaced)
+		if !alreadyCached {
+			cached++
 		}
 	}
 	return evicted
