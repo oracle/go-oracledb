@@ -51,6 +51,7 @@ func initMessagesFr() {
 		message string
 	}{
 		{oracleErrors.InvalidCredential, "identifiants invalides ou utilisateur non autorisé : %s"},
+		{oracleErrors.InvalidDateYear, "l'année complète doit être comprise entre -4713 et +9999, et ne peut pas être 0"},
 		{oracleErrors.ConnectionLost, "connexion de base de données fermée par le pair"},
 		{oracleErrors.AliasNotFound, "impossible de se connecter à la base de données. Alias %s introuvable."},
 		{oracleErrors.NoListenerAvailable, "connexion impossible. Aucun processus d'écoute à %s"},
