@@ -42,7 +42,6 @@ import (
 	"context"
 
 	"maps"
-	"sort"
 	"weak"
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
@@ -90,54 +89,6 @@ func (s *ttiShelf[T]) initializeCursorCache(maxSize int) {
 		return
 	}
 	s._cursorCache = internalCommon.NewLRUCache[*Statement](maxSize)
-}
-
-// cacheCursors records the connection's live cursors in least-recently-used
-// order and returns the cursors that no longer fit in the cache.
-func (s *ttiShelf[T]) cacheCursors() []*Statement {
-	statements := s.GetStatements(false)
-	if s._cursorCache == nil {
-		return statements
-	}
-
-	sort.Slice(statements, func(i, j int) bool {
-		return statements[i].cursorLastUsed < statements[j].cursorLastUsed
-	})
-
-	cached := 0
-	for _, statement := range statements {
-		if statement.qualifiedQuery.cursorID != 0 && statement.cursorCachedAt != 0 {
-			cached++
-		}
-	}
-
-	var evicted []*Statement
-	for _, statement := range statements {
-		if statement.qualifiedQuery.cursorID == 0 || statement.cursorCachedAt == statement.cursorLastUsed {
-			continue
-		}
-
-		alreadyCached := statement.cursorCachedAt != 0
-		if !alreadyCached && cached == s._cursorCacheSize {
-			for _, displaced := range statements {
-				if displaced.qualifiedQuery.cursorID == 0 || displaced.cursorCachedAt == 0 {
-					continue
-				}
-				s._cursorCache.Remove(displaced.cursorCacheKey())
-				displaced.cursorCachedAt = 0
-				evicted = append(evicted, displaced)
-				cached--
-				break
-			}
-		}
-
-		s._cursorCache.Put(statement.cursorCacheKey(), statement)
-		statement.cursorCachedAt = statement.cursorLastUsed
-		if !alreadyCached {
-			cached++
-		}
-	}
-	return evicted
 }
 
 // removeCachedCursor removes a statement cursor before it is explicitly closed.
