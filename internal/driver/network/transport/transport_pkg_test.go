@@ -117,6 +117,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID", Categories: "unitary", Exclusive: false, Fn: TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID},
 	{Name: "TestNTTCPTransportSendReceiveRoundTrip", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportSendReceiveRoundTrip},
 	{Name: "TestNTTCPTransportRejectsInvalidReceiveLength", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportRejectsInvalidReceiveLength},
+	{Name: "TestNTTCPTransportSendTimeouts", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportSendTimeouts},
+	{Name: "TestNTTCPTransportReturnsWriteErrors", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportReturnsWriteErrors},
 	{Name: "TestNTTCPTransportReceiveTimeouts", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportReceiveTimeouts},
 	{Name: "TestNTTCPTransportReturnsReadErrors", Categories: "unitary", Exclusive: false, Fn: TestNTTCPTransportReturnsReadErrors},
 	{Name: "TestNTTCPConnectHonorsCanceledContext", Categories: "unitary", Exclusive: false, Fn: TestNTTCPConnectHonorsCanceledContext},

@@ -264,26 +264,34 @@ func TestTransportConnect(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
 	ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, sdu: 8192}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve local test port: %v", err)
+	}
+	port := uint16(listener.Addr().(*net.TCPAddr).Port)
+	if err := listener.Close(); err != nil {
+		t.Fatalf("release local test port: %v", err)
+	}
 
 	proxyAddress := transport.Address{
 		Address: naming.Address{
 			Protocol: driverCommon.ProtocolTCP,
-			Host:     "localhost",
-			Port:     9999,
+			Host:     "127.0.0.1",
+			Port:     port,
 		},
 		HTTPSProxy: "proxy.example.com",
 	}
 	if err := ns.transportConnect(context.Background(), proxyAddress); err == nil {
 		t.Fatal("expected HTTPS proxy to be rejected for TCP")
 	} else {
-		expectOracleErrorCode(t, err, oracleErrors.UnsupportedFeature)
+		expectOracleErrorCode(t, err, oracleErrors.HTTPSProxyRequiresTCPS)
 	}
 
-	// Test TCP connection attempt (will fail without real server)
+	// Test connection attempts against the local port reserved above and then released.
 	address := transport.Address{
-		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 9999},
+		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "127.0.0.1", Port: port},
 	}
-	err := ns.transportConnect(context.Background(), address)
+	err = ns.transportConnect(context.Background(), address)
 	if err == nil {
 		t.Errorf("Expected connection error")
 	}

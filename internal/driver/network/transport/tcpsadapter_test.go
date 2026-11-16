@@ -391,10 +391,11 @@ func TestNTTCPSClearRemovesSensitiveTLSMaterial(t *testing.T) {
 // block returns InvalidNetworkValue without installing certificates or a trust store.
 func TestNTTCPSProcessWalletRejectsUnknownPEMBlock(t *testing.T) {
 	t.Parallel()
-	nt := NewNTTCPS(NTattributes{WalletContent: pem.EncodeToMemory(&pem.Block{
+	wallet := append(testWalletWithRootCert(t), pem.EncodeToMemory(&pem.Block{
 		Type:  "UNKNOWN",
 		Bytes: []byte("wallet data"),
-	})})
+	})...)
+	nt := NewNTTCPS(NTattributes{WalletContent: wallet})
 	err := nt.processWallet()
 	var sqlErr oracleErrors.SQLError
 	if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.InvalidNetworkValue) {

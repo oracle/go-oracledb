@@ -14,6 +14,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -348,13 +349,132 @@ func TestNTTCPTransportSendReceiveRoundTrip(t *testing.T) {
 // the buffer returns InvalidNetworkExpectedLength, zero bytes, and an unchanged buffer.
 func TestNTTCPTransportRejectsInvalidReceiveLength(t *testing.T) {
 	t.Parallel()
-	nt, _ := testNTTCPWithListener(t, NTattributes{})
+	nt := NewNTTCP(NTattributes{}, 0)
 	buf := []byte("-")
 	n, err := nt.Receive(context.Background(), buf, 2)
 	var sqlErr oracleErrors.SQLError
 	if n != 0 || !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.InvalidNetworkExpectedLength) || string(buf) != "-" {
 		t.Fatalf("Receive returned (%d, %v, %q), want zero bytes, %s, and unchanged buffer", n, err, buf, oracleErrors.InvalidNetworkExpectedLength)
 	}
+}
+
+// TestNTTCPTransportSendTimeouts checks caller cancellation and SendTimeout,
+// then verifies that Send succeeds after the write deadline is reset.
+func TestNTTCPTransportSendTimeouts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		sendTimeout int
+		cancelSend  bool
+	}{
+		{name: "caller cancellation", cancelSend: true},
+		{name: "configured send timeout", sendTimeout: 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			client, peer := net.Pipe()
+			conn := &writeObservedConn{Conn: client, writeStarted: make(chan struct{})}
+			nt := &nttcp{stream: conn, atts: NTattributes{SendTimeout: tt.sendTimeout}}
+			t.Cleanup(func() {
+				_ = client.Close()
+				_ = peer.Close()
+			})
+
+			ctx := context.Background()
+			var cancel context.CancelFunc
+			if tt.cancelSend {
+				ctx, cancel = context.WithCancel(ctx)
+				defer cancel()
+			}
+			sendDone := make(chan error, 1)
+			go func() { sendDone <- nt.Send(ctx, []byte("drop")) }()
+			select {
+			case <-conn.writeStarted:
+			case err := <-sendDone:
+				t.Fatalf("Send returned before the peer blocked the write: %v", err)
+			case <-time.After(2 * time.Second):
+				t.Fatal("Send did not start writing")
+			}
+			if cancel != nil {
+				cancel()
+			}
+
+			var timeoutErr error
+			select {
+			case timeoutErr = <-sendDone:
+			case <-time.After(2 * time.Second):
+				t.Fatal("Send did not stop after cancellation or SendTimeout")
+			}
+			var sqlErr oracleErrors.SQLError
+			if !errors.As(timeoutErr, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.CtxTimeout) {
+				t.Fatalf("Send error = %v, want %s", timeoutErr, oracleErrors.CtxTimeout)
+			}
+			if tt.cancelSend && !errors.Is(timeoutErr, context.Canceled) {
+				t.Fatalf("Send error = %v, want context.Canceled cause", timeoutErr)
+			}
+
+			readDone := make(chan error, 1)
+			go func() {
+				buf := make([]byte, 4)
+				if _, err := io.ReadFull(peer, buf); err != nil {
+					readDone <- err
+					return
+				}
+				if string(buf) != "pong" {
+					readDone <- fmt.Errorf("peer received %q, want pong", buf)
+					return
+				}
+				readDone <- nil
+			}()
+			if err := nt.Send(context.Background(), []byte("pong")); err != nil {
+				t.Fatalf("Send after deadline reset failed: %v", err)
+			}
+			if err := <-readDone; err != nil {
+				t.Fatalf("read after deadline reset failed: %v", err)
+			}
+		})
+	}
+}
+
+// TestNTTCPTransportReturnsWriteErrors checks that a stream write failure is
+// reported as ChannelWriteFailed while preserving the underlying cause.
+func TestNTTCPTransportReturnsWriteErrors(t *testing.T) {
+	t.Parallel()
+	client, peer := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = peer.Close()
+	})
+
+	writeErr := errors.New("test write failure")
+	conn := &writeObservedConn{Conn: client, writeErr: writeErr}
+	nt := &nttcp{stream: conn}
+	err := nt.Send(context.Background(), []byte("ping"))
+	var sqlErr oracleErrors.SQLError
+	if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.ChannelWriteFailed) {
+		t.Fatalf("Send error = %v, want %s", err, oracleErrors.ChannelWriteFailed)
+	}
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("Send error = %v, want underlying write error %v", err, writeErr)
+	}
+}
+
+type writeObservedConn struct {
+	net.Conn
+	writeStarted     chan struct{}
+	writeStartedOnce sync.Once
+	writeErr         error
+}
+
+func (c *writeObservedConn) Write(p []byte) (int, error) {
+	if c.writeStarted != nil {
+		c.writeStartedOnce.Do(func() { close(c.writeStarted) })
+	}
+	if c.writeErr != nil {
+		return 0, c.writeErr
+	}
+	return c.Conn.Write(p)
 }
 
 // TestNTTCPTransportReceiveTimeouts checks that a read waiting on a real TCP
