@@ -208,9 +208,9 @@ func TestConnectionPinger_IsValidWithInband(t *testing.T) {
 
 }
 
-// TestConnectionValidator_RollsBackActiveTransaction verifies that ResetSession
-// rolls back a transaction reported as active by the server without unregistering
-// it until an end-of-call status confirms that it ended.
+// TestConnectionValidator_RollsBackActiveTransaction verifies that IsValid runs
+// the request-end rollback callback for a transaction reported as active by the
+// server without unregistering it until an end-of-call status confirms it ended.
 func TestConnectionValidator_RollsBackActiveTransaction(t *testing.T) {
 	t.Parallel()
 
@@ -220,6 +220,8 @@ func TestConnectionValidator_RollsBackActiveTransaction(t *testing.T) {
 	connection.ns = &mockNetworkSession{
 		inband: false,
 	}
+	callbacks := buildRequestBoundaryCallbacks(connection)
+	connection.initializeRequestBoundaryCallbacks(callbacks.requestStartCallbacks, callbacks.requestEndCallbacks)
 	transaction := newTransaction(connection, context.Background())
 	transaction.transactionState(transactionStartedServer)
 	connection.shelf.registerTransaction(transaction)
@@ -245,6 +247,8 @@ func TestConnectionValidator_RollbackFailureInvalidatesConnection(t *testing.T) 
 	connection.ns = &mockNetworkSession{
 		inband: false,
 	}
+	callbacks := buildRequestBoundaryCallbacks(connection)
+	connection.initializeRequestBoundaryCallbacks(callbacks.requestStartCallbacks, callbacks.requestEndCallbacks)
 	transaction := newTransaction(connection, context.Background())
 	transaction.transactionState(transactionStartedServer)
 	connection.shelf.registerTransaction(transaction)
