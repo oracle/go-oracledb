@@ -54,7 +54,7 @@ and retains raw wire bytes or constructed values together with their LOB metadat
 type tTIrxd struct {
 	// numberOfColumns is the expected number of columns for each incoming RXD row.
 	numberOfColumns driverCommon.UB4
-	// codecFactory supplies protocol-matched decoders during unmarshalling.
+	// codecFactory supplies protocol-matched column unwrap handlers.
 	codecFactory codecFactory
 	// rowCount is the zero-based index of the row currently being processed/unmarshalled.
 	rowCount driverCommon.UB4
@@ -62,13 +62,16 @@ type tTIrxd struct {
 	row []columnPayload
 	// prevRow contains each column's data from the previous unmarshalled row, used for column-carry (BVC logic).
 	prevRow []columnPayload
+	// refCursorRows retains REF CURSOR values constructed while unmarshalling
+	// this message so the statement executor can register their connection ownership.
+	refCursorRows []*ttcRowsRefCursor
 	// bvcColSent is a BitSet indicating which columns are present in this row (per BVC protocol column-carry rules).
 	bvcColSent *driverCommon.BitSet
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
 	bvcFound bool
 
-	// Outgoing bind payload for TTIRXD when marshalling bind values (Phase 1: single row binds).
-	bindRow        []driverCommon.B1Array
+	// Outgoing bind values for TTIRXD bind-row marshalling.
+	bindValues     []encodedBindValue
 	columnContexts []columnContext
 
 	numberOfReturningPositions int
@@ -77,6 +80,13 @@ type tTIrxd struct {
 	// session character set
 	sessCharSet  driverCommon.UB2
 	sessNCharSet driverCommon.UB2
+}
+
+// encodedBindValue pairs an encoded bind payload with the metadata used to
+// select its encoder and TTC column wrapper.
+type encodedBindValue struct {
+	payload  driverCommon.B1Array
+	metadata bindValueMetadata
 }
 
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
@@ -90,6 +100,8 @@ func newTTIrxd() driverCommon.Message[driverCommon.MessageType] {
 func (rxd *tTIrxd) setCodecFactory(factory codecFactory) {
 	rxd.codecFactory = factory
 }
+
+func (rxd *tTIrxd) getFactory() codecFactory { return rxd.codecFactory }
 
 // GetMsgCode implements Message.GetMsgCode, returning the TTC RXD message code.
 func (rxd *tTIrxd) GetMsgCode() driverCommon.MessageType {
@@ -141,46 +153,29 @@ func (rxd *tTIrxd) setSessionCharacterSet(sessCharSet driverCommon.UB2) {
 
 /*
 
-setBindValues sets the outgoing bind payload for marshalling as an RXD message.
+setBindValues sets the prepared outgoing bind values for marshalling as an RXD message.
 
 Parameters:
-- row: row is the encoded data for one row: a slice of CLR-ready byte arrays, one per column.
-       Each element should contain the wire-format bytes for that column (nil indicates SQL NULL).
+- values: one encoded bind value per bind position for a single row.
 */
 
-func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array) {
-	rxd.bindRow = row
+func (rxd *tTIrxd) setBindValues(values []encodedBindValue) {
+	rxd.bindValues = values
 }
 
 /*
 MarshalTo writes the RXD bind payload for outgoing messages (single row).
-
-When used as an outgoing message, tTIrxd marshals the bind row values as a CLR sequence,
-using the TTC null length indicator for nil values. The call to MarshalTo marshals the
-encoded bytes for a single row.
+It resolves each encoder from the message's protocol-matched codec factory and
+uses that encoder's transport wrapper for the corresponding payload.
 */
 func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
-	// Nothing to marshal if no bind payload was configured.
-	if rxd.bindRow == nil {
-		return nil
-	}
-	bindCount := len(rxd.bindRow)
-	for i := 0; i < bindCount; i++ {
-		val := rxd.bindRow[i]
-		if val == nil {
-			// Write CLR null indicator
-			if err := engine.MarshalUB1(ctx, driverCommon.UB1(0)); err != nil {
-				common.Odl.Error("tTIrxd.MarshalTo: failed to write null length indicator",
-					"error", err, "stage", "null-indicator", "index", i)
-				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-			}
-			continue
+	for _, bind := range rxd.bindValues {
+		encoder, err := rxd.getFactory().getEncoderForGoType(bind.metadata)
+		if err != nil {
+			return err
 		}
-		// Write as CLR (short or long form depending on size)
-		if err := engine.MarshalCLR(ctx, val, 0, len(val)); err != nil {
-			common.Odl.Error("tTIrxd.MarshalTo: failed to write CLR",
-				"error", err, "stage", "clr", "index", i)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+		if err := encoder.wrapColumn(ctx, engine, bind.payload); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -319,8 +314,19 @@ func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar dr
 	if err != nil {
 		return err
 	}
+	// REF CURSOR rows need connection ownership before they are later exposed
+	// through connectionWrapper.Fetch. The statement executor registers this
+	// per-message list after the full RXD message has been unmarshalled.
+	if cursor, ok := payload.data.(*ttcRowsRefCursor); ok && cursor != nil {
+		rxd.refCursorRows = append(rxd.refCursorRows, cursor)
+	}
 	rxd.row[col] = payload
 	return nil
+}
+
+// getRefCursorRows returns the REF CURSOR values decoded from this RXD message.
+func (rxd *tTIrxd) getRefCursorRows() []*ttcRowsRefCursor {
+	return rxd.refCursorRows
 }
 
 // _unmarshalScalarColumn decodes a single column's value into rxd.row[col].

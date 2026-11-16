@@ -41,8 +41,10 @@ package oracle
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -67,6 +69,8 @@ type canBeWrapped interface {
 	// ClearPrepareForSessionlessResumeOperation completes or removes a prepared
 	// resume after database/sql returns from BeginTx.
 	ClearPrepareForSessionlessResumeOperation(common.SessionlessTransaction, error)
+
+	GetRows(context.Context, driver.Rows) error
 }
 
 // NewConnectionWrapper validates and wraps a dedicated database/sql connection
@@ -165,4 +169,21 @@ func (wrapper *connectionWrapper) ResumeSessionlessTx(ctx context.Context, globa
 	}
 	publicSessionlessTransaction = &sessionlessTx{underlyingTx: internalTx, transaction: sqlTx, transactionContext: ctx}
 	return publicSessionlessTransaction, err
+}
+
+// Fetch fetches raw on this wrapper's dedicated connection and exposes it as
+// standard database/sql rows. The wrapper must represent the same connection
+// that received the REF CURSOR OUT bind.
+func (w *connectionWrapper) Fetch(ctx context.Context, raw *datatype.Cursor) (*sql.Rows, error) {
+	rows := raw.DriverRows()
+	if rows == nil {
+		return nil, nil
+	}
+	if err := w.connection.Raw(func(c any) error {
+		fetcher, _ := c.(canBeWrapped)
+		return fetcher.GetRows(ctx, rows)
+	}); err != nil {
+		return nil, err
+	}
+	return w.connection.QueryContext(ctx, datatype.RefCursorQuery, rows)
 }

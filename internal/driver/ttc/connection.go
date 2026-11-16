@@ -53,6 +53,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -62,6 +63,12 @@ type connection struct {
 	shelf   *ttiShelf[driverCommon.MessageType]
 	sessCtx *driverCommon.SessionContext
 	ns      driverCommon.NetworkSession
+	// _requestStartCallbacks contains callbacks run when the connection is
+	// borrowed from the pool (ResetSession).
+	_requestStartCallbacks []*requestBoundaryCallback
+	// _requestEndCallbacks contains callbacks run when the connection is
+	// returned to the pool (IsValid).
+	_requestEndCallbacks []*requestBoundaryCallback
 	// _isClosed is used to know if the connection has been closed. If _isClosed
 	// is set to true the connection cannot be used.
 	_isClosed bool
@@ -99,12 +106,20 @@ func newConnection(
 		_isValid:  true,
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
-	_registerHandleEndOfCallStatus(shelf, conn)
-	shelf.registerCancelExecution(conn.cancelCurrentExecution)
+	conn._registerHandleEndOfCallStatus()
+	conn.shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
 		return nil, err
 	}
+
 	return conn, nil
+}
+
+// initializeRequestBoundaryCallbacks installs request-boundary callbacks on
+// the connection.
+func (c *connection) initializeRequestBoundaryCallbacks(requestStartCallbacks []*requestBoundaryCallback, requestEndCallbacks []*requestBoundaryCallback) {
+	c._requestStartCallbacks = requestStartCallbacks
+	c._requestEndCallbacks = requestEndCallbacks
 }
 
 /*
@@ -172,9 +187,34 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
-	defer stmt.Close()
 	result, err := stmt.QueryContext(ctx, args)
-	return result, c.shelf.LocalizeError(err)
+	if err != nil {
+		_ = stmt.Close()
+		return nil, c.shelf.LocalizeError(err)
+	}
+	return result, nil
+}
+
+// GetRows fetches an already-decoded REF CURSOR on its owning connection.
+// It is called by oracle.connectionWrapper before the cursor is exposed as
+// standard database/sql rows.
+func (c *connection) GetRows(ctx context.Context, rows driver.Rows) error {
+	cursor, _ := rows.(*ttcRowsRefCursor)
+	// Check ownership before setting any fetch dependencies. Doing this after
+	// injection would let a cursor returned by another physical connection be claimed.
+	if !c.shelf.hasRefCursor(cursor) {
+		common.Odl.Error("REF CURSOR fetch rejected because cursor belongs to another connection", "cursorID", cursor.cursorID)
+		return common.NewOracleError(oracleErrors.RefCursorConnectionMismatch, nil)
+	}
+	// Configure the rows with their owning connection's dependencies.
+	cursor.attachShelf(c.shelf)
+	cursor.attachSessionContext(c.sessCtx)
+	err := cursor.Fetch(ctx)
+	if err != nil {
+		common.Odl.Error("REF CURSOR fetch failed", "error", err)
+		return err
+	}
+	return nil
 }
 
 // cancelCurrentExecution sends a request to the database to cancel the current
@@ -338,7 +378,20 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 // checkNamedValue validates sql.Out destinations and returns shelf-localized
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
+	// connectionWrapper.Fetch passes an already-decoded driver.Rows to the internal
+	// REF CURSOR statement executor. This is not a REF CURSOR OUT-bind destination.
+	if _, ok := nv.Value.(driver.Rows); ok {
+		return nil
+	}
 	if out, ok := nv.Value.(sql.Out); ok {
+		if isRefCursorDestination(out.Dest) {
+			return nil
+		}
+		// REF CURSOR OUT binds must use *datatype.Cursor, not the driver.Rows
+		// protocol interface.
+		if _, ok := out.Dest.(*driver.Rows); ok {
+			return common.NewOracleError(oracleErrors.InvalidRefCursorOutParameter, nil)
+		}
 		// Destination must be provided for output binding.
 		if out.Dest == nil {
 			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("nil destination"))
@@ -365,6 +418,12 @@ func checkNamedValue(nv *driver.NamedValue) error {
 		return err
 	}
 	return driver.ErrSkip
+}
+
+// isRefCursorDestination reports whether v is a destination pointer for a REF CURSOR OUT bind.
+func isRefCursorDestination(v any) bool {
+	_, ok := v.(*datatype.Cursor)
+	return ok
 }
 
 func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {

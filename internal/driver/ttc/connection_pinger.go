@@ -80,7 +80,8 @@ const (
 // pool prior to placing the connection into the connection pool. If the server
 // has reported an ongoing transaction, it will be rolled back.
 //
-// Returns: true if the connection is valid otherwise false
+// It returns false if the connection is invalid or a callback returns
+// driver.ErrBadConn.
 func (c *connection) IsValid() bool {
 
 	c.isValid()
@@ -98,6 +99,15 @@ func (c *connection) IsValid() bool {
 				c._isValid = false
 			}
 		}
+	}
+
+	// Use one timeout context for all request-end callbacks.
+	ctx, cancel := context.WithTimeout(common.BackgroundContext, _pingTimeout)
+	defer cancel()
+	// Run request-end callbacks. A bad-connection error invalidates the connection.
+	common.Odl.Finest("Running request-end callbacks on IsValid")
+	if err := runRequestBoundaryCallbacks(ctx, c._requestEndCallbacks); err != nil {
+		return false
 	}
 
 	return c._isValid

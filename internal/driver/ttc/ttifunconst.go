@@ -63,6 +63,8 @@ const (
 	oTxSe common.FunctionType = 103
 	// oTxEn (OTXEN) is used for transaction end and recovery operations.
 	oTxEn common.FunctionType = 104
+	// oSessState (OSESSSTATE) sends session request-boundary state.
+	oSessState common.FunctionType = 176
 	// occa is the function code for close cursor/cancel,
 	occa common.FunctionType = 105
 )

@@ -51,6 +51,7 @@ func initMessagesIt() {
 		message string
 	}{
 		{oracleErrors.InvalidCredential, "credenziale non valida o utente non autorizzato: %s"},
+		{oracleErrors.InvalidDateYear, "l'anno completo deve essere compreso tra -4713 e +9999 e non può essere 0"},
 		{oracleErrors.ConnectionLost, "connessione al database chiusa dal peer"},
 		{oracleErrors.AliasNotFound, "impossibile connettersi al database. Alias %s non trovato."},
 		{oracleErrors.NoListenerAvailable, "impossibile connettersi. Nessun listener in %s"},
@@ -193,6 +194,14 @@ func initMessagesIt() {
 		{oracleErrors.EmptyUsernameError, "i nomi utente vuoti non sono supportati"},
 		{oracleErrors.NoAuthenticatorError, "nessun autenticatore disponibile per i parametri forniti"},
 		{oracleErrors.ServerTimeZoneError, "operazione %s sul fuso orario del server non riuscita"},
+		{oracleErrors.OsonUnsupportedScalarError, "il documento OSON contiene un codice operativo scalare non supportato 0x%02x"},
+		{oracleErrors.JSONAccessError, "accesso JSON non valido: %s"},
+		{oracleErrors.JSONUninitializedValue, "il metodo JSON %s è stato chiamato su un valore non inizializzato"},
+		{oracleErrors.JSONScanTypeUnsupportedError, "JSON non può leggere un valore di tipo %s"},
+		{oracleErrors.JSONArrayIndexOutOfRangeError, "l'indice dell'array JSON %d è fuori intervallo"},
+		{oracleErrors.OsonEncodingError, "impossibile codificare il valore come documento OSON"},
+		{oracleErrors.JSONRenderingError, "impossibile rappresentare il valore JSON Oracle come testo JSON"},
+		{oracleErrors.JSONObjectKeyNotFoundError, "chiave dell'oggetto JSON non trovata"},
 		{oracleErrors.InvalidConnection, "la connessione fornita non è una connessione Oracle"},
 		{oracleErrors.EmptyTokenError, "l'ID del token per l'autenticazione basata su token è vuoto"},
 		{oracleErrors.TokenAuthenticationError, "si è verificato un errore durante l'autenticazione tramite token"},

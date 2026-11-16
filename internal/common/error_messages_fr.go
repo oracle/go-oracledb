@@ -51,6 +51,7 @@ func initMessagesFr() {
 		message string
 	}{
 		{oracleErrors.InvalidCredential, "identifiants invalides ou utilisateur non autorisé : %s"},
+		{oracleErrors.InvalidDateYear, "l'année complète doit être comprise entre -4713 et +9999, et ne peut pas être 0"},
 		{oracleErrors.ConnectionLost, "connexion de base de données fermée par le pair"},
 		{oracleErrors.AliasNotFound, "impossible de se connecter à la base de données. Alias %s introuvable."},
 		{oracleErrors.NoListenerAvailable, "connexion impossible. Aucun processus d'écoute à %s"},
@@ -193,6 +194,14 @@ func initMessagesFr() {
 		{oracleErrors.EmptyUsernameError, "les noms d'utilisateur vides ne sont pas pris en charge"},
 		{oracleErrors.NoAuthenticatorError, "aucun authentificateur disponible pour les paramètres fournis"},
 		{oracleErrors.ServerTimeZoneError, "échec de l'opération %s sur le fuseau horaire du serveur"},
+		{oracleErrors.OsonUnsupportedScalarError, "le document OSON contient un opcode scalaire non pris en charge 0x%02x"},
+		{oracleErrors.JSONAccessError, "accès JSON non valide : %s"},
+		{oracleErrors.JSONUninitializedValue, "la méthode JSON %s a été appelée sur une valeur non initialisée"},
+		{oracleErrors.JSONScanTypeUnsupportedError, "JSON ne peut pas lire une valeur de type %s"},
+		{oracleErrors.JSONArrayIndexOutOfRangeError, "l'indice de tableau JSON %d est hors limites"},
+		{oracleErrors.OsonEncodingError, "échec de l'encodage de la valeur en document OSON"},
+		{oracleErrors.JSONRenderingError, "échec du rendu de la valeur JSON Oracle en texte JSON"},
+		{oracleErrors.JSONObjectKeyNotFoundError, "clé d'objet JSON introuvable"},
 		{oracleErrors.InvalidConnection, "la connexion fournie n'est pas une connexion Oracle"},
 		{oracleErrors.EmptyTokenError, "l'identifiant du jeton pour l'authentification par jeton est vide"},
 		{oracleErrors.TokenAuthenticationError, "une erreur s'est produite pendant l'authentification par jeton"},
@@ -202,6 +211,11 @@ func initMessagesFr() {
 		{oracleErrors.ProviderNotFound, "aucun fournisseur du type demandé n'a été trouvé"},
 		{oracleErrors.InvalidGlobalTransactionIDValue, "valeur non valide de l'identifiant global de transaction"},
 		{oracleErrors.InvalidSessionlessTransactionTimeout, "le délai de démarrage de la transaction sans session doit être supérieur à zéro"},
+		{oracleErrors.ImplicitResultMessageCreationFailed, "échec de création du message de résultat implicite"},
+		{oracleErrors.RefCursorConnectionMismatch, "le REF CURSOR doit être récupéré à l’aide de la connexion sur laquelle il a été ouvert"},
+		{oracleErrors.InvalidRefCursorOutParameter, "les liaisons OUT REF CURSOR nécessitent *datatype.Cursor"},
+		{oracleErrors.InvalidRefCursorArgument, "argument REF CURSOR non valide"},
+		{oracleErrors.MissingReadPrivilege, "privilège READ manquant"},
 	}
 
 	for _, translation := range translations {

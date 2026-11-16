@@ -74,7 +74,15 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 
 	msgReg := NewRegistry[common.MessageType]()
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
 	_ = msgReg.Register(TTIRXD, 0, newTTIrxd)
@@ -126,6 +134,8 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
 
 	msgReg := NewRegistry[common.MessageType]()
+	_ = msgReg.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	_ = msgReg.Register(TTIIMPLOER, 0, newTTIimplresOer)
 	_ = msgReg.Register(TTIOER, 14, newTTIoer14WithEndOfCallStatusSupport)
 	_ = msgReg.Register(TTIDCB, 24, newTTIdcb24)
 	_ = msgReg.Register(TTIRXH, 0, newTTIrxh)
@@ -182,7 +192,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil, unwrapCLRColumn),
 	); err != nil {
@@ -229,7 +239,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 	if err := decoderRegistry.Register(
 		DtyVCS,
 		-1,
-		newTypeDecoder(func(columnContext, common.B1Array) (sqldriver.Value, error) {
+		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
 		}, nil, unwrapCLRColumn),
 	); err != nil {
@@ -318,7 +328,7 @@ func TestStatementExecutor_Others_Create_MarshalAndExec(t *testing.T) {
 }
 
 // TestStatementExecutor_DML_Insert_MarshalAndExec verifies DML INSERT marshal+exec using a seeded TTIRPA payload.
-// Expectation: ExecContext completes without error.
+// Expectation: ExecContext completes without error and reports three affected rows from the seeded RPA.
 func TestStatementExecutor_DML_Insert_MarshalAndExec(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -336,9 +346,19 @@ func TestStatementExecutor_DML_Insert_MarshalAndExec(t *testing.T) {
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("INSERT INTO t (x) VALUES(1)")
-	_, err := exec.ExecContext(ctx, q, nil)
+	result, err := exec.ExecContext(ctx, q, nil)
 	if err != nil {
 		t.Fatalf("ExecContext INSERT failed: %v", err)
+	}
+	if result == nil {
+		t.Fatal("ExecContext INSERT returned a nil result")
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatalf("RowsAffected failed: %v", err)
+	}
+	if rowsAffected != 3 {
+		t.Fatalf("RowsAffected mismatch: got %d want 3", rowsAffected)
 	}
 }
 
@@ -968,7 +988,7 @@ func TestStatementExecutor_Others_Factory_GetMessageForFunction_Error(t *testing
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("create table t(x number)")
-	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
+	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "create-messages") {
 		t.Fatalf("expected factory GetMessageForFunction failure, got err=%v", err)
 	}
 }
@@ -994,7 +1014,7 @@ func TestStatementExecutor_DML_Factory_GetMessageForFunction_Error(t *testing.T)
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("insert into t values(1)")
-	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
+	if _, err := exec.ExecContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "create-messages") {
 		t.Fatalf("expected factory GetMessageForFunction failure for DML, got err=%v", err)
 	}
 }
@@ -1020,7 +1040,7 @@ func TestStatementExecutor_Select_Factory_GetMessageForFunction_Error(t *testing
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())
 	q, _ := newQualifiedSQLStatement("select * from t")
-	if _, err := exec.QueryContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
+	if _, err := exec.QueryContext(ctx, q, nil); err == nil || !strings.Contains(err.Error(), "create-messages") {
 		t.Fatalf("expected factory GetMessageForFunction failure for Select, got err=%v", err)
 	}
 }
@@ -1046,7 +1066,7 @@ func TestStatementExecutor_PLSQL_Factory_GetMessageForFunction_Error(t *testing.
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())
 	plsql, _ := newQualifiedSQLStatement("BEGIN NULL; END;")
-	if _, err := exec.ExecContext(ctx, plsql, nil); err == nil || !strings.Contains(err.Error(), "failed to prepare") {
+	if _, err := exec.ExecContext(ctx, plsql, nil); err == nil || !strings.Contains(err.Error(), "create-messages") {
 		t.Fatalf("expected factory GetMessageForFunction failure for PLSQL, got err=%v", err)
 	}
 }

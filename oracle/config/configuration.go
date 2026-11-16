@@ -184,8 +184,13 @@ func (config *OracleDriverConfig) ToNSConnectionParameters() string {
 				}
 				// skip empty strings
 				if strings.Count(v, " ") != 0 || strings.Count(v, "=") != 0 {
-					// quote it then
-					parameterValue = fmt.Sprintf("\"%s\"", v)
+					// quote it if not already quoted
+					isQuoted := len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"'
+					if isQuoted {
+						parameterValue = v
+					} else {
+						parameterValue = fmt.Sprintf("\"%s\"", v)
+					}
 				} else {
 					parameterValue = v
 				}
@@ -488,6 +493,14 @@ type OracleCredentials struct {
 	LogonMode string `propertyName:"logon_mode" default:"" validator:"validateLogonMode" help:"specifies the logon mode for the connection"`
 	// Password stores the database password configuration.
 	Password string `cliVisible:"false" sensitive:"true"`
+
+	// TokenAuth specifies the token authentication mechanism requested by the
+	// connect descriptor.
+	TokenAuth string `ns_name:"token_auth" default:"" validator:"validateTokenAuth" help:"specifies the token authentication mechanism"`
+
+	// TokenLocation specifies the location of token material used by token
+	// authentication.
+	TokenLocation string `ns_name:"token_location" default:"" validator:"validateTokenLocation" help:"specifies the location of token material"`
 }
 
 func (config OracleCredentials) String() string {
@@ -953,6 +966,8 @@ func init() {
 	_fieldsValidators["validateZeroOrPositive"] = validateZeroOrPositive
 	_fieldsValidators["validateLoggingLevel"] = validateLoggingLevel
 	_fieldsValidators["validateUserName"] = validateUserName
+	_fieldsValidators["validateTokenAuth"] = validateTokenAuth
+	_fieldsValidators["validateTokenLocation"] = validateTokenLocation
 
 	// populates flags for each driver config items
 	NewOracleDriverConfig().populateFlags()
@@ -1187,6 +1202,64 @@ func validateLogonModeValue(value reflect.Value, valueName string) (any, error) 
 		value,
 		valueName,
 		[]string{common.KpzLogonSysdba.String(), common.KpzLogonSysoper.String()},
+	)
+}
+
+var acceptedTokenAuthValues = []string{"OCI_TOKEN", "OAUTH"}
+
+// validateTokenAuth accepts supported token authentication mechanisms.
+// An empty value means token authentication was not configured.
+func validateTokenAuth(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() == reflect.String {
+		tokenAuth := value.String()
+		if tokenAuth == "" {
+			return "", nil
+		}
+		for _, acceptedValue := range acceptedTokenAuthValues {
+			if strings.EqualFold(tokenAuth, acceptedValue) {
+				return tokenAuth, nil
+			}
+		}
+	}
+
+	return nil, common.NewOracleError(
+		oracleErrors.InvalidConnectionParameter,
+		nil,
+		value,
+		valueName,
+		acceptedTokenAuthValues,
+	)
+}
+
+// validateTokenLocation verifies that configured token material currently
+// resolves to a regular file or directory. An empty value means it is unset.
+func validateTokenLocation(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() != reflect.String {
+		return nil, common.NewOracleError(
+			oracleErrors.InvalidConnectionParameter,
+			nil,
+			value,
+			valueName,
+			"an existing regular file or directory",
+		)
+	}
+
+	tokenLocation := value.String()
+	if tokenLocation == "" {
+		return "", nil
+	}
+
+	fileInfo, err := os.Stat(tokenLocation)
+	if err == nil && (fileInfo.IsDir() || fileInfo.Mode().IsRegular()) {
+		return tokenLocation, nil
+	}
+
+	return nil, common.NewOracleError(
+		oracleErrors.InvalidConnectionParameter,
+		err,
+		tokenLocation,
+		valueName,
+		"an existing regular file or directory",
 	)
 }
 

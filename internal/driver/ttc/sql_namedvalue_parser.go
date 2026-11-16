@@ -76,7 +76,7 @@ const maxBindIndex = math.MaxUint16
 //   - Identifiers started by a letter continue with letters or digits.
 //   - Numeric identifiers continue with digits (e.g., :1, :23).
 //   - Text inside comments (-- ... , /* ... */) and quoted strings ('...' or "...")
-//     is ignored.
+//     is ignored, including Oracle alternative quoting (q'[...]', q'!...!', etc.).
 //   - Constructs like ':=' are ignored as non-placeholders.
 //   - A dangling ':' at the end of the string is an error.
 func parsePlaceholders(sql string) (*bindDetails, error) {
@@ -172,6 +172,32 @@ func skipCommentOrString(runes []rune, i int) (int, bool) {
 			j++
 		}
 		// Unclosed block comment: skip to end
+		return n, true
+	}
+
+	// Alternative-quoted string: q' ... ' or Q' ... '. The optional national
+	// character prefix (n/N) is passed over by the outer scan before reaching q.
+	if (runes[i] == 'q' || runes[i] == 'Q') && i+2 < n && runes[i+1] == '\'' {
+		closing := runes[i+2]
+		switch closing {
+		case ' ', '\t', '\r':
+			// These characters cannot delimit an alternative-quoted literal.
+			return i, false
+		case '[':
+			closing = ']'
+		case '{':
+			closing = '}'
+		case '<':
+			closing = '>'
+		case '(':
+			closing = ')'
+		}
+		for j := i + 3; j+1 < n; j++ {
+			if runes[j] == closing && runes[j+1] == '\'' {
+				return j + 2, true
+			}
+		}
+		// Unclosed string: skip to end, as with ordinary quoted strings.
 		return n, true
 	}
 
