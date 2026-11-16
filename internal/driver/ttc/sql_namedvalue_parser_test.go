@@ -238,22 +238,59 @@ func TestParsePlaceholders_IgnoreInSingleQuotedStringWithEscape(t *testing.T) {
 	}
 }
 
-// TestParsePlaceholders_IgnoreInOracleAlternativeQuotedStrings verifies that
-// Oracle q-quoted strings do not contribute bind placeholders.
-func TestParsePlaceholders_IgnoreInOracleAlternativeQuotedStrings(t *testing.T) {
+// TestParsePlaceholders_AlternativeQuotedStrings verifies that Oracle alternative
+// quoted literals hide embedded colons and apostrophes while preserving real bind
+// placeholders in occurrence order. Cases cover issue #135, paired and custom
+// delimiters (including Unicode and single quotes), q/Q and national prefixes,
+// embedded delimiters, empty literals, and unterminated literals. Invalid space,
+// tab, and carriage-return delimiters fall back to ordinary quote scanning; SQL
+// syntax validation remains the database's responsibility. Each case also checks
+// that the real named placeholder "actual" binds successfully to "X".
+func TestParsePlaceholders_AlternativeQuotedStrings(t *testing.T) {
 	t.Parallel()
-	for _, query := range []string{
-		"select q'[O'Reilly :not_a_bind]' from dual where dummy = :actual",
-		"select Q'{O'Reilly :not_a_bind}' from dual where dummy = :actual",
-		"select q'!O'Reilly :not_a_bind!' from dual where dummy = :actual",
-	} {
-		ph, err := parsePlaceholders(query)
-		if err != nil {
-			t.Fatalf("parsePlaceholders(%q): %v", query, err)
-		}
-		if len(ph.bindNames) != 1 || ph.bindNames[0] != "actual" {
-			t.Errorf("parsePlaceholders(%q) binds = %v, want [actual]", query, ph.bindNames)
-		}
+	tests := []struct {
+		name string
+		sql  string
+		want string
+	}{
+		{"issue135", `SELECT q'[O'Reilly :not_a_bind]' FROM dual WHERE dummy = :actual`, "actual"},
+		{"braces", `SELECT q'{O'Reilly :ignored}' FROM dual WHERE dummy = :actual`, "actual"},
+		{"angles", `SELECT q'<O'Reilly :ignored>' FROM dual WHERE dummy = :actual`, "actual"},
+		{"parentheses", `SELECT q'(O'Reilly :ignored)' FROM dual WHERE dummy = :actual`, "actual"},
+		{"uppercase", `SELECT Q'[O'Reilly :ignored]' FROM dual WHERE dummy = :actual`, "actual"},
+		{"national", `SELECT nq'[O'Reilly :ignored]', NQ'{O'Reilly :ignored}' FROM dual WHERE dummy = :actual`, "actual"},
+		{"custom", `SELECT q'!O'Reilly :ignored!' FROM dual WHERE dummy = :actual`, "actual"},
+		{"multibyte", `SELECT q'界O'Reilly :ignored界' FROM dual WHERE dummy = :actual`, "actual"},
+		{"quoteDelimiter", `SELECT q''O'Reilly :ignored'' FROM dual WHERE dummy = :actual`, "actual"},
+		{"closingBracketDelimiter", `SELECT q']O'Reilly :ignored]' FROM dual WHERE dummy = :actual`, "actual"},
+		{"embeddedDelimiter", `SELECT q'[a] :ignored 'b' /* :hidden */ -- c
+:also_hidden]' FROM dual WHERE dummy = :actual`, "actual"},
+		{"bindsAroundLiterals", `SELECT :first, q'[O'Reilly :ignored]', :actual, Q'!it's :hidden!', :first FROM dual`, "first,actual,first"},
+		{"empty", `SELECT q'[]', q'!!' FROM dual WHERE dummy = :actual`, "actual"},
+		{"unterminated", `SELECT :actual, q'[O'Reilly :ignored`, "actual"},
+		{"truncated", `SELECT :actual, q'[`, "actual"},
+		{"spaceDelimiter", "SELECT q' text' FROM dual WHERE dummy = :actual", "actual"},
+		{"tabDelimiter", "SELECT q'\ttext' FROM dual WHERE dummy = :actual", "actual"},
+		{"returnDelimiter", "SELECT q'\rtext' FROM dual WHERE dummy = :actual", "actual"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ph, err := parsePlaceholders(tt.sql)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := strings.Join(ph.bindNames, ","); got != tt.want {
+				t.Fatalf("expected placeholders %q, got %v", tt.want, ph.bindNames)
+			}
+			out, err := extractInputBindValues(ph, []driver.NamedValue{{Name: "actual", Value: "X"}})
+			if err != nil {
+				t.Fatalf("unexpected bind error: %v", err)
+			}
+			if len(out) != 1 || out[0] != "X" {
+				t.Fatalf("expected bound value X, got %v", out)
+			}
+		})
 	}
 }
 

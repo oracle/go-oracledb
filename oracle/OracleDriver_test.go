@@ -544,3 +544,15 @@ func TestDriver_InsertForeignKeyViolation(t *testing.T) {
 		t.Fatalf("expected returned child id to remain unset on foreign key violation, got %d", insertedChildID)
 	}
 }
+
+// TestDriver_implementDriverContext check that the driver implements both
+// driver.Driver and driver.DriverContext interfaces
+func TestDriver_implementDriverContext(t *testing.T) {
+	var drv any = NewDriver()
+	if _, ok := drv.(driver.Driver); !ok {
+		t.Fatalf("driver does not implement Driver")
+	}
+	if _, ok := drv.(driver.DriverContext); !ok {
+		t.Fatalf("driver does not implement DriverContext")
+	}
+}
