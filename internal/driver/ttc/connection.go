@@ -260,10 +260,10 @@ type connectionStatusProvider interface {
 //
 // Returns:
 //   - None. The callbacks are registered on the message streamer.
-func _registerHandleEndOfCallStatus(shelf *ttiShelf[driverCommon.MessageType], connection *connection) {
-	messageStreamer := shelf.GetMessageStreamer().(MessageStreamerInterface)
-	messageStreamer.RegisterPostUnmarshallCallback(TTIOER, connection._handleEndOfCallStatus)
-	messageStreamer.RegisterPostUnmarshallCallback(TTISTA, connection._handleEndOfCallStatus)
+func (c *connection) _registerHandleEndOfCallStatus() {
+	messageStreamer := c.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	messageStreamer.RegisterPostUnmarshallCallback(TTIOER, c._handleEndOfCallStatus)
+	messageStreamer.RegisterPostUnmarshallCallback(TTISTA, c._handleEndOfCallStatus)
 }
 
 // _handleEndOfCallStatus is a post-unmarshal callback that handles end-of-call

@@ -276,7 +276,7 @@ func (t *sessionlessTransaction) Rollback() error {
 	}
 	// Rollback should be allowed to complete even if the transaction context
 	// has ended, use another context to execute the rollback operation.
-	rollbackCtx, cancel := context.WithTimeout(common.BackgroundContext, _rollbackTimeout)
+	rollbackCtx, cancel := context.WithTimeout(common.BackgroundContext, _isValidTimeout)
 	defer cancel()
 	return endTransaction(t, rollbackCtx, t.rollback)
 }

@@ -70,10 +70,10 @@ func (c *connection) Ping(ctx context.Context) error {
 // *** Validator ***
 
 const (
-	// timeout duration to prevent the IsValid function from blocking indefinitely. If
-	// there is an active transaction, IsValid will rollback the transaction before
-	// returning it to the pool.
-	_rollbackTimeout time.Duration = 10000000000 // 10s
+	// _isValidTimeout timeout duration to prevent the IsValid function from
+	// blocking indefinitely. If there is an active transaction, IsValid will
+	// rollback the transaction before returning it to the pool.
+	_isValidTimeout time.Duration = 10000000000 // 10s
 )
 
 // IsValid checks if the connection is valid. This method is used by the connection
@@ -89,7 +89,7 @@ func (c *connection) IsValid() bool {
 	// check for ongoing transaction and rollback
 	transaction := c.shelf.getTransaction()
 	if transaction != nil && transaction.currentTransactionState() != transactionEndedServer {
-		ctx, cancel := context.WithTimeout(common.BackgroundContext, _rollbackTimeout)
+		ctx, cancel := context.WithTimeout(common.BackgroundContext, _isValidTimeout)
 		defer cancel()
 		if err := c.rollbackActiveTransaction(ctx); err != nil {
 			common.Odl.Warn("Rollback of active transaction during reset has failed", "error", err)
@@ -102,7 +102,7 @@ func (c *connection) IsValid() bool {
 	}
 
 	// Use one timeout context for all request-end callbacks.
-	ctx, cancel := context.WithTimeout(common.BackgroundContext, _pingTimeout)
+	ctx, cancel := context.WithTimeout(common.BackgroundContext, _isValidTimeout)
 	defer cancel()
 	// Run request-end callbacks. A bad-connection error invalidates the connection.
 	common.Odl.Finest("Running request-end callbacks on IsValid")
