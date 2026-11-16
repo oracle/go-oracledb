@@ -178,7 +178,6 @@ func initMessagesEs() {
 		{oracleErrors.InvalidSqlOutParameter, "parámetro sql.Out no válido: %s"},
 		{oracleErrors.InvalidFileConfig, "no se pudo cargar la configuración"},
 		{oracleErrors.NotInTransaction, "no hay ninguna transacción activa"},
-		{oracleErrors.NotCurrentTransaction, "la transacción no es la transacción actual"},
 		{oracleErrors.IsolationLevelNotSupported, "nivel de aislamiento no compatible"},
 		{oracleErrors.AlreadyInTransaction, "nivel de aislamiento no compatible"},
 		{oracleErrors.ErrorInTransaction, "se produjo un error al realizar la operación de transacción %s"},

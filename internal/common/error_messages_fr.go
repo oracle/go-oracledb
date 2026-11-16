@@ -178,7 +178,6 @@ func initMessagesFr() {
 		{oracleErrors.InvalidSqlOutParameter, "paramètre sql.Out non valide : %s"},
 		{oracleErrors.InvalidFileConfig, "échec du chargement de la configuration"},
 		{oracleErrors.NotInTransaction, "aucune transaction en cours"},
-		{oracleErrors.NotCurrentTransaction, "la transaction n'est pas la transaction courante"},
 		{oracleErrors.IsolationLevelNotSupported, "niveau d'isolation non pris en charge"},
 		{oracleErrors.AlreadyInTransaction, "niveau d'isolation non pris en charge"},
 		{oracleErrors.ErrorInTransaction, "une erreur s'est produite pendant l'opération de transaction %s"},

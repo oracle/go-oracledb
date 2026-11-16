@@ -521,12 +521,6 @@ func initMessagesEn() {
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.NotInTransaction), "not in transaction")
 	// Document: No
-	// Cause:    A transaction operation was requested using a transaction handle
-	//           that is not the transaction currently registered on the connection.
-	// Action:   Use the current transaction handle for the connection.
-	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.NotCurrentTransaction), "transaction is not the current transaction")
-	// Document: No
 	// Cause:    The provided isolation level is not supported.
 	// Action:   Use one of the following isolation levels: LevelSerializable or
 	//           LevelReadCommitted.
