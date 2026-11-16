@@ -207,6 +207,9 @@ func TestConnectionPinger_IsValidWithInband(t *testing.T) {
 
 }
 
+// TestConnectionPinger_IsValidCachesCursorsAndEvictsLeastRecent verifies that
+// returning a connection to the pool retains the configured number of most
+// recently used cursors and sends OCCA only for the least-recently-used one.
 func TestConnectionPinger_IsValidCachesCursorsAndEvictsLeastRecent(t *testing.T) {
 	mockStr := &mockStreamer{}
 	shelf := newShelf[common.MessageType]()
@@ -239,6 +242,9 @@ func TestConnectionPinger_IsValidCachesCursorsAndEvictsLeastRecent(t *testing.T)
 	}
 }
 
+// TestConnectionPinger_IsValidInvalidatesCursorsWithResetState verifies that
+// reset-state sessions clear local cursor IDs without sending OCCA, because
+// the server reset has already closed the cursors.
 func TestConnectionPinger_IsValidInvalidatesCursorsWithResetState(t *testing.T) {
 	mockStr := &mockStreamer{}
 	shelf := newShelf[common.MessageType]()

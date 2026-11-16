@@ -52,9 +52,9 @@ import (
 // open cursors, when a connection is returned to the pool.
 const resetStateLevel2 = 0x02
 
-// addCursorLifecycleCallbacks configures cursor cleanup before the end-request
-// marker, so any required OCCA messages remain part of the completed request.
-func addCursorLifecycleCallbacks(callbacks *requestCallbacks, c *connection) {
+// addCursorCacheCallbacks configures cursor cache work before the end-request
+// marker, so OCCA messages for evicted cursors remain part of that request.
+func addCursorCacheCallbacks(callbacks *requestCallbacks, c *connection) {
 	if c.resetStateEnabled() {
 		callbacks.appendRequestEndCallback(&requestBoundaryCallback{
 			description: "Invalidate cursors after reset state",
@@ -98,7 +98,10 @@ func (c *connection) resetStateEnabled() bool {
 }
 
 // cacheCursors stores the connection's live cursors in least-recently-used
-// order and closes only cursors that do not fit in its configured cache.
+// order and closes cursors that do not fit in its configured cache. When
+// caching is disabled, it closes every live cursor. A failed cursor-close
+// operation leaves the server-side cursor state uncertain, so it returns
+// driver.ErrBadConn and prevents the connection from being reused.
 func (c *connection) cacheCursors(context.Context) error {
 	statements := c.shelf.GetStatements(false)
 	cache := c.shelf._cursorCache
@@ -157,8 +160,9 @@ func (c *connection) cacheCursors(context.Context) error {
 	return nil
 }
 
-// invalidateCursors clears local cursor state after server reset state has
-// closed the corresponding cursors.
+// invalidateCursors mirrors server reset state locally. The reset has already
+// closed server cursors, so this clears their local IDs and cache entries
+// without sending OCCA messages.
 func (c *connection) invalidateCursors(context.Context) error {
 	for _, statement := range c.shelf.GetStatements(false) {
 		statement.markCursorClosed()

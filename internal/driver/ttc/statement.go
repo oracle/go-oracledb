@@ -135,19 +135,24 @@ type Statement struct {
 	cursorCachedAt         uint64
 }
 
-// cursorCacheKey returns the server cursor ID used as this connection's cache key.
+// cursorCacheKey returns the server cursor ID used as this connection's cache
+// key. Cursor IDs are scoped to the physical connection and change when a
+// statement is reparsed after its cursor is closed.
 func (s *Statement) cursorCacheKey() string {
 	return strconv.FormatInt(int64(s.qualifiedQuery.cursorID), 10)
 }
 
 // markCursorUsed records this statement's most recent successful execution.
+// The connection sorts these sequence values when choosing the least-recently-
+// used cursor to evict.
 func (s *Statement) markCursorUsed() {
 	if s.qualifiedQuery.cursorID != 0 {
 		s.cursorLastUsed = s.shelf.nextCursorUseSequence()
 	}
 }
 
-// markCursorClosed invalidates the server cursor held by this statement.
+// markCursorClosed invalidates the local cursor state after either an OCCA
+// close or a server-side reset, preventing reuse of that cursor ID.
 func (s *Statement) markCursorClosed() {
 	s.qualifiedQuery.cursorID = 0
 	s.cursorCachedAt = 0

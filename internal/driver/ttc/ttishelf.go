@@ -84,7 +84,7 @@ type ttiShelf[T any] struct {
 // caching when maxSize is zero.
 func (s *ttiShelf[T]) initializeCursorCache(maxSize int) {
 	s._cursorCacheSize = maxSize
-	if maxSize <= 0 {
+	if maxSize == 0 {
 		s._cursorCache = nil
 		return
 	}

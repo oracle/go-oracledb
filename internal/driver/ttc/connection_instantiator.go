@@ -169,7 +169,7 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 func buildRequestBoundaryCallbacks(conn *connection) *requestCallbacks {
 	callbacks := newRequestBoundaryCallbacks()
 
-	addCursorLifecycleCallbacks(callbacks, conn)
+	addCursorCacheCallbacks(callbacks, conn)
 
 	// Add begin-request and end-request callbacks.
 	addBeginEndRequestCallbacks(callbacks, conn)
