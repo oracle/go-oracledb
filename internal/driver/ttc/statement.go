@@ -146,8 +146,8 @@ func (s *Statement) cursorCacheKey() string {
 // The connection sorts these sequence values when choosing the least-recently-
 // used cursor to evict.
 func (s *Statement) markCursorUsed() {
-	if s.qualifiedQuery.cursorID != 0 {
-		s.cursorLastUsed = s.shelf.nextCursorUseSequence()
+	if cache := s.shelf._cursorCache; cache != nil {
+		cache.markUsed(s)
 	}
 }
 
@@ -293,7 +293,9 @@ func (s *Statement) Close() error {
 		}
 		s._rows = nil
 	}
-	s.shelf.removeCachedCursor(s)
+	if cache := s.shelf._cursorCache; cache != nil {
+		cache.remove(s)
+	}
 	// close cursors
 	err := s._closeCursor()
 	if err != nil {

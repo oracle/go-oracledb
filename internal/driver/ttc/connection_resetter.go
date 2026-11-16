@@ -41,7 +41,6 @@ package ttc
 import (
 	"context"
 	"database/sql/driver"
-	"sort"
 	"strconv"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -75,7 +74,7 @@ func (c *connection) initializeCursorCache() {
 	if properties := c.shelf.GetConnectionProperties(); properties != nil {
 		cacheSize = properties.GetCursorCacheSize()
 	}
-	c.shelf.initializeCursorCache(cacheSize)
+	c.shelf._cursorCache = newCursorCache(cacheSize)
 }
 
 // resetStateEnabled reports whether the negotiated session reset level closes
@@ -114,45 +113,7 @@ func (c *connection) cacheCursors(context.Context) error {
 		return nil
 	}
 
-	sort.Slice(statements, func(i, j int) bool {
-		return statements[i].cursorLastUsed < statements[j].cursorLastUsed
-	})
-
-	cached := 0
-	for _, statement := range statements {
-		if statement.qualifiedQuery.cursorID != 0 && statement.cursorCachedAt != 0 {
-			cached++
-		}
-	}
-
-	var evicted []*Statement
-	for _, statement := range statements {
-		if statement.qualifiedQuery.cursorID == 0 || statement.cursorCachedAt == statement.cursorLastUsed {
-			continue
-		}
-
-		alreadyCached := statement.cursorCachedAt != 0
-		if !alreadyCached && cached == c.shelf._cursorCacheSize {
-			for _, displaced := range statements {
-				if displaced.qualifiedQuery.cursorID == 0 || displaced.cursorCachedAt == 0 {
-					continue
-				}
-				cache.Remove(displaced.cursorCacheKey())
-				displaced.cursorCachedAt = 0
-				evicted = append(evicted, displaced)
-				cached--
-				break
-			}
-		}
-
-		cache.Put(statement.cursorCacheKey(), statement)
-		statement.cursorCachedAt = statement.cursorLastUsed
-		if !alreadyCached {
-			cached++
-		}
-	}
-
-	for _, statement := range evicted {
+	for _, statement := range cache.store(statements) {
 		if err := statement._closeCursor(); err != nil {
 			return driver.ErrBadConn
 		}
@@ -167,7 +128,9 @@ func (c *connection) invalidateCursors(context.Context) error {
 	for _, statement := range c.shelf.GetStatements(false) {
 		statement.markCursorClosed()
 	}
-	c.shelf.clearCachedCursors()
+	if cache := c.shelf._cursorCache; cache != nil {
+		cache.clear()
+	}
 	return nil
 }
 
