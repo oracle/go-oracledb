@@ -104,6 +104,9 @@ func (c *sessionlessTransactionTestConn) PrepareForSessionlessResumeOperation(
 func (*sessionlessTransactionTestConn) ClearPrepareForSessionlessResumeOperation(common.SessionlessTransaction, error) {
 }
 
+// GetRows implements the wrapper interface; REF CURSOR fetching is unused here.
+func (*sessionlessTransactionTestConn) GetRows(context.Context, driver.Rows) error { return nil }
+
 // Prepare reports that statements are unsupported by the fake connection.
 func (*sessionlessTransactionTestConn) Prepare(string) (driver.Stmt, error) {
 	return nil, driver.ErrSkip
