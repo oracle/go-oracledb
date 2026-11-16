@@ -229,3 +229,47 @@ func (c *connection) runTransactionEndingOperation(ctx context.Context, operatio
 		}
 	}
 }
+
+// addRollbackEndRequestCallback registers a request-end callback that rolls back
+// an active transaction before the connection is returned to the pool. If the
+// rollback fails and the transaction remains active, it marks the connection invalid.
+func addRollbackEndRequestCallback(callbacks *requestCallbacks, conn *connection) {
+	callbacks.appendRequestEndCallback(&requestBoundaryCallback{
+		description: "ROLLBACK active transaction",
+		function: func(ctx context.Context) error {
+			// check for ongoing transaction and rollback
+			transaction := conn.shelf.getTransaction()
+			if transaction != nil && transaction.currentTransactionState() != transactionEndedServer {
+				ctx, cancel := context.WithTimeout(common.BackgroundContext, _isValidTimeout)
+				defer cancel()
+				if err := conn.rollbackActiveTransaction(ctx); err != nil {
+					common.Odl.Warn("Rollback of active transaction during reset has failed", "error", err)
+					// only invalidate the connection if the transaction is not closed after the call
+					// independent on whether there was an error.
+					if transaction.currentTransactionState() != transactionEndedServer {
+						conn._isValid = false
+					}
+				}
+			}
+			return nil
+		},
+	})
+}
+
+// rollbackActiveTransaction rolls back the transaction reported as active by
+// the server before the connection is returned to the pool.
+//
+// Parameters:
+//   - ctx: Context used for the rollback operation.
+//
+// Returns:
+//   - error: Error if the rollback message cannot be sent or completed.
+func (c *connection) rollbackActiveTransaction(ctx context.Context) error {
+	transaction := c.shelf.getTransaction()
+	if transaction != nil {
+		if err := c.runTransactionEndingOperation(ctx, otxenAbort, transaction); err != nil {
+			return err
+		}
+	}
+	return nil
+}

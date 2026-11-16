@@ -86,21 +86,6 @@ func (c *connection) IsValid() bool {
 
 	c.isValid()
 
-	// check for ongoing transaction and rollback
-	transaction := c.shelf.getTransaction()
-	if transaction != nil && transaction.currentTransactionState() != transactionEndedServer {
-		ctx, cancel := context.WithTimeout(common.BackgroundContext, _isValidTimeout)
-		defer cancel()
-		if err := c.rollbackActiveTransaction(ctx); err != nil {
-			common.Odl.Warn("Rollback of active transaction during reset has failed", "error", err)
-			// only invalidate the connection if the transaction is not closed after the call
-			// independent on whether there was an error.
-			if transaction.currentTransactionState() != transactionEndedServer {
-				c._isValid = false
-			}
-		}
-	}
-
 	// Use one timeout context for all request-end callbacks.
 	ctx, cancel := context.WithTimeout(common.BackgroundContext, _isValidTimeout)
 	defer cancel()
@@ -118,22 +103,4 @@ func (c *connection) isValid() bool {
 	// Check if inband notification has been received.
 	c._isValid = c._isValid && !c.ns.CheckInbandNotification()
 	return c._isValid
-}
-
-// rollbackActiveTransaction rolls back the transaction reported as active by
-// the server before the connection is returned to the pool.
-//
-// Parameters:
-//   - ctx: Context used for the rollback operation.
-//
-// Returns:
-//   - error: Error if the rollback message cannot be sent or completed.
-func (c *connection) rollbackActiveTransaction(ctx context.Context) error {
-	transaction := c.shelf.getTransaction()
-	if transaction != nil {
-		if err := c.runTransactionEndingOperation(ctx, otxenAbort, transaction); err != nil {
-			return err
-		}
-	}
-	return nil
 }
