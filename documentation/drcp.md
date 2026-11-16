@@ -46,22 +46,9 @@ Note: The DRCP specification defines parameters that the Go driver does not use 
 - `Boundary`: Enables implicit attachment. The Go driver attaches and detaches connections automatically.
 - `Tag`, `UseMultipleTag`, and `FixUpCallBackName`: Tagging is useful only with a client-side connection pool that supports it. Go’s `sql.DB` pool does not support tagging.
 
-
-### Server Type Configuration
-
-The client can specify the type of remote server process to use. The type can be `SHARED`, `DEDICATED`, or `POOLED`.
-
-For DRCP to be used, the type must be set to `POOLED`.
-
-Set the server type in `OracleConnectionProperties`:
-
-```text
-ServerType = POOLED | SHARED | DEDICATED
-```
-
 ## How to enable DRCP?
 
-To use DRCP, set the server type to `POOLED`. You can do this in any of the following ways:
+The server type is either DEDICATED (the default), SHARED or POOLED. To use DRCP, set the server type to POOLED. You can do this in any of the following ways:
 
 - Set `OracleConnectionProperties.ServerType` in the driver configuration.
 - Add `:pooled` to the EZConnect string, for example: `tcp://localhost:1521/freepdb1:pooled`.
@@ -77,12 +64,13 @@ To use DRCP, set the server type to `POOLED`. You can do this in any of the foll
 
 #### Using the driver configuration
 
+Using the oracle.NewOracleDriverConfig API, you can pass the configuration through APIs:
+
 ```go
 package main
 
 import (
 	"github.com/oracle/go-oracledb/v26/oracle"
-	"github.com/oracle/go-oracledb/v26/internal/common"
 )
 
 func main() {
@@ -92,18 +80,18 @@ func main() {
 	cfg.Credentials.Password = "mypassword"
 
 	// Enable DRCP and set the connection class and purity.
-	cfg.ConnectionProperties.ServerType = common.ServerTypePooled
+	cfg.ConnectionProperties.ServerType = "POOLED"
 	cfg.ConnectionProperties.Drcp.ClassName = "Sales"
-	cfg.ConnectionProperties.Drcp.Purity = common.DrcpPuritySelf
+	cfg.ConnectionProperties.Drcp.Purity = "SELF"
 }
 ```
 
-#### Using the DSN parameters
+#### Using the Data Source Name (DSN) parameters
 
 ```go
 dsn := fmt.Sprintf("myuser/mypassword@tcp://localhost:1521/freepdb1:pooled?pool_connection_class=%s&pool_purity=%s",
             "Sales",
-            common.DrcpPuritySelf)
+            "SELF")
 db := sql.OpenDB(dsn)
 ```
 

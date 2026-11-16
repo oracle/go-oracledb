@@ -53,7 +53,8 @@ export ORACLE_USER='myuser'
 export ORACLE_PASSWORD='mypassword'
 ```
 
-Replace the example values with values for your database.
+Replace the example values with values for your database. The pool name is hardcoded within the code sample to `MYPOOL`
+
 
 ## Run the example
 
