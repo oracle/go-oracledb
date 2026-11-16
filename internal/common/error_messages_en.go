@@ -668,4 +668,44 @@ func initMessagesEn() {
 
 	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider of the requested type was found")
 
+	// Document: No
+	// Cause: Invalid sharding input or connection data.
+	// Action: Check key types, encoded key format, context, and descriptor limits.
+	message.SetString(language.English, string(oracleErrors.ShardingKeyEmpty), "sharding key requires at least one subkey")
+
+	// Document: No
+	// Cause: Invalid sharding input or connection data.
+	// Action: Check key types, encoded key format, context, and descriptor limits.
+	message.SetString(language.English, string(oracleErrors.ShardingSubkeyInvalid), "unsupported type or value for sharding key subkey of type %d")
+
+	// Document: No
+	// Cause: Invalid sharding input or connection data.
+	// Action: Check key types, encoded key format, context, and descriptor limits.
+	message.SetString(language.English, string(oracleErrors.ShardingSubkeyEncoding), "failed to encode sharding key subkey %d of type %d")
+
+	// Document: No
+	// Cause: Invalid sharding input or connection data.
+	// Action: Check key types, encoded key format, context, and descriptor limits.
+	message.SetString(language.English, string(oracleErrors.ShardingKeyTooLong), "encoded sharding key length %d exceeds limit %d")
+
+	// Document: No
+	// Cause: Invalid sharding input or connection data.
+	// Action: Check key types, encoded key format, context, and descriptor limits.
+	message.SetString(language.English, string(oracleErrors.ShardingContextRequired), "sharding request requires a non-nil context")
+
+	// Document: No
+	// Cause: Invalid sharding input or connection data.
+	// Action: Check key types, encoded key format, context, and descriptor limits.
+	message.SetString(language.English, string(oracleErrors.ShardingEncodingInvalid), "invalid encoded sharding key: %s; construct keys with sharding.NewKey")
+
+	// Document: No
+	// Cause: Invalid sharding input or connection data.
+	// Action: Check key types, encoded key format, context, and descriptor limits.
+	message.SetString(language.English, string(oracleErrors.ShardingKeyConflict), "sharding parameter %s is specified in both context and connection descriptor")
+
+	// Document: No
+	// Cause: Invalid sharding input or connection data.
+	// Action: Check key types, encoded key format, context, and descriptor limits.
+	message.SetString(language.English, string(oracleErrors.ConnectionDataTooLong), "connection data length %d exceeds protocol limit %d")
+
 }

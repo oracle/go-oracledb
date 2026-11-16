@@ -50,6 +50,14 @@ func initMessagesFr() {
 		code    oracleErrors.ErrorCode
 		message string
 	}{
+		{oracleErrors.ShardingKeyEmpty, "la clé de partitionnement doit contenir au moins un composant"},
+		{oracleErrors.ShardingSubkeyInvalid, "type ou valeur non pris en charge pour le composant de clé de type %d"},
+		{oracleErrors.ShardingSubkeyEncoding, "échec de l’encodage du composant %d de type %d de la clé de partitionnement"},
+		{oracleErrors.ShardingKeyTooLong, "la longueur %d de la clé encodée dépasse la limite %d"},
+		{oracleErrors.ShardingContextRequired, "la demande de partitionnement nécessite un contexte non nul"},
+		{oracleErrors.ShardingEncodingInvalid, "clé de partitionnement encodée non valide : %s ; construisez les clés avec sharding.NewKey"},
+		{oracleErrors.ShardingKeyConflict, "le paramètre de partitionnement %s est spécifié dans le contexte et le descripteur de connexion"},
+		{oracleErrors.ConnectionDataTooLong, "la longueur %d des données de connexion dépasse la limite du protocole %d"},
 		{oracleErrors.InvalidCredential, "identifiants invalides ou utilisateur non autorisé : %s"},
 		{oracleErrors.InvalidDateYear, "l'année complète doit être comprise entre -4713 et +9999, et ne peut pas être 0"},
 		{oracleErrors.ConnectionLost, "connexion de base de données fermée par le pair"},

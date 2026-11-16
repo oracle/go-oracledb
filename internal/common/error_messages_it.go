@@ -50,6 +50,14 @@ func initMessagesIt() {
 		code    oracleErrors.ErrorCode
 		message string
 	}{
+		{oracleErrors.ShardingKeyEmpty, "la chiave di sharding richiede almeno un componente"},
+		{oracleErrors.ShardingSubkeyInvalid, "tipo o valore non supportato per il componente della chiave di tipo %d"},
+		{oracleErrors.ShardingSubkeyEncoding, "codifica del componente %d di tipo %d della chiave di sharding non riuscita"},
+		{oracleErrors.ShardingKeyTooLong, "la lunghezza %d della chiave codificata supera il limite %d"},
+		{oracleErrors.ShardingContextRequired, "la richiesta di sharding richiede un contesto non nullo"},
+		{oracleErrors.ShardingEncodingInvalid, "chiave di sharding codificata non valida: %s; costruire le chiavi con sharding.NewKey"},
+		{oracleErrors.ShardingKeyConflict, "il parametro di sharding %s è specificato sia nel contesto sia nel descrittore di connessione"},
+		{oracleErrors.ConnectionDataTooLong, "la lunghezza %d dei dati di connessione supera il limite del protocollo %d"},
 		{oracleErrors.InvalidCredential, "credenziale non valida o utente non autorizzato: %s"},
 		{oracleErrors.InvalidDateYear, "l'anno completo deve essere compreso tra -4713 e +9999 e non può essere 0"},
 		{oracleErrors.ConnectionLost, "connessione al database chiusa dal peer"},

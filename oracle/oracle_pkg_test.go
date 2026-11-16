@@ -59,6 +59,9 @@ func TestMain(m *testing.M) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestConnectorConcurrentShardingIsolation", Categories: "unitary", Exclusive: false, Fn: TestConnectorConcurrentShardingIsolation},
+	{Name: "TestConnectorShardingRetryAndCleanup", Categories: "unitary", Exclusive: false, Fn: TestConnectorShardingRetryAndCleanup},
+	{Name: "TestShardingGSMIntegration", Categories: "functional", Exclusive: false, Fn: TestShardingGSMIntegration},
 	{Name: "TestDriver_ConfigurationWithConnectorBasic", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorBasic},
 	{Name: "TestDriver_ConfigurationWithConnectorWithEnvOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithEnvOverwrite},
 	{Name: "TestDriver_ConfigurationWithConnectorWithFlagOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithFlagOverwrite},

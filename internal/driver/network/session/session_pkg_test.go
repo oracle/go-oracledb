@@ -71,6 +71,11 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestShardingRedirectConnectData", Categories: "unitary", Exclusive: false, Fn: TestShardingRedirectConnectData},
+	{Name: "TestShardingConnectDataLengthLimit", Categories: "unitary", Exclusive: false, Fn: TestShardingConnectDataLengthLimit},
+	{Name: "TestAppendShardingKeys", Categories: "unitary", Exclusive: false, Fn: TestAppendShardingKeys},
+	{Name: "TestAppendShardingKeysConflictsAndKeyless", Categories: "unitary", Exclusive: false, Fn: TestAppendShardingKeysConflictsAndKeyless},
+	{Name: "TestAppendShardingKeysDefersEncoding", Categories: "unitary", Exclusive: false, Fn: TestAppendShardingKeysDefersEncoding},
 	{Name: "TestNewNetworkSession", Categories: "unitary", Exclusive: false, Fn: TestNewNetworkSession},
 	{Name: "TestHandleAcceptRequiredANO", Categories: "unitary", Exclusive: false, Fn: TestHandleAcceptRequiredANO},
 	{Name: "TestAcceptPacketClampsOversizedValues", Categories: "unitary", Exclusive: false, Fn: TestAcceptPacketClampsOversizedValues},

@@ -71,6 +71,7 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestShardingErrorCatalog", Categories: "unitary", Exclusive: false, Fn: TestShardingErrorCatalog},
 	{Name: "TestError3113default", Categories: "unitary", Exclusive: false, Fn: TestError3113default},
 	{Name: "TestErrorUnknownCode", Categories: "unitary", Exclusive: false, Fn: TestErrorUnknownCode},
 	{Name: "TestErrorBasic3113", Categories: "unitary", Exclusive: false, Fn: TestErrorBasic3113},

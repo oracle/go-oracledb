@@ -50,6 +50,14 @@ func initMessagesEs() {
 		code    oracleErrors.ErrorCode
 		message string
 	}{
+		{oracleErrors.ShardingKeyEmpty, "la clave de particionamiento requiere al menos un componente"},
+		{oracleErrors.ShardingSubkeyInvalid, "tipo o valor no admitido para el componente de clave de tipo %d"},
+		{oracleErrors.ShardingSubkeyEncoding, "no se pudo codificar el componente %d de tipo %d de la clave de particionamiento"},
+		{oracleErrors.ShardingKeyTooLong, "la longitud %d de la clave codificada supera el límite %d"},
+		{oracleErrors.ShardingContextRequired, "la solicitud de particionamiento requiere un contexto no nulo"},
+		{oracleErrors.ShardingEncodingInvalid, "clave de particionamiento codificada no válida: %s; construya las claves con sharding.NewKey"},
+		{oracleErrors.ShardingKeyConflict, "el parámetro de particionamiento %s se especifica tanto en el contexto como en el descriptor de conexión"},
+		{oracleErrors.ConnectionDataTooLong, "la longitud %d de los datos de conexión supera el límite del protocolo %d"},
 		{oracleErrors.InvalidCredential, "credenciales no válidas o usuario no autorizado: %s"},
 		{oracleErrors.InvalidDateYear, "el año completo debe estar entre -4713 y +9999, y no puede ser 0"},
 		{oracleErrors.ConnectionLost, "conexión a la base de datos cerrada por el extremo remoto"},
