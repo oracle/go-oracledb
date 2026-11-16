@@ -96,6 +96,7 @@ func newConnection(
 	conn.registerEventListeners(conn.shelf.getEventService())
 	conn._registerHandleConnectionShouldBeDropped()
 	conn.shelf.registerCancelExecution(conn.cancelCurrentExecution)
+	conn.initializeCursorCache()
 	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
 		return nil, err
 	}

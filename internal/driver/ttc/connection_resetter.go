@@ -54,12 +54,6 @@ const resetStateLevel2 = 0x02
 // addCursorLifecycleCallbacks configures cursor cleanup before the end-request
 // marker, so any required OCCA messages remain part of the completed request.
 func addCursorLifecycleCallbacks(callbacks *requestCallbacks, c *connection) {
-	cacheSize := 10
-	if properties := c.shelf.GetConnectionProperties(); properties != nil {
-		cacheSize = properties.GetCursorCacheSize()
-	}
-	c.shelf.initializeCursorCache(cacheSize)
-
 	if c.resetStateEnabled() {
 		callbacks.appendRequestEndCallback(&requestBoundaryCallback{
 			description: "Invalidate cursors after reset state",
@@ -71,6 +65,16 @@ func addCursorLifecycleCallbacks(callbacks *requestCallbacks, c *connection) {
 		description: "Cache idle cursors",
 		function:    c.cacheCursors,
 	})
+}
+
+// initializeCursorCache creates the connection's cursor cache from the driver
+// configuration. A zero size disables cursor caching.
+func (c *connection) initializeCursorCache() {
+	cacheSize := 10
+	if properties := c.shelf.GetConnectionProperties(); properties != nil {
+		cacheSize = properties.GetCursorCacheSize()
+	}
+	c.shelf.initializeCursorCache(cacheSize)
 }
 
 // resetStateEnabled reports whether the negotiated session reset level closes

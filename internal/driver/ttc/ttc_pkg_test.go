@@ -1151,6 +1151,7 @@ func newTestConnection(
 	conn.registerEventListeners(conn.shelf.getEventService())
 	conn._registerHandleConnectionShouldBeDropped()
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
+	conn.initializeCursorCache()
 	callbacks := buildRequestBoundaryCallbacks(conn)
 	conn.initializeRequestBoundaryCallbacks(callbacks.requestStartCallbacks, callbacks.requestEndCallbacks)
 	return conn
