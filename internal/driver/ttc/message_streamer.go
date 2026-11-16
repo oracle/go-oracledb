@@ -329,17 +329,6 @@ func (ms *MessageStreamer) Flush(ctx context.Context) error {
 		common.Odl.Fine("Flush requested", "outgoing length", ms.outgoingMessages.Len())
 	}
 
-	// Prepare and prepend the security piggyback before serializing this call.
-	if state := ms.shelf._deepDataSecurity; state != nil {
-		oXsctxMsg, err := state.prepare()
-		if err != nil {
-			ms.Drain(ctx, driverCommon.OUT)
-			return ms.shelf.LocalizeError(err)
-		}
-
-		ms.outgoingMessages.PushFront(oXsctxMsg)
-	}
-
 	var err error
 	var next *list.Element
 	for outgoing := ms.outgoingMessages.Front(); outgoing != nil; outgoing = next {

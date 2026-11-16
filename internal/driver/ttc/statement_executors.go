@@ -901,6 +901,19 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCo
 	var err error
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
+	// queue the oxsxctx piggyback
+	if state := e.shelf._deepDataSecurity; state != nil {
+		osxctxMsg, err := state.prepare(ctx)
+		if err != nil {
+			return nil, -1, e.shelf.LocalizeError(err)
+		}
+		if osxctxMsg != nil {
+			if err := stmr.Push(ctx, osxctxMsg); err != nil {
+				return nil, -1, common.NewOracleError(oracleErrors.RunQueryError, err, "push")
+			}
+		}
+	}
+
 	if err = stmr.Push(ctx, message); err != nil {
 		// map push failure -> OGD-00053 RunQueryError("push")
 		common.Odl.Error("runQuery: Push failed", "error", err, "stage", "push", "msgCode", message.GetMsgCode())
@@ -1113,6 +1126,19 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 	execResult := &runExecResult{}
 	common.Odl.Fine("runExec: start", "msgCode", message.GetMsgCode())
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
+
+	// queue the oxsxctx piggyback
+	if state := e.shelf._deepDataSecurity; state != nil {
+		osxctxMsg, err := state.prepare(ctx)
+		if err != nil {
+			return nil, e.shelf.LocalizeError(err)
+		}
+		if osxctxMsg != nil {
+			if err := stmr.Push(ctx, osxctxMsg); err != nil {
+				return nil, common.NewOracleError(oracleErrors.RunExecError, err, "push")
+			}
+		}
+	}
 
 	if err := stmr.Push(ctx, message); err != nil {
 		common.Odl.Error("runExec: Push failed", "error", err, "stage", "push", "msgCode", message.GetMsgCode())

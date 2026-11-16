@@ -128,13 +128,15 @@ type EndUserSecurityContext interface {
 	// Parameters: None.
 	//
 	// Returns:
-	//   - map[string]json.JSON: Context attributes. Nil or empty supplies none.
+	//   - map[string]json.JSONObject: Context attributes. Nil or empty supplies none.
 	//
 	// Errors: None.
-	Attributes() map[string]json.JSON
+	Attributes() map[string]json.JSONObject
 
-	// LookUpKey returns an optional UTF-8 end-user context identifier for a
-	// name-based principal. Token-based principals do not use this value.
+	// LookUpKey returns an optional UTF-8 end-user context identifier. For a
+	// name-based principal, it identifies the attributes associated with the
+	// context. For token-based principals, a returned key may differ from the
+	// key used by a particular database version.
 	//
 	// Parameters: None.
 	//
@@ -158,7 +160,8 @@ type DeepDataSecurity interface {
 	//   - error: Nil on success.
 	//
 	// Errors: The context is invalid or expired, or the connection cannot use
-	// Deep Data Security.
+	// Deep Data Security. Payload encoding and size errors are returned when a
+	// database call is sent.
 	SetEndUserSecurityContext(context EndUserSecurityContext) error
 
 	// ClearEndUserSecurityContext clears the selection without making a database call.

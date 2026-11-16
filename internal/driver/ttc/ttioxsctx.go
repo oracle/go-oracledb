@@ -77,6 +77,7 @@ func (msg *ttiOXSCTX) GetFuncCode() driverCommon.FunctionType { return oXsctx }
 
 // MarshalTo serializes the OXSCTX header, flags, named values, and pair count.
 func (msg *ttiOXSCTX) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
+	// enforce protocol limits before writing the message header
 	for _, pair := range msg.pairs {
 		if len(pair.key.value) > maxXsctxKeyLength {
 			common.Odl.Debug("OXSCTX key exceeds maximum length", "length", len(pair.key.value), "limit", maxXsctxKeyLength)
@@ -96,6 +97,7 @@ func (msg *ttiOXSCTX) MarshalTo(ctx context.Context, engine driverCommon.Marshal
 		common.Odl.Warn("Error marshalling OXSCTX flags", "error", err)
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OXSCTX flags")
 	}
+	// write the pair pointer and count before the pair data
 	if len(msg.pairs) == 0 {
 		if err := engine.MarshalNullPTR(ctx); err != nil {
 			common.Odl.Warn("Error marshalling empty OXSCTX pair pointer", "error", err)

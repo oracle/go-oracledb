@@ -80,6 +80,11 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestDeepDataSecurityExecution", Categories: "unitary", Exclusive: false, Fn: TestDeepDataSecurityExecution},
+	{Name: "TestDeepDataSecurityFlush", Categories: "unitary", Exclusive: false, Fn: TestDeepDataSecurityFlush},
+	{Name: "TestEncodeEndUserSecurityContextAttributes", Categories: "unitary", Exclusive: false, Fn: TestEncodeEndUserSecurityContextAttributes},
+	{Name: "TestDeepDataSecurityContextSelection", Categories: "unitary", Exclusive: false, Fn: TestDeepDataSecurityContextSelection},
+	{Name: "TestDeepDataSecurityValidation", Categories: "unitary", Exclusive: false, Fn: TestDeepDataSecurityValidation},
 	{Name: "TestColumnDecoderRegistrations", Categories: "unitary", Exclusive: false, Fn: TestColumnDecoderRegistrations},
 	{Name: "TestColumnUnwrapExecutors", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapExecutors},
 	{Name: "TestColumnUnwrapPLSQLFailures", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapPLSQLFailures},

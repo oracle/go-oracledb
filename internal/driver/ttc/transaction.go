@@ -98,7 +98,9 @@ func (t *transaction) Rollback() error {
 		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
 	}
 
-	runFuncErr := t._underlyingConnection.runFunctionWithFunHeader(common.BackgroundContext, rollback)
+	// Allow rollback after transaction cancellation.
+	ctx := context.WithoutCancel(t.getTransactionContext())
+	runFuncErr := t._underlyingConnection.runFunctionWithFunHeader(ctx, rollback)
 
 	if err := t._underlyingConnection.shelf.checkCurrentState(common.BackgroundContext); err != nil {
 		return err

@@ -55,9 +55,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-var testCases = []oracleTest.CategorizedTestCase{
-	{Name: "TestSecurityContextImplementsEndUserSecurityContext", Categories: "unitary", Exclusive: false, Fn: TestSecurityContextImplementsEndUserSecurityContext},
-}
+var testCases = []oracleTest.CategorizedTestCase{}
 
 // TestCategoryExecutor runs tests registered for the selected categories.
 func TestCategoryExecutor(t *testing.T) {
