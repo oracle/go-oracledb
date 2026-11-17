@@ -69,6 +69,9 @@ type OracleDriverProperties struct {
 	//
 	// The default is 32 MiB.
 	DefaultLobPrefetchSize int `default:"33554432" validator:"validateZeroOrPositive"  help:"default prefetch size"`
+	// TTIInitOptimizationEnabled combines TTC negotiation and the first authentication
+	// request when the server supports it; enabled by default.
+	TTIInitOptimizationEnabled bool `default:"true" validator:"validateBoolean" help:"enables TTIINIT optimization"`
 }
 
 func (config OracleDriverProperties) String() string {
@@ -81,6 +84,11 @@ func (config OracleDriverProperties) IsStrictNullValueHandling() bool {
 
 func (config OracleDriverProperties) GetDefaultLobPrefetchSize() int {
 	return config.DefaultLobPrefetchSize
+}
+
+// IsTTIInitOptimizationEnabled reports whether TTIINIT optimization is enabled.
+func (config OracleDriverProperties) IsTTIInitOptimizationEnabled() bool {
+	return config.TTIInitOptimizationEnabled
 }
 
 // OracleConnectionProperties contains Oracle Net connection properties used to
