@@ -45,7 +45,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-func TestConnectionResetter_Reset(t *testing.T) {
+func TestConnectionResetter_ResetPreservesStatements(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
 		returnMsg: NewOall18(),
@@ -76,9 +76,11 @@ func TestConnectionResetter_Reset(t *testing.T) {
 
 	sessionCtx.GetSessionProperties().SetProperty("pasta", "carbonara")
 
-	connection.ResetSession(context.Background())
-	if len(connection.shelf.GetStatements(false)) != 0 {
-		t.Errorf("list of statements should be empty, got [%v]", connection.shelf.GetStatements(false))
+	if err := connection.ResetSession(context.Background()); err != nil {
+		t.Fatalf("ResetSession() error = %v", err)
+	}
+	if len(connection.shelf.GetStatements(false)) != 1 {
+		t.Errorf("list of statements should retain the prepared statement, got [%v]", connection.shelf.GetStatements(false))
 	}
 
 	if v := sessionCtx.GetSessionProperties().GetProperty("pasta"); v != nil {

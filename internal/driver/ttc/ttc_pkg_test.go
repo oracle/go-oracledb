@@ -549,7 +549,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestAddRequestBoundariesRegistersAndRunsCallbacks", Categories: "unitary", Exclusive: false, Fn: TestAddRequestBoundariesRegistersAndRunsCallbacks},
 	{Name: "TestAddRequestBoundariesReturnsBadConnOnPushFailure", Categories: "unitary", Exclusive: false, Fn: TestAddRequestBoundariesReturnsBadConnOnPushFailure},
 	{Name: "TestConnectionInitializeRequestBoundaryCallbacksQueuesInitialBegin", Categories: "unitary", Exclusive: false, Fn: TestConnectionInitializeRequestBoundaryCallbacksQueuesInitialBegin},
-	{Name: "TestConnectionResetter_Reset", Categories: "unitary", Exclusive: false, Fn: TestConnectionResetter_Reset},
+	{Name: "TestConnectionResetter_ResetPreservesStatements", Categories: "unitary", Exclusive: false, Fn: TestConnectionResetter_ResetPreservesStatements},
 	{Name: "TestConnectionResetSessionPushesRequestBegin", Categories: "unitary", Exclusive: false, Fn: TestConnectionResetSessionPushesRequestBegin},
 	{Name: "TestNewRequestBoundaryCallbacksCreatesEmptyLists", Categories: "unitary", Exclusive: false, Fn: TestNewRequestBoundaryCallbacksCreatesEmptyLists},
 	{Name: "TestRequestCallbacksAppend", Categories: "unitary", Exclusive: false, Fn: TestRequestCallbacksAppend},

@@ -287,9 +287,9 @@ func newCapabilityMetadata() *capability {
 			kpccapCtbFeatureBackportSpare5: {index: 49, value: 0x00, isFlag: true, isDefault: true},
 			kpccapCtbFeatureBackportSpare6: {index: 50, value: 0x00, isFlag: true, isDefault: true},
 			kpccapCtRaft:                   {index: 51, value: 0x00, isFlag: true, isDefault: true},
-			kpccapCtVectorFeatureBinary:    {index: 52, value: 0x01, isFlag: true, isDefault: true}, // BINARY dimension type for VECTOR is supported
-			kpccapCtVectorFeatureSparse:    {index: 52, value: 0x02, isFlag: true, isDefault: true}, // Sparse encoding format for VECTOR is supported
-			kpccapCtResetState:             {index: 53, value: 0x35, isFlag: true, isDefault: true}, // supports reset of session state on connection reuse
+			kpccapCtVectorFeatureBinary:    {index: 52, value: 0x01, isFlag: true, isDefault: true},  // BINARY dimension type for VECTOR is supported
+			kpccapCtVectorFeatureSparse:    {index: 52, value: 0x02, isFlag: true, isDefault: true},  // Sparse encoding format for VECTOR is supported
+			kpccapCtResetState:             {index: 53, value: 0x35, isFlag: true, isDefault: false}, // reset-state support is not advertised
 		},
 		// Runtime capabilities
 		knownUsedRuntimeCapabilities: map[string]capabilityMetadata{
