@@ -52,6 +52,11 @@ func initMessagesEn() {
 	// Action:   N/A
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidCredential), "invalid credential or not authorized: %s")
+	// Document: Yes
+	// Cause:    Illegal year entered.
+	// Action:   Input year in the specified range.
+	// Comment:  The year must not be zero.
+	message.SetString(language.English, string(oracleErrors.InvalidDateYear), "(full) year must be between -4713 and +9999, and not be 0")
 	// Document: No
 	// Cause:    N/A
 	// Action:   N/A

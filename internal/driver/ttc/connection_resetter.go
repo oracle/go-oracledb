@@ -47,6 +47,7 @@ import (
 
 // ResetSession implements driver.SessionResetter.
 // - Closes statements that have been left open
+// - Runs request-start callbacks when the connection is borrowed from the pool
 // - Resets session properties
 // - Flushes piggyback messages
 func (c *connection) ResetSession(ctx context.Context) error {
@@ -62,6 +63,12 @@ func (c *connection) ResetSession(ctx context.Context) error {
 			c._isValid = false
 			return driver.ErrBadConn
 		}
+	}
+
+	// Run request-start callbacks. Return if a callback marks the connection bad.
+	common.Odl.Finest("Running request-start callbacks on ResetSession")
+	if err := runRequestBoundaryCallbacks(ctx, c._requestStartCallbacks); err != nil {
+		return err
 	}
 
 	c.sessCtx.GetSessionProperties().Reset()

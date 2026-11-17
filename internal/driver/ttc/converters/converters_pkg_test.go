@@ -91,6 +91,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDecodeUTF16BEToString_OddLength_ReturnsOracleError", Categories: "unitary", Exclusive: false, Fn: TestDecodeUTF16BEToString_OddLength_ReturnsOracleError},
 	{Name: "TestDateDecode", Categories: "unitary", Exclusive: false, Fn: TestDateDecode},
 	{Name: "TestDateEncode", Categories: "unitary", Exclusive: false, Fn: TestDateEncode},
+	{Name: "TestDateEncode_YearValidation", Categories: "unitary", Exclusive: false, Fn: TestDateEncode_YearValidation},
 	{Name: "TestTimestampDecode", Categories: "unitary", Exclusive: false, Fn: TestTimestampDecode},
 	{Name: "TestTimestampEncode", Categories: "unitary", Exclusive: false, Fn: TestTimestampEncode},
 	{Name: "TestTimestampWithTimeZoneDecode", Categories: "unitary", Exclusive: false, Fn: TestTimestampWithTimeZoneDecode},
