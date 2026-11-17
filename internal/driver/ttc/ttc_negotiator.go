@@ -49,8 +49,8 @@ import (
 
 // connectionNegotiator implements the Negotiator interface for TTC connections.
 type connectionNegotiator struct {
-	_dataBuffer          driverCommon.DataBuffer
-	connectionProperties driverCommon.DriverProperties
+	_dataBuffer           driverCommon.DataBuffer
+	_connectionProperties driverCommon.DriverProperties
 }
 
 // newConnectionNegotiator creates a new instance of connectionNegotiator.
@@ -66,7 +66,7 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	common.Odl.Fine("connectionNegotiator: Negotiation start")
 	// 1. Create Shelf & Session Context and install connection properties
 	shelf, sessCtx := _createShelfAndSessionContext()
-	shelf.UpdateConnectionProperties(cn.connectionProperties)
+	shelf.UpdateConnectionProperties(cn._connectionProperties)
 
 	// 2. Fetch new Marshaller & TTC Msg Streamer
 	_createAndRegisterMarshaller(cn._dataBuffer, shelf, true)
@@ -131,7 +131,7 @@ func (cn *connectionNegotiator) SetDataBuffer(buf driverCommon.DataBuffer) {
 
 // SetConnectionProperties sets the connection properties used during negotiation.
 func (cn *connectionNegotiator) SetConnectionProperties(properties driverCommon.DriverProperties) {
-	cn.connectionProperties = properties
+	cn._connectionProperties = properties
 }
 
 // _negotiateDatatype negotiates the datatype (TTIDTY) and returns the negotiated *ttc.tTIdty.
