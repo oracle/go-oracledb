@@ -104,6 +104,10 @@ func (m *mockConnectorNetworkSession) GetRemoteAddress() string {
 	return ""
 }
 
+func (m *mockConnectorNetworkSession) SupportsFastAuthentication() bool {
+	return false
+}
+
 func (m *mockConnectorNetworkSession) GetRemotePort() int {
 	return 0
 }

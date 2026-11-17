@@ -1170,6 +1170,10 @@ func (m *mockNetworkSession) GetRemoteAddress() string {
 	return m.remoteAddress
 }
 
+func (m *mockNetworkSession) SupportsFastAuthentication() bool {
+	return false
+}
+
 func (m *mockNetworkSession) GetRemotePort() int {
 	return m.remotePort
 }

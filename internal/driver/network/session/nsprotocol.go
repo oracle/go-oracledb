@@ -151,6 +151,11 @@ func (ns *networkSession) GetRemotePort() int {
 	return remoteAddr.Port
 }
 
+// SupportsFastAuthentication reports whether the server advertised fast authentication.
+func (ns *networkSession) SupportsFastAuthentication() bool {
+	return ns.supportsFastAuth
+}
+
 func (ns *networkSession) getRemoteTCPAddr() *net.TCPAddr {
 	type remoteAddrProvider interface {
 		RemoteAddr() net.Addr

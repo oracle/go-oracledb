@@ -71,6 +71,9 @@ type NetworkSession interface {
 	// GetRemotePort returns the remote network port when it is available, or 0
 	// otherwise.
 	GetRemotePort() int
+
+	// SupportsFastAuthentication reports whether the server advertised fast authentication.
+	SupportsFastAuthentication() bool
 }
 
 // DataBuffer The Marshaller uses this interface to marshal data
