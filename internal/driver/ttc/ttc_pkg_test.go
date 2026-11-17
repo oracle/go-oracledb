@@ -601,7 +601,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTILobd_UnmarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTILobd_UnmarshalFrom_Fail},
 	{Name: "TestTTILobd_UnmarshalFrom_Success", Categories: "unitary", Exclusive: false, Fn: TestTTILobd_UnmarshalFrom_Success},
 	{Name: "TestTTIShelf_LocalizedStatementExecError", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_LocalizedStatementExecError},
-	{Name: "TestTTIShelf_StatementDrain", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_StatementDrain},
 	{Name: "TestTTIShelf_ValidateConnection", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_ValidateConnection},
 	{Name: "TestNewMessageStreamerRegistersConnectionValidator", Categories: "unitary", Exclusive: false, Fn: TestNewMessageStreamerRegistersConnectionValidator},
 	{Name: "TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator},

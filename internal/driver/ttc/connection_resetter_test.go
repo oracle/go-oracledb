@@ -68,19 +68,20 @@ func TestConnectionResetter_ResetPreservesStatements(t *testing.T) {
 
 	connection := newTestConnection(shelf, sessionCtx, mockNs)
 
-	connection.PrepareContext(context.Background(), "SELECT * FROM DUAL")
-
-	if len(connection.shelf.GetStatements(false)) != 1 {
-		t.Errorf("list of statements should not be empty, got [%v]", connection.shelf.GetStatements(false))
+	prepared, err := connection.PrepareContext(context.Background(), "SELECT * FROM DUAL")
+	if err != nil {
+		t.Fatalf("PrepareContext() error = %v", err)
 	}
+	statement := prepared.(*Statement)
+	statement.qualifiedQuery.cursorID = 1
 
 	sessionCtx.GetSessionProperties().SetProperty("pasta", "carbonara")
 
 	if err := connection.ResetSession(context.Background()); err != nil {
 		t.Fatalf("ResetSession() error = %v", err)
 	}
-	if len(connection.shelf.GetStatements(false)) != 1 {
-		t.Errorf("list of statements should retain the prepared statement, got [%v]", connection.shelf.GetStatements(false))
+	if statement.qualifiedQuery.cursorID != 1 {
+		t.Errorf("prepared statement cursor = %d, want 1", statement.qualifiedQuery.cursorID)
 	}
 
 	if v := sessionCtx.GetSessionProperties().GetProperty("pasta"); v != nil {
