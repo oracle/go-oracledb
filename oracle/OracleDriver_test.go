@@ -113,20 +113,23 @@ func TestDriver_Functional_SelectDualSmallValues(t *testing.T) {
 	defer db.Close()
 
 	for _, tc := range []struct {
-		query string
-		want  any
+		query       string
+		want        any
+		fromVersion int8
 	}{
-		{query: "SELECT DUMMY FROM DUAL", want: "X"},
-		{query: "SELECT 'x' FROM DUAL", want: "x"},
-		{query: "SELECT CAST(1 AS BOOLEAN) FROM DUAL", want: true},
-		{query: "SELECT CAST(0 AS BOOLEAN) FROM DUAL", want: false},
+		{query: "SELECT DUMMY FROM DUAL", want: "X", fromVersion: 19},
+		{query: "SELECT 'x' FROM DUAL", want: "x", fromVersion: 19},
+		{query: "SELECT CAST(1 AS BOOLEAN) FROM DUAL", want: true, fromVersion: 23},
+		{query: "SELECT CAST(0 AS BOOLEAN) FROM DUAL", want: false, fromVersion: 23},
 	} {
-		var got any
-		if err := db.QueryRowContext(context.Background(), tc.query).Scan(&got); err != nil {
-			t.Fatalf("query %q failed: %v", tc.query, err)
-		}
-		if got != tc.want {
-			t.Errorf("query %q returned %q, want %q", tc.query, got, tc.want)
+		if TestingConfig.DatabaseVersion.Major >= int(tc.fromVersion) {
+			var got any
+			if err := db.QueryRowContext(context.Background(), tc.query).Scan(&got); err != nil {
+				t.Fatalf("query %q failed: %v", tc.query, err)
+			}
+			if got != tc.want {
+				t.Errorf("query %q returned %q, want %q", tc.query, got, tc.want)
+			}
 		}
 	}
 }
