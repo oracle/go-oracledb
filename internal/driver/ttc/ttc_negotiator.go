@@ -67,8 +67,8 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	shelf, sessCtx := _createShelfAndSessionContext()
 
 	// 2. Fetch new Marshaller & TTC Msg Streamer
-	_createAndRegisterMarshaller(cn._dataBuffer, shelf, true)
-	msgStmr := _createAndRegisterMessageStreamer(shelf)
+	marshallerFactory := _createMarshallerFactory(cn._dataBuffer, shelf)
+	msgStmr := _createAndRegisterMessageStreamer(shelf, marshallerFactory)
 
 	// 3. Create and register Initial MessageFactory
 	msgfactory := _createAndRegisterMessageFactory(shelf, -1)
@@ -95,9 +95,6 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 		al32Utf8CharSet,
 		pro.getNCharCharacterSet(),
 	)
-
-	// 7. Update Marshaller with Datatype Reps
-	_createAndRegisterMarshaller(cn._dataBuffer, shelf, false)
 
 	// Determine negotiated TTC version (minimum of client and server)
 	clientVersion := dty.GetClientTTCVersion()
@@ -248,8 +245,9 @@ func _createShelfAndSessionContext() (*ttiShelf[driverCommon.MessageType], *driv
 // _createAndRegisterMessageStreamer creates a new message streamer and registers it to the shelf.
 func _createAndRegisterMessageStreamer(
 	shelf *ttiShelf[driverCommon.MessageType],
+	marshallerFactory *MarshallerFactory,
 ) *MessageStreamer {
-	msgStmr := NewMessageStreamer(shelf)
+	msgStmr := NewMessageStreamer(shelf, marshallerFactory)
 	shelf.RegisterMessageStreamer(msgStmr)
 	common.Odl.Fine("connectionNegotiator: MessageStreamer created and registered")
 	return msgStmr
@@ -272,25 +270,25 @@ func _createAndRegisterCodecFactory(
 	common.Odl.Fine("connectionNegotiator: codecFactory created and registered")
 }
 
-// _createAndRegisterMarshaller creates a new marshaller and registers it to the shelf.
-func _createAndRegisterMarshaller(
+// _createMarshallerFactory creates default and native message registrations
+// using marshallers bound to the same connection buffer.
+func _createMarshallerFactory(
 	buf driverCommon.DataBuffer,
 	shelf *ttiShelf[driverCommon.MessageType],
-	isNative bool,
-) {
-	var mar driverCommon.Marshaller
-	if isNative {
-		mar = NewNativeMarshalEngine(buf, driverCommon.BIG_ENDIAN)
-		common.Odl.Fine("connectionNegotiator: Creating Native Marshaller")
-	} else {
-		mar = NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-		common.Odl.Fine("connectionNegotiator: Creating TTC Marshaller")
-	}
+) *MarshallerFactory {
+
+	native := NewNativeMarshalEngine(buf, driverCommon.BIG_ENDIAN)
+	common.Odl.Fine("connectionNegotiator: Creating Native Marshaller")
+
+	universal := NewMarshalEngine(buf, driverCommon.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	common.Odl.Fine("connectionNegotiator: Creating TTC Marshaller")
+
 	if props := shelf.GetConnectionProperties(); props != nil {
-		if marshalEngine, ok := mar.(*MarshalEngine); ok {
-			marshalEngine.setDefaultLobPrefetchSize(int64(props.GetDefaultLobPrefetchSize()))
-		}
+		native.setDefaultLobPrefetchSize(int64(props.GetDefaultLobPrefetchSize()))
+		universal.setDefaultLobPrefetchSize(int64(props.GetDefaultLobPrefetchSize()))
 	}
-	shelf.RegisterMarshaller(mar)
+	factory := NewMarshallerFactory(universal)
+	factory.RegisterMarshaller(native, TTIPRO, TTIDTY)
 	common.Odl.Fine("connectionNegotiator: Marshaller created/updated and registered")
+	return factory
 }

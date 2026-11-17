@@ -54,7 +54,6 @@ type Capability struct {
 
 // Shelf as a global storage to share driver infrastructure
 type Shelf[T any] struct {
-	marshaller           Marshaller
 	msgFactory           Factory
 	msgStmr              Streamer[T]
 	localizationService  common.LocalizationService
@@ -65,20 +64,11 @@ type Shelf[T any] struct {
 // NewShelf Creates a new Shelf
 func NewShelf[T any]() *Shelf[T] {
 	return &Shelf[T]{
-		marshaller:           nil,
 		msgFactory:           nil,
 		msgStmr:              nil,
 		localizationService:  nil,
 		connectionProperties: nil,
 	}
-}
-
-// RegisterMarshaller Registers a marshaler to the Shelf
-// Returns the Shelf itself
-// Existing instance os replaced by the one passed as parameter
-func (s *Shelf[T]) RegisterMarshaller(mar Marshaller) *Shelf[T] {
-	s.marshaller = mar
-	return s
 }
 
 // RegisterMessageFactory Registers a message factory to the Shelf
@@ -128,11 +118,6 @@ func (s *Shelf[T]) GetConnectionProperties() DriverProperties {
 // GetMessageStreamer Retrieves the streamer previously registered or nil
 func (s *Shelf[T]) GetMessageStreamer() Streamer[T] {
 	return s.msgStmr
-}
-
-// GetMarshaller Retrieves the marshaller previously registered or nil
-func (s *Shelf[T]) GetMarshaller() Marshaller {
-	return s.marshaller
 }
 
 // GetMessageFactory Retrieves the factory previously registered or nil

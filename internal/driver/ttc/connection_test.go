@@ -251,8 +251,7 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 		currentWritePosition: 4,
 	}
 	marshaller := NewMarshalEngine(databuffer, driverCommon.BIG_ENDIAN, newTypeRep().nativeTypesRepresentation)
-	streamer := NewMessageStreamer(shelf)
-	shelf.RegisterMarshaller(marshaller)
+	streamer := NewMessageStreamer(shelf, NewMarshallerFactory(marshaller))
 	shelf.RegisterMessageFactory(mockFactoryWithList)
 	shelf.RegisterMessageStreamer(streamer)
 
