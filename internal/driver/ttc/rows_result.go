@@ -47,6 +47,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -102,8 +103,13 @@ type columnContext struct {
 	Nullable             bool
 	NamedTypeTOID        driverCommon.B1Array
 	NamedTypeVersion     uint16
+	objectType           *datatype.ObjectType
 	LobContext           *lobColumnContext
 	serverTimeZoneOffset int16
+	// skipRxdPayloadUnmarshal identifies a descriptor-only column. Oracle can
+	// describe a constant NULL expression in DCB metadata while omitting its
+	// payload from every RXD row.
+	skipRxdPayloadUnmarshal bool
 }
 
 // ttcRows implements database/sql/driver.Rows and optional ColumnType* interfaces.

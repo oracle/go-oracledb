@@ -45,6 +45,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -179,6 +180,17 @@ func TestRefCursorOutBindUsesCursorOAC(t *testing.T) {
 	}
 	if cursorOAC.dataType != driverCommon.UB1(common.DtyCur) || cursorOAC.maxLength != 4 {
 		t.Fatalf("REF CURSOR OAC = dataType %d, maxLength %d; want %d, 4", cursorOAC.dataType, cursorOAC.maxLength, common.DtyCur)
+	}
+	encoder, err := factory.getEncoderForGoType(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buffer, mar := NewMarshalEngineTest(driverCommon.BIG_ENDIAN, Universal, Universal, 8)
+	if err := encoder.wrapColumn(context.Background(), mar, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buffer.bytes[:buffer.currentWritePosition], []byte{1, 0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("REF CURSOR RXD bind framing = %x, want %x", got, want)
 	}
 }
 
@@ -362,6 +374,47 @@ func TestObjectImageRoundTrip(t *testing.T) {
 	}
 }
 
+func TestObjectImageUsesDeclaredTimestampEncoder(t *testing.T) {
+	typ := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
+		"CREATED_AT": {
+			Name:       "CREATED_AT",
+			Sequence:   1,
+			ObjectType: &datatype.ObjectType{ElementType: common.DtyStamp},
+		},
+	}}
+	object, err := typ.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := time.Date(2026, 11, 17, 14, 40, 56, 987654321, time.UTC)
+	setObjectField(t, object, "CREATED_AT", want)
+
+	image, err := encodeObjectImage(object, NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The seven-byte object header is followed by the attribute pickle length.
+	// TIMESTAMP is an eleven-byte value; a generic time.Time bind would instead
+	// incorrectly produce the thirteen-byte TIMESTAMP WITH TIME ZONE payload.
+	if len(image) != 19 || image[7] != 11 {
+		t.Fatalf("TIMESTAMP object image = %x; want 7-byte header plus 11-byte value", image)
+	}
+
+	decoded, err := decodeObjectImage(image, typ, NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := objectField(t, decoded.(datatype.Object), "CREATED_AT").(time.Time)
+	if !ok {
+		t.Fatalf("decoded CREATED_AT = %T, want time.Time", objectField(t, decoded.(datatype.Object), "CREATED_AT"))
+	}
+	if got.Year() != want.Year() || got.Month() != want.Month() || got.Day() != want.Day() ||
+		got.Hour() != want.Hour() || got.Minute() != want.Minute() || got.Second() != want.Second() ||
+		got.Nanosecond() != want.Nanosecond() {
+		t.Fatalf("decoded CREATED_AT = %s, want wall time %s", got, want)
+	}
+}
+
 func TestObjectNullBind(t *testing.T) {
 	typ := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
 		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
@@ -414,6 +467,12 @@ func TestCompositeObjectImageRoundTrip(t *testing.T) {
 	image, err := encodeObjectImage(parent, factory)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The CHILD record occupies its six-byte string pickle at offset seven.
+	// NUMBERS is a UPT collection attribute, so it must then start with the
+	// pickle length of its complete collection image before the 0x88 image flag.
+	if len(image) < 16 || image[14] != 16 || image[15] != 0x88 {
+		t.Fatalf("embedded collection record = %x; want UPT length followed by collection image", []byte(image))
 	}
 	decoded, err := decodeObjectImage(image, parentType, factory)
 	if err != nil {
@@ -502,6 +561,11 @@ func TestObjectCollectionImageRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A named object element is a UPT record: its complete object image follows
+	// a pickle length in the collection data segment.
+	if len(image) < 15 || image[13] != 10 || image[14] != 0x84 {
+		t.Fatalf("object collection element = %x; want UPT length followed by object image", []byte(image))
+	}
 	decoded, err := decodeCollectionImage(image, collectionType, factory)
 	if err != nil {
 		t.Fatal(err)
@@ -574,5 +638,8 @@ func TestNamedTypeOACCarriesTOIDAndVersion(t *testing.T) {
 	}
 	if oac.versionNumber != 7 || oac.toid == nil || len(*oac.toid) != 16 {
 		t.Fatalf("missing named-type metadata: %#v", oac)
+	}
+	if oac.characterSetID != namedTypeCharsetID {
+		t.Fatalf("characterSetID = %d, want %d", oac.characterSetID, namedTypeCharsetID)
 	}
 }

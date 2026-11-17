@@ -844,8 +844,32 @@ func init() {
 	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeFor[datatype.Object]()}, MinTTCProtocolVersion, newFactoryBindEncoder(encodeObjectBind, wrapNamedTypeColumn)); err != nil {
 		common.Odl.Warn("Failed to register ADT object encoder", "error", err)
 	}
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeFor[datatype.Cursor]()}, MinTTCProtocolVersion, newTypeEncoder(converters.EncodeNull, wrapRefCursorColumn)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR encoder", "error", err)
+	}
 	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestampWithTimeZone)); err != nil {
 		common.Odl.Warn("Failed to register time.Time encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(encoderKey{dtyType: common.DtyDat, goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeDate)); err != nil {
+		common.Odl.Warn("Failed to register DATE attribute encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(encoderKey{dtyType: common.DtyStamp, goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestamp)); err != nil {
+		common.Odl.Warn("Failed to register TIMESTAMP attribute encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(encoderKey{dtyType: common.DtyEstamp, goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestamp)); err != nil {
+		common.Odl.Warn("Failed to register extended TIMESTAMP attribute encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(encoderKey{dtyType: common.DtyStz, goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestampWithTimeZone)); err != nil {
+		common.Odl.Warn("Failed to register TIMESTAMP WITH TIME ZONE attribute encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(encoderKey{dtyType: common.DtyEstz, goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestampWithTimeZone)); err != nil {
+		common.Odl.Warn("Failed to register extended TIMESTAMP WITH TIME ZONE attribute encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(encoderKey{dtyType: common.DtySitz, goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestampWithLocalTimeZone)); err != nil {
+		common.Odl.Warn("Failed to register TIMESTAMP WITH LOCAL TIME ZONE attribute encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(encoderKey{dtyType: common.DtyEsitz, goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestampWithLocalTimeZone)); err != nil {
+		common.Odl.Warn("Failed to register extended TIMESTAMP WITH LOCAL TIME ZONE attribute encoder", "error", err)
 	}
 
 	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf([]byte(nil))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeBinary)); err != nil {
@@ -964,6 +988,14 @@ func init() {
 	if err := DecoderRegistry.Register(common.DtyBin, MinTTCProtocolVersion, newTypeDecoder(DecodeBinaryColumn,
 		GetScanTypeForBinaryColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary decoder", "error", err)
+	}
+	if err := DecoderRegistry.Register(common.DtyNty, MinTTCProtocolVersion, newTypeDecoder(
+		DecodeBinaryColumn, GetScanTypeForBinaryColumn, unwrapNamedTypeColumn)); err != nil {
+		common.Odl.Warn("Failed to register named-type decoder", "error", err)
+	}
+	if err := DecoderRegistry.Register(common.DtyINty, MinTTCProtocolVersion, newTypeDecoder(
+		DecodeBinaryColumn, GetScanTypeForBinaryColumn, unwrapNamedTypeColumn)); err != nil {
+		common.Odl.Warn("Failed to register internal named-type decoder", "error", err)
 	}
 
 	if err := DecoderRegistry.Register(common.DtyClob, MinTTCProtocolVersion,

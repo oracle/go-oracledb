@@ -96,20 +96,21 @@ func (p *tTIdcb) getColumnContexts() ([]columnContext, error) {
 		if udsProv != nil {
 			oac := udsProv.getOac()
 			metaData[i] = columnContext{
-				Index:            i,
-				Name:             udsProv.getColumnName(),
-				SchemaName:       udsProv.getSchemaName(),
-				DBTypeName:       udsProv.getTypeName(),
-				Length:           int64(oac.maxLength),
-				DataType:         common.DtyType(oac.dataType),
-				Precision:        int64(oac.precision),
-				Scale:            int8(oac.scale),
-				KernelPosition:   int(udsProv.getKernelPosition()),
-				ColumnFlags:      uint32(udsProv.getColumnFlags()),
-				CharsetForm:      uint8(oac.characterSetForm),
-				CharsetID:        uint16(oac.characterSetID),
-				Nullable:         udsProv.nullable(),
-				NamedTypeVersion: uint16(oac.versionNumber),
+				Index:                   i,
+				Name:                    udsProv.getColumnName(),
+				SchemaName:              udsProv.getSchemaName(),
+				DBTypeName:              udsProv.getTypeName(),
+				Length:                  int64(oac.maxLength),
+				DataType:                common.DtyType(oac.dataType),
+				Precision:               int64(oac.precision),
+				Scale:                   int8(oac.scale),
+				KernelPosition:          int(udsProv.getKernelPosition()),
+				ColumnFlags:             uint32(udsProv.getColumnFlags()),
+				CharsetForm:             uint8(oac.characterSetForm),
+				CharsetID:               uint16(oac.characterSetID),
+				Nullable:                udsProv.nullable(),
+				NamedTypeVersion:        uint16(oac.versionNumber),
+				skipRxdPayloadUnmarshal: common.DtyType(oac.dataType) == common.DtyChr && oac.maxLength == 0,
 			}
 			if oac.toid != nil {
 				metaData[i].NamedTypeTOID = append(driverCommon.B1Array(nil), (*oac.toid)...)

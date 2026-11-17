@@ -413,7 +413,9 @@ func TestDriver_ObjectVARRAYPLSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setObjectValue(t, element, "ID", int64(1))
+	// The collection TDS contains the object element's shape but not its SQL
+	// attribute names, so use the positional element layout.
+	element.Field(0).Set(reflect.ValueOf(int64(1)))
 	if err := in.Set([]any{element, nil}); err != nil {
 		t.Fatal(err)
 	}
@@ -430,8 +432,8 @@ func TestDriver_ObjectVARRAYPLSQL(t *testing.T) {
 	if !ok {
 		t.Fatalf("element = %T, want datatype.Object", value)
 	}
-	if id := objectValue(t, got, "ID"); id != int64(1) {
-		t.Fatalf("element.ID = %v, want 1", id)
+	if id := got.Field(0).Interface(); id != int64(1) {
+		t.Fatalf("element field 0 = %v, want 1", id)
 	}
 	if len(values) != 2 || values[1] != nil {
 		t.Fatalf("element 2 = %#v, want nil", values)

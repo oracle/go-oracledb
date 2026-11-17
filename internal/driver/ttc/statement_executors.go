@@ -334,6 +334,10 @@ func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
 	e.outColumnContexts = e.outColumnContexts[:0]
 
 	codecFactory := e.shelf.GetCodecFactory()
+	// Resolve metadata for the complete bind list before inspecting OUT binds.
+	// A typed ADT OUT bind can obtain its descriptor from the matching IN bind
+	// in the same PL/SQL call.
+	metadata := extractBindMetadata(args)
 	for outIndex, arg := range args {
 		// Only sql.Out binds participate in DML RETURNING / OUT parameter handling.
 		if outArg, ok := arg.(sql.Out); ok {
@@ -343,7 +347,7 @@ func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
 			}
 
 			// Capture decoder-relevant metadata from the bind OAC when it is available.
-			bindOac, err := codecFactory.getBindOac(extractBindValueMetadata(outArg), 0)
+			bindOac, err := codecFactory.getBindOac(metadata[outIndex], 0)
 			if err == nil {
 				if oac, ok := bindOac.(*tTIoac); ok {
 					e.outColumnContexts = append(e.outColumnContexts, columnContext{
@@ -353,6 +357,7 @@ func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
 						Scale:       int8(oac.scale),
 						CharsetForm: uint8(oac.characterSetForm),
 						CharsetID:   uint16(oac.characterSetID),
+						objectType:  metadata[outIndex].objectType,
 					})
 				}
 			}
@@ -541,6 +546,7 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 	if len(args) > 0 {
 		var err error
 		metadata = extractBindMetadata(args)
+		e.cacheADTTypes(metadata)
 		rows, err = e.encodeBindValues(args, metadata)
 		if err != nil {
 			return nil, err
@@ -582,6 +588,18 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 		messages = append(messages, bindMessage)
 	}
 	return messages, nil
+}
+
+// cacheADTTypes retains descriptors supplied by named input binds so a later
+// result column with the same TOID can decode its pickled image.
+func (e *statementProcessor) cacheADTTypes(metadata []bindValueMetadata) {
+	for _, item := range metadata {
+		typ := item.objectType
+		if typ == nil || len(typ.TOID) == 0 {
+			continue
+		}
+		e.shelf.adtByTOID[string(typ.TOID)] = typ
+	}
 }
 
 // createOAll8Message constructs an OALL8 request. It includes bind OACs only
@@ -777,10 +795,13 @@ func (e *statementProcessor) encodeBindValues(args []sqldriver.Value, metadata [
 		if err != nil {
 			return nil, err
 		}
-		_, normalizedValue := normalizeBindValue(value)
-		payload, err := encoder.encode(normalizedValue, e.shelf.GetCodecFactory())
-		if err != nil {
-			return nil, err
+		var payload driverCommon.B1Array
+		if !metadata[i].isOutOnly {
+			_, normalizedValue := normalizeBindValue(value)
+			payload, err = encoder.encode(normalizedValue, e.shelf.GetCodecFactory())
+			if err != nil {
+				return nil, err
+			}
 		}
 		rows[0][i] = payload
 	}
@@ -1636,6 +1657,32 @@ func (s statementExecutorOperationNotSupported) QueryContext(_ context.Context, 
 
 // decodeOutColumn preserves constructed values and decodes only wire images.
 func decodeOutColumn(factory codecFactory, column columnContext, payload columnPayload) (sqldriver.Value, error) {
+	if column.objectType != nil {
+		if payload.data == nil {
+			if column.objectType.Collection {
+				value, err := column.objectType.NewCollection()
+				if err != nil {
+					return nil, err
+				}
+				value.SetNull()
+				return value, nil
+			}
+			value, err := column.objectType.NewObject()
+			if err != nil {
+				return nil, err
+			}
+			value.SetNull()
+			return *value, nil
+		}
+		data, ok := payload.data.(driverCommon.B1Array)
+		if !ok {
+			return payload.data, nil
+		}
+		if column.objectType.Collection {
+			return decodeCollectionImage(data, column.objectType, factory)
+		}
+		return decodeObjectImage(data, column.objectType, factory)
+	}
 	data, raw := payload.data.(driverCommon.B1Array)
 	if !raw {
 		return payload.data, nil

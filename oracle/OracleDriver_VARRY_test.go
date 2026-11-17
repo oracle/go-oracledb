@@ -41,7 +41,6 @@ package oracle
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"reflect"
 	"strings"
 	"testing"
@@ -64,7 +63,7 @@ func TestDriver_VARRAY_TypeShapeDebug(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	const typeName = "JDBC_VARRAY_NUMBERS"
+	typeName := strings.ToUpper(createObjectName("varray_type_shape"))
 	if _, err = db.ExecContext(ctx, "CREATE OR REPLACE TYPE "+typeName+" AS VARRAY(5) OF NUMBER"); err != nil {
 		t.Fatalf("create VARRAY type: %v", err)
 	}
@@ -80,7 +79,7 @@ func TestDriver_VARRAY_TypeShapeDebug(t *testing.T) {
 	// are not consumed by the scalar-VARRAY path yet, but must be typed cursor
 	// OUT binds. A scalar placeholder causes PLS-00306 during overload
 	// resolution, while an untyped nil is treated as an input bind.
-	var unusedAttributes, unusedSubtypes driver.Rows
+	var unusedAttributes, unusedSubtypes datatype.Cursor
 	// Use the current full-name overload because it canonicalizes the supplied
 	// name and returns hierarchy and
 	// attribute metadata in addition to the TOID/version/TDS triplet.
@@ -94,13 +93,13 @@ END;`,
 	// The metadata cursors are only needed by object-attribute support. Close
 	// them here after the call has completed; this VARRAY path uses the TDS.
 	defer func() {
-		if unusedAttributes != nil {
-			_ = unusedAttributes.Close()
+		if rows := unusedAttributes.DriverRows(); rows != nil {
+			_ = rows.Close()
 		}
 	}()
 	defer func() {
-		if unusedSubtypes != nil {
-			_ = unusedSubtypes.Close()
+		if rows := unusedSubtypes.DriverRows(); rows != nil {
+			_ = rows.Close()
 		}
 	}()
 	if err != nil {
@@ -127,7 +126,7 @@ func TestDriver_VARRAY_InsertSelectPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	typeName := "VARRAY_NUMBERS"
+	typeName := strings.ToUpper(createObjectName("varray_numbers"))
 	tableName := createObjectName("varray_tab")
 	if _, err = db.ExecContext(ctx, "CREATE TYPE "+typeName+" AS VARRAY(5) OF NUMBER"); err != nil {
 		t.Fatalf("create VARRAY type: %v", err)

@@ -13,6 +13,9 @@ import (
 const (
 	collectionIndexesFlag  = 0x10
 	collectionNoLengthFlag = 0x08
+	// Oracle's named-type OAC uses the ADT charset sentinel, rather than the
+	// connection character set used for ordinary scalar binds.
+	namedTypeCharsetID driverCommon.UB2 = 2
 )
 
 func newTTIOacNamedType(typ *datatype.ObjectType, maxLength driverCommon.UB4) (*tTIoac, error) {
@@ -31,6 +34,7 @@ func newTTIOacNamedType(typ *datatype.ObjectType, maxLength driverCommon.UB4) (*
 	toid := driverCommon.B1Array(append([]byte(nil), typ.TOID...))
 	oac.toid = &toid
 	oac.versionNumber = driverCommon.UB2(typ.TypeVersion)
+	oac.characterSetID = namedTypeCharsetID
 	return oac, nil
 }
 
@@ -188,6 +192,10 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 			if err != nil {
 				return nil, err
 			}
+			// Object collection elements are UPT records. Prefix each complete
+			// object image with its pickle length before placing it in the
+			// collection data segment.
+			data = appendPickleLength(data, len(image))
 			data = append(data, image...)
 			continue
 		}
@@ -303,6 +311,10 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 			if err != nil {
 				return nil, err
 			}
+			// A named collection attribute is represented by a UPT in its
+			// containing object's TDS. The UPT record wraps the complete
+			// collection image in a pickle length.
+			data = appendPickleLength(data, len(image))
 			data = append(data, image...)
 			continue
 		}
@@ -444,11 +456,16 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 			continue
 		}
 		if typ.CollectionOf != nil {
-			end, imageErr := namedImageEnd(data, pos)
+			imageLength, next, imageErr := readPickleLength(data, pos)
 			if imageErr != nil {
 				return nil, imageErr
 			}
-			value, decodeErr := decodeObjectImage(data[pos:end], typ.CollectionOf, factory)
+			if imageLength < 0 || next+imageLength > len(data) {
+				common.Odl.Error("ADT collection image error")
+				return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
+			}
+			end := next + imageLength
+			value, decodeErr := decodeObjectImage(data[next:end], typ.CollectionOf, factory)
 			if decodeErr != nil {
 				return nil, decodeErr
 			}
@@ -595,11 +612,16 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 			continue
 		}
 		if attributeType.Collection {
-			end, imageErr := namedImageEnd(data, pos)
+			imageLength, next, imageErr := readPickleLength(data, pos)
 			if imageErr != nil {
 				return nil, pos, imageErr
 			}
-			value, decodeErr := decodeCollectionImage(data[pos:end], attributeType, factory)
+			if imageLength < 0 || next+imageLength > len(data) {
+				common.Odl.Error("ADT object image error")
+				return nil, pos, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
+			}
+			end := next + imageLength
+			value, decodeErr := decodeCollectionImage(data[next:end], attributeType, factory)
 			if decodeErr != nil {
 				return nil, pos, decodeErr
 			}

@@ -243,6 +243,9 @@ func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		}
 		rxd.row = make([]columnPayload, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
+			if rxd.columnContexts[col].skipRxdPayloadUnmarshal {
+				continue
+			}
 			if rxd.bvcColSent != nil && rxd.bvcColSent.Get(col) {
 				err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
 				if err != nil {
@@ -262,6 +265,9 @@ func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		// Non-BVC: all columns present, unmarshal each as fresh.
 		rxd.row = make([]columnPayload, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
+			if rxd.columnContexts[col].skipRxdPayloadUnmarshal {
+				continue
+			}
 			err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
 			if err != nil {
 				return err

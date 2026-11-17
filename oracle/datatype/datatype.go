@@ -254,7 +254,8 @@ END;`,
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
 	}
 	if rc != 0 || len(toid) != 16 || len(tds) == 0 {
-		common.Odl.Error("ADT metadata error")
+		common.Odl.Error("ADT metadata error", "type", canonical, "returnCode", rc,
+			"toidLength", len(toid), "tdsLength", len(tds))
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 	}
 
@@ -392,6 +393,13 @@ func populateObjectAttributes(ctx context.Context, ex Execer, typ *ObjectType, r
 	if rows == nil {
 		return nil
 	}
+	// For scalar collections Oracle returns an attribute-cursor row describing
+	// the scalar element (for example NUMBER or VARCHAR2). Its complete shape
+	// is already present in the collection TDS; it is not a named child type
+	// that can be loaded through GET_TYPE_SHAPE.
+	if typ.Collection && typ.CollectionOf == nil {
+		return nil
+	}
 	if len(rows.Columns()) != 10 {
 		return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 	}
@@ -426,11 +434,22 @@ func populateObjectAttributes(ctx context.Context, ex Execer, typ *ObjectType, r
 		if !ok || sequence < 1 || sequence > len(nodes) {
 			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
+		// A collection-element UPT may have supplied an anonymous positional
+		// attribute from its TDS. Replace it when the metadata cursor supplies
+		// the declared database name for the same position.
+		for existingName, existing := range metadataType.Attributes {
+			if existing.Sequence == uint32(sequence) && existingName != name {
+				delete(metadataType.Attributes, existingName)
+			}
+		}
 		if _, exists := metadataType.Attributes[name]; exists {
 			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
-		owner, _ := adtMetadataString(values[3])
-		typeName, _ := adtMetadataString(values[4])
+		// GET_TYPE_SHAPE returns the attribute type name before its owner.
+		// Preserve that order when resolving nested named object and collection
+		// descriptors; reversing these fields produces TYPE.OWNER names.
+		typeName, _ := adtMetadataString(values[3])
+		owner, _ := adtMetadataString(values[4])
 		packageName, _ := adtMetadataString(values[5])
 		oid, ok := adtMetadataBytes(values[6])
 		if !ok {
@@ -501,6 +520,18 @@ func newObjectTypeFromTDSType(node *tdsType, schema, name, packageName string, o
 	typ.Precision = node.precision
 	typ.Scale = node.scale
 	typ.FsPrecision = node.fsPrecision
+	// A UPT embedded in a collection TDS preserves the element's complete wire
+	// shape but has no SQL name or attribute-name metadata. Keep a usable
+	// anonymous positional descriptor here, without issuing an additional
+	// dictionary query.
+	for index, attribute := range node.attributes {
+		attributeName := "F_" + strconv.Itoa(index+1)
+		typ.Attributes[attributeName] = ObjectAttribute{
+			ObjectType: newObjectTypeFromTDSType(attribute, "", "", "", nil),
+			Name:       attributeName,
+			Sequence:   uint32(index + 1),
+		}
+	}
 	return typ
 }
 

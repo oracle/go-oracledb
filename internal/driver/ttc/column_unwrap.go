@@ -417,7 +417,6 @@ Description:
 
 	Reads the LOB length, prefetch metadata, OSON bytes, and locator independently
 	of the BLOB reader. A zero LOB length returns NULL data with its LOB context.
-	The native JSON fetch path has no trailing JSON indicators.
 
 Parameters:
   - ctx: Request context used while reading from the wire.

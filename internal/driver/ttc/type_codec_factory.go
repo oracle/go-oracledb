@@ -505,16 +505,22 @@ Errors:
   - Returns a common.OracleError with code common.InternalError when no encoder candidate exists for the bind type.
 */
 func (f *CodecFactoryImpl) getEncoderForGoType(metadata bindValueMetadata) (*typeEncoder, error) {
-	if (metadata.isOutOnly || metadata.isNull) && metadata.objectType == nil {
+	common.Odl.Finest("New encoder requested", "goType", metadata.goType)
+	// A scalar typed NULL retains its OAC type but has no Go payload for that
+	// type's encoder. Named ADT NULLs are the exception: they require their
+	// registered NAMED_TYPE envelope to preserve the descriptor.
+	if metadata.isNull && metadata.objectType == nil {
 		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
-	common.Odl.Finest("New encoder requested", "goType", metadata.goType)
 
 	candidates := f.encoders.getCandidates(encoderKey{goType: metadata.goType})
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
 		common.Odl.Finest("Encoder returned", "candidate", bestCandidate)
 		return bestCandidate.makeFunc, nil
+	}
+	if metadata.isOutOnly || metadata.isNull {
+		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
 
 	err := common.NewOracleError(oracleErrors.InternalError, nil)
@@ -526,10 +532,6 @@ func (f *CodecFactoryImpl) getEncoderForGoType(metadata bindValueMetadata) (*typ
 // for the declared Oracle type and Go type. Otherwise it uses the ordinary
 // Go-type encoder.
 func (f *CodecFactoryImpl) getEncoderForDtyType(dty common.DtyType, metadata bindValueMetadata) (*typeEncoder, error) {
-	if metadata.isOutOnly || metadata.isNull {
-		return newCLRBindEncoder(converters.EncodeNull), nil
-	}
-
 	candidates := f.encoders.getCandidates(encoderKey{dtyType: dty, goType: metadata.goType})
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
