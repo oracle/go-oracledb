@@ -264,14 +264,11 @@ func benchmarkEncodeMapObjectImage(object *benchmarkMapObject, factory codecFact
 			data = append(data, 255)
 			continue
 		}
-		encoder, err := factory.getCollectionEncoder(attributeType.ElementType)
+		encoder, err := factory.getEncoderForDtyType(attributeType.ElementType, extractBindValueMetadata(fieldValue))
 		if err != nil {
-			encoder, err = factory.getEncoder(normalizeBindValue(fieldValue))
-			if err != nil {
-				return nil, err
-			}
+			return nil, err
 		}
-		encoded, err := encoder(fieldValue)
+		encoded, err := encoder.encode(fieldValue, factory)
 		if err != nil {
 			return nil, err
 		}
@@ -338,14 +335,11 @@ func benchmarkEncodeDynamicObjectImage(value reflect.Value, typ *datatype.Object
 			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
 		fieldValue := value.Field(index).Interface()
-		encoder, err := factory.getCollectionEncoder(attributeType.ElementType)
+		encoder, err := factory.getEncoderForDtyType(attributeType.ElementType, extractBindValueMetadata(fieldValue))
 		if err != nil {
-			encoder, err = factory.getEncoder(normalizeBindValue(fieldValue))
-			if err != nil {
-				return nil, err
-			}
+			return nil, err
 		}
-		encoded, err := encoder(fieldValue)
+		encoded, err := encoder.encode(fieldValue, factory)
 		if err != nil {
 			return nil, err
 		}

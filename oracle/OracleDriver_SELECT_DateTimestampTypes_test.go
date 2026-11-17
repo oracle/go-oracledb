@@ -136,6 +136,75 @@ func TestDriver_Select_DATE(t *testing.T) {
 	}
 }
 
+// TestDriver_Select_DATE_BC verifies BC DATE values inserted from time.Time
+// and SQL, plus a standalone DATE selected from DUAL.
+func TestDriver_Select_DATE_BC(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	table := createObjectName("date_bc_test")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id": "NUMBER PRIMARY KEY",
+		"d":  "DATE",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	})
+
+	want := time.Date(-1, time.January, 1, 0, 0, 0, 0, time.UTC)
+	// Insert a BC DATE using a time.Time bind.
+	if _, err := db.ExecContext(ctx, "INSERT INTO "+table+" (id, d) VALUES (:1, :2)", 1, want); err != nil {
+		t.Fatalf("insert time.Time BC DATE failed: %v", err)
+	}
+	// Insert the same BC DATE using SQL conversion.
+	if _, err := db.ExecContext(ctx, "INSERT INTO "+table+" (id, d) VALUES (2, TO_DATE('0001-01-01 BC', 'YYYY-MM-DD BC'))"); err != nil {
+		t.Fatalf("insert SQL BC DATE failed: %v", err)
+	}
+
+	// Select and verify both DATE rows inserted above.
+	rows, err := db.QueryContext(ctx, "SELECT id, d FROM "+table+" ORDER BY id")
+	if err != nil {
+		t.Fatalf("select inserted BC DATE rows failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			id  int
+			got time.Time
+		)
+		if err := rows.Scan(&id, &got); err != nil {
+			t.Fatalf("scan inserted BC DATE row failed: %v", err)
+		}
+
+		assertSameYMDHMSNanos(t, id, "inserted DATE", got, want)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate inserted BC DATE rows failed: %v", err)
+	}
+
+	// Select a standalone SQL DATE from DUAL directly into time.Time.
+	var gotDual time.Time
+	query := "SELECT TO_DATE('0001-01-01 BC', 'YYYY-MM-DD BC') FROM dual"
+	if err := db.QueryRowContext(ctx, query).Scan(&gotDual); err != nil {
+		t.Fatalf("select BC DATE from dual failed: %v", err)
+	}
+	assertSameYMDHMSNanos(t, 1, "DUAL DATE", gotDual, want)
+}
+
 // TestDriver_Select_TIMESTAMP
 // Purpose: End-to-end SELECT for TIMESTAMP. Values are scanned into time.Time and verified.
 func TestDriver_Select_TIMESTAMP(t *testing.T) {

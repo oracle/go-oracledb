@@ -71,8 +71,13 @@ func runTTIRPATest(t *testing.T, name string, dump []string) {
 	}
 	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	// Use concrete type directly (same package) so we can assert fields
+	// Use concrete type directly (same package) so we can assert fields. DML
+	// fixtures include AL8PIDMLRC after the core RPA fields.
+	unmarshalRowCounts := strings.Contains(name, "INSERT")
 	rpa := &ttioallrpa{}
+	if unmarshalRowCounts {
+		rpa.enableUnmarshalRowCounts()
+	}
 
 	if rpa.GetMsgCode() != TTIRPA {
 		t.Fatalf("%s: GetMsgCode mismatch, expected TTIRPA", name)
@@ -81,10 +86,12 @@ func runTTIRPATest(t *testing.T, name string, dump []string) {
 	if err := rpa.UnmarshalFrom(context.Background(), mar); err != nil {
 		t.Fatalf("%s: UnmarshalFrom failed: %v", name, err)
 	}
-	// for DMLS
-	if strings.Contains(name, "INSERT") {
-		if err := rpa.UnmarshalDMLRows(context.Background(), mar); err != nil {
-			t.Fatalf("%s: UnmarshalDMLRows failed: %v", name, err)
+	if unmarshalRowCounts {
+		if len(rpa.pidmlRowCounts) != 1 || rpa.pidmlRowCounts[0] != 3 {
+			t.Fatalf("%s: DML row counts mismatch: got %v want [3]", name, rpa.pidmlRowCounts)
+		}
+		if got := rpa.getTotalAffectedRowsCount(); got != 3 {
+			t.Fatalf("%s: total affected rows mismatch: got %d want 3", name, got)
 		}
 	}
 
@@ -125,11 +132,62 @@ func TestTTIOallRPA_Unmarshal_Create(t *testing.T) {
 	runTTIRPATest(t, "CREATE", validTTIRPACreateDump)
 }
 
-// TestTTIOallRPA_Unmarshal_Insert verifies INSERT TTIRPA payload decodes and DML rows can be unmarshalled.
-// Expectation: UnmarshalFrom and UnmarshalDMLRows succeed with consistent decoder state.
+// TestTTIOallRPA_Unmarshal_Insert verifies INSERT TTIRPA payload decodes and
+// UnmarshalFrom automatically parses its DML row counts.
 func TestTTIOallRPA_Unmarshal_Insert(t *testing.T) {
 	t.Parallel()
 	runTTIRPATest(t, "INSERT", validTTIRPAInsertDump)
+}
+
+// TestTTIOallRPA_Unmarshal_DMLRows_Truncated verifies that the automatic DML
+// row-count parsing performed by UnmarshalFrom reports a truncated row-count
+// section.
+func TestTTIOallRPA_Unmarshal_DMLRows_Truncated(t *testing.T) {
+	t.Parallel()
+	payload := ttirpaPayloadFromDump(validTTIRPAInsertDump)
+	if len(payload) == 0 {
+		t.Fatal("empty payload from validTTIRPAInsertDump")
+	}
+	// Locate the end of AL8PIDMLRC by parsing the complete fixture. The captured
+	// frame has trailing bytes after the row-count section, so truncating its final
+	// byte would not necessarily truncate data consumed by UnmarshalFrom.
+	fullBuf := NewArrayDataBuffer(len(payload))
+	if err := fullBuf.WriteBytesWithContext(context.Background(), payload); err != nil {
+		t.Fatalf("failed to load complete payload: %v", err)
+	}
+	fullMar := NewMarshalEngine(fullBuf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	fullRPA := &ttioallrpa{unmarshalRowCounts: true}
+	if err := fullRPA.UnmarshalFrom(context.Background(), fullMar); err != nil {
+		t.Fatalf("complete fixture failed to parse: %v", err)
+	}
+	dmlRowsEnd := fullBuf.currentReadPosition
+	if dmlRowsEnd <= 0 || dmlRowsEnd >= len(payload) {
+		t.Fatalf("unexpected DML row-count boundary: %d of %d bytes", dmlRowsEnd, len(payload))
+	}
+	// Remove the last byte consumed by AL8PIDMLRC while preserving the complete
+	// core RPA before it.
+	truncated := payload[:dmlRowsEnd-1]
+	// Confirm the truncated fixture still contains a complete core RPA, isolating
+	// the expected failure to automatic DML row-count parsing.
+	coreBuf := NewArrayDataBuffer(len(truncated))
+	if err := coreBuf.WriteBytesWithContext(context.Background(), truncated); err != nil {
+		t.Fatalf("failed to load truncated payload for core check: %v", err)
+	}
+	coreMar := NewMarshalEngine(coreBuf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+	if err := (&ttioallrpa{}).UnmarshalFrom(context.Background(), coreMar); err != nil {
+		t.Fatalf("truncated fixture should retain a valid core RPA: %v", err)
+	}
+
+	buf := NewArrayDataBuffer(len(truncated))
+	if err := buf.WriteBytesWithContext(context.Background(), truncated); err != nil {
+		t.Fatalf("failed to load truncated payload: %v", err)
+	}
+	mar := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
+
+	rpa := &ttioallrpa{unmarshalRowCounts: true}
+	if err := rpa.UnmarshalFrom(context.Background(), mar); err == nil {
+		t.Fatal("expected UnmarshalFrom to fail on truncated DML row counts")
+	}
 }
 
 // TestTTIOallRPA_Unmarshal_AlterSessionDrop verifies ALTER SESSION/DROP style TTIRPA payload decodes correctly.

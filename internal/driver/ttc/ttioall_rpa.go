@@ -52,6 +52,7 @@ import (
 // - transaction context (length + bytes) is read/ignored
 // - keyword-values is read
 type ttioallrpa struct {
+	unmarshalRowCounts bool // indicates that the RPA should include DML row counts
 	// Decoded fields (subset)
 	scn      uint64             // built from al8o4[0] and al8o4[1] without KSCNFVB
 	cursorID driverCommon.SB4   // from al8o4[2]
@@ -151,7 +152,18 @@ func (p *ttioallrpa) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshal
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
+	if p.unmarshalRowCounts {
+		return p.UnmarshalDMLRows(ctx, mar)
+	}
+
 	return nil
+}
+
+// enableUnmarshalRowCounts enables decoding of optional per-iteration DML row
+// counts in the RPA response. This method will be called on DML execution to
+// indicate that the row counts are expected in the RPA.
+func (p *ttioallrpa) enableUnmarshalRowCounts() {
+	p.unmarshalRowCounts = true
 }
 
 // UnmarshalDMLRows decodes optional per-iteration DML row counts (AL8PIDMLRC).

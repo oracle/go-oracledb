@@ -70,10 +70,9 @@ type tTIrxd struct {
 	// bvcFound is true if BVC/column-carry logic applies to the current row (if bvcColSent has any set columns).
 	bvcFound bool
 
-	// Outgoing bind payload for TTIRXD when marshalling bind values (Phase 1: single row binds).
-	bindRow        []driverCommon.B1Array
+	// Outgoing bind values for TTIRXD bind-row marshalling.
+	bindValues     []encodedBindValue
 	columnContexts []columnContext
-	oacs           []driverCommon.Marshallable
 
 	numberOfReturningPositions int
 	isDmlReturning             bool
@@ -81,6 +80,13 @@ type tTIrxd struct {
 	// session character set
 	sessCharSet  driverCommon.UB2
 	sessNCharSet driverCommon.UB2
+}
+
+// encodedBindValue pairs an encoded bind payload with the metadata used to
+// select its encoder and TTC column wrapper.
+type encodedBindValue struct {
+	payload  driverCommon.B1Array
+	metadata bindValueMetadata
 }
 
 // newTTIrxd instantiates a TTIrxd struct configured to decode plain RXD resultset messages from Oracle's TTC protocol.
@@ -94,6 +100,8 @@ func newTTIrxd() driverCommon.Message[driverCommon.MessageType] {
 func (rxd *tTIrxd) setCodecFactory(factory codecFactory) {
 	rxd.codecFactory = factory
 }
+
+func (rxd *tTIrxd) getFactory() codecFactory { return rxd.codecFactory }
 
 // GetMsgCode implements Message.GetMsgCode, returning the TTC RXD message code.
 func (rxd *tTIrxd) GetMsgCode() driverCommon.MessageType {
@@ -145,84 +153,29 @@ func (rxd *tTIrxd) setSessionCharacterSet(sessCharSet driverCommon.UB2) {
 
 /*
 
-setBindValues sets the outgoing bind payload for marshalling as an RXD message.
+setBindValues sets the prepared outgoing bind values for marshalling as an RXD message.
 
 Parameters:
-- row: row is the encoded data for one row: a slice of CLR-ready byte arrays, one per column.
-       Each element should contain the wire-format bytes for that column (nil indicates SQL NULL).
+- values: one encoded bind value per bind position for a single row.
 */
 
-func (rxd *tTIrxd) setBindValues(row []driverCommon.B1Array) {
-	rxd.bindRow = row
-}
-
-func (rxd *tTIrxd) setOACs(oacs []driverCommon.Marshallable) {
-	rxd.oacs = oacs
+func (rxd *tTIrxd) setBindValues(values []encodedBindValue) {
+	rxd.bindValues = values
 }
 
 /*
 MarshalTo writes the RXD bind payload for outgoing messages (single row).
-
-When used as an outgoing message, tTIrxd marshals the bind row values as a CLR sequence,
-using the TTC null length indicator for nil values. The call to MarshalTo marshals the
-encoded bytes for a single row.
+It resolves each encoder from the message's protocol-matched codec factory and
+uses that encoder's transport wrapper for the corresponding payload.
 */
 func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
-	// Nothing to marshal if no bind payload was configured.
-	if rxd.bindRow == nil {
-		return nil
-	}
-	bindCount := len(rxd.bindRow)
-	for i := 0; i < bindCount; i++ {
-		val := rxd.bindRow[i]
-		if i < len(rxd.oacs) {
-			if oac, ok := rxd.oacs[i].(*tTIoac); ok && common.DtyType(oac.requestedtype) == common.DtyNty {
-				if err := rxd.marshalNamedTypeBind(ctx, engine, val); err != nil {
-					return err
-				}
-				continue
-			}
+	for _, bind := range rxd.bindValues {
+		encoder, err := rxd.getFactory().getEncoderForGoType(bind.metadata)
+		if err != nil {
+			return err
 		}
-		if val == nil {
-			// Write CLR null indicator
-			if err := engine.MarshalUB1(ctx, driverCommon.UB1(0)); err != nil {
-				common.Odl.Error("tTIrxd.MarshalTo: failed to write null length indicator",
-					"error", err, "stage", "null-indicator", "index", i)
-				return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-			}
-			continue
-		}
-		// Write as CLR (short or long form depending on size)
-		if err := engine.MarshalCLR(ctx, val, 0, len(val)); err != nil {
-			common.Odl.Error("tTIrxd.MarshalTo: failed to write CLR",
-				"error", err, "stage", "clr", "index", i)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-		}
-	}
-	return nil
-}
-
-// marshalNamedTypeBind writes the NAMED_TYPE envelope before the pickled ADT
-// image. It is selected from the bind OAC, not the Go value type.
-func (rxd *tTIrxd) marshalNamedTypeBind(ctx context.Context, engine driverCommon.Marshaller, image driverCommon.B1Array) error {
-	for range 3 {
-		empty := dynamicAllocatedArray{}
-		if err := empty.MarshalTo(ctx, engine); err != nil {
-			return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-		}
-	}
-	if err := engine.MarshalUB2(ctx, 0); err != nil {
-		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	if err := engine.MarshalUB4(ctx, driverCommon.UB4(len(image))); err != nil {
-		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	if err := engine.MarshalUB2(ctx, 1); err != nil {
-		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
-	}
-	if len(image) != 0 {
-		if err := engine.MarshalCLR(ctx, image, 0, len(image)); err != nil {
-			return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+		if err := encoder.wrapColumn(ctx, engine, bind.payload); err != nil {
+			return err
 		}
 	}
 	return nil

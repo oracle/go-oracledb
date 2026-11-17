@@ -120,6 +120,8 @@ var parameterDestinations = map[string]string{
 	"SSL_SERVER_CERT_DN":  "SECURITY",
 	"SSL_SERVER_DN_MATCH": "SECURITY",
 	"WALLET_LOCATION":     "SECURITY",
+	"TOKEN_AUTH":          "SECURITY",
+	"TOKEN_LOCATION":      "SECURITY",
 }
 
 // Pre-compiled regex for protocol extraction

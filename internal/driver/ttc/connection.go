@@ -42,7 +42,6 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -62,6 +61,12 @@ type connection struct {
 	shelf   *ttiShelf[driverCommon.MessageType]
 	sessCtx *driverCommon.SessionContext
 	ns      driverCommon.NetworkSession
+	// _requestStartCallbacks contains callbacks run when the connection is
+	// borrowed from the pool (ResetSession).
+	_requestStartCallbacks []*requestBoundaryCallback
+	// _requestEndCallbacks contains callbacks run when the connection is
+	// returned to the pool (IsValid).
+	_requestEndCallbacks []*requestBoundaryCallback
 	// _isClosed is used to know if the connection has been closed. If _isClosed
 	// is set to true the connection cannot be used.
 	_isClosed bool
@@ -95,12 +100,20 @@ func newConnection(
 		adtTypes:  make(map[string]*datatype.ObjectType),
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
-	_registerHandleConnectionShouldBeDropped(shelf, conn)
-	shelf.registerCancelExecution(conn.cancelCurrentExecution)
+	conn._registerHandleConnectionShouldBeDropped()
+	conn.shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
 		return nil, err
 	}
+
 	return conn, nil
+}
+
+// initializeRequestBoundaryCallbacks installs request-boundary callbacks on
+// the connection.
+func (c *connection) initializeRequestBoundaryCallbacks(requestStartCallbacks []*requestBoundaryCallback, requestEndCallbacks []*requestBoundaryCallback) {
+	c._requestStartCallbacks = requestStartCallbacks
+	c._requestEndCallbacks = requestEndCallbacks
 }
 
 /*
@@ -219,12 +232,12 @@ type connectionStatusProvider interface {
 	isBeingDrainned() bool
 }
 
-// _registerHandleConnectionShouldBeDropped registers post unmarshal callbacks
-// that invalidates connections that should be dropped due to a planned-down
-func _registerHandleConnectionShouldBeDropped(shelf *ttiShelf[driverCommon.MessageType], connection *connection) {
-	messageStreamer := shelf.GetMessageStreamer().(MessageStreamerInterface)
-	messageStreamer.RegisterPostUnmarshallCallback(TTIOER, connection._handleConnectionShouldBeDropped)
-	messageStreamer.RegisterPostUnmarshallCallback(TTISTA, connection._handleConnectionShouldBeDropped)
+// _registerHandleConnectionShouldBeDropped registers post-unmarshal callbacks
+// that invalidate the connection when the server marks it for a planned shutdown.
+func (c *connection) _registerHandleConnectionShouldBeDropped() {
+	messageStreamer := c.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	messageStreamer.RegisterPostUnmarshallCallback(TTIOER, c._handleConnectionShouldBeDropped)
+	messageStreamer.RegisterPostUnmarshallCallback(TTISTA, c._handleConnectionShouldBeDropped)
 }
 
 // _handleConnectionShouldBeDropped post unmarshal callback that invalidates
@@ -293,31 +306,31 @@ func checkNamedValue(nv *driver.NamedValue) error {
 		if isRefCursorDestination(out.Dest) {
 			return nil
 		}
-		// REF CURSOR OUT binds must use datatype.Rows (the public alias for
-		// *ttc.Rows), not the driver.Rows protocol interface.
+		// REF CURSOR OUT binds must use datatype.Cursor, not the driver.Rows
+		// protocol interface.
 		if _, ok := out.Dest.(*driver.Rows); ok {
-			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("REF CURSOR OUT binds require datatype.Rows"))
+			return common.NewOracleError(oracleErrors.InvalidRefCursorOutParameter, nil)
 		}
 		// Destination must be provided for output binding.
 		if out.Dest == nil {
-			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("nil destination"))
+			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, nil, "nil destination")
 		}
 
 		destInfo := reflect.ValueOf(out.Dest)
 		// Destination must be a pointer so the driver can write back the value.
 		if destInfo.Kind() != reflect.Ptr {
-			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("non pointer"))
+			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, nil, "non pointer")
 		}
 
 		// Destination pointer must not be nil.
 		if destInfo.IsNil() {
-			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("nil pointer"))
+			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, nil, "nil pointer")
 		}
 
 		pointedValue := reflect.Indirect(destInfo)
 		// Pointer-to-pointer is not supported; only pointer-to-value is allowed.
 		if pointedValue.Kind() == reflect.Ptr {
-			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("double pointer"))
+			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, nil, "double pointer")
 		}
 
 		_, err := driver.DefaultParameterConverter.ConvertValue(out.Dest)

@@ -54,6 +54,52 @@ func namedTypeForBind(v any) (*datatype.ObjectType, bool) {
 	return nil, false
 }
 
+func encodeObjectCollectionBind(value driver.Value, factory codecFactory) (driverCommon.B1Array, error) {
+	collection, ok := collectionForBind(value)
+	if !ok {
+		return nil, nil
+	}
+	return encodeCollectionImage(collection, factory)
+}
+
+func encodeObjectBind(value driver.Value, factory codecFactory) (driverCommon.B1Array, error) {
+	object, ok := objectForBind(value)
+	if !ok {
+		return nil, nil
+	}
+	return encodeObjectImage(object, factory)
+}
+
+func newNamedTypeBindOAC(metadata bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
+	if metadata.objectType == nil {
+		common.Odl.Error("Named ADT bind is missing type metadata")
+		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
+	}
+	return newTTIOacNamedType(metadata.objectType, maxLength)
+}
+
+func resolveNamedTypeMetadata(metadata []bindValueMetadata) {
+	var typ *datatype.ObjectType
+	for _, item := range metadata {
+		if item.objectType != nil {
+			typ = item.objectType
+			break
+		}
+	}
+	if typ == nil {
+		return
+	}
+	for index := range metadata {
+		if metadata[index].objectType == nil && metadata[index].isOut && isNamedTypeGoType(metadata[index].goType) {
+			metadata[index].objectType = typ
+		}
+	}
+}
+
+func isNamedTypeGoType(goType reflect.Type) bool {
+	return goType == reflect.TypeFor[datatype.Object]() || goType == reflect.TypeFor[datatype.ObjectCollection]()
+}
+
 func collectionForBind(v any) (datatype.ObjectCollection, bool) {
 	switch value := v.(type) {
 	case datatype.ObjectCollection:
@@ -145,16 +191,12 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 			data = append(data, image...)
 			continue
 		}
-		var encoder encoderFunc
-		var err error
-		encoder, err = factory.getCollectionEncoder(collection.ElementType)
+		metadata := extractBindValueMetadata(value)
+		encoder, err := factory.getEncoderForDtyType(collection.ElementType, metadata)
 		if err != nil {
-			encoder, err = factory.getEncoder(normalizeBindValue(value))
-			if err != nil {
-				return nil, err
-			}
+			return nil, err
 		}
-		encoded, err := encoder(value)
+		encoded, err := encoder.encode(value, factory)
 		if err != nil {
 			return nil, err
 		}
@@ -268,14 +310,12 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 			common.Odl.Error("ADT metadata error")
 			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
-		encoder, err := factory.getCollectionEncoder(attributeType.ElementType)
+		metadata := extractBindValueMetadata(value)
+		encoder, err := factory.getEncoderForDtyType(attributeType.ElementType, metadata)
 		if err != nil {
-			encoder, err = factory.getEncoder(normalizeBindValue(value))
-			if err != nil {
-				return nil, err
-			}
+			return nil, err
 		}
-		encoded, err := encoder(value)
+		encoded, err := encoder.encode(value, factory)
 		if err != nil {
 			return nil, err
 		}

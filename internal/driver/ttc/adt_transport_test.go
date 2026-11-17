@@ -111,12 +111,12 @@ func TestNamedTypeForZeroCollectionAndOutInference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, ok := inferNamedTypeForOut([]sqldriver.Value{
+	metadata := extractBindMetadata([]sqldriver.Value{
 		sql.Out{Dest: &datatype.ObjectCollection{}},
 		in,
-	}, 0)
-	if !ok || got != typ {
-		t.Fatalf("inferred type = %v, %v; want %p, true", got, ok, typ)
+	})
+	if metadata[0].objectType != typ {
+		t.Fatalf("inferred type = %v; want %p", metadata[0].objectType, typ)
 	}
 }
 
@@ -168,8 +168,8 @@ func TestObjectCollectionNullBind(t *testing.T) {
 func TestRefCursorOutBindUsesCursorOAC(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
 	var cursor datatype.Cursor
-	normalized := normalizeBindValue(sql.Out{Dest: &cursor})
-	oac, err := factory.getBindOac(normalized, 0)
+	metadata := extractBindValueMetadata(sql.Out{Dest: &cursor})
+	oac, err := factory.getBindOac(metadata, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
