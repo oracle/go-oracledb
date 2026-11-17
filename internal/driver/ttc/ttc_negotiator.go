@@ -288,7 +288,7 @@ func _createMarshallerFactory(
 		universal.setDefaultLobPrefetchSize(int64(props.GetDefaultLobPrefetchSize()))
 	}
 	factory := NewMarshallerFactory(universal)
-	factory.RegisterMarshaller(native, TTIPRO, TTIDTY)
+	factory.RegisterMarshaller(native, TTIPRO, TTIDTY, TTIINIT)
 	common.Odl.Fine("connectionNegotiator: Marshaller created/updated and registered")
 	return factory
 }

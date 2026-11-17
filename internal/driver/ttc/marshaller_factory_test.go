@@ -100,6 +100,7 @@ func TestCreateMarshallerFactory(t *testing.T) {
 	}{
 		{TTIPRO, Native},
 		{TTIDTY, Native},
+		{TTIINIT, Native},
 		{TTIFUN, Universal},
 	} {
 		marshaller := factory.GetMarshallerForMessageType(tc.messageType).(*MarshalEngine)
