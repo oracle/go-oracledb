@@ -42,6 +42,7 @@ package encoding
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"reflect"
 	"strconv"
 	"strings"
@@ -110,11 +111,23 @@ func encodeSubkey(c _sharding.Subkey) (int, []byte, error) {
 		return code, []byte(s), nil
 	case _sharding.RAW:
 		b, ok := c.Value.([]byte)
+		if text, isString := c.Value.(string); isString {
+			var err error
+			b, err = hex.DecodeString(text)
+			ok = err == nil
+		}
 		if !ok || len(b) == 0 {
 			return 0, nil, invalid()
 		}
 		return 23, append([]byte(nil), b...), nil
 	case _sharding.NUMBER:
+		if text, ok := c.Value.(string); ok {
+			b, valid := encodeNumberString(text)
+			if !valid {
+				return 0, nil, invalid()
+			}
+			return 2, b, nil
+		}
 		if c.Value == nil {
 			return 0, nil, invalid()
 		}
@@ -134,6 +147,9 @@ func encodeSubkey(c _sharding.Subkey) (int, []byte, error) {
 		return 2, b, err
 	case _sharding.DATE, _sharding.TIMESTAMP:
 		t, ok := c.Value.(time.Time)
+		if text, isString := c.Value.(string); isString {
+			t, ok = parseTimeString(text)
+		}
 		// Restrict to AD dates until BC serialization has independent fixtures.
 		if !ok || t.Year() < 1 || t.Year() > 9999 {
 			return 0, nil, invalid()
@@ -147,4 +163,84 @@ func encodeSubkey(c _sharding.Subkey) (int, []byte, error) {
 	default:
 		return 0, nil, invalid()
 	}
+}
+
+// encodeNumberString parses a decimal without converting through float64, which
+// could round a sharding key to a different value. Accept up to 38 significant
+// digits and Oracle's nonzero range [1e-130, 1e126); never round or truncate.
+// The boolean keeps parser errors (which include input values) out of logs/errors.
+func encodeNumberString(text string) ([]byte, bool) {
+	text = strings.TrimSpace(text)
+	negative := false
+	if len(text) > 0 && (text[0] == '-' || text[0] == '+') {
+		negative = text[0] == '-'
+		text = text[1:]
+	}
+	exponent := int64(0)
+	if i := strings.IndexAny(text, "eE"); i >= 0 {
+		var err error
+		exponent, err = strconv.ParseInt(text[i+1:], 10, 32)
+		if err != nil {
+			return nil, false
+		}
+		text = text[:i]
+	}
+	digits := make([]byte, 0, len(text))
+	decimalPosition := -1
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+		if ch == '.' && decimalPosition < 0 {
+			decimalPosition = len(digits)
+			continue
+		}
+		if ch < '0' || ch > '9' {
+			return nil, false
+		}
+		digits = append(digits, ch)
+	}
+	if len(digits) == 0 {
+		return nil, false
+	}
+	if decimalPosition < 0 {
+		decimalPosition = len(digits)
+	}
+	first := 0
+	for first < len(digits) && digits[first] == '0' {
+		first++
+	}
+	if first == len(digits) {
+		return []byte{0x80}, true
+	}
+	exponent += int64(decimalPosition) - int64(first) - 1
+	last := len(digits)
+	for last > first && digits[last-1] == '0' {
+		last--
+	}
+	if last-first > 38 || exponent < -130 || exponent > 125 {
+		return nil, false
+	}
+	return converters.ToNumber(digits[first:last], negative, int(exponent)), true
+}
+
+// parseTimeString accepts ISO dates, local SQL timestamps, and RFC3339 timestamps.
+// Zone-free strings use UTC; encoding retains wall-clock fields, as for time.Time.
+func parseTimeString(text string) (time.Time, bool) {
+	// time.Parse silently truncates excess fractional digits; reject them to
+	// avoid routing with a value different from the supplied timestamp.
+	if dot := strings.IndexByte(text, '.'); dot >= 0 {
+		end := dot + 1
+		for end < len(text) && text[end] >= '0' && text[end] <= '9' {
+			end++
+		}
+		if end-dot-1 > 9 {
+			return time.Time{}, false
+		}
+	}
+
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999", "2006-01-02T15:04:05.999999999", "2006-01-02"} {
+		if value, err := time.Parse(layout, text); err == nil {
+			return value, true
+		}
+	}
+	return time.Time{}, false
 }

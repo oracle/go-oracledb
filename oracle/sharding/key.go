@@ -63,6 +63,10 @@ const (
 // Subkey is one ordered subkey of a key. Character types accept string;
 // NUMBER accepts signed/unsigned integers and finite float32/float64; RAW accepts
 // []byte; DATE and TIMESTAMP accept time.Time (wall-clock fields, no time zone).
+// At encoding time NUMBER also accepts decimal strings (up to 38 significant
+// digits, optional exponent), RAW accepts even-length hexadecimal strings without
+// a prefix, and DATE/TIMESTAMP accept YYYY-MM-DD, ISO/SQL timestamps, or RFC3339.
+// Zone-free dates use UTC; zoned dates retain wall-clock fields during encoding.
 // Null and empty character/RAW values are not supported.
 type Subkey struct {
 	Type  KeyType

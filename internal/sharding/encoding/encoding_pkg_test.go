@@ -61,6 +61,8 @@ func TestCategoryExecutor(t *testing.T) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestStringSubkeyEncoding", Categories: "unitary", Exclusive: false, Fn: TestStringSubkeyEncoding},
+	{Name: "TestStringSubkeyEncodingRejectsInvalidValues", Categories: "unitary", Exclusive: false, Fn: TestStringSubkeyEncodingRejectsInvalidValues},
 	{Name: "TestListenerEncoding", Categories: "unitary", Exclusive: false, Fn: TestListenerEncoding},
 	{Name: "TestKeyRejectsInvalidValues", Categories: "unitary", Exclusive: false, Fn: TestKeyRejectsInvalidValues},
 	{Name: "TestKeyErrorsUseDriverCodes", Categories: "unitary", Exclusive: false, Fn: TestKeyErrorsUseDriverCodes},

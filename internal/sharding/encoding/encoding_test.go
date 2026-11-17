@@ -45,6 +45,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	publicSharding "github.com/oracle/go-oracledb/v26/oracle/sharding"
 )
@@ -93,7 +94,7 @@ func TestListenerEncoding(t *testing.T) {
 // TestKeyRejectsInvalidValues verifies rejection of empty keys, unsupported
 // types or values, non-finite numbers, and keys exceeding the encoded size limit.
 func TestKeyRejectsInvalidValues(t *testing.T) {
-	cases := [][]publicSharding.Subkey{nil, {{Type: publicSharding.VARCHAR, Value: ""}}, {{Type: publicSharding.VARCHAR, Value: "\xff"}}, {{Type: publicSharding.NUMBER, Value: nil}}, {{Type: publicSharding.NUMBER, Value: "123"}}, {{Type: publicSharding.NUMBER, Value: true}}, {{Type: publicSharding.NUMBER, Value: math.NaN()}}, {{Type: publicSharding.NUMBER, Value: math.Inf(1)}}, {{Type: publicSharding.RAW, Value: []byte(nil)}}, {{Type: publicSharding.DATE, Value: "today"}}, {{Type: publicSharding.KeyType(99), Value: 1}}, {{Type: publicSharding.VARCHAR, Value: strings.Repeat("a", 65536)}}}
+	cases := [][]publicSharding.Subkey{nil, {{Type: publicSharding.VARCHAR, Value: ""}}, {{Type: publicSharding.VARCHAR, Value: "\xff"}}, {{Type: publicSharding.NUMBER, Value: nil}}, {{Type: publicSharding.NUMBER, Value: "not-a-number"}}, {{Type: publicSharding.NUMBER, Value: true}}, {{Type: publicSharding.NUMBER, Value: math.NaN()}}, {{Type: publicSharding.NUMBER, Value: math.Inf(1)}}, {{Type: publicSharding.RAW, Value: []byte(nil)}}, {{Type: publicSharding.DATE, Value: "today"}}, {{Type: publicSharding.KeyType(99), Value: 1}}, {{Type: publicSharding.VARCHAR, Value: strings.Repeat("a", 65536)}}}
 	for i, c := range cases {
 		key, err := publicSharding.NewKey(c...)
 		if err == nil {
@@ -133,4 +134,95 @@ func TestKeyErrorsUseDriverCodes(t *testing.T) {
 	}
 	_, err = EncodeKey(key)
 	assertCode(err, oracleErrors.ShardingKeyTooLong)
+}
+
+// TestStringSubkeyEncoding verifies conversion according to the declared type,
+// exact decimal handling, and equivalent wire bytes for typed/string inputs.
+func TestStringSubkeyEncoding(t *testing.T) {
+	cases := []struct {
+		name string
+		kind publicSharding.KeyType
+		text string
+		want string
+	}{
+		{"number", publicSharding.NUMBER, "120", "1 0 2,wgIV"},
+		{"exponent", publicSharding.NUMBER, " +1.20e2 ", "1 0 2,wgIV"},
+		{"fraction", publicSharding.NUMBER, "1.5", "1 0 2,wQIz"},
+		{"negative", publicSharding.NUMBER, "-1", "1 0 2,PmRm"},
+		{"zero", publicSharding.NUMBER, "-0.000", "1 0 2,gA=="},
+		{"raw", publicSharding.RAW, "00fF", "1 0 23,AP8="},
+		{"date", publicSharding.DATE, "2026-11-11 12:30:45", "1 0 12,eH4LCw0fLg=="},
+		{"timestamp", publicSharding.TIMESTAMP, "2026-11-11T12:30:45.000000001Z", "1 0 180,eH4LCw0fLgAAAAE="},
+		{"local timestamp", publicSharding.TIMESTAMP, "2026-11-11 12:30:45.000000001", "1 0 180,eH4LCw0fLgAAAAE="},
+		{"character remains text", publicSharding.VARCHAR, "120", "1 0 1,MTIw"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			key, err := publicSharding.NewKey(publicSharding.Subkey{Type: tc.kind, Value: tc.text})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := EncodeKey(key)
+			if err != nil || string(got) != tc.want {
+				t.Fatalf("got %q, %v; want %q", got, err, tc.want)
+			}
+			if key.Subkeys()[0].Value != tc.text {
+				t.Fatal("encoding modified stored subkey")
+			}
+		})
+	}
+	// Decoding exact decimal bytes catches precision loss beyond float64/int64.
+	for _, value := range []string{"9007199254740993", "18446744073709551616", "12345678901234567890.123456789012345678", "0.0012", "-0.0012"} {
+		data, ok := encodeNumberString(value)
+		if !ok {
+			t.Fatalf("rejected %s", value)
+		}
+		got, err := converters.DecodeExactDecimalAsString(data)
+		if err != nil || got != value {
+			t.Fatalf("round trip: got %s, %v; want %s", got, err, value)
+		}
+	}
+	for _, value := range []string{"1e-130", "9.99e125"} {
+		if _, ok := encodeNumberString(value); !ok {
+			t.Fatalf("rejected boundary %s", value)
+		}
+	}
+	for _, value := range []string{"2026-11-11", "2026-11-11T12:30:45", "2026-11-11T12:30:45+05:30"} {
+		if _, ok := parseTimeString(value); !ok {
+			t.Fatalf("rejected time %s", value)
+		}
+	}
+}
+
+// TestStringSubkeyEncodingRejectsInvalidValues verifies malformed, ambiguous, and
+// out-of-range strings fail during encoding with redacted registered errors.
+func TestStringSubkeyEncodingRejectsInvalidValues(t *testing.T) {
+	cases := map[publicSharding.KeyType][]string{
+		publicSharding.NUMBER:    {"", ".", "1.2.3", "1e", "NaN", "Inf", "0x12", "1_000", "1e126", "1e-131", "1e999999999999", "123456789012345678901234567890123456789"},
+		publicSharding.RAW:       {"", "abc", "zz", "0x12"},
+		publicSharding.DATE:      {"today", "11/12/2026", "2026-02-30", "0000-01-01"},
+		publicSharding.TIMESTAMP: {"invalid", "2026-11-11T25:00:00Z", "2026-11-11T12:30:45.1234567891Z"},
+	}
+	for kind, values := range cases {
+		for _, value := range values {
+			key, err := publicSharding.NewKey(publicSharding.Subkey{Type: kind, Value: value})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = EncodeKey(key)
+			var sqlErr oracleErrors.SQLError
+			if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.ShardingSubkeyEncoding) {
+				t.Fatalf("expected encoding error for type %v, got %v", kind, err)
+			}
+			var cause oracleErrors.SQLError
+			if !errors.As(errors.Unwrap(err), &cause) || cause.ErrorCode() != string(oracleErrors.ShardingSubkeyInvalid) {
+				t.Fatalf("expected invalid-subkey cause, got %v", err)
+			}
+		}
+	}
+	key, _ := publicSharding.NewKey(publicSharding.Subkey{Type: publicSharding.NUMBER, Value: "private-invalid-value"})
+	_, err := EncodeKey(key)
+	if err == nil || strings.Contains(err.Error(), "private-invalid-value") {
+		t.Fatal("missing or unredacted conversion error")
+	}
 }
