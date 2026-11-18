@@ -84,7 +84,8 @@ var (
 	rowidBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 	// UROID prefix (not used for physical)
-	urowidTypePrefix = [...]byte{'A', '*', '-', '(', ')'}
+	//  add a space at first position so index in array matches types value
+	urowidTypePrefix = [...]byte{' ', 'A', '*', '-', '(', ')', '&'}
 )
 
 // appendKgrd42b converts an integer into a fixed-width sequence of base-64 characters and appends it to dst.
@@ -184,5 +185,5 @@ func DecodeUrowid(data []byte) (string, error) {
 
 	// For nonphysical UROWIDs, the format is a type-specific character prefix followed by Base64 of the remaining bytes.
 	body := base64.RawStdEncoding.EncodeToString(data[urowidTypeOffset+urowidTypeFieldLength:])
-	return string(urowidTypePrefix[rowidType-2]) + body, nil
+	return string(urowidTypePrefix[rowidType]) + body, nil
 }
