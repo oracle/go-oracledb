@@ -39,8 +39,56 @@
 package common
 
 import (
+	"bytes"
 	"testing"
 )
+
+// TestB1ArrayWriterWritesBigEndianValues checks that  writer
+// with empty initialization is acting correctly.
+// expectations:
+//   - content is the expected one
+//   - index is correct
+func TestB1ArrayWriterWritesBigEndianValues(t *testing.T) {
+	t.Parallel()
+
+	writer := NewB1ArrayWriter(nil)
+	writer.PutUint8(0xAB)
+	writer.PutUint16(0x1234)
+	writer.PutUint32(0x12345678)
+	writer.PutUint64(0x0123456789ABCDEF)
+
+	want := []byte{
+		0xAB,
+		0x12, 0x34,
+		0x12, 0x34, 0x56, 0x78,
+		0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
+	}
+	if writer.index != len(want) {
+		t.Fatalf("written length = %d, want %d", writer.index, len(want))
+	}
+	if got := writer.data[:writer.index]; !bytes.Equal(got, want) {
+		t.Errorf("written bytes = % X, want % X", got, want)
+	}
+}
+
+// TestB1ArrayWriterGrowsPreallocatedSlice checks that pre-allocate array in writer
+// is acting correctly.
+// expectations:
+//   - content is the expected one
+//   - index is correct
+func TestB1ArrayWriterGrowsPreallocatedSlice(t *testing.T) {
+	t.Parallel()
+
+	writer := NewB1ArrayWriter(make(B1Array, 0, 64))
+	writer.PutUint8(0xAB)
+
+	if writer.index != 1 {
+		t.Fatalf("written length = %d, want 1", writer.index)
+	}
+	if got := writer.data[:writer.index]; !bytes.Equal(got, []byte{0xAB}) {
+		t.Errorf("written bytes = % X, want AB", got)
+	}
+}
 
 func TestStripSpacesOutsideQuotes(t *testing.T) {
 	t.Parallel()

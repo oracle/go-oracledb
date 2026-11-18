@@ -656,6 +656,68 @@ func DecodeRefCursorColumn(_ columnContext, value any) (driver.Value, error) {
 	return rows, nil
 }
 
+// DecodeRowidDefColumn decodes an Oracle's  rowid bytes.
+//
+// Description:
+//
+//	Converts Oracle's rowid bytes to the printable rowid def representation returned by Oracle clients.
+//
+// Parameters:
+//   - columnContext: Column metadata used for error reporting (name/index).
+//   - data: Raw TTC payload bytes for the column.
+//     format : RBA (4 bytes) | partition ID (2) | table ID (1) | block number (4) | slot number (2)
+//
+// Returns:
+//   - driver.Value: time.Time containing the decoded date/time value.
+//   - error: Non-nil if decoding fails.
+func DecodeRowidDefColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	rowid, err := converters.DecodeRowidDef(data)
+	if err != nil {
+		common.Odl.Fine("rowid column parse error", "err", err)
+		return nil, rowDecodeError(columnContext, err, "ROWID")
+	}
+	return rowid, nil
+}
+
+// DecodeUrowidColumn decodes a Oracle's internal universal rowid bytes.
+//
+//Description:
+//
+//	Converts Oracle's internal universal rowid bytes to the printable rowid representation returned by Oracle clients.
+//
+//Parameters:
+//  - columnContext: Column metadata used for error reporting (name/index).
+//  - data: Raw TTC payload bytes for the column.
+//
+//Returns:
+//  - driver.Value: time.Time containing the decoded date/time value.
+//  - error: Non-nil if decoding fails.
+
+func DecodeUrowidColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	rowid, err := converters.DecodeUrowid(data)
+	if err != nil {
+		common.Odl.Fine("urowid column parse error", "err", err)
+		return nil, rowDecodeError(columnContext, err, "UROWID")
+	}
+	return rowid, nil
+}
+
 func GetScanTypeForVarcharColumn(_ columnContext) reflect.Type {
 	return reflect.TypeFor[string]()
 }

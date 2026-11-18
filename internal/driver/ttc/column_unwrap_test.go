@@ -121,6 +121,8 @@ func TestColumnDecoderRegistrations(t *testing.T) {
 		DtyClob: {MinTTCProtocolVersion: unwrapClobColumn},
 		DtyBlob: {MinTTCProtocolVersion: unwrapBlobColumn},
 		DtyJSON: {MinTTCProtocolVersion: unwrapJSONColumn},
+		DtyBuri: {MinTTCProtocolVersion: unwrapUrowidColumn},
+		DtyRiD:  {MinTTCProtocolVersion: unwrapRowidDefColumn},
 		DtyCur: {
 			MinTTCProtocolVersion: unwrapRefCursorColumn12,
 			17:                    unwrapRefCursorColumn17,

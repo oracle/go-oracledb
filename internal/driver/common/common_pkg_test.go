@@ -92,6 +92,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestSessionContext_SetSessionCharacterSets", Categories: "unitary", Exclusive: false, Fn: TestSessionContext_SetSessionCharacterSets},
 	{Name: "TestSessionContext_UpdateSessionProperties", Categories: "unitary", Exclusive: false, Fn: TestSessionContext_UpdateSessionProperties},
 	{Name: "TestUtility_SimpleStringToB1Array", Categories: "unitary", Exclusive: false, Fn: TestUtility_SimpleStringToB1Array},
+	{Name: "TestB1ArrayWriterWritesBigEndianValues", Categories: "unitary", Exclusive: false, Fn: TestB1ArrayWriterWritesBigEndianValues},
+	{Name: "TestB1ArrayWriterGrowsPreallocatedSlice", Categories: "unitary", Exclusive: false, Fn: TestB1ArrayWriterGrowsPreallocatedSlice},
 	{Name: "TestUtility_EmptyStringToB1Array", Categories: "unitary", Exclusive: false, Fn: TestUtility_EmptyStringToB1Array},
 	{Name: "TestUtility_NonBMPStringToB1Array", Categories: "unitary", Exclusive: false, Fn: TestUtility_NonBMPStringToB1Array},
 	{Name: "TestUtility_GetTimeZoneBytes", Categories: "unitary", Exclusive: false, Fn: TestUtility_GetTimeZoneBytes},
