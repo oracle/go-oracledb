@@ -244,6 +244,8 @@ func convertSessionlessTxOptionsToFlags(sessionlessTx *sessionlessTransaction, o
 		flags |= otxseTransNew
 		if opts.ReadOnly {
 			flags |= otxseTransReadOnly
+		} else {
+			flags |= otxseTransReadWrite
 		}
 	}
 

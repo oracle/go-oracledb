@@ -303,12 +303,9 @@ func (t *sessionlessTransaction) endTransaction() {
 	t.transaction.endTransaction()
 }
 
-// detachTransaction executes an OTXSE request and waits for the
-// terminal TTIOER or TTISTA response.
-//
-// Because of a bug, detachTransaction sends OTXSE as a piggyback
-// operation of a ROLLBACK. This is not the expected behavior, but
-// it is a workaround.
+// detachTransaction queues an OTXSE detach request and follows it with an
+// OTXEN rollback to flush the piggyback and read the terminal response. The
+// rollback is a workaround for a server issue with processing detach requests.
 //
 // Parameters:
 //   - ctx: Context used for the detach operation.
@@ -324,7 +321,7 @@ func (t *transaction) detachTransaction(ctx context.Context) error {
 	}
 
 	// create the message
-	msg, err := t.underlyingConnection().shelf.GetMessageFactory().GetMessageForFunction(TTIFUN, oTxSe)
+	msg, err := t.underlyingConnection().shelf.GetMessageFactory().GetMessageForFunction(TTIPFN, oTxSe)
 	if err != nil {
 		common.Odl.Warn("Error creating OTXSE message", "error", err)
 		return common.NewOracleError(oracleErrors.InternalError, err)
@@ -346,39 +343,7 @@ func (t *transaction) detachTransaction(ctx context.Context) error {
 		return common.NewOracleError(oracleErrors.StreamerWriteError, err)
 	}
 
-	err = stmr.Flush(ctx)
-	if err != nil {
-		common.Odl.Warn("Error flushing OTXSE message", "error", err)
-		return common.NewOracleError(oracleErrors.StreamerWriteError, err)
-	}
-
-	stmr.RegisterPreUnmarshallCallback(TTIRPA, func(*messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
-		return t.underlyingConnection().shelf.GetMessageFactory().GetMessageForFunction(TTIRPA, oTxSe)
-	})
-	defer stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
-
-	// handle the message result
-	for {
-		retMsg, err := stmr.Pull(ctx, TTIRPA, TTIOER, TTISTA)
-		if err != nil {
-			common.Odl.Warn("Error pulling OTXSE response", "error", err)
-			return common.NewOracleError(oracleErrors.StreamerReadError, err)
-		}
-
-		switch retMsg.GetMsgCode() {
-		case TTIRPA:
-			if rpa, ok := retMsg.(*ttiOTxSeRPA); ok {
-				common.Odl.Debug("OTXSE returned transaction state", "application value", rpa.GetApplicationValue(), "context", rpa.GetContext())
-			}
-		case TTIOER:
-			if err := retMsg.(tTIOerIface).getError(); err != nil {
-				return err
-			}
-			return nil
-		case TTISTA:
-			return nil
-		}
-	}
+	return t.rollback(ctx)
 }
 
 // GlobalTransactionID returns a copy of the identifier currently stored on
