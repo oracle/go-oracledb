@@ -600,13 +600,17 @@ func urowidCompatibleVersion(value string) (bool, error) {
 
 // requireCompatible reads the live COMPATIBLE parameter before the fixture creates any resources.
 // A valid value below the minimum skips the test; unreadable or malformed values fail setup.
-// This applies the version parser to the actual database configuration used by the test session.
+// DBMS_UTILITY avoids requiring direct SELECT access to the V$PARAMETER fixed view.
 func (f *urowidFixture) requireCompatible(t *testing.T) {
 	t.Helper()
 	var value string
-	err := f.conn.QueryRowContext(f.ctx,
-		"SELECT value FROM v$parameter WHERE name = 'compatible'").Scan(&value)
-	urowidRequireNoError(t, "PREREQUISITE: read live COMPATIBLE parameter", err)
+	var version string
+	_, err := f.conn.ExecContext(f.ctx, `BEGIN
+		DBMS_UTILITY.DB_VERSION(:version, :compatible);
+	END;`,
+		sql.Named("version", sql.Out{Dest: &version}),
+		sql.Named("compatible", sql.Out{Dest: &value}))
+	urowidRequireNoError(t, "PREREQUISITE: read live COMPATIBLE parameter via DBMS_UTILITY.DB_VERSION", err)
 	supported, err := urowidCompatibleVersion(value)
 	if err != nil {
 		t.Fatal("PREREQUISITE: live COMPATIBLE must contain one to five valid numeric components")
