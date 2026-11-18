@@ -555,7 +555,7 @@ func TestParseIterative_NoTokens(t *testing.T) {
 	assertConfigErrorCode(t, err, oracleErrors.NamingTokensMissing)
 }
 
-func TestParseEazyConnectDescriptorAllComponents(t *testing.T) {
+func TestParseMainURL_AllComponents(t *testing.T) {
 	t.Parallel()
 
 	parsed, serverMode, err := parseEazyConnectDescriptor("tcps://host1:2484,host2:2484/mydb:dedicated/inst1")
@@ -579,7 +579,7 @@ func TestParseEazyConnectDescriptorAllComponents(t *testing.T) {
 	}
 }
 
-func TestParseEazyConnectDescriptorMinimalURL(t *testing.T) {
+func TestParseMainURL_MinimalURL(t *testing.T) {
 	t.Parallel()
 
 	parsed, serverMode, err := parseEazyConnectDescriptor("host")
@@ -597,7 +597,7 @@ func TestParseEazyConnectDescriptorMinimalURL(t *testing.T) {
 	}
 }
 
-func TestParseEazyConnectDescriptorProtocols(t *testing.T) {
+func TestParseEzConnect_Protocols(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -621,7 +621,7 @@ func TestParseEazyConnectDescriptorProtocols(t *testing.T) {
 	}
 }
 
-func TestParseEazyConnectDescriptorInvalidProtocol(t *testing.T) {
+func TestParseEzConnect_InvalidProtocol(t *testing.T) {
 	t.Parallel()
 
 	parsed, _, err := parseEazyConnectDescriptor("http://myhost:1521/mydb")
@@ -636,7 +636,7 @@ func TestParseEazyConnectDescriptorInvalidProtocol(t *testing.T) {
 	}
 }
 
-func TestParseEazyConnectDescriptorInvalidPorts(t *testing.T) {
+func TestParseEzConnect_InvalidPorts(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -665,7 +665,7 @@ func TestParseEazyConnectDescriptorInvalidPorts(t *testing.T) {
 	}
 }
 
-func TestParseEazyConnectDescriptorValidPortBoundaries(t *testing.T) {
+func TestParseEzConnect_ValidPort_Boundary(t *testing.T) {
 	t.Parallel()
 
 	for _, port := range []string{"1", "65535"} {
@@ -682,7 +682,7 @@ func TestParseEazyConnectDescriptorValidPortBoundaries(t *testing.T) {
 	}
 }
 
-func TestParseEazyConnectDescriptorEmptyAddressGroups(t *testing.T) {
+func TestParseEzConnect_EmptyAddressGroups(t *testing.T) {
 	t.Parallel()
 
 	parsed, _, err := parseEazyConnectDescriptor(";;/mydb")
@@ -697,7 +697,7 @@ func TestParseEazyConnectDescriptorEmptyAddressGroups(t *testing.T) {
 	}
 }
 
-func TestParseHostListTrailingComma(t *testing.T) {
+func TestParseHostList_TrailingComma(t *testing.T) {
 	t.Parallel()
 
 	_, err := parseHostList("host1:1521,")
@@ -709,7 +709,7 @@ func TestParseHostListTrailingComma(t *testing.T) {
 	}
 }
 
-func TestParseHostListMultipleHosts(t *testing.T) {
+func TestParseHostList_MultipleHosts(t *testing.T) {
 	t.Parallel()
 
 	hosts, err := parseHostList("host1:1521,host2:1522,host3:1523")
@@ -721,7 +721,7 @@ func TestParseHostListMultipleHosts(t *testing.T) {
 	}
 }
 
-func TestParseHostListEmptyHost(t *testing.T) {
+func TestParseHostList_EmptyHost(t *testing.T) {
 	t.Parallel()
 
 	if _, err := parseHostList(""); err == nil {
@@ -729,7 +729,7 @@ func TestParseHostListEmptyHost(t *testing.T) {
 	}
 }
 
-func TestParseHostListDefaultPortInMiddle(t *testing.T) {
+func TestParseHostList_DefaultPort_InMiddle(t *testing.T) {
 	t.Parallel()
 
 	hosts, err := parseHostList("host1,host2:1522")
@@ -747,7 +747,7 @@ func TestParseHostListDefaultPortInMiddle(t *testing.T) {
 	}
 }
 
-func TestParseAddressGroupsMultipleGroups(t *testing.T) {
+func TestParseAddressGroups_MultipleGroups(t *testing.T) {
 	t.Parallel()
 
 	groups, err := parseAddressGroups("host1:1521;host2:1522;host3:1523")
@@ -759,7 +759,7 @@ func TestParseAddressGroupsMultipleGroups(t *testing.T) {
 	}
 }
 
-func TestParseAddressGroupsEmptyString(t *testing.T) {
+func TestParseAddressGroups_EmptyString(t *testing.T) {
 	t.Parallel()
 
 	if _, err := parseAddressGroups(""); err == nil {

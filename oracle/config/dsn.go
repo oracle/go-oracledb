@@ -747,7 +747,7 @@ func HandleDsn(dsn string, drvConfig *OracleDriverConfig) (*ConnectionPlans, err
 		dsnToUse = baseConfig.ConnectDescriptor
 	}
 	if len(dsnToUse) == 0 {
-		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, nil,"descriptor")
+		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, nil, "descriptor")
 	}
 	// Step 2: normalize whitespace without changing quoted values, then separate
 	// optional credentials from the connection target.

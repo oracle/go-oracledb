@@ -208,7 +208,6 @@ type OracleConnectionProperties struct {
 	// ServerType selects the Oracle server mode. It is encoded as SERVER in
 	// CONNECT_DATA and may be supplied by the config, DSN query, or descriptor.
 	ServerType string `ns_name:"server" tns_section:"CONNECT_DATA" default:"" validator:"validateServerType" help:"sets the remote server type (POOLED|DEDICATED|SHARED)"`
-
 }
 
 // String implements the Stringer interface

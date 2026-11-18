@@ -93,14 +93,14 @@ func TestDriver_ConfigurationConnectsWithDifferentDSNs(t *testing.T) {
 	                  (CONNECT_DATA=(SERVICE_NAME=%[3]s))
                  )
                )`, TestingConfig.Database.Protocol,
-		           TestingConfig.Database.Host, TestingConfig.Database.ServiceName,
-				   TestingConfig.Database.Port, TestingConfig.Database.Port+1, TestingConfig.Database.Port+2)
+		TestingConfig.Database.Host, TestingConfig.Database.ServiceName,
+		TestingConfig.Database.Port, TestingConfig.Database.Port+1, TestingConfig.Database.Port+2)
 
 	EZ_complex_dsn := fmt.Sprintf("%[1]s://%[2]s:%[4]d,%[2]s:%[5]d/%[3]s?connect_timeout=50&retry_count=2",
 		TestingConfig.Database.Protocol, TestingConfig.Database.Host, TestingConfig.Database.ServiceName,
-		TestingConfig.Database.Port, TestingConfig.Database.Port + 1)
-	
-    dsns := []struct {
+		TestingConfig.Database.Port, TestingConfig.Database.Port+1)
+
+	dsns := []struct {
 		name string
 		dsn  string
 	}{
@@ -474,6 +474,7 @@ func TestDriver_OpenConnectorReturnsInvalidDSNParameterError(t *testing.T) {
 		t.Fatal("expected invalid DSN parameter error")
 	}
 }
+
 // TestDriver_OpenConnectorCommonParams verifies that parameters from configuration.
 // that must be sent as connect data are actually present
 func TestDriver_OpenConnectorCommonParamsFromConf(t *testing.T) {
@@ -485,8 +486,7 @@ func TestDriver_OpenConnectorCommonParamsFromConf(t *testing.T) {
 
 	config := NewOracleDriverConfig()
 	config.ConnectionProperties.ServerType = "DEDICATEd"
- 	config.ConnectDescriptor = TestingConfig.GetConnectionString()
-
+	config.ConnectDescriptor = TestingConfig.GetConnectionString()
 
 	connector, err := NewOracleConnector(config)
 	if err != nil {
@@ -494,7 +494,7 @@ func TestDriver_OpenConnectorCommonParamsFromConf(t *testing.T) {
 	}
 
 	oracleConnector := connector.(*oracleConnector)
-	if !strings.EqualFold(oracleConnector.connectionPlans.BaseConfig.ConnectionProperties.ServerType,"DEDICATEd") {
+	if !strings.EqualFold(oracleConnector.connectionPlans.BaseConfig.ConnectionProperties.ServerType, "DEDICATEd") {
 		t.Fatalf("serverType discard from base configuration")
 	}
 	iterator, err := oracleConnector.connectionPlans.NewConnectionAttemptIterator(context.Background(), "server-type-test")
@@ -526,7 +526,7 @@ func TestDriver_OpenConnectorCommonParamsFromConf(t *testing.T) {
 	err = db.PingContext(ctx)
 
 	if err != nil {
-		t.Fatalf("connection using server type failed: %v",err)
+		t.Fatalf("connection using server type failed: %v", err)
 	}
 
 }
@@ -542,10 +542,9 @@ func TestDriver_OpenConnectorCommonParamsFromTSNDSN(t *testing.T) {
 
 	config := NewOracleDriverConfig()
 	config.ConnectDescriptor = fmt.Sprintf("%s/%s@(description=(address=(protocol=%s)(host=%s)(port=%d))(connect_data=(SERVER=DEDICATED)(service_name=%s)))",
-	TestingConfig.Credentials.Username, TestingConfig.Credentials.Password ,
-	TestingConfig.Database.Protocol,TestingConfig.Database.Host,TestingConfig.Database.Port,
-	TestingConfig.Database.ServiceName)
-
+		TestingConfig.Credentials.Username, TestingConfig.Credentials.Password,
+		TestingConfig.Database.Protocol, TestingConfig.Database.Host, TestingConfig.Database.Port,
+		TestingConfig.Database.ServiceName)
 
 	connector, err := NewOracleConnector(config)
 	if err != nil {
@@ -567,7 +566,7 @@ func TestDriver_OpenConnectorCommonParamsFromTSNDSN(t *testing.T) {
 	if !strings.EqualFold(connectData.Server, "dedicated") {
 		t.Fatalf("resolved config ServerType %q does not match CONNECT_DATA SERVER %q", serverType, connectData.Server)
 	}
-	if !strings.EqualFold(serverType,"dedicated") {
+	if !strings.EqualFold(serverType, "dedicated") {
 		t.Fatalf("resolved config ServerType %q does not match CONNECT_DATA SERVER %q", serverType, connectData.Server)
 	}
 	if !strings.Contains(strings.ToUpper(attempt.GetConnectDescriptor()), "(SERVER="+strings.ToUpper(serverType)+")") {
@@ -586,7 +585,7 @@ func TestDriver_OpenConnectorCommonParamsFromTSNDSN(t *testing.T) {
 	err = db.PingContext(ctx)
 
 	if err != nil {
-		t.Fatalf("connection using server type failed: %v",err)
+		t.Fatalf("connection using server type failed: %v", err)
 	}
 
 }
@@ -602,10 +601,9 @@ func TestDriver_OpenConnectorCommonParamsFromEZCDSN(t *testing.T) {
 
 	config := NewOracleDriverConfig()
 	config.ConnectDescriptor = fmt.Sprintf("%s/%s@%s:%d/%s:dedicated",
-		TestingConfig.Credentials.Username, TestingConfig.Credentials.Password ,
-		TestingConfig.Database.Host,TestingConfig.Database.Port,
+		TestingConfig.Credentials.Username, TestingConfig.Credentials.Password,
+		TestingConfig.Database.Host, TestingConfig.Database.Port,
 		TestingConfig.Database.ServiceName)
-
 
 	connector, err := NewOracleConnector(config)
 	if err != nil {
@@ -627,7 +625,7 @@ func TestDriver_OpenConnectorCommonParamsFromEZCDSN(t *testing.T) {
 	if !strings.EqualFold(connectData.Server, "dedicated") {
 		t.Fatalf("resolved config ServerType %q does not match CONNECT_DATA SERVER %q", serverType, connectData.Server)
 	}
-	if !strings.EqualFold(serverType,"dedicated") {
+	if !strings.EqualFold(serverType, "dedicated") {
 		t.Fatalf("resolved config ServerType %q does not match CONNECT_DATA SERVER %q", serverType, connectData.Server)
 	}
 	if !strings.Contains(strings.ToUpper(attempt.GetConnectDescriptor()), "(SERVER="+strings.ToUpper(serverType)+")") {
@@ -646,6 +644,6 @@ func TestDriver_OpenConnectorCommonParamsFromEZCDSN(t *testing.T) {
 	err = db.PingContext(ctx)
 
 	if err != nil {
-		t.Fatalf("connection using server type failed: %v",err)
+		t.Fatalf("connection using server type failed: %v", err)
 	}
 }
