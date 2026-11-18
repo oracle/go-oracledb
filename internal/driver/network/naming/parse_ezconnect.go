@@ -40,12 +40,35 @@ package naming
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+// hostPort is retained for the legacy TNS serializer and its callers.
+type hostPort struct {
+	host string
+	port string
+}
+
+// addressGroup is a group of endpoints consumed by the legacy TNS serializer.
+type addressGroup struct {
+	hosts []hostPort
+}
+
+// parsedURL contains fields used by the legacy TNS serializer. EZConnect
+// parsing itself is handled by oracle/config.
+type parsedURL struct {
+	protocol      driverCommon.Protocol
+	addressGroups []addressGroup
+	serviceName   string
+	serverMode    string
+	instanceName  string
+}
 
 // ConversionResult contains the TNS string and any unrecognized parameters
 type conversionResult struct {
@@ -108,13 +131,41 @@ func parseEzConnect(url string) (*conversionResult, error) {
 		return nil, err
 	}
 
-	// Step 2: Parse the main EZConnect URL
-	parsed, err := parseMainURL(cleanURL)
+	// Parse the EZConnect address and connect data through the normalized
+	// configuration parser. The legacy serializer remains here for callers that
+	// still consume a TNS string.
+	plans, err := oracleconfig.HandleDsn(cleanURL, oracleconfig.NewOracleDriverConfig())
 	if err != nil {
 		return nil, err
 	}
+	if len(plans.Plan.Descriptions) != 1 {
+		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, url, "EZConnect")
+	}
+	description := plans.Plan.Descriptions[0]
+	parsed := &parsedURL{}
+	if description.ConnectData != nil {
+		parsed.serviceName = description.ConnectData.ServiceName
+		parsed.serverMode = description.ConnectData.Server
+		parsed.instanceName = description.ConnectData.InstanceName
+	}
+	for _, group := range description.AddressGroups {
+		parsedGroup := addressGroup{}
+		for _, accessPoint := range group.AccessPoints {
+			parsed.protocol = accessPoint.Protocol
+			parsedGroup.hosts = append(parsedGroup.hosts, hostPort{
+				host: accessPoint.Host,
+				port: strconv.Itoa(accessPoint.Port),
+			})
+		}
+		parsed.addressGroups = append(parsed.addressGroups, parsedGroup)
+	}
+	if len(parsed.addressGroups) == 0 || len(parsed.addressGroups[0].hosts) == 0 {
+		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, url, "host")
+	}
 
-	// Step 3: Build the TNS format string
+	// Keep the long-standing TNS serializer for compatibility with legacy
+	// naming.ParseDSNString callers. The main EZConnect parser now lives in
+	// oracle/config.
 	tns := buildTNS(parsed, recognizedParams)
 
 	return &conversionResult{

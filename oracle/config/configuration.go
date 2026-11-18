@@ -84,9 +84,9 @@ func (config OracleDriverProperties) GetDefaultLobPrefetchSize() int {
 	return config.DefaultLobPrefetchSize
 }
 
-// OracleConnectionProperties contains Oracle Net connection properties used to
-// configure transport, failover, load balancing, TLS, wallet, proxy, and timeout
-// behavior when establishing a database connection.
+// OracleConnectionProperties contains DSN-capable connection properties used
+// for transport, failover, load balancing, TLS, wallet, service identification,
+// proxy, and timeout behavior.
 type OracleConnectionProperties struct {
 	// SSLServerCertDN specifies the distinguished name (DN) expected in the
 	// database server certificate.
@@ -100,8 +100,9 @@ type OracleConnectionProperties struct {
 	// TLS certificate validation.
 	SSLAllowWeakDNMatch bool `ns_name:"ssl_allow_weak_dn_match" validator:"validateBoolean" default:"false"`
 
-	// WalletLocation sets the directory containing Oracle wallets.
-	WalletLocation string `ns_name:"wallet_location" default:"" help:"sets the directory containing the Oracle wallets"`
+	// WalletLocation sets the directory containing Oracle wallets. Its
+	// my_wallet_directory alias is accepted in connection parameters.
+	WalletLocation string `ns_name:"wallet_location" aliases:"my_wallet_directory" default:"" help:"sets the directory containing the Oracle wallets"`
 
 	// HttpsProxy sets an unauthenticated HTTP CONNECT proxy hostname or IP
 	// address used to tunnel TCPS client connections. Proxy authentication and
@@ -114,7 +115,7 @@ type OracleConnectionProperties struct {
 
 	// ConnectTimeout sets the timeout, in seconds, for establishing an Oracle
 	// Net connection.
-	ConnectTimeout int `ns_name:"connect_timeout" default:"0" validator:"validateZeroOrPositive" help:"sets the timeout duration in seconds for an application to establish an Oracle Net connection"`
+	ConnectTimeout int `ns_name:"connect_timeout" default:"0" validator:"validateDurationSeconds" help:"sets the timeout duration in seconds for an application to establish an Oracle Net connection"`
 
 	// ExpireTime sets the interval, in minutes, for sending probes that verify
 	// whether connections are still active.
@@ -144,20 +145,70 @@ type OracleConnectionProperties struct {
 	// SourceRoute enables routing through multiple hosts.
 	SourceRoute bool `ns_name:"source_route" default:"false" validator:"validateBoolean" help:"enables network routing through multiple hosts"`
 
+	// ReceiveTimeout sets the Oracle Net receive timeout. It accepts Oracle Net
+	// or Go duration syntax, such as "5sec" or "500ms".
+	ReceiveTimeout string `aliases:"recv_timeout" validator:"validateDurationString" help:"sets the Oracle Net receive timeout"`
+
+	// SendTimeout sets the Oracle Net send timeout. It accepts Oracle Net or Go
+	// duration syntax, such as "5sec" or "500ms".
+	SendTimeout string `aliases:"send_timeout" validator:"validateDurationString" help:"sets the Oracle Net send timeout"`
+
+	// Enable contains the Oracle Net ENABLE value, such as BROKEN.
+	Enable string `aliases:"enable" help:"sets the Oracle Net ENABLE value"`
+
+	// CompressionLevels contains comma-separated Oracle Net compression levels
+	// or algorithms.
+	CompressionLevels string `aliases:"compression_levels" validator:"validateStringList" help:"sets Oracle Net compression levels or algorithms"`
+
+	// TypeOfService contains the Oracle Net type-of-service value.
+	TypeOfService string `aliases:"type_of_service" help:"sets the Oracle Net type of service"`
+
+	// ConnectionIDPrefix prefixes generated Oracle Net connection identifiers.
+	ConnectionIDPrefix string `aliases:"connection_id_prefix" tns_section:"CONNECT_DATA" help:"prefixes generated Oracle Net connection identifiers"`
+
+	// ServiceName identifies the database service requested by the client.
+	ServiceName string `aliases:"service_name" tns_section:"CONNECT_DATA" help:"identifies the database service"`
+
+	// SID identifies a database instance by its Oracle system identifier.
+	SID string `aliases:"sid" tns_section:"CONNECT_DATA" help:"identifies a database instance by SID"`
+
+	// ServiceTag contains the Oracle Net service tag.
+	ServiceTag string `aliases:"service_tag" tns_section:"CONNECT_DATA" help:"sets the Oracle Net service tag"`
+
+	// InstanceName identifies a particular database instance.
+	InstanceName string `aliases:"instance_name" tns_section:"CONNECT_DATA" help:"identifies a database instance"`
+
+	// FailoverMode contains a scalar Oracle Net client failover mode.
+	FailoverMode string `aliases:"failover_mode" tns_section:"CONNECT_DATA" help:"sets the Oracle Net client failover mode"`
+
+	// HS enables heterogeneous services when set in CONNECT_DATA.
+	HS string `aliases:"hs" tns_section:"CONNECT_DATA" help:"enables heterogeneous services"`
+
+	// RDBDatabase identifies a remote database when applicable.
+	RDBDatabase string `aliases:"rdb_database" tns_section:"CONNECT_DATA" help:"identifies a remote database"`
+
+	// GlobalName identifies the requested global database name.
+	GlobalName string `aliases:"global_name" tns_section:"CONNECT_DATA" help:"sets the requested global database name"`
+
 	// RetryCount sets how many times the configured host list is traversed when
 	// attempting to connect.
 	RetryCount int `ns_name:"retry_count" default:"0" help:"sets the number of times the list of hosts is traversed when attempting to connect to Oracle Database"`
 
 	// RetryDelay sets the delay, in seconds, between retries of host-list
 	// traversal.
-	RetryDelay int `ns_name:"retry_delay" default:"0" help:"sets the delay in seconds between retries of host list traversal"`
+	RetryDelay int `ns_name:"retry_delay" default:"0" validator:"validateDurationSeconds" help:"sets the delay in seconds between retries of host list traversal"`
 
 	// TransportConnectTimeout sets the transport-level timeout, in seconds, for
 	// establishing a connection to an Oracle database.
-	TransportConnectTimeout int `ns_name:"transport_connect_timeout" default:"0" validator:"validateZeroOrPositive" help:"sets the transport connect timeout duration in seconds for a client to establish an Oracle Net connection to an Oracle database"`
+	TransportConnectTimeout int `ns_name:"transport_connect_timeout" default:"0" validator:"validateDurationSeconds" help:"sets the transport connect timeout duration in seconds for a client to establish an Oracle Net connection to an Oracle database"`
 
 	// UseSNI enables Server Name Indication (SNI) for TLS connections.
-	UseSNI bool `ns_name:"USE_SNI" default:"false" validator:"validateBoolean" help:"enables Server Name Indication (SNI) for TLS connections"`
+	UseSNI bool `ns_name:"use_sni" default:"false" validator:"validateBoolean" help:"enables Server Name Indication (SNI) for TLS connections"`
+
+	// ServerType selects the Oracle server mode. It is encoded as SERVER in
+	// CONNECT_DATA and may be supplied by the config, DSN query, or descriptor.
+	ServerType string `ns_name:"server" tns_section:"CONNECT_DATA" default:"" validator:"validateServerType" help:"sets the remote server type (POOLED|DEDICATED|SHARED)"`
+
 }
 
 // String implements the Stringer interface
@@ -546,13 +597,18 @@ func toString(item interface{}) string {
 //     that must be processed. Some fields are structs, like language.Tag but should not be
 //     treated as group of configuration but as configuration value (see shouldExpandConfigurationField() )
 type OracleDriverConfig struct {
-	_allConfigurationField *list.List                 `internal:"true"`
-	_configKeysPrefix      string                     `internal:"true"`
-	ConnectDescriptor      string                     `help:"The connection descriptor for the remote database."`
-	Credentials            OracleCredentials          `isConfigGroup:"true"`
-	DriverProperties       OracleDriverProperties     `isConfigGroup:"true"`
-	ConnectionProperties   OracleConnectionProperties `isConfigGroup:"true"`
-	Locale                 OracleNLSParameters        `isConfigGroup:"true"`
+	_allConfigurationField *list.List `internal:"true"`
+	_configKeysPrefix      string     `internal:"true"`
+	// ConnectDescriptor is the EZConnect string or TNS descriptor for the database.
+	ConnectDescriptor string `help:"The connection descriptor for the remote database."`
+	// Credentials contains the user name, password, and authentication mode.
+	Credentials OracleCredentials `isConfigGroup:"true"`
+	// DriverProperties configures driver behavior that is independent of a network endpoint.
+	DriverProperties OracleDriverProperties `isConfigGroup:"true"`
+	// ConnectionProperties contains default Oracle Net settings for connection attempts.
+	ConnectionProperties OracleConnectionProperties `isConfigGroup:"true"`
+	// Locale contains the language and territory settings used by the driver.
+	Locale OracleNLSParameters `isConfigGroup:"true"`
 }
 
 // populateFlags create all configuration flags.
@@ -737,12 +793,8 @@ func (config *OracleDriverConfig) loadFromFlags() error {
 	return nil
 }
 
-// doFieldNameMatches checks that given name apply to the structured field
-//
-//	name can be its name or JSON name as a tag or special name alias
-//
-// in propertyName
-// return true if name matches
+// doFieldNameMatches reports whether name matches a field's full configuration
+// name, property name, Oracle Net name or alias, or JSON name.
 func doFieldNameMatches(name string, field *_fieldListElem) bool {
 	if strings.EqualFold(name, field.name) {
 		return true
@@ -750,7 +802,7 @@ func doFieldNameMatches(name string, field *_fieldListElem) bool {
 	if strings.EqualFold(name, field.element.Tag.Get("propertyName")) {
 		return true
 	}
-	if strings.EqualFold(name, field.element.Tag.Get("ns_name")) {
+	if doFieldNSNameMatches(name, field) {
 		return true
 	}
 	jsonTag := field.element.Tag.Get("json")
@@ -761,10 +813,55 @@ func doFieldNameMatches(name string, field *_fieldListElem) bool {
 	return false
 }
 
-// loadFromMap assigns configuration item value from values found in map
-// For each configuration field, the corresponding map key is checked for assigned value.
-// If a map key is mapped to a value, it is applied to the field.
-// error: if map value did not pass  validator (if any) checks.
+// findConfigurationField returns metadata for the configuration field that
+// matches a configuration, Oracle Net, alias, or JSON name. It also lets DSN
+// handling identify the declared CONNECT_DATA field without a separate name map.
+//
+// Input:
+//   - key: configuration or DSN field name to match.
+//
+// Output:
+//   - *_fieldListElem: matching field metadata, or nil when key is unknown.
+func (config *OracleDriverConfig) findConfigurationField(key string) *_fieldListElem {
+	for element := config._allConfigurationField.Front(); element != nil; element = element.Next() {
+		field := element.Value.(*_fieldListElem)
+		if doFieldNameMatches(key, field) {
+			return field
+		}
+	}
+	return nil
+}
+
+// doFieldNSNameMatches reports whether name matches a field's Oracle Net name
+// or one of its declared aliases.
+//
+// Input:
+//   - name: descriptor or query parameter name to match.
+//   - field: configuration field metadata containing the Oracle Net name and aliases.
+//
+// Output:
+//   - bool: true when name matches the field name or one of its aliases,
+//     ignoring case.
+func doFieldNSNameMatches(name string, field *_fieldListElem) bool {
+	if strings.EqualFold(name, field.element.Tag.Get("ns_name")) {
+		return true
+	}
+	for _, alias := range strings.Split(field.element.Tag.Get("aliases"), ",") {
+		if alias = strings.TrimSpace(alias); alias != "" && strings.EqualFold(name, alias) {
+			return true
+		}
+	}
+	return false
+}
+
+// loadFromMap assigns values whose keys match declared configuration fields.
+// Unknown keys are ignored.
+//
+// Input:
+//   - configItems: configuration names and string values to assign.
+//
+// Output:
+//   - error: validation or conversion failure for a matched field value.
 func (config *OracleDriverConfig) loadFromMap(configItems map[string]string) error {
 	for configItemsKey, configItemsValue := range configItems {
 		for item := config._allConfigurationField.Front(); item != nil; item = item.Next() {
@@ -825,28 +922,13 @@ func (config *OracleDriverConfig) loadFromNode(root *Node) error {
 }
 
 // loadNodeValues recursively visits the descriptor tree and assigns leaf values
-// whose names match a configuration field's ns_name tag. MY_WALLET_DIRECTORY
-// is treated as an alias for WALLET_LOCATION.
+// whose names match a configuration field's ns_name tag or declared alias.
 func (config *OracleDriverConfig) loadNodeValues(node *Node) error {
-	name := node.Name
-	if name == "MY_WALLET_DIRECTORY" {
-		name = "WALLET_LOCATION"
-	}
-
 	if len(node.Children) == 0 {
 		for item := config._allConfigurationField.Front(); item != nil; item = item.Next() {
 			field := item.Value.(*_fieldListElem)
-			if field.nsNameUpper != "" && name == field.nsNameUpper {
-				value := node.Value
-				// TODO : introduce translator on fields for this.
-				if name == "CONNECT_TIMEOUT" || name == "TRANSPORT_CONNECT_TIMEOUT" {
-					seconds, err := descriptorTimeoutSeconds(value)
-					if err != nil {
-						return common.NewOracleError(oracleErrors.NamingContextError, err, value, node.Name)
-					}
-					value = strconv.Itoa(seconds)
-				}
-				if err := setFieldValueFromString(field, value); err != nil {
+			if doFieldNSNameMatches(node.Name, field) {
+				if err := setFieldValueFromString(field, node.Value); err != nil {
 					return common.NewOracleError(oracleErrors.NamingContextError, err, node.Value, node.Name)
 				}
 				break
@@ -860,27 +942,6 @@ func (config *OracleDriverConfig) loadNodeValues(node *Node) error {
 		}
 	}
 	return nil
-}
-
-// descriptorTimeoutSeconds parses a timeout as integer seconds or a Go
-// duration and rounds positive fractional seconds up to the next whole second.
-func descriptorTimeoutSeconds(value string) (int, error) {
-	if seconds, err := strconv.Atoi(value); err == nil {
-		if seconds < 0 {
-			return 0, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil, value, "duration", "non-negative")
-		}
-		return seconds, nil
-	}
-
-	duration, err := time.ParseDuration(value)
-	if err != nil || duration < 0 {
-		return 0, common.NewOracleError(oracleErrors.InvalidConnectionParameter, err, value, "duration", "non-negative")
-	}
-	seconds := int(duration / time.Second)
-	if duration%time.Second != 0 {
-		seconds++
-	}
-	return seconds, nil
 }
 
 // implements Stringer intterface
@@ -1029,8 +1090,12 @@ func init() {
 	_fieldsValidators["validateLogonMode"] = validateLogonModeValue
 	_fieldsValidators["validateLanguage"] = validateLanguage
 	_fieldsValidators["validateZeroOrPositive"] = validateZeroOrPositive
+	_fieldsValidators["validateDurationString"] = validateDurationString
+	_fieldsValidators["validateDurationSeconds"] = validateDurationSeconds
+	_fieldsValidators["validateStringList"] = validateStringList
 	_fieldsValidators["validateLoggingLevel"] = validateLoggingLevel
 	_fieldsValidators["validateUserName"] = validateUserName
+	_fieldsValidators["validateServerType"] = validateServerType
 
 	// populates flags for each driver config items
 	NewOracleDriverConfig().populateFlags()
@@ -1081,6 +1146,14 @@ func (config *OracleDriverConfig) AssignFromFlags() error {
 	return config.loadFromFlags()
 }
 
+// AssignFromMap assigns values whose keys match declared configuration fields.
+// Unmatched entries are ignored.
+//
+// Input:
+//   - items: configuration names and string values to assign.
+//
+// Output:
+//   - error: validation or conversion failure for a matched field value.
 func (config *OracleDriverConfig) AssignFromMap(items map[string]string) error {
 	return config.loadFromMap(items)
 }
@@ -1117,13 +1190,39 @@ func (config *OracleDriverConfig) Validate() error {
 		field := item.Value.(*_fieldListElem)
 		validatorName := field.element.Tag.Get("validator")
 		if len(validatorName) != 0 {
-			_, err := _fieldsValidators[validatorName](field.elementValue, field.name)
+			validatedValue, err := _fieldsValidators[validatorName](field.elementValue, field.name)
 			if err != nil {
+				return err
+			}
+			if err := setFieldValue(field, validatedValue); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// validateServerType parses a string to a valid remote server process type
+// parameters:
+//   - key : property key to be parsed
+//   - value : property value
+//
+// error:
+//   - value is not assignable to string
+//   - parsing has failed
+func validateServerType(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() == reflect.String {
+		sType := strings.ToUpper(strings.TrimSpace(value.String()))
+		if sType == "" || sType == common.ServerTypeShared || sType == common.ServerTypeDedicated || sType == common.ServerTypePooled {
+			return sType, nil
+		}
+	}
+	return nil, common.NewOracleError(
+		oracleErrors.InvalidConnectionParameter,
+		nil,
+		value,
+		valueName,
+		[]string{common.ServerTypeShared, common.ServerTypeDedicated, common.ServerTypePooled})
 }
 
 // validateUserName validator for username.
@@ -1213,6 +1312,104 @@ func validateZeroOrPositive(value reflect.Value, valueName string) (any, error) 
 	}
 }
 
+// validateDurationString parses a duration string and returns its canonical
+// Go duration representation for storage in configuration metadata.
+//
+// Input:
+//   - value: string value using Oracle Net or Go duration syntax; an empty
+//     string means the option is unset.
+//   - valueName: configuration field name used in validation errors.
+//
+// Output:
+//   - any: canonical duration string, or an empty string when unset.
+//   - error: value is not a valid non-negative duration.
+func validateDurationString(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() != reflect.String {
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+			value, valueName, "duration string")
+	}
+	raw := strings.TrimSpace(value.String())
+	if raw == "" {
+		return "", nil
+	}
+	duration, err := parseDescriptorDuration(raw)
+	if err != nil {
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, err,
+			raw, valueName, "non-negative duration")
+	}
+	return duration.String(), nil
+}
+
+// validateDurationSeconds accepts a duration string or integer seconds and
+// stores the result as whole seconds in an integer configuration field.
+//
+// Input:
+//   - value: duration string or integer seconds.
+//   - valueName: configuration field name used in validation errors.
+//
+// Output:
+//   - any: integer seconds, rounding positive fractional seconds upward.
+//   - error: value is invalid, negative, or has an unsupported type.
+func validateDurationSeconds(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() >= reflect.Int && value.Kind() <= reflect.Int64 {
+		seconds := value.Int()
+		if seconds < 0 {
+			return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+				seconds, valueName, "non-negative duration")
+		}
+		return int(seconds), nil
+	}
+	if value.Kind() != reflect.String {
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+			value, valueName, "duration string or seconds")
+	}
+	duration, err := parseDescriptorDuration(value.String())
+	if err != nil {
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, err,
+			value.String(), valueName, "non-negative duration")
+	}
+	seconds := int(duration / time.Second)
+	if duration%time.Second != 0 {
+		seconds++
+	}
+	return seconds, nil
+}
+
+// validateStringList trims comma-separated list items and returns their
+// normalized comma-separated representation.
+//
+// Input:
+//   - value: comma-separated string to normalize.
+//   - valueName: configuration field name used in validation errors.
+//
+// Output:
+//   - any: normalized comma-separated string with empty items removed.
+//   - error: value is not a string.
+func validateStringList(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() != reflect.String {
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+			value, valueName, "string list")
+	}
+	return strings.Join(parseStringList(value.String()), ","), nil
+}
+
+// parseStringList splits a comma-separated string and trims its non-empty items.
+//
+// Input:
+//   - value: comma-separated string to parse.
+//
+// Output:
+//   - []string: non-empty list items in their original order.
+func parseStringList(value string) []string {
+	var result []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 var _languageTagType = reflect.TypeOf(language.Tag{})
 
 // validateLanguage parses a string to a valid language name
@@ -1239,7 +1436,7 @@ func validateLanguage(value reflect.Value, valueName string) (any, error) {
 	}
 	// is it already a Tag ?
 	if value.IsValid() && value.Type() == _languageTagType {
-		return value, nil
+		return value.Interface(), nil
 	}
 
 	return language.Tag{}, common.NewOracleError(

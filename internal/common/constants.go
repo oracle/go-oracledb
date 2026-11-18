@@ -67,6 +67,15 @@ const MaxIdentifierLength = 128
 
 var BackgroundContext context.Context = context.Background()
 
+const (
+	// ServerTypePooled server process type pooled (DRCP)
+	ServerTypePooled = "POOLED"
+	// ServerTypeShared shared server process
+	ServerTypeShared = "SHARED"
+	// ServerTypeDedicated dedicated server process
+	ServerTypeDedicated = "DEDICATED"
+)
+
 type LogonMode int64
 
 const (

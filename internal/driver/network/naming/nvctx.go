@@ -182,15 +182,33 @@ func NewAddress() *Address {
 
 // ConnectData contains database identification and connection parameters
 type ConnectData struct {
-	ServiceName        string
-	SID                string
-	Server             string
-	PoolName           string // DRCP pool selected with (POOL_NAME=...).
-	InstanceName       string
-	FailoverMode       string
-	HS                 string
-	RDBDatabase        string
-	GlobalName         string
+	// ServiceName identifies the requested database service.
+	ServiceName string
+	// SID identifies an instance by Oracle system identifier.
+	SID string
+	// Server selects the listener's server mode.
+	Server string
+	// PoolName selects the requested DRCP pool.
+	PoolName string
+	// PoolConnectionClass selects a DRCP connection class.
+	PoolConnectionClass string
+	// PoolPurity selects the requested DRCP session purity.
+	PoolPurity string
+	// PoolBoundary selects the DRCP pool boundary behavior.
+	PoolBoundary string
+	// ServiceTag carries the Oracle Net service tag.
+	ServiceTag string
+	// InstanceName identifies a particular instance in the requested service.
+	InstanceName string
+	// FailoverMode contains the client-side failover mode.
+	FailoverMode string
+	// HS enables heterogeneous services when set by the descriptor.
+	HS string
+	// RDBDatabase identifies a remote database when applicable.
+	RDBDatabase string
+	// GlobalName identifies the requested global database name.
+	GlobalName string
+	// ConnectionIDPrefix prefixes generated Oracle Net connection identifiers.
 	ConnectionIDPrefix string
 }
 
@@ -509,6 +527,14 @@ func extractConnectData(node *Node) (*ConnectData, error) {
 			connectData.Server = child.Value
 		case "POOL_NAME":
 			connectData.PoolName = child.Value
+		case "POOL_CONNECTION_CLASS":
+			connectData.PoolConnectionClass = child.Value
+		case "POOL_PURITY":
+			connectData.PoolPurity = child.Value
+		case "POOL_BOUNDARY":
+			connectData.PoolBoundary = child.Value
+		case "SERVICE_TAG":
+			connectData.ServiceTag = child.Value
 		case "INSTANCE_NAME":
 			connectData.InstanceName = child.Value
 		case "FAILOVER_MODE":

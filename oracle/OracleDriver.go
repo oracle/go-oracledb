@@ -149,7 +149,9 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 
 	var confToUse *oracleconfig.OracleDriverConfig
 	if drv.connectorConfig != nil {
-		confToUse = drv.connectorConfig
+		// Apply process-level overlays to a private config copy, never to the
+		// caller-owned configuration passed to NewDriverWithConfig.
+		confToUse = drv.connectorConfig.Clone()
 	} else {
 		confToUse = NewOracleDriverConfig()
 	}
@@ -169,14 +171,14 @@ func (drv *Driver) openConnector(dsn string) (driver.Connector, error) {
 	}
 
 	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
-		common.Odl.Debug("new connector created", "configuration", confToUse)
+		common.Odl.Debug("new connector created", "configuration", connectionPlans.BaseConfig)
 	}
 
-	if validateErr := confToUse.Validate(); validateErr != nil {
+	if validateErr := connectionPlans.BaseConfig.Validate(); validateErr != nil {
 		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, validateErr, dsn)
 	}
 
 	common.Odl.Fine("connection descriptions", "count", len(connectionPlans.Plan.Descriptions))
 
-	return buildOracleConnector(drv, connectionPlans), nil
+	return buildOracleConnector(drv, connectionPlans)
 }

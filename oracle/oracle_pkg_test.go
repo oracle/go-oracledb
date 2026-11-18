@@ -59,6 +59,7 @@ func TestMain(m *testing.M) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestDriver_ConfigurationConnectsWithDifferentDSNs", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationConnectsWithDifferentDSNs},
 	{Name: "TestDriver_ConfigurationWithConnectorBasic", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorBasic},
 	{Name: "TestDriver_ConfigurationWithConnectorWithEnvOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithEnvOverwrite},
 	{Name: "TestDriver_ConfigurationWithConnectorWithFlagOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithFlagOverwrite},

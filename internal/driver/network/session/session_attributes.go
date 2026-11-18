@@ -44,11 +44,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 )
 
 // TODO: The first can be deleted, underscore is a better standard
@@ -150,6 +152,27 @@ func (sa *sessionAtts) setFrom(source interface{}) {
 		enable = src.Enable
 		walletLocation = src.Security.WalletLocation
 		useSNI = src.IsUseSNIEnabled()
+	case oracleconfig.TransportOptions:
+		sdu = float64(src.SDU)
+		networkCompression = src.Compression
+		networkCompressionLevels = src.CompressionLevels
+		expireTime = float64(src.ExpireTime / time.Minute)
+		connectTimeout = float64(src.ConnectTimeout / time.Millisecond)
+		transportConnectTimeout = float64(src.TransportConnectTimeout / time.Millisecond)
+		recvTimeout = float64(src.ReceiveTimeout / time.Millisecond)
+		sendTimeout = float64(src.SendTimeout / time.Millisecond)
+		recvBufSize = float64(src.ReceiveBufferSize)
+		sendBufSize = float64(src.SendBufferSize)
+		connectionIDPrefix = src.ConnectionIDPrefix
+		tcpNoDelay = true
+		sslAllowWeakDNMatch = src.Security.SSLAllowWeakDNMatch
+		sslServerDNMatch = src.Security.SSLServerDNMatch
+		sslServerCertDN = src.Security.SSLServerCertDN
+		enable = src.Enable
+		httpsProxy = src.HTTPSProxy
+		httpsProxyPort = float64(src.HTTPSProxyPort)
+		walletLocation = src.Security.WalletLocation
+		useSNI = src.UseSNI
 
 	default:
 		return
@@ -231,16 +254,34 @@ func (sa *sessionAtts) readWalletFile() ([]byte, error) {
 
 // prepare prepares attributes for connection
 func (sa *sessionAtts) prepare(protocol driverCommon.Protocol) error {
+	return sa.prepareWithConnectionID(protocol, "")
+}
+
+// prepareWithConnectionID prepares transport attributes and uses a previously
+// resolved connection ID when one is supplied.
+//
+// Input:
+//   - protocol: transport protocol used to configure TLS and wallet behavior.
+//   - connectionID: final driver-resolved ID; empty preserves UUID generation
+//     and prefix handling performed by prepare.
+//
+// Output:
+//   - error: UUID generation or wallet loading error encountered during setup.
+func (sa *sessionAtts) prepareWithConnectionID(protocol driverCommon.Protocol, connectionID string) error {
 	sa.sdu = clamp(sa.sdu, NSPMNSDULN, NSPABSSDULN)
 
-	if sa.uuid == "" {
+	if connectionID != "" {
+		sa.uuid = connectionID
+	} else if sa.uuid == "" {
 		uuid, err := GenUUID()
 		if err != nil {
 			return err
 		}
 		sa.uuid = uuid
 	}
-	if sa.nt.Connectionidprefix != "" {
+	if connectionID != "" {
+		sa.nt.Connectionid = connectionID
+	} else if sa.nt.Connectionidprefix != "" {
 		sa.nt.Connectionid = sa.nt.Connectionidprefix + sa.uuid
 	} else {
 		sa.nt.Connectionid = sa.uuid

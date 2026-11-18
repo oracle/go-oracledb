@@ -43,8 +43,26 @@ import (
 	"strings"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+// Node aliases the descriptor node type now defined by oracle/config. Keeping
+// this alias preserves the legacy naming iterator API while both paths share
+// the same parser and tree representation.
+type Node = oracleconfig.Node
+
+// Parse parses a TNS descriptor using the normalized configuration parser.
+//
+// Input:
+//   - connectString: TNS descriptor text to convert into a normalized node tree.
+//
+// Output:
+//   - *Node: root of the parsed descriptor tree with normalized upper-case names.
+//   - error: descriptor syntax or validation error when parsing fails.
+func Parse(connectString string) (*Node, error) {
+	return oracleconfig.ParseConnectorDescriptor(connectString)
+}
 
 // _prepareExpectedValues prepares expected values.
 // It takes the expected values as define in the tag and return an array of trimmed / lowered strings

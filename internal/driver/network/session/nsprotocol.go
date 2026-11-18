@@ -56,6 +56,7 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -71,7 +72,6 @@ type networkSession struct {
 	resendCount         int
 	sAtts               *sessionAtts
 	ntAdapter           transport.NTAdapter
-	cData               []byte
 	cDataNVPair         interface{}
 	sndDatapkt          *dataPacket
 	rcvDatapkt          *dataPacket
@@ -81,6 +81,76 @@ type networkSession struct {
 	sndBuf              []byte
 	pendingPacket       []byte // to store pushed back packet from CheckinbandNotification
 	resetInProgress     bool
+}
+
+// connectRequest carries CONNECT packet data for one handshake. It remains
+// local to connect and is never retained by networkSession.
+type connectRequest struct {
+	// descriptor is the serialized TNS DESCRIPTION sent in the CONNECT packet.
+	// It is also used as the connect-data fallback when a redirect omits one.
+	descriptor []byte
+	// errorData contains resolved CONNECT_DATA values used only to format Oracle
+	// listener refusal errors. These values are not transmitted in the packet.
+	errorData connectErrorData
+}
+
+// connectErrorData contains CONNECT_DATA values needed in localized listener
+// refusal messages.
+type connectErrorData struct {
+	// serviceName is the requested Oracle service name, when one is set.
+	serviceName string
+	// serverType is the requested server mode, such as DEDICATED or POOLED.
+	serverType string
+	// instanceName is the requested Oracle instance name, when one is set.
+	instanceName string
+	// sid is the requested Oracle system identifier, when one is set.
+	sid string
+}
+
+// refusalDataFromAttempt extracts the resolved CONNECT_DATA values used by
+// localized listener refusal messages.
+//
+// Input:
+//   - attempt: fully resolved connection attempt containing effective CONNECT_DATA.
+//
+// Output:
+//   - connectErrorData: the service, server mode, instance, and SID values.
+func refusalDataFromAttempt(attempt *oracleconfig.ConnectionAttempt) connectErrorData {
+	data := attempt.GetConnectData()
+	return connectErrorData{
+		serviceName:  data.ServiceName,
+		serverType:   data.Server,
+		instanceName: data.InstanceName,
+		sid:          data.SID,
+	}
+}
+
+// refusalDataFromNode extracts refusal-message fields from an already parsed
+// CONNECT_DATA node.
+//
+// Input:
+//   - node: parsed CONNECT_DATA node from the legacy naming path, or nil.
+//
+// Output:
+//   - connectErrorData: values present in the node; empty when node is nil.
+func refusalDataFromNode(node *naming.Node) connectErrorData {
+	data := connectErrorData{}
+	if node == nil {
+		return data
+	}
+	for _, child := range node.Children {
+		switch child.Name {
+		case "SERVICE_NAME":
+			data.serviceName = child.Value
+		case "SERVER":
+			data.serverType = child.Value
+		case "INSTANCE_NAME":
+			data.instanceName = child.Value
+		case "SID":
+			data.sid = child.Value
+		}
+	}
+	return data
 }
 
 // cidSanitizer prevents OS-provided CID values from changing the naming structure.
@@ -283,7 +353,6 @@ func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) err
 		tlsadapter.Clear()
 	}
 	ns.connected = true
-	ns.cData = nil
 	ns.sndBuf = make([]byte, ns.sAtts.sdu)
 	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
 	ns.controlPkt = &controlPacket{}
@@ -302,51 +371,42 @@ func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) err
 
 // refuseArgs collects the placeholder values needed to format the
 // localized message for a specific ORA code.
-func (ns *networkSession) refuseArgs(errCode string, address transport.Address) ([]any, error) {
-	// Parse ns.cData to extract service_name, host, port
-	cDataStr := string(ns.cData)
-	cDataNode, err := naming.Parse(cDataStr)
-	if err != nil {
-		return nil, err
+func (ns *networkSession) refuseArgs(errCode string, address transport.Address, data connectErrorData) ([]any, error) {
+	missingValue := func(name string) error {
+		return fmt.Errorf("resolved CONNECT_DATA is missing %s", name)
 	}
 	switch errCode {
 	case "12514":
-		serviceName, err := cDataNode.GetValue("DESCRIPTION/CONNECT_DATA/SERVICE_NAME")
-		if err != nil {
-			return nil, err
+		if data.serviceName == "" {
+			return nil, missingValue("SERVICE_NAME")
 		}
-		return []any{serviceName, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
+		return []any{data.serviceName, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
 	case "12520":
-		serverType, err := cDataNode.GetValue("DESCRIPTION/CONNECT_DATA/SERVER")
-		if err != nil {
-			return nil, err
+		if data.serverType == "" {
+			return nil, missingValue("SERVER")
 		}
-		serviceName, err := cDataNode.GetValue("DESCRIPTION/CONNECT_DATA/SERVICE_NAME")
-		if err != nil {
-			return nil, err
+		if data.serviceName == "" {
+			return nil, missingValue("SERVICE_NAME")
 		}
-		return []any{serverType, serviceName, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
+		return []any{data.serverType, data.serviceName, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
 	case "12521":
-		instanceName, err := cDataNode.GetValue("DESCRIPTION/CONNECT_DATA/INSTANCE_NAME")
-		if err != nil {
-			return nil, err
+		if data.instanceName == "" {
+			return nil, missingValue("INSTANCE_NAME")
 		}
-		serviceName, err := cDataNode.GetValue("DESCRIPTION/CONNECT_DATA/SERVICE_NAME")
-		if err != nil {
-			return nil, err
+		if data.serviceName == "" {
+			return nil, missingValue("SERVICE_NAME")
 		}
-		return []any{instanceName, serviceName, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
+		return []any{data.instanceName, data.serviceName, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
 	case "12505":
-		sid, err := cDataNode.GetValue("DESCRIPTION/CONNECT_DATA/SID")
-		if err != nil {
-			return nil, err
+		if data.sid == "" {
+			return nil, missingValue("SID")
 		}
-		return []any{sid, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
+		return []any{data.sid, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
 	default:
 		return nil, nil
 	}
 }
-func (ns *networkSession) handleRefuse(ctx context.Context, p *refusePacket, address transport.Address) error {
+func (ns *networkSession) handleRefuse(ctx context.Context, p *refusePacket, address transport.Address, errorData connectErrorData) error {
 	if p.overflow {
 		_, err := ns.recvPacket(ctx)
 		if err != nil {
@@ -368,14 +428,14 @@ func (ns *networkSession) handleRefuse(ctx context.Context, p *refusePacket, add
 		return common.NewOracleError(oracleErrors.ConnectionRefusedDetail, nil, errCode, p.userReason, p.systemReason)
 	}
 
-	args, err := ns.refuseArgs(errCode, address)
+	args, err := ns.refuseArgs(errCode, address, errorData)
 	if err != nil {
 		return err
 	}
 	return common.NewOracleError(mappedCode, nil, args...)
 }
 
-func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket, address transport.Address) error {
+func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket, address transport.Address, originalConnectData []byte) error {
 	ns.redirectCount++
 	if ns.redirectCount > maxRedirectCount {
 		return common.NewOracleError(oracleErrors.NetworkRetryLimitExceeded, nil, "redirects", maxRedirectCount)
@@ -398,7 +458,7 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 		}
 	} else {
 		addrStr = string(p.dataBuf)
-		redirectConnectData = ns.cData
+		redirectConnectData = originalConnectData
 	}
 	redirAddressNode, err := naming.Parse(addrStr)
 	if err != nil {
@@ -477,14 +537,14 @@ func (ns *networkSession) handleResend(ctx context.Context, p *resendPacket, con
 	return nil // continue the loop
 }
 
-func (ns *networkSession) connect(ctx context.Context, address transport.Address) error {
+func (ns *networkSession) connect(ctx context.Context, address transport.Address, request connectRequest) error {
 	var err error
 	err = ns.transportConnect(ctx, address)
 	if err != nil {
 		return err
 	}
 	connectPkt := &connectPacket{}
-	connectPkt.marshal(ns.cData, ns.sAtts, NO_HEADER_FLAGS)
+	connectPkt.marshal(request.descriptor, ns.sAtts, NO_HEADER_FLAGS)
 	err = ns.sendConnect(ctx, connectPkt)
 	if err != nil {
 		if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
@@ -511,13 +571,13 @@ func (ns *networkSession) connect(ctx context.Context, address transport.Address
 			}
 			return nil
 		case *refusePacket:
-			err = ns.handleRefuse(ctx, p, address)
+			err = ns.handleRefuse(ctx, p, address, request.errorData)
 			if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
 				return disconnectErr
 			}
 			return err
 		case *redirectPacket:
-			err = ns.handleRedirect(ctx, p, address)
+			err = ns.handleRedirect(ctx, p, address, request.descriptor)
 			if err != nil {
 				if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
 					return disconnectErr
@@ -550,6 +610,69 @@ func (ns *networkSession) connect(ctx context.Context, address transport.Address
 func ConnectToOption(ctx context.Context, option *naming.ConnectionOption) (driverCommon.NetworkSession, error) {
 	return ConnectToOptionWithConnectionID(ctx, option, "")
 }
+
+// ConnectToAttempt opens the transport and sends the Oracle Net CONNECT packet
+// for one fully resolved connection attempt.
+//
+// Input:
+//   - ctx: context controlling transport establishment and cancellation.
+//   - attempt: resolved endpoint, connection identifier, effective transport
+//     settings, and connect data selected by ConnectionAttemptIterator.
+//
+// Output:
+//   - driverCommon.NetworkSession: open network session ready for the Oracle Net
+//     handshake to continue.
+//   - error: invalid attempt data, TLS preparation, or transport establishment error.
+func ConnectToAttempt(ctx context.Context, attempt *oracleconfig.ConnectionAttempt) (driverCommon.NetworkSession, error) {
+	if attempt == nil {
+		return nil, common.NewOracleError(oracleErrors.InternalError, errors.New("connection attempt is nil"))
+	}
+
+	// Step 1: initialize network attributes from the resolved attempt so TLS,
+	// timeouts, buffers, compression, and proxy settings match the chosen target.
+	options := attempt.GetTransportOptions()
+	ns := newNetworkSession()
+	ns.sAtts = newSessionAtts("")
+	ns.sAtts.setFrom(options)
+	if err := ns.sAtts.prepareWithConnectionID(options.Protocol, attempt.GetConnectionID()); err != nil {
+		return nil, err
+	}
+
+	// Step 2: serialize CONNECT_DATA from this resolved attempt and add the
+	// generated client and connection identifiers without reparsing its descriptor.
+	request := connectRequest{
+		descriptor: []byte(attempt.GetConnectDescriptorWithClientInfo(
+			sanitizeCIDValue(common.ProgramName),
+			sanitizeCIDValue(common.HostName),
+			sanitizeCIDValue(common.UserName),
+		)),
+		errorData: refusalDataFromAttempt(attempt),
+	}
+
+	// Step 3: construct the socket destination from the same attempt and open
+	// the transport. The descriptor and socket therefore refer to one target.
+	port := options.Port
+	if port == 0 {
+		port = TCP_DEFAULT_PORT
+	}
+	address := transport.Address{
+		Address: naming.Address{
+			Host:           options.Host,
+			Port:           port,
+			Protocol:       options.Protocol,
+			HTTPSProxy:     options.HTTPSProxy,
+			HTTPSProxyPort: options.HTTPSProxyPort,
+		},
+		Hostname:       options.Host,
+		HTTPSProxy:     options.HTTPSProxy,
+		HTTPSProxyPort: options.HTTPSProxyPort,
+	}
+	if err := ns.connect(ctx, address, request); err != nil {
+		return nil, err
+	}
+	return ns, nil
+}
+
 func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 	ns := newNetworkSession()
 	addressOption := option.Address
@@ -579,11 +702,21 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 		root.Children = append(root.Children, naming.Node{Name: "CONNECT_DATA"})
 		connectData = &root.Children[len(root.Children)-1]
 	}
+	children := connectData.Children[:0]
+	for _, child := range connectData.Children {
+		if child.Name == "CID" || child.Name == "CONNECTION_ID" {
+			continue
+		}
+		children = append(children, child)
+	}
+	connectData.Children = children
 	connectData.Children = append(connectData.Children, cachedCIDNode)
 	connIDNode := naming.Node{Name: "CONNECTION_ID", Value: ns.sAtts.nt.Connectionid}
 	connectData.Children = append(connectData.Children, connIDNode)
-	newConnectStr := root.ToString()
-	ns.cData = []byte(newConnectStr)
+	request := connectRequest{
+		descriptor: []byte(root.ToString()),
+		errorData:  refusalDataFromNode(connectData),
+	}
 
 	hostToBeUsed := addressOption.Host
 	if addressOption.ResolvedIP != "" {
@@ -603,7 +736,7 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 		HTTPSProxyPort: addressOption.HTTPSProxyPort,
 	}
 
-	err = ns.connect(ctx, address)
+	err = ns.connect(ctx, address, request)
 	if err != nil {
 		return nil, err
 	}
