@@ -587,7 +587,7 @@ func DecodeBlob(_ columnContext, value any) (driver.Value, error) {
 		return nil, err
 	}
 	// LOB columns supply their own charset metadata via LobContext.
-	return data, nil
+	return []byte(data), nil
 }
 
 /*
