@@ -197,6 +197,38 @@ func TestConnectionBeginTxStartsOrResumesSessionlessTransaction(t *testing.T) {
 	}
 }
 
+// TestConnectionBeginTxRejectsSerializableSessionlessIsolation verifies that a
+// prepared sessionless transaction cannot be started with serializable isolation.
+func TestConnectionBeginTxRejectsSerializableSessionlessIsolation(t *testing.T) {
+	t.Parallel()
+
+	conn, streamer := newSessionlessTransactionTestConnection()
+	preparedTx, err := conn.PrepareForSessionlessStartOperation(context.Background(), 30)
+	if err != nil {
+		t.Fatalf("prepare sessionless transaction: %v", err)
+	}
+	preparedSessionlessTx, ok := preparedTx.(*sessionlessTransaction)
+	if !ok {
+		t.Fatalf("prepared transaction has type %T, want *sessionlessTransaction", preparedTx)
+	}
+
+	_, err = conn.BeginTx(context.Background(), driver.TxOptions{
+		Isolation: driver.IsolationLevel(sql.LevelSerializable),
+	})
+	if got, want := transactionErrorCode(t, err), oracleErrors.IsolationLevelNotSupported; got != want {
+		t.Fatalf("BeginTx error code = %s, want %s", got, want)
+	}
+	if streamer.pushCalled {
+		t.Fatal("unsupported isolation level should not push a start message")
+	}
+	if conn.shelf.getTransaction() != preparedSessionlessTx {
+		t.Fatal("unsupported isolation level changed the prepared sessionless transaction")
+	}
+	if got := preparedSessionlessTx.currentTransactionState(); got != transactionPrepared {
+		t.Fatalf("transaction state = %d, want prepared", got)
+	}
+}
+
 // TestConnectionBeginTxPushFailureClearsSessionlessPreparation verifies that
 // a failed OTXSE start or resume leaves no prepared transaction on the shelf.
 func TestConnectionBeginTxPushFailureClearsSessionlessPreparation(t *testing.T) {

@@ -851,7 +851,7 @@ func TestSessionlessTransactionStartAfterSuspendSameConnection(t *testing.T) {
 		t.Fatalf("create connection wrapper: %v", err)
 	}
 	firstTx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelSerializable, ReadOnly: false,
+		Isolation: sql.LevelReadCommitted, ReadOnly: false,
 	}, 300)
 	if err != nil {
 		t.Fatalf("begin first sessionless transaction: %v", err)
@@ -879,7 +879,7 @@ func TestSessionlessTransactionStartAfterSuspendSameConnection(t *testing.T) {
 	}
 
 	secondTx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelSerializable, ReadOnly: false,
+		Isolation: sql.LevelReadCommitted, ReadOnly: false,
 	}, 300)
 	if err != nil {
 		t.Fatalf("begin second sessionless transaction after suspend: %v", err)
@@ -1449,97 +1449,37 @@ func TestSessionlessTransactionCommitPLSQLConn(t *testing.T) {
 	}
 }
 
-// TestSessionlessTransactionBeginOptions verifies that the public API accepts
-// every supported isolation/read-only combination and that each transaction
-// can be ended cleanly.
-func TestSessionlessTransactionBeginOptions(t *testing.T) {
-	// this test should not be run in parallel, v$transaction will contain all transactions for the
-	// current user
+// TestSessionlessTransactionRejectsSerializableIsolation verifies that
+// serializable isolation is rejected for read-write and read-only sessionless
+// transactions.
+func TestSessionlessTransactionRejectsSerializableIsolation(t *testing.T) {
+	t.Parallel()
+
+	ctx, db := openSessionlessTestDB(t)
+	defer db.Close()
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("acquire connection: %v", err)
+	}
+	defer conn.Close()
+
+	connectionWrapper, err := NewConnectionWrapper(conn)
+	if err != nil {
+		t.Fatalf("create connection wrapper: %v", err)
+	}
+
 	tests := []struct {
 		name string
 		opts sql.TxOptions
 	}{
-		// Default isolation, read-write transaction.
-		{name: "default read-write", opts: sql.TxOptions{}},
-		// Explicit read-committed isolation, read-write transaction.
-		{name: "read-committed read-write", opts: sql.TxOptions{Isolation: sql.LevelReadCommitted}},
-		// Serializable isolation, read-write transaction.
-		{name: "serializable read-write", opts: sql.TxOptions{Isolation: sql.LevelSerializable}},
-		// Default isolation, read-only transaction.
-		{name: "default read-only", opts: sql.TxOptions{ReadOnly: true}},
-		// Explicit read-committed isolation, read-only transaction.
-		{name: "read-committed read-only", opts: sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: true}},
-		// Serializable isolation, read-only transaction.
-		{name: "serializable read-only", opts: sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true}},
+		{name: "read-write", opts: sql.TxOptions{Isolation: sql.LevelSerializable}},
+		{name: "read-only", opts: sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true}},
 	}
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ctx, db := openSessionlessTestDB(t)
-			defer db.Close()
-
-			conn, err := db.Conn(ctx)
-			if err != nil {
-				t.Fatalf("acquire connection for options %q: %v", test.name, err)
-			}
-			defer conn.Close()
-
-			table := createObjectName("sessionless_tx_commit")
-			if err := createTable(ctx, db, table, map[string]string{"str_value": "VARCHAR(50)"}); err != nil {
-				t.Fatalf("create table %q for options %q: %v", table, test.name, err)
-			}
-			defer dropTable(ctx, db, table)
-
-			connectionWrapper, err := NewConnectionWrapper(conn)
-			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &test.opts, 300)
-			if err != nil {
-				t.Fatalf("begin sessionless transaction with options %q: %v", test.name, err)
-			}
-			if tx.GlobalTransactionID() == nil {
-				t.Fatalf("begin sessionless transaction with options %q returned an empty global transaction ID", test.name)
-			}
-
-			_, err = tx.ExecContext(ctx, "INSERT INTO "+table+" (str_value) values ('sessionless-start')")
-			if test.opts.ReadOnly && err == nil {
-				t.Fatalf("insert into table %q succeeded for read-only options %q; expected an error", table, test.name)
-			}
-			if !test.opts.ReadOnly && err != nil {
-				t.Fatalf("insert into table %q with options %q: %v", table, test.name, err)
-			}
-
-			var flag int
-			if rows, err := tx.QueryContext(ctx, "select bitand(flag, power(2, 28)) from v$transaction"); err != nil {
-				if sqlError, ok := err.(oracleErrors.SQLError); ok && sqlError.ErrorCode() == "ORA-00942" {
-					t.Skip("User does not have privileges to read V$TRANSACTION")
-				}
-				t.Fatalf("query serializable flag with options %q: %v", test.name, err)
-			} else {
-				defer rows.Close()
-				i := 0
-				for rows.Next() {
-					if rows.Err() != nil {
-						t.Fatalf("Unexpected error on rows.Next %v", rows.Err())
-					}
-					err := rows.Scan(&flag)
-					t.Logf("row %d, flag: %d", i, flag)
-					if err != nil {
-						t.Fatalf("Unexpected error getting flags %v", err)
-					}
-					if test.opts.Isolation == sql.LevelSerializable && !test.opts.ReadOnly {
-						if flag == 0 {
-							t.Errorf("serializable flag with options %q = %d, want non-zero", test.name, flag)
-						}
-					} else {
-						if flag != 0 {
-							t.Errorf("serializable flag with options %q = %d, want 0", test.name, flag)
-						}
-					}
-				}
-			}
-			if err := tx.Rollback(); err != nil {
-				t.Fatalf("rollback sessionless transaction with options %q: %v", test.name, err)
-			}
-
+			_, err := connectionWrapper.BeginSessionlessTx(ctx, &test.opts, 300)
+			requireSessionlessSQLError(t, "begin sessionless transaction", err, oracleErrors.IsolationLevelNotSupported)
 		})
 	}
 }

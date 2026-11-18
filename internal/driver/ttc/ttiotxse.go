@@ -173,7 +173,6 @@ func (m *tTIOtxse) configureForTransaction(tx oracleTx, opts driver.TxOptions) {
 	m.operation = otxseStart
 	applicationValue := driverCommon.UB4(0)
 	m.applicationValue = &applicationValue
-	m.flags = convertTxOptionsToFlags(opts)
 	if sessionlessTx, ok := tx.(*sessionlessTransaction); ok {
 		m.formatID = k2gSessionless
 		xid, globalTransactionIDLength, bqualLength := sessionlessTx.buildSessionlessXID()
@@ -181,10 +180,9 @@ func (m *tTIOtxse) configureForTransaction(tx oracleTx, opts driver.TxOptions) {
 		m.globalTransactionIDLength = globalTransactionIDLength
 		m.bqualLength = bqualLength
 		m.timeout = driverCommon.UB2(sessionlessTx.timeout)
-		if sessionlessTx.startOperation == SessionlessResume {
-			m.flags = otxseTransResume
-		}
-		m.flags |= otxseTransSessionless
+		m.flags = convertSessionlessTxOptionsToFlags(sessionlessTx, opts)
+	} else {
+		m.flags = convertTxOptionsToFlags(opts)
 	}
 }
 
@@ -223,6 +221,32 @@ func convertTxOptionsToFlags(opts driver.TxOptions) driverCommon.UB4 {
 	case sql.LevelReadCommitted, sql.LevelDefault:
 		flags |= otxseTransReadWrite
 	}
+	return flags
+}
+
+// convertSessionlessTxOptionsToFlags returns OTXSE flags for a sessionless start
+// or resume. Sessionless transactions use the default isolation level, so the
+// isolation option is not encoded. A new start includes the read-only flag when
+// requested; a resume uses the sessionless resume flags and ignores ReadOnly.
+//
+// Parameters:
+//   - sessionlessTx: Transaction whose start or resume operation determines
+//     the base flags.
+//   - opts: Transaction options; ReadOnly applies to new starts.
+//
+// Returns:
+//   - driverCommon.UB4: OTXSE flags for the sessionless transaction.
+func convertSessionlessTxOptionsToFlags(sessionlessTx *sessionlessTransaction, opts driver.TxOptions) driverCommon.UB4 {
+	flags := otxseTransSessionless
+	if sessionlessTx.startOperation == SessionlessResume {
+		flags |= otxseTransResume
+	} else {
+		flags |= otxseTransNew
+		if opts.ReadOnly {
+			flags |= otxseTransReadOnly
+		}
+	}
+
 	return flags
 }
 

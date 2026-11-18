@@ -539,6 +539,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestRunTransactionEndingOperationSetupAndTransportFailures", Categories: "unitary", Exclusive: false, Fn: TestRunTransactionEndingOperationSetupAndTransportFailures},
 	{Name: "TestRunTransactionEndingOperationAdditionalResponsePaths", Categories: "unitary", Exclusive: false, Fn: TestRunTransactionEndingOperationAdditionalResponsePaths},
 	{Name: "TestConnectionBeginTxStartsOrResumesSessionlessTransaction", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxStartsOrResumesSessionlessTransaction},
+	{Name: "TestConnectionBeginTxRejectsSerializableSessionlessIsolation", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxRejectsSerializableSessionlessIsolation},
 	{Name: "TestConnectionBeginTxPushFailureClearsSessionlessPreparation", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxPushFailureClearsSessionlessPreparation},
 	{Name: "TestSessionlessTransactionSuspendGTRIDSyncEndsTransaction", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionSuspendGTRIDSyncEndsTransaction},
 	{Name: "TestSessionlessTransactionSuspendFailureRestoresStartedState", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionSuspendFailureRestoresStartedState},

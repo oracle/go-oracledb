@@ -79,7 +79,9 @@ func (c *connection) BeginTx(ctx context.Context, opts driver.TxOptions) (driver
 		return nil, c.shelf.LocalizeError(common.NewOracleError(errors.AlreadyInTransaction, nil, nil))
 	}
 
-	if !isSupportedIsolationLevel(opts) {
+	// if this is a sessionless transaction, it has already been created and registered
+	isLocalTx := c.shelf.getTransaction() == nil
+	if !isSupportedIsolationLevel(opts, isLocalTx) {
 		return nil, common.NewOracleError(errors.IsolationLevelNotSupported, nil, nil)
 	}
 
@@ -109,10 +111,15 @@ func (c *connection) BeginTx(ctx context.Context, opts driver.TxOptions) (driver
 //
 // Returns:
 //   - bool: True when the isolation level is supported.
-func isSupportedIsolationLevel(opts driver.TxOptions) bool {
-	switch sql.IsolationLevel(opts.Isolation) {
-	case sql.LevelDefault, sql.LevelReadCommitted, sql.LevelSerializable:
+func isSupportedIsolationLevel(opts driver.TxOptions, isLocalTx bool) bool {
+	isolationLevel := sql.IsolationLevel(opts.Isolation)
+	switch {
+	case isolationLevel == sql.LevelDefault || isolationLevel == sql.LevelReadCommitted:
 		return true
+	case isolationLevel == sql.LevelSerializable && isLocalTx:
+		return true
+	case isolationLevel == sql.LevelSerializable && !isLocalTx:
+		return false
 	default:
 		return false
 	}

@@ -324,7 +324,7 @@ func (t *transaction) detachTransaction(ctx context.Context) error {
 	}
 
 	// create the message
-	msg, err := t.underlyingConnection().shelf.GetMessageFactory().GetMessageForFunction(TTIPFN, oTxSe)
+	msg, err := t.underlyingConnection().shelf.GetMessageFactory().GetMessageForFunction(TTIFUN, oTxSe)
 	if err != nil {
 		common.Odl.Warn("Error creating OTXSE message", "error", err)
 		return common.NewOracleError(oracleErrors.InternalError, err)
@@ -345,11 +345,40 @@ func (t *transaction) detachTransaction(ctx context.Context) error {
 		common.Odl.Warn("Error pushing OTXSE message", "error", err)
 		return common.NewOracleError(oracleErrors.StreamerWriteError, err)
 	}
-	// This is a workaround for a bug that causes suspend not to reset the state
-	// Suspend is now sent as a piggyback message followed by a rollback that
-	// will reset the state. This should be removed and suspend should be sent
-	// as a TTIFUN as soon as the bug is fixed.
-	return t.rollback(t.transactionContext())
+
+	err = stmr.Flush(ctx)
+	if err != nil {
+		common.Odl.Warn("Error flushing OTXSE message", "error", err)
+		return common.NewOracleError(oracleErrors.StreamerWriteError, err)
+	}
+
+	stmr.RegisterPreUnmarshallCallback(TTIRPA, func(*messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
+		return t.underlyingConnection().shelf.GetMessageFactory().GetMessageForFunction(TTIRPA, oTxSe)
+	})
+	defer stmr.UnRegisterPreUnmarshallCallback(TTIRPA)
+
+	// handle the message result
+	for {
+		retMsg, err := stmr.Pull(ctx, TTIRPA, TTIOER, TTISTA)
+		if err != nil {
+			common.Odl.Warn("Error pulling OTXSE response", "error", err)
+			return common.NewOracleError(oracleErrors.StreamerReadError, err)
+		}
+
+		switch retMsg.GetMsgCode() {
+		case TTIRPA:
+			if rpa, ok := retMsg.(*ttiOTxSeRPA); ok {
+				common.Odl.Debug("OTXSE returned transaction state", "application value", rpa.GetApplicationValue(), "context", rpa.GetContext())
+			}
+		case TTIOER:
+			if err := retMsg.(tTIOerIface).getError(); err != nil {
+				return err
+			}
+			return nil
+		case TTISTA:
+			return nil
+		}
+	}
 }
 
 // GlobalTransactionID returns a copy of the identifier currently stored on
