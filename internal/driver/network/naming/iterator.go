@@ -45,6 +45,7 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
 // ConnectionOption represents a single connection attempt with all necessary information.
@@ -650,8 +651,7 @@ func (ci *ConnectionIterator) isDownHost(address Address) bool {
 	if key == "" {
 		key = address.Host
 	}
-	_, found := sharedDownHostCache.Get(key)
-	return found
+	return driverCommon.IsDownHost(key)
 }
 
 // stablePartition preserves the order chosen by load balancing while moving

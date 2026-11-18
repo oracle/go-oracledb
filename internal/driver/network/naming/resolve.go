@@ -44,9 +44,10 @@ import (
 	"net"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-type lookupIPAddrFunc func(context.Context, string) ([]net.IPAddr, error)
+type lookupIPAddrFunc = driverCommon.LookupIPAddrFunc
 
 // resolveAddress resolves a single Address.
 //
@@ -61,21 +62,18 @@ func resolveAddress(ctx context.Context, address Address) ([]Address, error) {
 // resolveAddressWithLookup is identical to resolveAddress but takes an explicit DNS lookup
 // function. This is used by tests to avoid real DNS/network calls without mutating global state.
 func resolveAddressWithLookup(ctx context.Context, address Address, lookupIPAddr lookupIPAddrFunc) ([]Address, error) {
-	if err := ctx.Err(); err != nil {
-		// Context cancelled/expired: stop resolution.
-		return nil, err
-	}
-
-	// Check if Host is already an IP address - bypass DNS entirely.
-	if net.ParseIP(address.Host) != nil {
-		address.ResolvedIP = address.Host
+	ips, err := driverCommon.ResolveHostWithLookup(ctx, address.Host, lookupIPAddr)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		common.Odl.Debug(fmt.Sprintf("DNS resolution failed for host '%s': %v", address.Host, err))
 		return []Address{address}, nil
 	}
 
-	// Perform DNS lookup, relying on the caller's ctx for timeout/cancellation.
-	ips, err := lookupIPAddr(ctx, address.Host)
-	if err != nil {
-		common.Odl.Debug(fmt.Sprintf("DNS resolution failed for host '%s': %v", address.Host, err))
+	// An IP literal is returned directly by the shared resolver.
+	if net.ParseIP(address.Host) != nil {
+		address.ResolvedIP = address.Host
 		return []Address{address}, nil
 	}
 
@@ -88,7 +86,7 @@ func resolveAddressWithLookup(ctx context.Context, address Address, lookupIPAddr
 	resolved := make([]Address, 0, len(ips))
 	for _, ip := range ips {
 		newAddr := address
-		newAddr.ResolvedIP = ip.IP.String()
+		newAddr.ResolvedIP = ip
 		resolved = append(resolved, newAddr)
 		common.Odl.Debug(fmt.Sprintf("Resolved '%s' to IP '%s'", address.Host, newAddr.ResolvedIP))
 	}

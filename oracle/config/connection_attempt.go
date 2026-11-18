@@ -57,7 +57,8 @@ import (
 type TransportOptions struct {
 	// Protocol is the transport protocol used for this attempt.
 	Protocol driverCommon.Protocol
-	// Host is the original listener hostname or IP address.
+	// Host is the resolved listener IP used for dialing, or the original hostname
+	// when DNS resolution fails or returns no addresses.
 	Host string
 	// Port is the listener port.
 	Port uint16
@@ -109,6 +110,7 @@ type ConnectionAttempt struct {
 	transportOptions TransportOptions
 	effectiveConfig  *OracleDriverConfig
 	connectionID     string
+	resolvedIP       string
 	connectData      ConnectData
 	connectDataSet   map[string]bool
 	description      ConnectionDescription
@@ -147,7 +149,8 @@ func (attempt *ConnectionAttempt) GetProtocol() driverCommon.Protocol {
 	return attempt.transportOptions.Protocol
 }
 
-// GetHost returns the hostname or IP address selected for this attempt.
+// GetHost returns the destination used to open the transport: the resolved IP
+// when available, or the original hostname as a DNS fallback.
 //
 // Input:
 //   - attempt: the resolved connection attempt.
@@ -156,6 +159,18 @@ func (attempt *ConnectionAttempt) GetProtocol() driverCommon.Protocol {
 //   - string: the destination host used to open the transport.
 func (attempt *ConnectionAttempt) GetHost() string {
 	return attempt.transportOptions.Host
+}
+
+// GetResolvedIP returns the IP selected for this attempt, or an empty string
+// when DNS resolution failed or returned no addresses.
+//
+// Input:
+//   - attempt: the resolved connection attempt.
+//
+// Output:
+//   - string: the selected listener IP, when one was resolved.
+func (attempt *ConnectionAttempt) GetResolvedIP() string {
+	return attempt.resolvedIP
 }
 
 // GetPort returns the listener port selected for this attempt.
@@ -959,7 +974,8 @@ type descriptionCursor struct {
 type attemptPolicy struct {
 	// failover indicates whether later addresses are tried after a failure.
 	failover bool
-	// loadBalance indicates whether address order is shuffled between passes.
+	// loadBalance indicates whether the initial address order is shuffled and
+	// retry passes rotate through that order.
 	loadBalance bool
 	// sourceRoute records the description's source-route setting.
 	sourceRoute bool
@@ -975,8 +991,20 @@ type attemptTarget struct {
 	group ConnectionAddressGroup
 	// accessPoint is the selected endpoint.
 	accessPoint RemoteAccessPoint
+	// resolvedIP is the specific listener IP for this target; accessPoint.Host
+	// retains the hostname supplied by the DSN.
+	resolvedIP string
 	// sourceRoute is the effective value at the selected address-group scope.
 	sourceRoute bool
+}
+
+// dialHost returns the resolved IP when available, falling back to the original
+// hostname when DNS lookup failed or produced no addresses.
+func (target attemptTarget) dialHost() string {
+	if target.resolvedIP != "" {
+		return target.resolvedIP
+	}
+	return target.accessPoint.Host
 }
 
 // NewConnectionAttemptIterator creates an iterator over plans whose global
@@ -1116,10 +1144,9 @@ func (iterator *ConnectionAttemptIterator) Next() (*ConnectionAttempt, error) {
 		cursor.retryCycle++
 		cursor.nextTarget = 0
 		if cursor.policy.loadBalance && len(cursor.targets) > 1 {
-			iterator.random.Shuffle(len(cursor.targets), func(i, j int) {
-				cursor.targets[i], cursor.targets[j] = cursor.targets[j], cursor.targets[i]
-			})
+			roundRobinTargets(cursor.targets)
 		}
+		reorderTargetsByDownHostStatus(cursor.targets)
 	}
 }
 
@@ -1194,11 +1221,11 @@ func (iterator *ConnectionAttemptIterator) newDescriptionCursor(index int) (*des
 			groupSourceRoute = *group.SourceRoute
 		}
 		for _, accessPoint := range group.AccessPoints {
-			groupTargets = append(groupTargets, attemptTarget{
-				group:       cloneConnectionAddressGroup(group),
-				accessPoint: cloneRemoteAccessPoint(accessPoint),
-				sourceRoute: groupSourceRoute,
-			})
+			resolvedTargets, err := iterator.resolveAccessPoint(group, accessPoint, groupSourceRoute)
+			if err != nil {
+				return nil, err
+			}
+			groupTargets = append(groupTargets, resolvedTargets...)
 		}
 		groupLoadBalance := policy.loadBalance
 		if group.LoadBalance != nil {
@@ -1208,10 +1235,8 @@ func (iterator *ConnectionAttemptIterator) newDescriptionCursor(index int) (*des
 		if group.Failover != nil {
 			groupFailover = *group.Failover
 		}
-		if groupLoadBalance && len(groupTargets) > 1 {
-			iterator.random.Shuffle(len(groupTargets), func(i, j int) {
-				groupTargets[i], groupTargets[j] = groupTargets[j], groupTargets[i]
-			})
+		if groupLoadBalance && !policy.loadBalance && len(groupTargets) > 1 {
+			iterator.shuffleTargets(groupTargets)
 		}
 		if !groupFailover && len(groupTargets) > 1 {
 			groupTargets = groupTargets[:1]
@@ -1219,13 +1244,12 @@ func (iterator *ConnectionAttemptIterator) newDescriptionCursor(index int) (*des
 		targets = append(targets, groupTargets...)
 	}
 	if policy.loadBalance && len(targets) > 1 {
-		iterator.random.Shuffle(len(targets), func(i, j int) {
-			targets[i], targets[j] = targets[j], targets[i]
-		})
+		iterator.shuffleTargets(targets)
 	}
 	if !policy.failover && len(targets) > 1 {
 		targets = targets[:1]
 	}
+	reorderTargetsByDownHostStatus(targets)
 
 	return &descriptionCursor{
 		description:     description,
@@ -1233,6 +1257,93 @@ func (iterator *ConnectionAttemptIterator) newDescriptionCursor(index int) (*des
 		policy:          policy,
 		targets:         targets,
 	}, nil
+}
+
+// resolveAccessPoint expands one parsed access point into one attempt target
+// per resolved IP address. It retains the input hostname for descriptor and
+// endpoint metadata, and uses the hostname only when resolution fails or finds
+// no addresses.
+//
+// Input:
+//   - iterator: supplies the lookup context and shared DNS resolver.
+//   - group: source address group copied into each generated target.
+//   - accessPoint: parsed listener endpoint to resolve.
+//   - sourceRoute: effective source-route setting for this group.
+//
+// Output:
+//   - []attemptTarget: one target per resolved IP, or one hostname fallback.
+//   - error: context cancellation while preparing the attempt list.
+func (iterator *ConnectionAttemptIterator) resolveAccessPoint(group ConnectionAddressGroup, accessPoint RemoteAccessPoint, sourceRoute bool) ([]attemptTarget, error) {
+	ips, err := driverCommon.ResolveHost(iterator.ctx, accessPoint.Host)
+	if err != nil {
+		if iterator.ctx.Err() != nil {
+			return nil, iterator.ctx.Err()
+		}
+		common.Odl.Debug(fmt.Sprintf("DNS resolution failed for host '%s': %v", accessPoint.Host, err))
+		return []attemptTarget{newAttemptTarget(group, accessPoint, "", sourceRoute)}, nil
+	}
+	if len(ips) == 0 {
+		common.Odl.Debug(fmt.Sprintf("DNS resolution returned no IPs for host '%s'", accessPoint.Host))
+		return []attemptTarget{newAttemptTarget(group, accessPoint, "", sourceRoute)}, nil
+	}
+
+	targets := make([]attemptTarget, 0, len(ips))
+	for _, ip := range ips {
+		targets = append(targets, newAttemptTarget(group, accessPoint, ip, sourceRoute))
+		common.Odl.Debug(fmt.Sprintf("Resolved '%s' to IP '%s'", accessPoint.Host, ip))
+	}
+	return targets, nil
+}
+
+// newAttemptTarget copies the source settings into one independently resolved
+// target. The original hostname remains in accessPoint while resolvedIP
+// identifies the actual socket destination.
+func newAttemptTarget(group ConnectionAddressGroup, accessPoint RemoteAccessPoint, resolvedIP string, sourceRoute bool) attemptTarget {
+	return attemptTarget{
+		group:       cloneConnectionAddressGroup(group),
+		accessPoint: cloneRemoteAccessPoint(accessPoint),
+		resolvedIP:  resolvedIP,
+		sourceRoute: sourceRoute,
+	}
+}
+
+// shuffleTargets randomizes the initial order of connection attempts when the
+// applicable LOAD_BALANCE setting is enabled.
+func (iterator *ConnectionAttemptIterator) shuffleTargets(targets []attemptTarget) {
+	iterator.random.Shuffle(len(targets), func(i, j int) {
+		targets[i], targets[j] = targets[j], targets[i]
+	})
+}
+
+// roundRobinTargets rotates the attempt list left once, matching the old
+// iterator's ordering for each retry cycle after its initial shuffle.
+func roundRobinTargets(targets []attemptTarget) {
+	if len(targets) < 2 {
+		return
+	}
+	first := targets[0]
+	copy(targets, targets[1:])
+	targets[len(targets)-1] = first
+}
+
+// reorderTargetsByDownHostStatus keeps cached unreachable IPs as fallbacks
+// while preserving the order of healthy targets selected by load balancing.
+func reorderTargetsByDownHostStatus(targets []attemptTarget) {
+	if len(targets) < 2 {
+		return
+	}
+	ordered := make([]attemptTarget, 0, len(targets))
+	for _, target := range targets {
+		if !driverCommon.IsDownHost(target.dialHost()) {
+			ordered = append(ordered, target)
+		}
+	}
+	for _, target := range targets {
+		if driverCommon.IsDownHost(target.dialHost()) {
+			ordered = append(ordered, target)
+		}
+	}
+	copy(targets, ordered)
 }
 
 // resolveSelectedTarget applies all settings for a selected endpoint and
@@ -1303,6 +1414,7 @@ func (iterator *ConnectionAttemptIterator) resolveSelectedTarget(cursor *descrip
 	attempt := &ConnectionAttempt{
 		transportOptions: transportOptions,
 		connectionID:     connectionID,
+		resolvedIP:       target.resolvedIP,
 		connectData:      connectData,
 		connectDataSet:   connectDataSet,
 		description:      description,
@@ -1641,7 +1753,7 @@ func buildTransportOptions(config *OracleDriverConfig, cursor *descriptionCursor
 	// Step 1: initialize options from the resolved configuration, which already
 	// contains connector defaults, query values, and DESCRIPTION overrides.
 	options := TransportOptions{
-		Protocol: target.accessPoint.Protocol, Host: target.accessPoint.Host,
+		Protocol: target.accessPoint.Protocol, Host: target.dialHost(),
 		Port: uint16(target.accessPoint.Port), HTTPSProxy: props.HttpsProxy,
 		HTTPSProxyPort:          props.HttpsProxyPort,
 		ConnectTimeout:          time.Duration(props.ConnectTimeout) * time.Second,

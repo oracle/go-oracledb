@@ -268,7 +268,7 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 			if key == "" {
 				key = address.Host
 			}
-			naming.MarkDownHost(key)
+			driverCommon.MarkDownHost(key)
 		}
 		return err
 	}
@@ -651,6 +651,7 @@ func ConnectToAttempt(ctx context.Context, attempt *oracleconfig.ConnectionAttem
 
 	// Step 3: construct the socket destination from the same attempt and open
 	// the transport. The descriptor and socket therefore refer to one target.
+	accessPoint := attempt.GetAccessPoint()
 	port := options.Port
 	if port == 0 {
 		port = TCP_DEFAULT_PORT
@@ -660,10 +661,11 @@ func ConnectToAttempt(ctx context.Context, attempt *oracleconfig.ConnectionAttem
 			Host:           options.Host,
 			Port:           port,
 			Protocol:       options.Protocol,
+			ResolvedIP:     attempt.GetResolvedIP(),
 			HTTPSProxy:     options.HTTPSProxy,
 			HTTPSProxyPort: options.HTTPSProxyPort,
 		},
-		Hostname:       options.Host,
+		Hostname:       accessPoint.Host,
 		HTTPSProxy:     options.HTTPSProxy,
 		HTTPSProxyPort: options.HTTPSProxyPort,
 	}

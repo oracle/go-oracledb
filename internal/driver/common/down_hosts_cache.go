@@ -24,12 +24,12 @@
 ** SOFTWARE.
  */
 
-package naming
+package common
 
 import (
 	"time"
 
-	"github.com/oracle/go-oracledb/v26/internal/common"
+	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 )
 
 const (
@@ -39,7 +39,7 @@ const (
 
 // sharedDownHostCache is process-wide. New iterators consult it so a failed
 // connection can make later connection requests try healthier hosts first.
-var sharedDownHostCache = common.NewSafeTTLCache[struct{}](
+var sharedDownHostCache = internalCommon.NewSafeTTLCache[struct{}](
 	downHostCacheSize,
 	downHostCacheTTL,
 )
@@ -48,4 +48,15 @@ var sharedDownHostCache = common.NewSafeTTLCache[struct{}](
 // connection order; it never removes an address from the attempt list.
 func MarkDownHost(key string) {
 	sharedDownHostCache.Put(key, struct{}{})
+}
+
+// IsDownHost reports whether key is currently recorded as unreachable.
+func IsDownHost(key string) bool {
+	_, found := sharedDownHostCache.Get(key)
+	return found
+}
+
+// RemoveDownHost clears a cached unreachable status for key.
+func RemoveDownHost(key string) {
+	sharedDownHostCache.Remove(key)
 }

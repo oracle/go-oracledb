@@ -51,11 +51,11 @@ import (
 func markDownHostsForTest(t *testing.T, keys ...string) {
 	t.Helper()
 	for _, key := range keys {
-		MarkDownHost(key)
+		driverCommon.MarkDownHost(key)
 	}
 	t.Cleanup(func() {
 		for _, key := range keys {
-			sharedDownHostCache.Remove(key)
+			driverCommon.RemoveDownHost(key)
 		}
 	})
 }
