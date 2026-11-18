@@ -42,12 +42,170 @@ import (
 	"context"
 	"database/sql"
 	"flag"
+	"io"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 )
+
+// withIsolatedOracleFlags is for nonparallel tests registered as Exclusive.
+// Fresh values and a fresh visited set keep explicit overrides local to fn.
+func withIsolatedOracleFlags(t *testing.T, fn func(*flag.FlagSet)) {
+	t.Helper()
+	original := flag.CommandLine
+	isolated := flag.NewFlagSet(t.Name(), flag.ContinueOnError)
+	isolated.SetOutput(io.Discard)
+	for _, name := range []string{
+		"oracle.go.Credentials.User",
+		"oracle.go.Credentials.logon_mode",
+		"oracle.go.Locale.Territory",
+	} {
+		registered := original.Lookup(name)
+		if registered == nil {
+			t.Fatalf("required Oracle flag %q is not registered", name)
+		}
+		getter, ok := registered.Value.(flag.Getter)
+		if !ok {
+			t.Fatalf("Oracle flag %q has no typed getter", name)
+		}
+		if _, ok := getter.Get().(string); !ok {
+			t.Fatalf("Oracle flag %q is not a string flag", name)
+		}
+		isolated.String(name, registered.DefValue, registered.Usage)
+	}
+	if err := isolated.Parse(nil); err != nil {
+		t.Fatalf("parse isolated Oracle flags: %v", err)
+	}
+	flag.CommandLine = isolated
+	defer func() { flag.CommandLine = original }()
+	fn(isolated)
+}
+
+// TestConfiguration_FlagIsolation verifies flag overrides work in isolated scopes
+// without changing the original values, visited flags or later configurations.
+func TestConfiguration_FlagIsolation(t *testing.T) {
+	type flagState struct {
+		values  map[string]string
+		visited map[string]string
+	}
+	snapshot := func(fs *flag.FlagSet) flagState {
+		state := flagState{values: map[string]string{}, visited: map[string]string{}}
+		fs.VisitAll(func(f *flag.Flag) { state.values[f.Name] = f.Value.String() })
+		fs.Visit(func(f *flag.Flag) { state.visited[f.Name] = f.Value.String() })
+		return state
+	}
+	set := func(t *testing.T, fs *flag.FlagSet, name, value string) {
+		t.Helper()
+		if err := fs.Set(name, value); err != nil {
+			t.Fatalf("set isolated flag %q: %v", name, err)
+		}
+	}
+	original := flag.CommandLine
+	before := snapshot(original)
+	assertOriginal := func(t *testing.T) {
+		t.Helper()
+		if flag.CommandLine != original || !reflect.DeepEqual(snapshot(original), before) {
+			t.Fatal("isolated test changed the original flag set, values or visited flags")
+		}
+	}
+	t.Cleanup(func() { assertOriginal(t) })
+
+	t.Run("unset_flags_preserve_configuration", func(t *testing.T) {
+		withIsolatedOracleFlags(t, func(fs *flag.FlagSet) {
+			config := NewOracleDriverConfig()
+			config.Credentials.User = "configured_user"
+			config.Locale.Territory = "AMERICA"
+			if err := config.AssignFromFlags(); err != nil {
+				t.Fatalf("assign unvisited flags: %v", err)
+			}
+			if fs.NFlag() != 0 || config.Credentials.User != "configured_user" || config.Locale.Territory != "AMERICA" {
+				t.Fatal("unvisited flags changed supplied configuration")
+			}
+			set(t, fs, "oracle.go.Credentials.User", "flag_user")
+			set(t, fs, "oracle.go.Credentials.logon_mode", "SYSDBA")
+			set(t, fs, "oracle.go.Locale.Territory", "FOO")
+			if err := config.AssignFromFlags(); err != nil {
+				t.Fatalf("assign explicit flags: %v", err)
+			}
+			if config.Credentials.User != "flag_user" || config.Credentials.LogonMode != "SYSDBA" || config.Locale.Territory != "FOO" {
+				t.Fatal("explicit flags did not override the isolated configuration")
+			}
+		})
+		assertOriginal(t)
+	})
+	t.Run("empty_override_does_not_leak_to_next_configuration", func(t *testing.T) {
+		withIsolatedOracleFlags(t, func(outer *flag.FlagSet) {
+			withIsolatedOracleFlags(t, func(inner *flag.FlagSet) {
+				set(t, inner, "oracle.go.Credentials.User", "old_user")
+				set(t, inner, "oracle.go.Credentials.User", "")
+				config := NewOracleDriverConfig()
+				config.Credentials.User = "supplied_user"
+				if err := config.AssignFromFlags(); err != nil {
+					t.Fatalf("assign explicit empty override: %v", err)
+				}
+				if inner.NFlag() != 1 || config.Credentials.User != "" {
+					t.Fatal("control did not reproduce the explicitly visited empty override")
+				}
+			})
+			config := NewOracleDriverConfig()
+			config.Credentials.User = "supplied_user"
+			if err := config.AssignFromFlags(); err != nil {
+				t.Fatalf("assign flags after isolated cleanup: %v", err)
+			}
+			if flag.CommandLine != outer || outer.NFlag() != 0 || config.Credentials.User != "supplied_user" {
+				t.Fatal("empty override or visited state leaked into the next configuration")
+			}
+		})
+		assertOriginal(t)
+	})
+	t.Run("nested_scope_preserves_existing_explicit_flags", func(t *testing.T) {
+		withIsolatedOracleFlags(t, func(outer *flag.FlagSet) {
+			set(t, outer, "oracle.go.Credentials.User", "outer_user")
+			outerBefore := snapshot(outer)
+			withIsolatedOracleFlags(t, func(inner *flag.FlagSet) {
+				set(t, inner, "oracle.go.Credentials.User", "inner_user")
+			})
+			if flag.CommandLine != outer || !reflect.DeepEqual(snapshot(outer), outerBefore) {
+				t.Fatal("nested scope replaced the outer explicit override")
+			}
+			config := NewOracleDriverConfig()
+			if err := config.AssignFromFlags(); err != nil || config.Credentials.User != "outer_user" {
+				t.Fatalf("outer flag no longer applies: user=%q error=%v", config.Credentials.User, err)
+			}
+		})
+		assertOriginal(t)
+	})
+	t.Run("panic_restores_original", func(t *testing.T) {
+		marker := new(int)
+		func() {
+			defer func() {
+				if got := recover(); got != marker {
+					t.Fatalf("unexpected panic value: %v", got)
+				}
+			}()
+			withIsolatedOracleFlags(t, func(fs *flag.FlagSet) {
+				set(t, fs, "oracle.go.Credentials.User", "panic_user")
+				panic(marker)
+			})
+		}()
+		assertOriginal(t)
+	})
+	t.Run("repeated_scopes_do_not_accumulate_flags", func(t *testing.T) {
+		for i := 0; i < 3; i++ {
+			withIsolatedOracleFlags(t, func(fs *flag.FlagSet) {
+				if fs.NFlag() != 0 {
+					t.Fatal("new scope inherited visited flags")
+				}
+				set(t, fs, "oracle.go.Credentials.User", "repeat_user")
+			})
+			assertOriginal(t)
+		}
+	})
+	t.Log("Original flag set, values and visited names preserved; explicit and empty overrides remain scoped.")
+}
 
 // TestDriver_ConfigurationWithConnectorBasic verifies that a connector can be
 // created from an explicit configuration object.
@@ -128,29 +286,29 @@ func TestDriver_ConfigurationWithConnectorWithFlagOverwrite(t *testing.T) {
 	c.Credentials.Password = TestingConfig.Credentials.Password
 	c.ConnectDescriptor = TestingConfig.GetConnectionDSN()
 
-	// that should make the connection possible
-	flag.Set("oracle.go.Credentials.User", TestingConfig.Credentials.Username)
-	flag.Set("oracle.go.Credentials.LogonMode", TestingConfig.Credentials.LogonMode)
-
-	defer func() {
-		flag.Set("oracle.go.Credentials.User", "")
-		flag.Set("oracle.go.Credentials.Password", "")
-		flag.Set("oracle.go.Credentials.LogonMode", "")
-	}()
-
-	t.Logf("connecting to %v\n", c)
-	connector, err := NewOracleConnector(c)
-	if err != nil {
-		t.Fatalf("failed to create connector  : %v", err)
-	}
-	db := sql.OpenDB(connector)
-	defer func() {
-		db.Close()
-	}()
-	err = db.Ping()
-	if err != nil {
-		t.Fatalf("failed to connect connector  : %v", err)
-	}
+	withIsolatedOracleFlags(t, func(fs *flag.FlagSet) {
+		for name, value := range map[string]string{
+			"oracle.go.Credentials.User":       TestingConfig.Credentials.Username,
+			"oracle.go.Credentials.logon_mode": TestingConfig.Credentials.LogonMode,
+		} {
+			if err := fs.Set(name, value); err != nil {
+				t.Fatalf("set connection flag %q: %v", name, err)
+			}
+		}
+		connector, err := NewOracleConnector(c)
+		if err != nil {
+			t.Fatalf("failed to create connector: %v", err)
+		}
+		db := sql.OpenDB(connector)
+		defer func() {
+			if err := db.Close(); err != nil {
+				t.Errorf("close flag-override connection: %v", err)
+			}
+		}()
+		if err := db.Ping(); err != nil {
+			t.Fatalf("failed to connect using flag overrides: %v", err)
+		}
+	})
 
 }
 
