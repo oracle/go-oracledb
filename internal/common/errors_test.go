@@ -190,6 +190,7 @@ func TestDriverErrorMessagesAreLocalized(t *testing.T) {
 		args []interface{}
 		want string
 	}{
+		{oracleErrors.PLSQLLongBindLimitExceeded, []interface{}{32760}, "PL/SQL LONG and LONG RAW binds cannot exceed 32,760 bytes"},
 		{oracleErrors.ImplicitResultMessageCreationFailed, nil, "failed to create implicit result message"},
 		{oracleErrors.RefCursorConnectionMismatch, nil, "REF CURSOR must be fetched using the connection on which it was opened"},
 		{oracleErrors.InvalidRefCursorOutParameter, nil, "REF CURSOR OUT binds require *datatype.Cursor"},

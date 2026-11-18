@@ -163,13 +163,33 @@ func (rxd *tTIrxd) setBindValues(values []encodedBindValue) {
 	rxd.bindValues = values
 }
 
+// orderedBindIndices returns the stable wire order for bind payloads. OACs and
+// the source bind slice remain in placeholder order; TTC RXD sends ordinary
+// values first, followed by LONG/LONG RAW values. The returned
+// indices keep each payload paired with its original metadata and wrapper.
+func orderedBindIndices(values []encodedBindValue) []int {
+	indices := make([]int, 0, len(values))
+	for _, longPass := range []bool{false, true} {
+		for i := range values {
+			if isLongBindType(values[i].metadata.goType) != longPass {
+				continue
+			}
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
 /*
 MarshalTo writes the RXD bind payload for outgoing messages (single row).
 It resolves each encoder from the message's protocol-matched codec factory and
-uses that encoder's transport wrapper for the corresponding payload.
+uses that encoder's transport wrapper for the corresponding payload. LONG
+payloads are deferred until after ordinary values while preserving placeholder
+order within each group; the OAC descriptors remain in placeholder order.
 */
 func (rxd *tTIrxd) MarshalTo(ctx context.Context, engine driverCommon.Marshaller) error {
-	for _, bind := range rxd.bindValues {
+	for _, index := range orderedBindIndices(rxd.bindValues) {
+		bind := rxd.bindValues[index]
 		encoder, err := rxd.getFactory().getEncoderForGoType(bind.metadata)
 		if err != nil {
 			return err

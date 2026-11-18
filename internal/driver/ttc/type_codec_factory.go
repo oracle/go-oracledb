@@ -47,6 +47,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -170,6 +171,12 @@ type bindValueMetadata struct {
 	isNull    bool
 	isOut     bool
 	isOutOnly bool
+}
+
+// isLongBindType reports whether a normalized bind type is LONG or LONG RAW.
+// The classification is based only on the declared Go type.
+func isLongBindType(goType reflect.Type) bool {
+	return goType == reflect.TypeFor[datatype.Long]() || goType == reflect.TypeFor[datatype.LongRaw]()
 }
 
 /*
@@ -621,7 +628,12 @@ func (f *CodecFactoryImpl) getBindOac(metadata bindValueMetadata, maxLength driv
 		// scale as per the type we are sending. This must be the max possible
 		// values to enable the server to return the scalar type.
 		if metadata.isOut {
-			oac.(*tTIoac).maxLength = bindOacTypeObj.maxLength
+			// LONG input/output sizes are selected by the statement context in
+			// prepareOACs. Preserve that fixed type/context size instead of
+			// replacing it with the registry's SQL maximum here.
+			if !isLongBindType(metadata.goType) {
+				oac.(*tTIoac).maxLength = bindOacTypeObj.maxLength
+			}
 			oac.(*tTIoac).scale = bindOacTypeObj.scale
 		}
 		common.Odl.Finest("Bind OAC returned", "candidate", bestCandidate)

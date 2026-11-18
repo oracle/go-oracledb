@@ -41,6 +41,7 @@ package ttc
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	sqldriver "database/sql/driver"
 	"errors"
 	"maps"
@@ -51,6 +52,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -141,13 +143,14 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	shelf.RegisterCodecFactory(factory)
 }
 
-func prepareBindDataForTest(sp *statementProcessor, args []sqldriver.Value) ([][]common.B1Array, []bindValueMetadata, []common.Marshallable, error) {
+func prepareBindDataForTest(sp *statementProcessor, args []sqldriver.Value, plsql ...bool) ([][]common.B1Array, []bindValueMetadata, []common.Marshallable, error) {
 	metadata := extractBindMetadata(args)
 	rows, err := sp.encodeBindValues(args, metadata)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	oacs, err := sp.prepareOACs(rows, metadata)
+	isPLSQL := len(plsql) > 0 && plsql[0]
+	oacs, err := sp.prepareOACs(rows, metadata, isPLSQL)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -476,5 +479,153 @@ func TestPrepareBindsAndOAC_OAC_Errors(t *testing.T) {
 	_, _, _, err := prepareBindDataForTest(sp, []sqldriver.Value{map[string]int{"x": 1}})
 	if err == nil || !strings.Contains(err.Error(), "internal error occurred") {
 		t.Fatalf("expected type encode error containing 'bind-type', got %v", err)
+	}
+}
+
+// TestPrepareBindsAndOAC_LongBindOACLengthsByStatementKind verifies OAC sizing
+// for LONG, LONG RAW, and pure OUT LONG binds.
+// Test cases:
+//   - SQL retains prior OAC widths for shorter LONG and OUT values and grows
+//     LONG RAW to fit its larger payload.
+//   - PL/SQL uses the PL/SQL maximum OAC length for each LONG-family bind.
+func TestPrepareBindsAndOAC_LongBindOACLengthsByStatementKind(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		plsql       bool
+		wantLengths []common.UB4
+	}{
+		{name: "sql", wantLengths: []common.UB4{7, 12, 9}},
+		{name: "plsql", plsql: true, wantLengths: []common.UB4{
+			converters.MaxPLSQLLongValueLength,
+			converters.MaxPLSQLLongValueLength,
+			converters.MaxPLSQLLongValueLength,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			shelf := newShelf[common.MessageType]()
+			registerTestCodecs(shelf, 20)
+			sp := &statementProcessor{
+				shelf: shelf,
+				previousOacs: []common.Marshallable{
+					newTTIoac(DtyLng, 7),
+					newTTIoac(DtyLbi, 8),
+					newTTIoac(DtyLng, 9),
+					newTTIoac(DtyVCS, 20),
+					newTTIoac(DtyVbi, 21),
+				},
+			}
+
+			_, _, oacs, err := prepareBindDataForTest(sp, []sqldriver.Value{
+				datatype.Long("x"),
+				datatype.LongRaw{0x00, 0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+				sql.Out{Dest: new(datatype.Long), In: false},
+				"ordinary string",
+				[]byte{0x01, 0x02},
+			}, tc.plsql)
+			if err != nil {
+				t.Fatalf("bind preparation returned error: %v", err)
+			}
+
+			gotTypes := make([]DtyType, len(oacs))
+			gotLengths := make([]common.UB4, len(oacs))
+			for i, descriptor := range oacs {
+				oac := descriptor.(*tTIoac)
+				gotTypes[i] = DtyType(oac.dataType)
+				gotLengths[i] = oac.maxLength
+			}
+			wantTypes := []DtyType{DtyLng, DtyLbi, DtyLng, DtyChr, DtyBin}
+			if !reflect.DeepEqual(gotTypes, wantTypes) {
+				t.Fatalf("OAC types = %v, want %v", gotTypes, wantTypes)
+			}
+			if !reflect.DeepEqual(gotLengths[:3], tc.wantLengths) {
+				t.Fatalf("LONG-family OAC lengths = %v, want %v", gotLengths[:3], tc.wantLengths)
+			}
+			if gotLengths[3] != 20 || gotLengths[4] != 21 {
+				t.Fatalf("ordinary OAC lengths = %v, want retained widths [20 21]", gotLengths[3:])
+			}
+		})
+	}
+}
+
+// TestPrepareBindsAndOAC_PLSQLLongBindLimit verifies that PL/SQL LONG and LONG RAW
+// binds accept Oracle's 32,760-byte server limit and reject larger payloads.
+func TestPrepareBindsAndOAC_PLSQLLongBindLimit(t *testing.T) {
+	t.Parallel()
+	limit := int(converters.MaxPLSQLLongValueLength)
+	for _, tc := range []struct {
+		name    string
+		value   sqldriver.Value
+		wantErr bool
+	}{
+		{name: "LONG_at_limit", value: datatype.Long(strings.Repeat("x", limit))},
+		{name: "LONG_over_limit", value: datatype.Long(strings.Repeat("x", limit+1)), wantErr: true},
+		{name: "LONG_RAW_at_limit", value: datatype.LongRaw(make([]byte, limit))},
+		{name: "LONG_RAW_over_limit", value: datatype.LongRaw(make([]byte, limit+1)), wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			shelf := newShelf[common.MessageType]()
+			registerTestCodecs(shelf, 20)
+			sp := &statementProcessor{shelf: shelf}
+
+			_, _, oacs, err := prepareBindDataForTest(sp, []sqldriver.Value{tc.value}, true)
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("bind preparation at Oracle's PL/SQL limit failed: %v", err)
+				}
+				if got := oacs[0].(*tTIoac).maxLength; got != converters.MaxPLSQLLongValueLength {
+					t.Fatalf("PL/SQL LONG OAC length = %d, want %d", got, converters.MaxPLSQLLongValueLength)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("bind preparation above Oracle's PL/SQL limit succeeded")
+			}
+			var sqlErr oracleErrors.SQLError
+			if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.PLSQLLongBindLimitExceeded) {
+				t.Fatalf("error = %v, want %s", err, oracleErrors.PLSQLLongBindLimitExceeded)
+			}
+			if !strings.Contains(err.Error(), "32,760") {
+				t.Fatalf("error does not describe Oracle's PL/SQL limit: %v", err)
+			}
+		})
+	}
+}
+
+// TestPrepareBinds_EmptyLongPayloadsAndNullMetadata checks that empty LONG and
+// LONG RAW binds retain their distinct encoded payloads and types, untyped nil
+// remains NULL, and an ordinary empty string retains its string type.
+func TestPrepareBinds_EmptyLongPayloadsAndNullMetadata(t *testing.T) {
+	t.Parallel()
+	shelf := newShelf[common.MessageType]()
+	registerTestCodecs(shelf, 20)
+	sp := &statementProcessor{shelf: shelf}
+
+	args := []sqldriver.Value{datatype.Long(""), datatype.LongRaw(nil), nil, ""}
+	rows, metadata, _, err := prepareBindDataForTest(sp, args)
+	if err != nil {
+		t.Fatalf("bind preparation returned error: %v", err)
+	}
+	if len(rows) != 1 || len(rows[0]) != len(args) {
+		t.Fatalf("encoded row dimensions = %v, want one row with %d binds", rows, len(args))
+	}
+	wantLong, err := converters.EncodeVarchar("")
+	if err != nil {
+		t.Fatalf("encode expected empty LONG: %v", err)
+	}
+	wantLongRaw, err := converters.EncodeBinary([]byte(nil))
+	if err != nil {
+		t.Fatalf("encode expected empty LONG RAW: %v", err)
+	}
+	if !bytes.Equal(rows[0][0], wantLong) || !bytes.Equal(rows[0][1], wantLongRaw) {
+		t.Fatalf("empty LONG payloads changed: got (%v, %v), want (%v, %v)", rows[0][0], rows[0][1], wantLong, wantLongRaw)
+	}
+	if metadata[0].goType != reflect.TypeFor[datatype.Long]() || metadata[1].goType != reflect.TypeFor[datatype.LongRaw]() {
+		t.Fatalf("empty LONG bind types = (%v, %v), want (datatype.Long, datatype.LongRaw)", metadata[0].goType, metadata[1].goType)
+	}
+	if !metadata[2].isNull || metadata[2].goType != nil || metadata[3].goType != reflect.TypeFor[string]() {
+		t.Fatalf("ordinary NULL/empty metadata changed: null=%+v empty=%+v", metadata[2], metadata[3])
 	}
 }

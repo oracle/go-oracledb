@@ -114,10 +114,13 @@ func TestColumnUnwrapSelection(t *testing.T) {
 }
 
 // TestColumnDecoderRegistrations checks every built-in decoder version has an
-// explicit wire reader and that only CLOB, BLOB and JSON use specialized framing.
+// explicit wire reader. LONG and LONG RAW share a reader; CLOB, BLOB, JSON, and
+// REF CURSOR use their specialized readers.
 func TestColumnDecoderRegistrations(t *testing.T) {
 	t.Parallel()
 	specialized := map[DtyType]map[int8]columnUnwrapFunc{
+		DtyLng:  {MinTTCProtocolVersion: unwrapLongColumn},
+		DtyLbi:  {MinTTCProtocolVersion: unwrapLongColumn},
 		DtyClob: {MinTTCProtocolVersion: unwrapClobColumn},
 		DtyBlob: {MinTTCProtocolVersion: unwrapBlobColumn},
 		DtyJSON: {MinTTCProtocolVersion: unwrapJSONColumn},

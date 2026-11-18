@@ -77,4 +77,15 @@ const (
 	// MaxVarcharLength is the maximum TTC byte length used for VARCHAR2-style
 	// variable-width character payloads, including space for the TTC length prefix.
 	MaxVarcharLength common.UB4 = 32768
+
+	// LONG and LONG RAW value-size limits used by the TTC driver.
+	// MaxLongValueLength is the driver's maximum SQL bind and fetch length for
+	// LONG and LONG RAW, in bytes (2^31 - 1).
+	MaxLongValueLength common.UB4 = 2_147_483_647
+
+	// MaxPLSQLLongValueLength is Oracle Database's server-side maximum PL/SQL
+	// size for LONG and LONG RAW, in bytes (32,760). See "Different Maximum
+	// Sizes" in the Oracle Database PL/SQL Language Reference:
+	// https://docs.oracle.com/en/database/oracle/oracle-database/26/lnpls/sql-data-types.html
+	MaxPLSQLLongValueLength common.UB4 = 32_760
 )

@@ -871,39 +871,71 @@ func (m *MarshalEngine) UnmarshalCLR(ctx context.Context, bytes driverCommon.B1A
 	return nbBytesWritten, nil
 }
 
-// UnmarshalCLRColumnData unmarshals a CLR value from the data buffer, handling
-// both short and long forms.
+// UnmarshalCLRColumnData reads a CLR column value in short, NULL, or chunked
+// form. A short value starts with a byte length from 0x00 through 0xFC; 0xFF
+// represents NULL; and 0xFE starts chunks, each encoded as an SB4 length followed
+// by that many bytes, terminated by an SB4 zero. The 0xFD escape marker is
+// invalid for this format.
 //
-// A CLR is decoded as follows:
-//   - The first byte is read; it can contain either the length of the data or
-//     a flag.
-//   - If the first byte is an escape value, a protocol violation error is
-//     returned.
-//   - If the first byte is a null-length indicator, no bytes are returned.
-//   - If the first byte is less than or equal to
-//     _maximumShortValueLength, it indicates the data size and the data will
-//     be read and returned.
-//   - Otherwise the long-chunk protocol is used.
-//   - The chunk length is read as an SB4.
-//   - If the chunk length is zero, decoding stops.
-//   - Otherwise the chunk data is read and appended to the result slice.
-//
-// Returns:
-//   - A B1Array containing the unmarshaled value.
-//   - The length of the unmarshaled value.
-//   - An error if the unmarshaling operation fails.
+// The total payload is limited to the larger of the scalar CLR limit and twice
+// the configured LOB prefetch size, since this reader also handles prefetched
+// LOB data. Chunk framing bytes are not included in that limit.
 //
 // Parameters:
-//   - ctx: The request context used for buffer reads.
+//   - ctx: Request context used while reading.
+//
+// Returns:
+//   - data: Unmarshaled value bytes; NULL returns nil.
+//   - length: Number of value bytes read; NULL returns zero.
+//   - err: Non-nil if the wire data is malformed, truncated, or exceeds the limit.
 func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context) (driverCommon.B1Array, int, error) {
-	// Long CLR data should stay within _maximumLongCLRAggregateLength for scalar
-	// data or the configured LOB prefetch allowance, including the shared
-	// _longCLRAggregateLengthMultiplier headroom. Larger payloads suggest the
-	// server is possibly compromised.
-	maxAllowedCLRLength := math.Max(
-		_maximumLongCLRAggregateLength,
-		float64(m._defaultLobPrefetchSize)*_longCLRAggregateLengthMultiplier,
-	)
+	return m.unmarshalCLRColumnData(ctx, m.maxCLRColumnDataLength())
+}
+
+// UnmarshalCLRColumnDataWithMaxLength unmarshals a CLR column value with an
+// explicit maximum total payload length, using the same short, NULL, and
+// chunked forms as UnmarshalCLRColumnData. The limit applies to the combined
+// bytes of all chunks, not to the CLR framing bytes.
+//
+// Parameters:
+//   - ctx: Request context used while reading the value.
+//   - maxLength: Maximum number of payload bytes accepted.
+//
+// Returns:
+//   - data: Unmarshaled value bytes; NULL returns nil.
+//   - length: Number of value bytes read; NULL returns zero.
+//   - err: Non-nil if the wire data is malformed, truncated, or exceeds maxLength.
+func (m *MarshalEngine) UnmarshalCLRColumnDataWithMaxLength(ctx context.Context, maxLength driverCommon.UB4) (driverCommon.B1Array, int, error) {
+	return m.unmarshalCLRColumnData(ctx, int64(maxLength))
+}
+
+// maxCLRColumnDataLength returns the standard aggregate payload limit for a CLR
+// column. It is the larger of the scalar CLR limit and twice the configured LOB
+// prefetch size; multiplication saturates to avoid integer overflow.
+func (m *MarshalEngine) maxCLRColumnDataLength() int64 {
+	maxLength := int64(_maximumLongCLRAggregateLength)
+	const maxInt64 = int64(1<<63 - 1)
+	lobPrefetchLength := max(int64(0), m._defaultLobPrefetchSize)
+	if lobPrefetchLength > maxInt64/_longCLRAggregateLengthMultiplier {
+		lobPrefetchLength = maxInt64
+	} else {
+		lobPrefetchLength *= _longCLRAggregateLengthMultiplier
+	}
+	return max(maxLength, lobPrefetchLength)
+}
+
+// unmarshalCLRColumnData reads and validates one CLR value with the supplied
+// aggregate payload limit. It handles short, NULL, and chunked forms and wraps
+// framing violations or read failures as CLR unmarshalling errors.
+//
+// Parameters:
+//   - ctx: Request context used while reading.
+//   - maxAllowedCLRLength: Maximum number of payload bytes accepted.
+//
+// Returns:
+//   - The raw value bytes and their length; NULL returns nil data and zero.
+//   - An error if the value is malformed, truncated, or exceeds the limit.
+func (m *MarshalEngine) unmarshalCLRColumnData(ctx context.Context, maxAllowedCLRLength int64) (driverCommon.B1Array, int, error) {
 	// first byte is either length or marker (0xFE)
 	lenflag, err := m.UnmarshalUB1(ctx)
 	if err != nil {
@@ -918,12 +950,15 @@ func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context) (driverCommo
 	}
 
 	if byte(lenflag) <= _maximumShortValueLength { // Smaller than MAX length
+		if int64(lenflag) > maxAllowedCLRLength {
+			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
+		}
 		bytes := make(driverCommon.B1Array, lenflag)
 		err := m._unmarshalBuffer(ctx, bytes, 0, int(lenflag))
 		return bytes, int(lenflag), _wrapError(err, "CLR")
 	}
 	// Got FE marker, long chunks
-	nbBytesWritten := 0
+	nbBytesWritten := int64(0)
 	var bytes driverCommon.B1Array
 	for {
 		length, err := m.UnmarshalSB4(ctx)
@@ -942,22 +977,21 @@ func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context) (driverCommo
 				"length", length, "maxLength", _maximumLongCLRChunkLength)
 			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
 		}
+		if int64(length) > maxAllowedCLRLength-nbBytesWritten {
+			common.Odl.Finest("CLR data length exceeds maximum allowed size",
+				"length", nbBytesWritten+int64(length), "maxLength", maxAllowedCLRLength)
+			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
+		}
 
 		currentBytes := make(driverCommon.B1Array, length)
 		err = m._unmarshalBuffer(ctx, currentBytes, 0, int(length))
 		if err != nil {
 			return nil, 0, _wrapError(err, "CLR")
 		}
-		nbBytesWritten += int(length)
-
-		if nbBytesWritten > int(maxAllowedCLRLength) {
-			common.Odl.Finest("CLR data length exceeds maximum allowed size",
-				"length", nbBytesWritten, "maxLength", _maximumLongCLRChunkLength)
-			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
-		}
+		nbBytesWritten += int64(length)
 		bytes = append(bytes, currentBytes...)
 	}
-	return bytes, nbBytesWritten, nil
+	return bytes, int(nbBytesWritten), nil
 }
 
 // Flush flushes the data buffer.

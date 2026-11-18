@@ -39,6 +39,7 @@
 package ttc
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -1105,6 +1106,54 @@ func TestUnmarshalCLRColumnData(t *testing.T) {
 				if readValue[i] != value[tt.offset+i] {
 					t.Errorf("Invalid value read, expected %d, but was %d", value[tt.offset+i], readValue[i])
 				}
+			}
+		})
+	}
+}
+
+// TestUnmarshalCLRColumnDataWithMaxLength verifies the caller-supplied total
+// payload limit for both short and chunked CLR values.
+// Test cases:
+//   - Accept short and chunked payloads whose lengths equal the limit.
+//   - Reject short and chunked payloads that exceed the limit.
+func TestUnmarshalCLRColumnDataWithMaxLength(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		valueSize int
+		maxLength int
+		wantError bool
+	}{
+		{name: "short-at-limit", valueSize: 10, maxLength: 10},
+		{name: "short-over-limit", valueSize: 10, maxLength: 9, wantError: true},
+		{name: "chunked-at-limit", valueSize: 300, maxLength: 300},
+		{name: "chunked-over-limit", valueSize: 300, maxLength: 299, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			value := make(common.B1Array, tc.valueSize)
+			for i := range value {
+				value[i] = byte(i)
+			}
+			dataBuffer, engine := newMarshalEngine(common.BIG_ENDIAN, B2, Universal, tc.valueSize+32)
+			if err := engine.MarshalCLR(context.Background(), value, 0, len(value)); err != nil {
+				t.Fatalf("MarshalCLR failed: %v", err)
+			}
+			dataBuffer.currentReadPosition = 0
+
+			got, gotLength, err := engine.UnmarshalCLRColumnDataWithMaxLength(context.Background(), common.UB4(tc.maxLength))
+			if tc.wantError {
+				if err == nil {
+					t.Fatalf("accepted %d-byte payload with max length %d", tc.valueSize, tc.maxLength)
+				}
+				checkSQLErrorCodeContains(t, err, string(oracleErrors.MarshalEngineError), "CLR")
+				return
+			}
+			if err != nil {
+				t.Fatalf("UnmarshalCLRColumnDataWithMaxLength returned error: %v", err)
+			}
+			if gotLength != len(value) || !bytes.Equal(got, value) {
+				t.Fatalf("decoded payload length=%d, bytes match=%t; want length=%d", gotLength, bytes.Equal(got, value), len(value))
 			}
 		})
 	}

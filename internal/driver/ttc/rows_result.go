@@ -289,6 +289,7 @@ var defaultNullValueResolvers = map[DtyType]defaultNullValueResolver{
 	DtyChr:      constantDefaultNullValue(""),
 	DtyStr:      constantDefaultNullValue(""),
 	DtyVCS:      constantDefaultNullValue(""),
+	DtyLng:      constantDefaultNullValue(""),
 	DtyAfc:      constantDefaultNullValue(""),
 	DtyAvc:      constantDefaultNullValue(""),
 	DtyBin:      constantDefaultNullValue(driverCommon.B1Array{}),

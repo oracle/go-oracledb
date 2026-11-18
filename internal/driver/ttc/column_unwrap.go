@@ -43,6 +43,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -470,4 +471,23 @@ func byteColumnPayload(data driverCommon.B1Array) columnPayload {
 		return columnPayload{}
 	}
 	return columnPayload{data: data}
+}
+
+// unwrapLongColumn reads short, NULL, or chunked LONG/LONG RAW CLR data with
+// the SQL LONG size limit, then consumes the two trailing SB2 row fields.
+func unwrapLongColumn(ctx context.Context, mar driverCommon.Marshaller, _ columnUnwrapContext) (columnPayload, error) {
+	data, _, err := mar.UnmarshalCLRColumnDataWithMaxLength(ctx, converters.MaxLongValueLength)
+	if err != nil {
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+
+	// LONG/LONG RAW carry two trailing SB2 fields after the CLR value, including
+	// NULL and short values. They are not part of the value payload.
+	if _, err := mar.UnmarshalSB2(ctx); err != nil {
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if _, err := mar.UnmarshalSB2(ctx); err != nil {
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	return byteColumnPayload(data), nil
 }

@@ -694,5 +694,10 @@ func initMessagesEn() {
 	// Action:   Enable FINEST logging to see the failing buffer operation.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidBufferOperation), "invalid buffer operation")
+	// Document: No
+	// Cause:    A PL/SQL LONG or LONG RAW bind exceeds Oracle's size limit.
+	// Action:   Keep the bind value at or below the maximum size shown.
+	// Comment:  Arg[0]: maximum bind size in bytes.
+	message.SetString(language.English, string(oracleErrors.PLSQLLongBindLimitExceeded), "PL/SQL LONG and LONG RAW binds cannot exceed %d bytes")
 
 }

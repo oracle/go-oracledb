@@ -326,6 +326,11 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OSON_NullDistinction", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NullDistinction},
 	{Name: "TestDriver_OpenConnectorPreservesQuotedInParameters", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorPreservesQuotedInParameters},
 	{Name: "TestDriver_Select_BLOB_Type", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BLOB_Type},
+
+	{Name: "TestDriver_SelectLong", Categories: "functional", Exclusive: false, Fn: TestDriver_SelectLong},
+	{Name: "TestDriver_SelectLongClobNclob", Categories: "functional", Exclusive: false, Fn: TestDriver_SelectLongClobNclob},
+	{Name: "TestDriver_SelectLongRaw", Categories: "functional", Exclusive: false, Fn: TestDriver_SelectLongRaw},
+	{Name: "TestDriver_LongBindOrdering", Categories: "functional", Exclusive: false, Fn: TestDriver_LongBindOrdering},
 }
 
 func TestCategoryExecutor(t *testing.T) {

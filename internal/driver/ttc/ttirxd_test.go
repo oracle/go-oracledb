@@ -40,13 +40,16 @@ package ttc
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -185,6 +188,28 @@ func TestTTIrxd_MarshalTo_PreparedBindValue(t *testing.T) {
 	if got := buf.bytes[:buf.currentWritePosition]; !reflect.DeepEqual(got, []byte{0x7F}) {
 		t.Fatalf("prepared bind representation mismatch: got %v want %v", got, []byte{0x7F})
 	}
+}
+
+type bindCodecFactoryByGoType struct {
+	bindCodecFactoryStub
+	encoders map[reflect.Type]*typeEncoder
+}
+
+func (s bindCodecFactoryByGoType) getEncoderForGoType(metadata bindValueMetadata) (*typeEncoder, error) {
+	encoder, ok := s.encoders[metadata.goType]
+	if !ok {
+		return nil, errors.New("missing test bind encoder")
+	}
+	return encoder, nil
+}
+
+func taggedBindEncoder(tag byte) *typeEncoder {
+	return &typeEncoder{wrapColumn: func(ctx context.Context, mar common.Marshaller, payload common.B1Array) error {
+		if err := mar.MarshalUB1(ctx, common.UB1(tag)); err != nil {
+			return err
+		}
+		return mar.MarshalB1Array(ctx, payload)
+	}}
 }
 
 // TestTTIrxd_MarshalTo_FailOnNullIndicator simulates a failure when writing the null indicator byte.
@@ -702,4 +727,103 @@ func testColumnRow(row []common.B1Array) []columnPayload {
 		result[i] = byteColumnPayload(data)
 	}
 	return result
+}
+
+// TestTTIrxd_LongBindOrderingAndEncoderPairing verifies the explicit LONG-family
+// ordering rule: datatype.Long or datatype.LongRaw binds follow ordinary binds
+// while retaining encoder/payload pairing and OUT metadata. Each fixture
+// contains one LONG-family type. Large ordinary values deliberately remain in
+// the ordinary group; size-based postponement is outside this test's scope.
+//
+// Test cases:
+//   - LONG: ordinary strings/bytes, NULL, and 40 KiB values stay first; LONG
+//     binds follow in their original relative order and use the LONG encoder.
+//   - LONG RAW: the same checks for LONG RAW binds, including its matching encoder.
+func TestTTIrxd_LongBindOrderingAndEncoderPairing(t *testing.T) {
+	t.Parallel()
+
+	stringType := reflect.TypeFor[string]()
+	bytesType := reflect.TypeFor[[]byte]()
+	for _, tc := range []struct {
+		name       string
+		goType     reflect.Type
+		value      any
+		emptyValue any
+		outDest    any
+		encoderTag byte
+	}{
+		{
+			name:       "LONG",
+			goType:     reflect.TypeFor[datatype.Long](),
+			value:      datatype.Long("long-a"),
+			emptyValue: datatype.Long(""),
+			outDest:    new(datatype.Long),
+			encoderTag: 0x03,
+		},
+		{
+			name:       "LONG_RAW",
+			goType:     reflect.TypeFor[datatype.LongRaw](),
+			value:      datatype.LongRaw{0xC0},
+			emptyValue: datatype.LongRaw(nil),
+			outDest:    new(datatype.LongRaw),
+			encoderTag: 0x04,
+		},
+	} {
+		// Check stable ordering with ordinary string/byte binds, SQL NULL,
+		// 40 KiB values, an empty typed value, and a pure OUT bind of this type.
+		longOut := extractBindValueMetadata(sql.Out{Dest: tc.outDest, In: false})
+		values := []encodedBindValue{
+			{payload: common.B1Array{0xA0}, metadata: extractBindValueMetadata(tc.value)},
+			{payload: common.B1Array{0xB0}, metadata: extractBindValueMetadata("ordinary-a")},
+			{payload: common.B1Array{0xC0}, metadata: extractBindValueMetadata(tc.value)},
+			{payload: common.B1Array{0xD0}, metadata: extractBindValueMetadata([]byte{0xD0})},
+			{payload: nil, metadata: extractBindValueMetadata(tc.emptyValue)},
+			{payload: nil, metadata: longOut},
+			{payload: nil, metadata: extractBindValueMetadata(nil)},
+			{payload: make(common.B1Array, 40_000), metadata: extractBindValueMetadata(strings.Repeat("x", 40_000))},
+			{payload: make(common.B1Array, 40_000), metadata: extractBindValueMetadata(make([]byte, 40_000))},
+		}
+		wantIndices := []int{1, 3, 6, 7, 8, 0, 2, 4, 5}
+		if got := orderedBindIndices(values); !reflect.DeepEqual(got, wantIndices) {
+			t.Fatalf("%s ordered bind indices = %v, want %v", tc.name, got, wantIndices)
+		}
+		if !values[5].metadata.isOutOnly || values[5].metadata.goType != tc.goType {
+			t.Fatalf("%s pure OUT metadata changed: %+v", tc.name, values[5].metadata)
+		}
+
+		// Check actual marshalling with a unique encoder tag so a type/payload
+		// mismatch is visible in the expected byte sequence.
+		rxd := newTTIrxd().(*tTIrxd)
+		rxd.setCodecFactory(bindCodecFactoryByGoType{
+			encoders: map[reflect.Type]*typeEncoder{
+				stringType: taggedBindEncoder(0x01),
+				bytesType:  taggedBindEncoder(0x02),
+				tc.goType:  taggedBindEncoder(tc.encoderTag),
+			},
+		})
+		marshalValues := []encodedBindValue{
+			{payload: common.B1Array{0xA1}, metadata: bindValueMetadata{goType: tc.goType}},
+			{payload: common.B1Array{0xB1}, metadata: bindValueMetadata{goType: stringType}},
+			{payload: common.B1Array{0xC1}, metadata: bindValueMetadata{goType: tc.goType}},
+			{payload: common.B1Array{0xD1}, metadata: bindValueMetadata{goType: bytesType}},
+		}
+		rxd.setBindValues(marshalValues)
+
+		buf, eng := NewMarshalEngineTest(common.BIG_ENDIAN, B2, Universal, 64)
+		if err := rxd.MarshalTo(context.Background(), eng); err != nil {
+			t.Fatalf("%s MarshalTo returned error: %v", tc.name, err)
+		}
+		wantBytes := []byte{
+			0x01, 0xB1,
+			0x02, 0xD1,
+			tc.encoderTag, 0xA1,
+			tc.encoderTag, 0xC1,
+		}
+		if got := buf.bytes[:buf.currentWritePosition]; !reflect.DeepEqual(got, wantBytes) {
+			t.Fatalf("%s marshalled bind order/pairing = %v, want %v", tc.name, got, wantBytes)
+		}
+		if !reflect.DeepEqual(rxd.bindValues, marshalValues) {
+			t.Fatalf("%s MarshalTo mutated the source bind values", tc.name)
+		}
+	}
 }

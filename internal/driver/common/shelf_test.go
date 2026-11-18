@@ -271,6 +271,9 @@ func (t *testObject) UnmarshalCLR(context.Context, B1Array, int) (int, error) {
 func (t *testObject) UnmarshalCLRColumnData(context.Context) (B1Array, int, error) {
 	return nil, -1, nil
 }
+func (t *testObject) UnmarshalCLRColumnDataWithMaxLength(context.Context, UB4) (B1Array, int, error) {
+	return nil, -1, nil
+}
 func (t *testObject) UnmarshalB1Array(context.Context, int) (B1Array, error) {
 	return nil, nil
 }

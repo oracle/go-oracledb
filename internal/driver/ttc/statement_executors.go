@@ -48,6 +48,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -545,7 +546,8 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 		if err != nil {
 			return nil, err
 		}
-		oacs, err = e.prepareOACs(rows, metadata)
+		isPLSQL := query != nil && query.kind == plsql
+		oacs, err = e.prepareOACs(rows, metadata, isPLSQL)
 		if err != nil {
 			return nil, err
 		}
@@ -786,9 +788,9 @@ func (e *statementProcessor) encodeBindValues(args []sqldriver.Value, metadata [
 	return rows, nil
 }
 
-// prepareOACs creates one bind OAC per normalized position using the largest
-// encoded payload length across the supplied rows.
-func (e *statementProcessor) prepareOACs(rows [][]driverCommon.B1Array, metadata []bindValueMetadata) ([]driverCommon.Marshallable, error) {
+// prepareOACs creates one bind OAC per normalized position. Variable-width
+// types use their payload size and retain the prior OAC width.
+func (e *statementProcessor) prepareOACs(rows [][]driverCommon.B1Array, metadata []bindValueMetadata, isPLSQL bool) ([]driverCommon.Marshallable, error) {
 	oacs := make([]driverCommon.Marshallable, len(metadata))
 	for col, normalized := range metadata {
 		maxLength := 0
@@ -797,10 +799,24 @@ func (e *statementProcessor) prepareOACs(rows [][]driverCommon.B1Array, metadata
 				maxLength = len(row[col])
 			}
 		}
+		oacLength := e.getMaxLengthForOac(col, maxLength)
+		if isLongBindType(normalized.goType) {
+			if isPLSQL {
+				if maxLength > int(converters.MaxPLSQLLongValueLength) {
+					common.Odl.Error("prepareOACs: LONG-family bind exceeds PL/SQL limit",
+						"position", col+1,
+						"length", maxLength,
+						"limit", converters.MaxPLSQLLongValueLength)
+					return nil, common.NewOracleError(oracleErrors.PLSQLLongBindLimitExceeded, nil,
+						converters.MaxPLSQLLongValueLength)
+				}
+				oacLength = converters.MaxPLSQLLongValueLength
+			}
+		}
 		var err error
 		oacs[col], err = e.shelf.GetCodecFactory().getBindOac(
 			normalized,
-			e.getMaxLengthForOac(col, maxLength),
+			oacLength,
 		)
 		if err != nil {
 			return nil, err
