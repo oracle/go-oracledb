@@ -126,7 +126,7 @@ func configureSocketBuffers(conn socketBufferSetter, recvBufSize, sendBufSize in
 	return nil
 }
 
-// Send send buffer bytes to the underlying stream
+// Send writes all bytes in buf to the connected stream.
 // parameters:
 //   - ctx : context to be used while reading
 //   - buf : the buffer to be sent.

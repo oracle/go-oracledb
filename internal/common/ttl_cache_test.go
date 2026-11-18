@@ -375,3 +375,32 @@ func cacheConcurrency(t *testing.T, cache Cache[string]) {
 
 	wg.Wait()
 }
+
+// TestSafeTTLCacheStoresAndReplacesValues checks the cache used by the driver's
+// down-host tracking. Put must return the old value, Get must return the new
+// value, and invalid capacity or TTL arguments must return no cache.
+func TestSafeTTLCacheStoresAndReplacesValues(t *testing.T) {
+	t.Parallel()
+	cache := NewSafeTTLCache[string](2, time.Minute)
+	if cache == nil {
+		t.Fatal("NewSafeTTLCache returned nil for valid arguments")
+	}
+	if _, found := cache.Get("missing"); found {
+		t.Fatal("missing key was reported as found")
+	}
+	if previous := cache.Put("key", "first"); previous != "" {
+		t.Fatalf("first Put returned %q, want empty previous value", previous)
+	}
+	if previous := cache.Put("key", "second"); previous != "first" {
+		t.Fatalf("replacement Put returned %q, want first", previous)
+	}
+	if value, found := cache.Get("key"); !found || value != "second" {
+		t.Fatalf("Get returned (%q, %v), want (second, true)", value, found)
+	}
+	if NewSafeTTLCache[string](0, time.Minute) != nil {
+		t.Fatal("zero-sized SafeTTLCache should be nil")
+	}
+	if NewSafeTTLCache[string](1, 0) != nil {
+		t.Fatal("zero-TTL SafeTTLCache should be nil")
+	}
+}

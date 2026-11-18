@@ -206,6 +206,8 @@ func TestNewNetworkSession(t *testing.T) {
 	}
 }
 
+// TestGetRemoteEndpoint verifies that connected TCP adapters expose their remote
+// address and port, while unavailable endpoint details return empty values.
 func TestGetRemoteEndpoint(t *testing.T) {
 	t.Parallel()
 
@@ -233,6 +235,12 @@ func TestGetRemoteEndpoint(t *testing.T) {
 			wantAddress: "",
 			wantPort:    0,
 		},
+		{
+			name:        "NilRemoteAddress",
+			adapter:     &remoteAddrNTAdapter{},
+			wantAddress: "",
+			wantPort:    0,
+		},
 	}
 
 	for _, tt := range tests {
@@ -250,17 +258,40 @@ func TestGetRemoteEndpoint(t *testing.T) {
 	}
 }
 
-// TestTransportConnect tests the transportConnect function
+// TestTransportConnect verifies that TCP/TCPS connection failures are returned
+// and that HTTPS proxy use over plain TCP is rejected.
 func TestTransportConnect(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
 	ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, sdu: 8192}
-
-	// Test TCP connection attempt (will fail without real server)
-	address := transport.Address{
-		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 9999},
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve local test port: %v", err)
 	}
-	err := ns.transportConnect(context.Background(), address)
+	port := uint16(listener.Addr().(*net.TCPAddr).Port)
+	if err := listener.Close(); err != nil {
+		t.Fatalf("release local test port: %v", err)
+	}
+
+	proxyAddress := transport.Address{
+		Address: naming.Address{
+			Protocol: driverCommon.ProtocolTCP,
+			Host:     "127.0.0.1",
+			Port:     port,
+		},
+		HTTPSProxy: "proxy.example.com",
+	}
+	if err := ns.transportConnect(context.Background(), proxyAddress); err == nil {
+		t.Fatal("expected HTTPS proxy to be rejected for TCP")
+	} else {
+		expectOracleErrorCode(t, err, oracleErrors.HTTPSProxyRequiresTCPS)
+	}
+
+	// Test connection attempts against the local port reserved above and then released.
+	address := transport.Address{
+		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "127.0.0.1", Port: port},
+	}
+	err = ns.transportConnect(context.Background(), address)
 	if err == nil {
 		t.Errorf("Expected connection error")
 	}

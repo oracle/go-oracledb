@@ -470,6 +470,28 @@ func TestParsePlaceholders_Uint16IndexesDoNotWrapAfter255(t *testing.T) {
 	}
 }
 
+// TestParsePlaceholders_MaxBindBoundary verifies the largest accepted bind
+// count and rejection immediately above that limit.
+func TestParsePlaceholders_MaxBindBoundary(t *testing.T) {
+	t.Parallel()
+	const maxOccurrences = int(maxBindIndex) + 1
+	query := "SELECT " + strings.TrimSuffix(strings.Repeat(":b,", maxOccurrences), ",") + " FROM dual"
+	parsed, err := parsePlaceholders(query)
+	if err != nil {
+		t.Fatalf("parse at maximum bind count: %v", err)
+	}
+	if len(parsed.bindNames) != maxOccurrences {
+		t.Fatalf("got %d binds at maximum, want %d", len(parsed.bindNames), maxOccurrences)
+	}
+
+	overLimit := "SELECT " + strings.TrimSuffix(strings.Repeat(":b,", maxOccurrences+1), ",") + " FROM dual"
+	if _, err := parsePlaceholders(overLimit); err == nil {
+		t.Fatal("parse above maximum bind count succeeded, want an error")
+	} else if got := getErrCode(t, err); got != oracleErrors.StatementParsingPlaceholdersArgsMismatch {
+		t.Fatalf("error code above maximum bind count = %s, want %s", got, oracleErrors.StatementParsingPlaceholdersArgsMismatch)
+	}
+}
+
 func bindListStatement(n int) string {
 	var b strings.Builder
 	b.WriteString("begin p(")

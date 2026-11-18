@@ -11,8 +11,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -300,4 +302,305 @@ func startTestProxy(t *testing.T, handler func(net.Conn) error) (Address, <-chan
 		HTTPSProxy:     "127.0.0.1",
 		HTTPSProxyPort: listener.Addr().(*net.TCPAddr).Port,
 	}, result
+}
+
+// TestNTTCPTransportSendReceiveRoundTrip connects the driver adapter to a local
+// TCP listener. Send must deliver the whole request, and Receive must read the
+// requested reply without changing bytes beyond the requested length.
+func TestNTTCPTransportSendReceiveRoundTrip(t *testing.T) {
+	t.Parallel()
+	nt, server := testNTTCPWithListener(t, NTattributes{})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	serverRead := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 4)
+		n, err := io.ReadFull(server, buf)
+		if err == nil && string(buf[:n]) != "ping" {
+			serverRead <- errors.New("server received unexpected payload")
+			return
+		}
+		serverRead <- err
+	}()
+	if err := nt.Send(ctx, []byte("ping")); err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+	if err := <-serverRead; err != nil {
+		t.Fatalf("server read failed: %v", err)
+	}
+
+	if _, err := server.Write([]byte("po")); err != nil {
+		t.Fatalf("server write failed: %v", err)
+	}
+	if _, err := server.Write([]byte("ng")); err != nil {
+		t.Fatalf("server write failed: %v", err)
+	}
+	buf := []byte("------")
+	n, err := nt.Receive(ctx, buf, 4)
+	if err != nil {
+		t.Fatalf("Receive failed: %v", err)
+	}
+	if n != 4 || string(buf) != "pong--" {
+		t.Fatalf("Receive returned (%d, %q), want (4, pong--)", n, string(buf))
+	}
+}
+
+// TestNTTCPTransportRejectsInvalidReceiveLength checks that a read larger than
+// the buffer returns InvalidNetworkExpectedLength, zero bytes, and an unchanged buffer.
+func TestNTTCPTransportRejectsInvalidReceiveLength(t *testing.T) {
+	t.Parallel()
+	nt := NewNTTCP(NTattributes{}, 0)
+	buf := []byte("-")
+	n, err := nt.Receive(context.Background(), buf, 2)
+	var sqlErr oracleErrors.SQLError
+	if n != 0 || !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.InvalidNetworkExpectedLength) || string(buf) != "-" {
+		t.Fatalf("Receive returned (%d, %v, %q), want zero bytes, %s, and unchanged buffer", n, err, buf, oracleErrors.InvalidNetworkExpectedLength)
+	}
+}
+
+// TestNTTCPTransportSendTimeouts checks caller cancellation and SendTimeout,
+// then verifies that Send succeeds after the write deadline is reset.
+func TestNTTCPTransportSendTimeouts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		sendTimeout int
+		cancelSend  bool
+	}{
+		{name: "caller cancellation", cancelSend: true},
+		{name: "configured send timeout", sendTimeout: 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			client, peer := net.Pipe()
+			conn := &writeObservedConn{Conn: client, writeStarted: make(chan struct{})}
+			nt := &nttcp{stream: conn, atts: NTattributes{SendTimeout: tt.sendTimeout}}
+			t.Cleanup(func() {
+				_ = client.Close()
+				_ = peer.Close()
+			})
+
+			ctx := context.Background()
+			var cancel context.CancelFunc
+			if tt.cancelSend {
+				ctx, cancel = context.WithCancel(ctx)
+				defer cancel()
+			}
+			sendDone := make(chan error, 1)
+			go func() { sendDone <- nt.Send(ctx, []byte("drop")) }()
+			select {
+			case <-conn.writeStarted:
+			case err := <-sendDone:
+				t.Fatalf("Send returned before the peer blocked the write: %v", err)
+			case <-time.After(2 * time.Second):
+				t.Fatal("Send did not start writing")
+			}
+			if cancel != nil {
+				cancel()
+			}
+
+			var timeoutErr error
+			select {
+			case timeoutErr = <-sendDone:
+			case <-time.After(2 * time.Second):
+				t.Fatal("Send did not stop after cancellation or SendTimeout")
+			}
+			var sqlErr oracleErrors.SQLError
+			if !errors.As(timeoutErr, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.CtxTimeout) {
+				t.Fatalf("Send error = %v, want %s", timeoutErr, oracleErrors.CtxTimeout)
+			}
+			if tt.cancelSend && !errors.Is(timeoutErr, context.Canceled) {
+				t.Fatalf("Send error = %v, want context.Canceled cause", timeoutErr)
+			}
+
+			readDone := make(chan error, 1)
+			go func() {
+				buf := make([]byte, 4)
+				if _, err := io.ReadFull(peer, buf); err != nil {
+					readDone <- err
+					return
+				}
+				if string(buf) != "pong" {
+					readDone <- fmt.Errorf("peer received %q, want pong", buf)
+					return
+				}
+				readDone <- nil
+			}()
+			if err := nt.Send(context.Background(), []byte("pong")); err != nil {
+				t.Fatalf("Send after deadline reset failed: %v", err)
+			}
+			if err := <-readDone; err != nil {
+				t.Fatalf("read after deadline reset failed: %v", err)
+			}
+		})
+	}
+}
+
+// TestNTTCPTransportReturnsWriteErrors checks that a stream write failure is
+// reported as ChannelWriteFailed while preserving the underlying cause.
+func TestNTTCPTransportReturnsWriteErrors(t *testing.T) {
+	t.Parallel()
+	client, peer := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = peer.Close()
+	})
+
+	writeErr := errors.New("test write failure")
+	conn := &writeObservedConn{Conn: client, writeErr: writeErr}
+	nt := &nttcp{stream: conn}
+	err := nt.Send(context.Background(), []byte("ping"))
+	var sqlErr oracleErrors.SQLError
+	if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.ChannelWriteFailed) {
+		t.Fatalf("Send error = %v, want %s", err, oracleErrors.ChannelWriteFailed)
+	}
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("Send error = %v, want underlying write error %v", err, writeErr)
+	}
+}
+
+type writeObservedConn struct {
+	net.Conn
+	writeStarted     chan struct{}
+	writeStartedOnce sync.Once
+	writeErr         error
+}
+
+func (c *writeObservedConn) Write(p []byte) (int, error) {
+	if c.writeStarted != nil {
+		c.writeStartedOnce.Do(func() { close(c.writeStarted) })
+	}
+	if c.writeErr != nil {
+		return 0, c.writeErr
+	}
+	return c.Conn.Write(p)
+}
+
+// TestNTTCPTransportReceiveTimeouts checks that a read waiting on a real TCP
+// peer returns the caller's deadline or the configured receive-timeout cause.
+// A later read must succeed, showing that the adapter reset the socket deadline.
+func TestNTTCPTransportReceiveTimeouts(t *testing.T) {
+	t.Parallel()
+	for _, configured := range []bool{false, true} {
+		name := "caller deadline"
+		if configured {
+			name = "receive timeout"
+		}
+		t.Run(name, func(t *testing.T) {
+			atts := NTattributes{Connectionid: "receive-timeout-test"}
+			if configured {
+				atts.RecvTimeout = 50
+			}
+			nt, server := testNTTCPWithListener(t, atts)
+			ctx := context.Background()
+			if !configured {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				defer cancel()
+			}
+			n, err := nt.Receive(ctx, make([]byte, 4), 4)
+			if n != 0 {
+				t.Fatalf("timed-out Receive returned %d bytes, want 0", n)
+			}
+			if configured {
+				var cause common.CtxTimeoutCauseError
+				if !errors.As(err, &cause) || cause.GetSource() != "recv-timeout" || cause.GetValue() != 50 || cause.GetEmitterID() != atts.Connectionid {
+					t.Fatalf("Receive error = %v, want the configured receive-timeout cause", err)
+				}
+			} else if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("Receive error = %v, want context.DeadlineExceeded", err)
+			}
+
+			nt.atts.RecvTimeout = 0
+			if _, err := server.Write([]byte("pong")); err != nil {
+				t.Fatalf("server write after timeout failed: %v", err)
+			}
+			retryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			buf := make([]byte, 4)
+			n, err = nt.Receive(retryCtx, buf, len(buf))
+			if err != nil || n != len(buf) || string(buf) != "pong" {
+				t.Fatalf("Receive after timeout returned (%d, %q, %v), want (4, pong, nil)", n, buf, err)
+			}
+		})
+	}
+}
+
+// TestNTTCPTransportReturnsReadErrors checks that a peer closing after a short
+// reply returns ChannelReadFailed with the EOF cause and the bytes already read.
+func TestNTTCPTransportReturnsReadErrors(t *testing.T) {
+	t.Parallel()
+	nt, server := testNTTCPWithListener(t, NTattributes{})
+	if _, err := server.Write([]byte("ab")); err != nil {
+		t.Fatalf("server write failed: %v", err)
+	}
+	if err := server.Close(); err != nil {
+		t.Fatalf("server close failed: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	buf := []byte("----")
+	n, err := nt.Receive(ctx, buf, len(buf))
+	var sqlErr oracleErrors.SQLError
+	if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.ChannelReadFailed) || !errors.Is(err, io.EOF) {
+		t.Fatalf("Receive error = %v, want %s", err, oracleErrors.ChannelReadFailed)
+	}
+	if n != 2 || string(buf) != "ab--" {
+		t.Fatalf("short Receive returned (%d, %q), want (2, ab--)", n, buf)
+	}
+}
+
+// TestNTTCPConnectHonorsCanceledContext checks that Connect returns a caller's
+// cancellation without retaining a socket or reporting a successful connection.
+func TestNTTCPConnectHonorsCanceledContext(t *testing.T) {
+	t.Parallel()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen failed: %v", err)
+	}
+	defer listener.Close()
+	port := uint16(listener.Addr().(*net.TCPAddr).Port)
+	nt := NewNTTCP(NTattributes{}, port)
+	defer nt.Disconnect()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err = nt.Connect(ctx, Address{Address: naming.Address{Host: "127.0.0.1", Port: port}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Connect error = %v, want context.Canceled", err)
+	}
+	if nt.connected || nt.stream != nil {
+		t.Fatal("canceled Connect retained an active connection")
+	}
+}
+
+// testNTTCPWithListener connects the driver adapter through its Connect method
+// and accepts the peer socket. All sockets and I/O are bounded and cleaned up.
+func testNTTCPWithListener(t *testing.T, atts NTattributes) (*nttcp, *net.TCPConn) {
+	t.Helper()
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatalf("listen failed: %v", err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	if err := listener.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("listener deadline failed: %v", err)
+	}
+	port := uint16(listener.Addr().(*net.TCPAddr).Port)
+	nt := NewNTTCP(atts, port)
+	t.Cleanup(func() { nt.Disconnect() })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := nt.Connect(ctx, Address{Address: naming.Address{Host: "127.0.0.1", Port: port}}); err != nil {
+		t.Fatalf("driver Connect failed: %v", err)
+	}
+	server, err := listener.AcceptTCP()
+	if err != nil {
+		t.Fatalf("accept failed: %v", err)
+	}
+	t.Cleanup(func() { server.Close() })
+	if err := server.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("server deadline failed: %v", err)
+	}
+	return nt, server
 }

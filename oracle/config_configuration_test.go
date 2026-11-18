@@ -40,17 +40,155 @@ package oracle
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
 )
+
+// TestDriver_Config_QueryStringToMap checks that keys and values are trimmed,
+// embedded equals signs are kept, and a missing equals sign returns a parse error.
+func TestDriver_Config_QueryStringToMap(t *testing.T) {
+	t.Parallel()
+	got, err := oracleconfig.QueryStringToMap(" key = value &other=two=three")
+	want := map[string]string{"key": "value", "other": "two=three"}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("QueryStringToMap returned (%v, %v), want (%v, nil)", got, err, want)
+	}
+	got, err = oracleconfig.QueryStringToMap("key")
+	var sqlErr oracleErrors.SQLError
+	if got != nil || !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.NamingParseFailed) {
+		t.Fatalf("missing equals sign returned (%v, %v), want nil map and %s", got, err, oracleErrors.NamingParseFailed)
+	}
+}
+
+// TestDriver_Config_LoggingDefaults checks that new logging settings use ERROR
+// and NULL, with sensitive logging and file truncation disabled.
+func TestDriver_Config_LoggingDefaults(t *testing.T) {
+	t.Parallel()
+	config := NewOracleLoggingConfig()
+	if config.GetLevel() != "ERROR" || config.GetDestination() != "NULL" || config.GetIncludeSensitive() || config.GetTruncate() {
+		t.Fatalf("unexpected logging defaults: level=%q destination=%q sensitive=%v truncate=%v",
+			config.GetLevel(), config.GetDestination(), config.GetIncludeSensitive(), config.GetTruncate())
+	}
+}
+
+// TestDriver_Config_ValidateNegativeTimeout checks that a negative connection
+// timeout returns InvalidConnectionParameter without changing the supplied value.
+func TestDriver_Config_ValidateNegativeTimeout(t *testing.T) {
+	t.Parallel()
+	config := NewOracleDriverConfig()
+	config.ConnectionProperties.ConnectTimeout = -1
+	err := config.Validate()
+	var sqlErr oracleErrors.SQLError
+	if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.InvalidConnectionParameter) {
+		t.Fatalf("Validate error = %v, want %s", err, oracleErrors.InvalidConnectionParameter)
+	}
+	if config.ConnectionProperties.ConnectTimeout != -1 {
+		t.Fatal("Validate changed the rejected timeout")
+	}
+}
+
+// TestDriver_Config_MapConnectionProperties checks Oracle Net property aliases
+// and conversion of boolean and proxy-port strings. Invalid values must leave
+// the affected property unchanged; username and timeout assignment are tested elsewhere.
+func TestDriver_Config_MapConnectionProperties(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, value string
+		invalid     bool
+	}{
+		{"compression", "true", false},
+		{"compression", "not-a-bool", true},
+		{"ssl_server_dn_match", " true ", false},
+		{"ssl_server_dn_match", "not-a-bool", true},
+		{"https_proxy_port", "9443", false},
+		{"https_proxy_port", "not-a-port", true},
+	} {
+		t.Run(tc.name+"/"+tc.value, func(t *testing.T) {
+			config := NewOracleDriverConfig()
+			before := config.ConnectionProperties
+			want := before
+			if !tc.invalid {
+				switch tc.name {
+				case "compression":
+					want.Compression = true
+				case "ssl_server_dn_match":
+					want.SSLServerDNMatch = true
+				case "https_proxy_port":
+					want.HttpsProxyPort = 9443
+				}
+			}
+			err := config.AssignFromMap(map[string]string{tc.name: tc.value})
+			if tc.invalid {
+				if tc.name != "https_proxy_port" {
+					var sqlErr oracleErrors.SQLError
+					if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.InvalidConnectionParameter) {
+						t.Fatalf("AssignFromMap error = %v, want %s", err, oracleErrors.InvalidConnectionParameter)
+					}
+				} else {
+					var conversionErr *strconv.NumError
+					if !errors.As(err, &conversionErr) || !errors.Is(err, strconv.ErrSyntax) {
+						t.Fatalf("AssignFromMap error = %v, want a string conversion error", err)
+					}
+				}
+			} else if err != nil {
+				t.Fatalf("AssignFromMap failed: %v", err)
+			}
+			if !reflect.DeepEqual(config.ConnectionProperties, want) {
+				t.Fatalf("connection properties = %+v, want %+v", config.ConnectionProperties, want)
+			}
+		})
+	}
+}
+
+// TestDriver_Config_PasswordRedaction checks that neither the credential string
+// nor the full configuration string contains the database password. It does not
+// depend on the format or wording of the printed configuration.
+func TestDriver_Config_PasswordRedaction(t *testing.T) {
+	t.Parallel()
+	config := NewOracleDriverConfig()
+	config.Credentials.Password = "test-password-not-for-logging"
+	for _, rendered := range []string{config.Credentials.String(), config.String()} {
+		if strings.Contains(rendered, config.Credentials.Password) {
+			t.Fatal("configuration output contains the database password")
+		}
+	}
+}
+
+// TestDriver_Config_LoggingRejectsInvalidBooleans checks that invalid sensitive-
+// logging and truncation values return a conversion error and keep those settings
+// disabled. This adds boolean-error coverage, not another logging-level test.
+func TestDriver_Config_LoggingRejectsInvalidBooleans(t *testing.T) {
+	t.Setenv("ORACLE_GO_LOGGING_LEVEL", "ERROR")
+	t.Setenv("ORACLE_GO_LOGGING_DESTINATION", "NULL")
+	for _, variable := range []string{"ORACLE_GO_LOGGING_INCLUDESENSITIVE", "ORACLE_GO_LOGGING_TRUNCATE"} {
+		t.Run(variable, func(t *testing.T) {
+			t.Setenv("ORACLE_GO_LOGGING_INCLUDESENSITIVE", "false")
+			t.Setenv("ORACLE_GO_LOGGING_TRUNCATE", "false")
+			t.Setenv(variable, "not-a-bool")
+			config := NewOracleLoggingConfig()
+			err := config.AssignFromEnv()
+			var conversionErr *strconv.NumError
+			if !errors.As(err, &conversionErr) || !errors.Is(err, strconv.ErrSyntax) {
+				t.Fatalf("AssignFromEnv error = %v, want a boolean conversion error", err)
+			}
+			if config.GetIncludeSensitive() || config.GetTruncate() {
+				t.Fatal("invalid logging boolean enabled sensitive logging or truncation")
+			}
+		})
+	}
+}
 
 // TestConfiguration_AssignFromEmptyMap checks AssignFromMap on nil or empty map
 // expectations:

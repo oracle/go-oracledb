@@ -109,4 +109,5 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestOdlTReturnsTaggedLogger", Categories: "unitary", Exclusive: false, Fn: TestOdlTReturnsTaggedLogger},
 	{Name: "TestOracleLoggerFineAndFinestLogCustomLevels", Categories: "unitary", Exclusive: false, Fn: TestOracleLoggerFineAndFinestLogCustomLevels},
 	{Name: "TestParseOracleLogLevel", Categories: "unitary", Exclusive: false, Fn: TestParseOracleLogLevel},
+	{Name: "TestSafeTTLCacheStoresAndReplacesValues", Categories: "unitary", Exclusive: false, Fn: TestSafeTTLCacheStoresAndReplacesValues},
 }
