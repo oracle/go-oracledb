@@ -47,6 +47,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	driverConfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -93,7 +94,7 @@ type codecFactory interface {
 	getEncoderForDtyType(DtyType, bindValueMetadata) (*typeEncoder, error)
 	getDecoder(DtyType) (*typeDecoder, error)
 	getBindOac(bindValueMetadata, driverCommon.UB4) (driverCommon.Marshallable, error)
-	getDefineOac(DtyType, columnContext, driverCommon.DriverProperties) driverCommon.Marshallable
+	getDefineOac(DtyType, columnContext, *driverConfig.OracleDriverConfig) driverCommon.Marshallable
 }
 
 // encoderFunc encodes a Go bind value into its logical payload bytes.
@@ -653,15 +654,15 @@ Returns:
 func (f *CodecFactoryImpl) getDefineOac(
 	dbType DtyType,
 	columnContext columnContext,
-	connectionProperties driverCommon.DriverProperties,
+	config *driverConfig.OracleDriverConfig,
 ) driverCommon.Marshallable {
 	common.Odl.Finest("New define OAC requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
 
 	candidates := f.defineOacs.getCandidates(dbType)
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	var lobPrefetchSize driverCommon.UB4
-	if connectionProperties != nil {
-		lobPrefetchSize = driverCommon.UB4(connectionProperties.GetDefaultLobPrefetchSize())
+	if config != nil {
+		lobPrefetchSize = driverCommon.UB4(config.DriverProperties.GetDefaultLobPrefetchSize())
 	}
 
 	if bestCandidate != nil {

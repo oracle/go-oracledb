@@ -87,7 +87,7 @@ func TestGetConnection(t *testing.T) {
 		cancelErr: nil,
 	}
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
 	}
 	mockStr := &mockStreamer{
 		pullMsg: &mockOer{err: nil},
@@ -266,7 +266,7 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	ctx := context.Background()
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{err: nil}})
-	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
+	shelf.RegisterMessageFactory(&mockFactory{returnMsg: newOall18()})
 
 	oracleconfig := &oracleconfig.OracleDriverConfig{
 		DriverProperties: oracleconfig.OracleDriverProperties{},

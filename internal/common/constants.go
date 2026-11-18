@@ -130,3 +130,19 @@ func GetLogonModeFromString(strmode string) (LogonMode, error) {
 	}
 	return KpzLogonSysdba, NewOracleError(oracleErrors.InvalidConnectionParameter, nil, mode, "logonMode", _allLogonModeNames)
 }
+
+const (
+	// DrcpPuritySelf indicates reuse a "pooled" session.
+	DrcpPuritySelf = "SELF"
+	// DrcpPurityNew indicates to use brand new session.
+	DrcpPurityNew = "NEW"
+)
+
+const (
+	// ServerTypePooled server process type pooled (DRCP)
+	ServerTypePooled = "POOLED"
+	// ServerTypeShared shared server process
+	ServerTypeShared = "SHARED"
+	// ServerTypeDedicated dedicated server process
+	ServerTypeDedicated = "DEDICATED"
+)

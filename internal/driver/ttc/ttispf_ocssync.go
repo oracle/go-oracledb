@@ -169,7 +169,7 @@ func (spf *ttiSPFOCSSync) getKeyValueArr() *driverCommon.Properties[string] {
 		if key != "" {
 			props.SetProperty(key, value)
 		} else {
-			common.Odl.Debug("For keyword %d getKeyValueFromKeyword returned empty string",
+			common.Odl.Fine("getKeyValueFromKeyword returned empty string",
 				"key", kv.keyword)
 		}
 

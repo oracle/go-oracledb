@@ -225,6 +225,7 @@ type SimpleFactory struct {
 	msgregistry  *Registry[driverCommon.MessageType]
 	funcregistry *Registry[functionRegistryKey]
 	capabilities map[string]driverCommon.Capability
+	logger       *common.OracleLogger
 }
 
 // NewMessageFactory creates a factory using the default registries and no
@@ -249,42 +250,44 @@ func NewMessageFactory() Factory {
 //
 // Returns a message factory.
 func NewMessageFactoryForProtocol(protocolVersion int8, capabilities map[string]driverCommon.Capability) Factory {
-	return &SimpleFactory{
+	factory := &SimpleFactory{
 		ttcVersion:   protocolVersion,
 		codecFactory: NewCodecFactoryForProtocol(protocolVersion),
 		msgregistry:  MessageRegistry,
 		funcregistry: FunctionRegistry,
 		capabilities: capabilities,
 	}
+	factory.logger = common.Odl.With("module", "factory")
+	return factory
 }
 
 // GetMessage retrieves the best message implementor for a given message type.
 func (f *SimpleFactory) GetMessage(msgType driverCommon.MessageType) (driverCommon.Message[driverCommon.MessageType], error) {
 	if !isValid(msgType) {
-		common.Odl.Warn("Invalid message type", "message type", msgType)
+		f.logger.Warn("Invalid message type", "message type", msgType)
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
-	common.Odl.Debug("New message requested", "type", msgType)
+	f.logger.Fine("New message requested", "type", msgType)
 
 	candidates := f.msgregistry.getCandidates(msgType)
 	if len(candidates) == 0 {
-		common.Odl.Warn("Requested message type is not available", "message type", msgType)
+		f.logger.Warn("Requested message type is not available", "message type", msgType)
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 
 	bestCandidate := getBestImplementor(f.ttcVersion, candidates, f.capabilities)
 	if bestCandidate != nil {
-		common.Odl.Debug("Message returned", "candidate", bestCandidate)
+		f.logger.Fine("Message returned", "candidate", bestCandidate)
 		return f.initializeMessage(bestCandidate.makeFunc()), nil
 	}
-	common.Odl.Warn("No candidate message found", "message type", msgType)
+	f.logger.Warn("No candidate message found", "message type", msgType)
 	return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 }
 
 // GetMessageForFunction retrieves the best message implementor for a given function type.
 func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, funcType driverCommon.FunctionType) (driverCommon.Message[driverCommon.MessageType], error) {
-	common.Odl.Fine("New function requested", "code", funcType)
+	f.logger.Fine("New function requested", "code", funcType)
 
 	key := functionRegistryKey{
 		messageType:  msgType,
@@ -293,17 +296,17 @@ func (f *SimpleFactory) GetMessageForFunction(msgType driverCommon.MessageType, 
 
 	candidates := f.funcregistry.getCandidates(key)
 	if len(candidates) == 0 {
-		common.Odl.Warn("Requested function type is not available", "message type", msgType, "function type", funcType)
+		f.logger.Warn("Requested function type is not available", "message type", toString(msgType), "function type", funcType)
 		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 
 	}
 
 	bestCandidate := getBestImplementor(f.ttcVersion, candidates, f.capabilities)
 	if bestCandidate != nil {
-		common.Odl.Fine("Function returned", "candidate", bestCandidate)
+		f.logger.Fine("Function returned", "candidate", bestCandidate)
 		return f.initializeMessage(bestCandidate.makeFunc()), nil
 	}
-	common.Odl.Warn("No candidate function found", "message type", msgType, "function type", funcType)
+	f.logger.Warn("No candidate function found", "message type", msgType, "function type", funcType)
 	return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 }
 

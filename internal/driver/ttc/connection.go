@@ -76,7 +76,17 @@ type connection struct {
 	// failure) or when then connectionShouldBeDropped flag is received on an STA
 	// or OER message (TODO).
 	_isValid bool
+
+	// _drcpState keeps track of the configured DRCP pooling mode.
+	_drcpState int
+	// _drcpConnectionState keeps track of the current DRCP attachment state.
+	_drcpConnectionState int
+
+	_logger *common.OracleLogger
 }
+
+const _drcpDisabled = 0 // DRCP not used
+const _drcpEnabled = 1  // DRCP  used
 
 // newConnection constructs a new Oracle connection wrapping negotiated state.
 // It returns an error when the server timezone cannot be initialized.
@@ -87,12 +97,20 @@ func newConnection(
 	ns driverCommon.NetworkSession,
 ) (*connection, error) {
 	conn := &connection{
-		shelf:     shelf,
-		sessCtx:   sessCtx,
-		ns:        ns,
-		_isClosed: false,
-		_isValid:  true,
+		shelf:      shelf,
+		sessCtx:    sessCtx,
+		ns:         ns,
+		_isClosed:  false,
+		_isValid:   true,
+		_drcpState: _drcpDisabled,
 	}
+
+	conn._logger = common.OdlT(sessCtx.GetClientProperties().GetProperty(driverCommon.SessionUuid).(string))
+
+	if shelf.Shelf.GetDriverConfig().ConnectionProperties.ServerType == common.ServerTypePooled {
+		conn._drcpState = _drcpEnabled
+	}
+
 	conn.registerEventListeners(conn.shelf.getEventService())
 	conn._registerHandleConnectionShouldBeDropped()
 	conn.shelf.registerCancelExecution(conn.cancelCurrentExecution)
@@ -146,8 +164,8 @@ Returns:
 - driver.Stmt: Prepared statement bound to this connection and query.
 - error: Non-nil if the connection is closed/invalid.
 */
-func (c *connection) PrepareContext(_ context.Context, query string) (driver.Stmt, error) {
-	common.Odl.Fine("Connection.PrepareContext: creating statement...")
+func (c *connection) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	c._logger.Fine("Connection.PrepareContext: creating statement...")
 	stmt, err := newStatement(c.shelf, c.sessCtx, query)
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
@@ -158,12 +176,17 @@ func (c *connection) PrepareContext(_ context.Context, query string) (driver.Stm
 // ExecContext implements driver.ExecerContext.
 // It creates a TTC Statement and delegates the execution.
 func (c *connection) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	common.Odl.Fine("Connection.ExecContext: creating statement...")
+	c._logger.Fine("Connection.ExecContext: creating statement...")
 	stmt, err := newStatement(c.shelf, c.sessCtx, query)
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
-	defer stmt.Close()
+	defer func() {
+		err := stmt.Close()
+		if err != nil {
+			c._logger.Warn("Connection.ExecContext: failed to close statement", "error", err)
+		}
+	}()
 	result, execErr := stmt.ExecContext(ctx, args)
 	return result, c.shelf.LocalizeError(execErr)
 }
@@ -171,6 +194,7 @@ func (c *connection) ExecContext(ctx context.Context, query string, args []drive
 // QueryContext implements driver.QueryerContext.
 // It creates a TTC Statement and delegates the query.
 func (c *connection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	c._logger.Fine("Connection.QueryContext: creating statement...")
 	stmt, err := newStatement(c.shelf, c.sessCtx, query)
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
@@ -251,7 +275,9 @@ func (c *connection) _handleConnectionShouldBeDropped(msg driverCommon.Message[d
 
 // String implements the Stringer interface
 func (c *connection) String() string {
-	return fmt.Sprintf("Connection { isOpen: %v, isValid: %v }", !c._isClosed, c._isValid)
+	return fmt.Sprintf("Connection { id: %v, isOpen: %v, isValid: %v }",
+		c.sessCtx.GetClientProperties().GetProperty(driverCommon.SessionUuid).(string),
+		!c._isClosed, c._isValid)
 }
 
 func (c *connection) registerEventListeners(service *eventService) {
@@ -264,13 +290,13 @@ func (c *connection) notify(event eventType) {
 	var wasValid = c._isValid == true
 	switch event {
 	case streamerStaleEvent:
-		common.Odl.Fine("Connection.notify: streamer stale received")
+		c._logger.Fine("Connection.notify: streamer stale received")
 		c._isValid = false
 	case streamerOverFlowEvent:
-		common.Odl.Fine("Connection.notify: streamer overflow received")
+		c._logger.Fine("Connection.notify: streamer overflow received")
 		c._isValid = false
 	default:
-		common.Odl.Fine("Connection.notify: received", "evt", event)
+		c._logger.Fine("Connection.notify: received", "evt", event)
 	}
 	if wasValid == true && c._isValid == false {
 		c.shelf.getEventService().post(connectionInvalidatedEvent)
@@ -341,7 +367,12 @@ func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {
 	if err != nil {
 		return c.shelf.LocalizeError(common.NewOracleError(oracleErrors.ServerTimeZoneError, err, "query"))
 	}
-	defer rows.Close()
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			c._logger.Warn("_registerServerTimezoneOffset: failed to close rows", "error", err)
+		}
+	}()
 	values := make([]driver.Value, 1)
 	var serverTimeZone string
 	values[0] = &serverTimeZone
@@ -391,4 +422,40 @@ func parseTimeZone(timezone string) (int, int, error) {
 	}
 
 	return sign * TZH, sign * TZM, nil
+}
+
+// DetachFromResidentPool detaches the connection from the DRCP pool
+//
+//	parameter:
+//	 - ctx the context to use
+//	returns:
+//	  error : if detach failed can be also DRCPNotEnabled or DRCPInvalidState
+func (c *connection) DetachFromResidentPool(ctx context.Context) error {
+	c._logger.Info("releasing from DRCP")
+	if c._drcpState == _drcpDisabled {
+		c._logger.Debug("Connection.DetachFromResidentPool called but DRCP not enabled")
+		return common.NewOracleError(oracleErrors.DRCPNotEnabled, nil)
+	}
+
+	function, err := c.shelf.Shelf.GetMessageFactory().GetMessageForFunction(TTIONEWAYFN, ocsessrls)
+	if err != nil {
+		return err
+	}
+
+	relMsg := function.(*ttiOCSessrel)
+
+	err = c.shelf.GetMessageStreamer().Push(ctx, relMsg)
+	if err != nil {
+		c._logger.Debug("Connection.DetachFromResidentPool failed to send detach request")
+		return err
+	}
+	err = c.shelf.GetMessageStreamer().Flush(ctx)
+	if err != nil {
+		c._logger.Debug("Connection.DetachFromResidentPool failed to flush detach request")
+		return err
+	}
+
+	c._logger.Debug("DRCP release done")
+
+	return nil
 }

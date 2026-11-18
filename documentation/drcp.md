@@ -1,0 +1,102 @@
+
+
+# DRCP Support
+
+This page describes the Go driver’s DRCP support.
+
+References:
+- [Using Database Resident Connection Pool](https://docs.oracle.com/en/database/oracle/oracle-database/26/adfns/performance-and-scalability.html#GUID-0B0DC596-17FF-4EEE-BAA1-9F428710C1AC)
+- [Oracle Database Resident Connection Pooling](https://www.oracle.com/a/tech/docs/drcp-technical-brief.pdf)
+
+DRCP (Database Resident Connection Pooling) is a connection pool built into Oracle Database.
+It keeps a shared pool of database server processes and sessions that applications can use temporarily, then return to the pool when finished.
+This helps applications reduce memory and process overhead and improves database scalability.
+DRCP can also complement a connection pool in the application’s middle tier.
+
+A client connects through Oracle’s connection broker. When it needs database access, the broker assigns an available pooled server, which handles the request.
+When the client releases the connection, the server process returns to the pool for reuse. The session may remain intact but become temporarily disconnected from that server, allowing it to be reused according to the application’s configuration.
+
+The connection class determines which requests can share pooled sessions. Purity indicates whether the client can reuse a session (SELF) or wants a new one (NEW).
+
+## Configuration
+
+DRCP relies on a few connection parameters, which are available in the driver configuration.
+
+### Pool Configuration
+
+```go
+type DatabaseResidentConnectionPooling struct {
+ ClassName         string // Sets the DRCP connection class.
+ Purity            string // Sets the DRCP purity.
+ PoolName          string // Sets the DRCP pool to be used.
+}
+```
+
+**ClassName:** The DRCP connection class. The class name identifies a type of connection that can be shared across application processes or applications. This parameter is optional; if omitted, the default class, `SYS.SHARED`, is used.
+
+**Purity:** Session purity. This attribute controls the reusability of pooled sessions in DRCP. It tells DRCP whether to provide a fresh session (NEW) or allow reuse of an existing pooled session (SELF).
+Reusing a session can be more efficient, but applications should account for its session state. If omitted, "SELF" is sent to the server.
+
+**PoolName:** The name of the DRCP pool to use. If omitted, the default pool (`SYS_DEFAULT_CONNECTION_POOL`) is used.
+
+Like other driver configuration parameters, these can also be specified in the connection string.
+
+Note: The DRCP specification defines parameters that the Go driver does not use and therefore does not support:
+
+- `Boundary`: Enables implicit attachment. The Go driver attaches and detaches connections automatically.
+- `Tag`, `UseMultipleTag`, and `FixUpCallBackName`: Tagging is useful only with a client-side connection pool that supports it. Go’s `sql.DB` pool does not support tagging.
+
+## How to enable DRCP?
+
+The server type is either DEDICATED (the default), SHARED or POOLED. To use DRCP, set the server type to POOLED. You can do this in any of the following ways:
+
+- Set `OracleConnectionProperties.ServerType` in the driver configuration.
+- Add `:pooled` to the EZConnect string, for example: `tcp://localhost:1521/freepdb1:pooled`.
+- Set the server type in the connect descriptor:
+
+  ```text
+  (DESCRIPTION=
+    (ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))
+    (CONNECT_DATA=(SERVICE_NAME=freepdb1)(SERVER=POOLED))
+  )
+  ```
+### Configuration examples
+
+#### Using the driver configuration
+
+Using the oracle.NewOracleDriverConfig API, you can pass the configuration through APIs:
+
+```go
+package main
+
+import (
+	"github.com/oracle/go-oracledb/v26/oracle"
+)
+
+func main() {
+	cfg := oracle.NewOracleDriverConfig()
+	cfg.ConnectDescriptor = "tcp://localhost:1521/freepdb1"
+	cfg.Credentials.User = "myuser"
+	cfg.Credentials.Password = "mypassword"
+
+	// Enable DRCP and set the connection class and purity.
+	cfg.ConnectionProperties.ServerType = "POOLED"
+	cfg.ConnectionProperties.Drcp.ClassName = "Sales"
+	cfg.ConnectionProperties.Drcp.Purity = "SELF"
+}
+```
+
+#### Using the Data Source Name (DSN) parameters
+
+```go
+dsn := fmt.Sprintf("myuser/mypassword@tcp://localhost:1521/freepdb1:pooled?pool_connection_class=%s&pool_purity=%s",
+            "Sales",
+            "SELF")
+db := sql.OpenDB(dsn)
+```
+
+## Automatic Attachment and Detachment
+
+The connection is implicitly attached to a remote database session by the server. 
+When the connection is released back to the sql.DB pool, it is detached from the remote session, making that session available for reuse through DRCP.
+Applications do not need to attach or detach sessions explicitly.

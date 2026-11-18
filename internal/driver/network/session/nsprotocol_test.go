@@ -394,7 +394,7 @@ func TestConnectToOption(t *testing.T) {
 
 	// Test parse error
 	option = newOption(driverCommon.ProtocolTCP, &naming.Description{}, "(DESCRIPTION")
-	_, err := ConnectToOption(context.Background(), option)
+	_, err := ConnectToOption(context.Background(), option, "")
 	if err == nil {
 		t.Errorf("Expected parse error")
 	}
@@ -405,7 +405,7 @@ func TestConnectToOption(t *testing.T) {
 	)
 
 	// Test connection attempt (will fail)
-	_, err = ConnectToOption(context.Background(), option)
+	_, err = ConnectToOption(context.Background(), option, "")
 	if err == nil {
 		t.Errorf("Expected connection error")
 	}
@@ -413,7 +413,7 @@ func TestConnectToOption(t *testing.T) {
 	// Additional tests to increase coverage
 	t.Run("Missing CONNECT_DATA", func(t *testing.T) {
 		option = newOption(driverCommon.ProtocolTCP, &naming.Description{}, "(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=localhost)(PORT=1521)))")
-		_, err := ConnectToOption(context.Background(), option)
+		_, err := ConnectToOption(context.Background(), option, "")
 		if err == nil {
 			t.Errorf("Expected connection error for missing CONNECT_DATA")
 		}
@@ -425,7 +425,7 @@ func TestConnectToOption(t *testing.T) {
 			&naming.Description{Security: naming.Security{WalletLocation: "/nonexistent"}},
 			"(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=orcl)))",
 		)
-		_, err = ConnectToOption(context.Background(), option)
+		_, err = ConnectToOption(context.Background(), option, "")
 		if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
 			t.Errorf("Expected prepare error, got %v", err)
 		}

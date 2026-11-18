@@ -57,7 +57,7 @@ func TestTransactionCommitSuccess(t *testing.T) {
 	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: commit}, 1, newCommit)
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, newOall18)
 	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	mockStr := &mockStreamer{}
 	shelf := newShelf[common.MessageType]()
@@ -173,7 +173,7 @@ func TestTransactionRollbackSuccess(t *testing.T) {
 	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 1, newRollback)
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, newOall18)
 	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	mockStr := &mockStreamer{pullMsg: &mockOer{err: nil}}
 	shelf := newShelf[common.MessageType]()
@@ -281,7 +281,7 @@ func TestCallBeginTxTwice(t *testing.T) {
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: logOff}, 1, newLogOff)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 1, newRollback)
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, newOall18)
 	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	mockStr := &mockStreamer{pullMsg: &mockOer{err: nil}}
 	shelf := newShelf[common.MessageType]()
@@ -314,7 +314,7 @@ func newTransactionTestConnection(streamer *mockStreamer) *connection {
 	messageRegistry := NewRegistry[common.MessageType]()
 	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, newOall18)
 	messageFactory := &SimpleFactory{ttcVersion: 1, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMessageFactory(messageFactory).RegisterMessageStreamer(streamer)

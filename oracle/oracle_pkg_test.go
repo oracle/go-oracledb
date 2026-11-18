@@ -44,6 +44,7 @@ import (
 	"testing"
 
 	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 func TestMain(m *testing.M) {
@@ -291,6 +292,9 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OSON_ZeroValue", Categories: "unitary", Exclusive: false, Fn: TestDriver_OSON_ZeroValue},
 	{Name: "TestDriver_OSON_NullDistinction", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NullDistinction},
 	{Name: "TestDriver_OpenConnectorPreservesQuotedInParameters", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorPreservesQuotedInParameters},
+	{Name: "TestDriver_DRCP_Basic", Categories: "functional", Exclusive: false, Fn: TestDriver_DRCP_Basic},
+	{Name: "TestDriver_DRCP_ClassAutoGen", Categories: "functional", Exclusive: false, Fn: TestDriver_DRCP_ClassAutoGen},
+	{Name: "TestDriver_Table_EmptyStringSelect", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_EmptyStringSelect},
 }
 
 func TestCategoryExecutor(t *testing.T) {
@@ -304,3 +308,7 @@ type TestingEnvironment = oracleTest.TestingEnvironment
 var DefaultTestConfig *TestConfig
 var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
+
+func isExpectedError(err error, expected oracleErrors.ErrorCode) bool {
+	return (err.(oracleErrors.SQLError).ErrorCode() == string(expected))
+}

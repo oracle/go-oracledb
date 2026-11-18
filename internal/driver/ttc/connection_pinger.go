@@ -77,8 +77,33 @@ const (
 // driver.ErrBadConn.
 func (c *connection) IsValid() bool {
 
+	c._logger.Info("IsValid() called", "cnx", (*c).String())
 	// Check if inband notification has been received.
 	c._isValid = c._isValid && !c.ns.CheckInbandNotification()
+	if !c._isValid {
+		return false
+	}
+
+	statements := c.shelf.GetStatements(true)
+	c._logger.Debug("closing statements", "count", len(statements))
+	for _, statement := range statements {
+		if err := statement.Close(); err != nil {
+			c._logger.Warn("Stale statement left in connection cannot be closed", "error", err)
+			c._isValid = false
+			return c._isValid
+		}
+	}
+
+	if c._drcpState == _drcpEnabled {
+		ctx, cancel := context.WithTimeout(context.Background(), _pingTimeout)
+		defer cancel()
+		err := c.DetachFromResidentPool(ctx)
+		if err != nil {
+			c._logger.Debug("Failed to attach to the DRCP pool", "error", err)
+			c._isValid = false
+			return c._isValid
+		}
+	}
 
 	// Use one timeout context for all request-end callbacks.
 	ctx, cancel := context.WithTimeout(common.BackgroundContext, _pingTimeout)

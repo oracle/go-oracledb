@@ -226,7 +226,7 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 	}{
 		{
 			name:      "oauth huge key length",
-			newRPA:    func() common.Unmarshallable { return NewOAuthRPA().(common.Unmarshallable) },
+			newRPA:    func() common.Unmarshallable { return newOAuthRPA().(common.Unmarshallable) },
 			pairCount: 1,
 			writePayload: func(ctx context.Context, engine *MarshalEngine) error {
 				return engine.MarshalSB4(ctx, common.SB4(maxAuthKeyValueKeyLength+1))
@@ -234,7 +234,7 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 		},
 		{
 			name:      "oauth huge value length",
-			newRPA:    func() common.Unmarshallable { return NewOAuthRPA().(common.Unmarshallable) },
+			newRPA:    func() common.Unmarshallable { return newOAuthRPA().(common.Unmarshallable) },
 			pairCount: 1,
 			writePayload: func(ctx context.Context, engine *MarshalEngine) error {
 				if err := engine.MarshalSB4(ctx, 0); err != nil {
@@ -245,13 +245,13 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 		},
 		{
 			name:         "oauth huge pair count",
-			newRPA:       func() common.Unmarshallable { return NewOAuthRPA().(common.Unmarshallable) },
+			newRPA:       func() common.Unmarshallable { return newOAuthRPA().(common.Unmarshallable) },
 			pairCount:    common.UB2(maxAuthKeyValuePairs + 1),
 			writePayload: func(context.Context, *MarshalEngine) error { return nil },
 		},
 		{
 			name:      "osesskey huge key length",
-			newRPA:    func() common.Unmarshallable { return NewOSesskeyRPA().(common.Unmarshallable) },
+			newRPA:    func() common.Unmarshallable { return newOSesskeyRPA().(common.Unmarshallable) },
 			pairCount: 1,
 			writePayload: func(ctx context.Context, engine *MarshalEngine) error {
 				return engine.MarshalSB4(ctx, common.SB4(maxAuthKeyValueKeyLength+1))
@@ -259,7 +259,7 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 		},
 		{
 			name:      "osesskey huge value length",
-			newRPA:    func() common.Unmarshallable { return NewOSesskeyRPA().(common.Unmarshallable) },
+			newRPA:    func() common.Unmarshallable { return newOSesskeyRPA().(common.Unmarshallable) },
 			pairCount: 1,
 			writePayload: func(ctx context.Context, engine *MarshalEngine) error {
 				if err := engine.MarshalSB4(ctx, 0); err != nil {
@@ -270,7 +270,7 @@ func TestAuthRPARejectsOversizedKeyValueListAllocations(t *testing.T) {
 		},
 		{
 			name:         "osesskey huge pair count",
-			newRPA:       func() common.Unmarshallable { return NewOSesskeyRPA().(common.Unmarshallable) },
+			newRPA:       func() common.Unmarshallable { return newOSesskeyRPA().(common.Unmarshallable) },
 			pairCount:    common.UB2(maxAuthKeyValuePairs + 1),
 			writePayload: func(context.Context, *MarshalEngine) error { return nil },
 		},

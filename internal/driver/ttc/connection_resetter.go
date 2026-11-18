@@ -51,15 +51,18 @@ import (
 // - Resets session properties
 // - Flushes piggyback messages
 func (c *connection) ResetSession(ctx context.Context) error {
-	common.Odl.Debug("ResetSession called", "cnx", (*c).String())
+
+	c._logger.Info("ResetSession called", "cnx", (*c).String())
 
 	if c._isClosed || !c._isValid {
 		return driver.ErrBadConn
 	}
+
 	statements := c.shelf.GetStatements(true)
+	c._logger.Debug("closing statements", "count", len(statements))
 	for _, statement := range statements {
 		if err := statement.Close(); err != nil {
-			common.Odl.Warn("Stale statement left in connection cannot be closed", "error", err)
+			c._logger.Warn("Stale statement left in connection cannot be closed", "error", err)
 			c._isValid = false
 			return driver.ErrBadConn
 		}
@@ -72,9 +75,10 @@ func (c *connection) ResetSession(ctx context.Context) error {
 	}
 
 	c.sessCtx.GetSessionProperties().Reset()
+	c._logger.Debug("Flushing streamer")
 	err := c.shelf.GetMessageStreamer().Flush(ctx)
 	if err != nil {
-		common.Odl.Warn("Flush of messages during reset has failed", "error", err)
+		c._logger.Warn("Flush of messages during reset has failed", "error", err)
 		return driver.ErrBadConn
 	}
 

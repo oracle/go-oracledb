@@ -106,20 +106,20 @@ func (o *oSessionKey) Equals(c *oSessionKey) bool {
 	return o.keyValList.Equals(c.keyValList)
 }
 
-// NewOSesskey creates a new Oracle Session Key (OSESSKEY) TTC message.
+// newOSesskey creates a new Oracle Session Key (OSESSKEY) TTC message.
 // It initializes the oSesskey struct with default session information and returns it as a Message interface.
 // The returned oSesskey message is ready to be configured for session establishment.
-func NewOSesskey() driverCommon.Message[driverCommon.MessageType] {
+func newOSesskey() driverCommon.Message[driverCommon.MessageType] {
 	obj := &oSessionKey{
 		header: &ttiFunHeader{_funcType: oSesskey},
 	}
 	return obj
 }
 
-// NewOSesskey18 creates a new Oracle Session Key (OSESSKEY) TTC message for protocol 18 and above.
+// newOSesskey18 creates a new Oracle Session Key (OSESSKEY) TTC message for protocol 18 and above.
 // It initializes the oSesskey struct with a TTC 18 header and default session information, returning it as a Message interface.
 // The returned oSesskey message is ready to be configured for session establishment using the 18c header format.
-func NewOSesskey18() driverCommon.Message[driverCommon.MessageType] {
+func newOSesskey18() driverCommon.Message[driverCommon.MessageType] {
 	obj := &oSessionKey{
 		header: &ttiFunHeader18{ttiFunHeader: &ttiFunHeader{_funcType: oSesskey}},
 	}
@@ -239,10 +239,10 @@ type oSesskeyRPA struct {
 	connectionValues *driverCommon.Properties[string]
 }
 
-// NewOSesskeyRPA creates a new Oracle Session Key Reply (TTIRPA) TTC message.
+// newOSesskeyRPA creates a new Oracle Session Key Reply (TTIRPA) TTC message.
 // It initializes the oSesskeyRPA struct and returns it as a Message interface,
 // ready to unmarshal server responses to session key establishment requests.
-func NewOSesskeyRPA() driverCommon.Message[driverCommon.MessageType] {
+func newOSesskeyRPA() driverCommon.Message[driverCommon.MessageType] {
 	return &oSesskeyRPA{}
 }
 

@@ -18,6 +18,7 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
   - Native Oracle JSON support via `github.com/oracle/go-oracledb/v26/oracle/datatype/json`
   - BLOB support using prefetch and returning `[]byte`
   - CLOB support using prefetch and returning `string`
+  - [DRCP](documentation/drcp.md)
 
 ## Installation
 Run:

@@ -69,10 +69,10 @@ func TestQuerySystemTableWithoutPrivilege_NegativeCase(t *testing.T) {
 	}
 
 	// Check for one of the expected error codes
-	errMsg := err.Error()
-	hasExpectedError := strings.Contains(errMsg, string(oracleErrors.TableOrViewNotFound)) ||
-		strings.Contains(errMsg, string(oracleErrors.InsufficientPrivilege)) ||
-		strings.Contains(errMsg, string(oracleErrors.MissingReadPrivilege))
+	errCode := err.(oracleErrors.SQLError).ErrorCode()
+	hasExpectedError := (errCode == string(oracleErrors.TableOrViewNotFound) ||
+		errCode == string(oracleErrors.InsufficientPrivilege)) ||
+		errCode == string(oracleErrors.MissingReadPrivilege)
 
 	if !hasExpectedError {
 		t.Errorf("expected %s, %s, or %s, got: %v", oracleErrors.TableOrViewNotFound, oracleErrors.InsufficientPrivilege, oracleErrors.MissingReadPrivilege, err)

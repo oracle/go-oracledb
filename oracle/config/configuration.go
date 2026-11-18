@@ -157,6 +157,25 @@ type OracleConnectionProperties struct {
 
 	// UseSNI enables Server Name Indication (SNI) for TLS connections.
 	UseSNI bool `ns_name:"USE_SNI" default:"false" validator:"validateBoolean" help:"enables Server Name Indication (SNI) for TLS connections"`
+	// ommit NS name for server type otherwise it will be added as query parameter which is not
+	ServerType string `default:"" validator:"validateServerType"  help:"sets the remote server type (POOLED|DEDICATED|SHARED)"`
+
+	Drcp DatabaseResidentConnectionPooling `isConfigGroup:"true"`
+
+	ConnectionIdPrefix string `default:"" validator:"" ns_name:"connection_id_prefix" help:"Sets the prefix for the connection ID"`
+}
+
+// DatabaseResidentConnectionPooling DRCP parameters.
+//
+//	Class name is mandatory whereas the other can be left blank.
+type DatabaseResidentConnectionPooling struct {
+	ClassName string `ns_name:"pool_connection_class" help:"sets the DRCP connection class, when not specified, default server class name SYS.SHARED is used"`
+	Purity    string `ns_name:"pool_purity" default:"SELF" help:"sets the DRCP purity, when not specified, SELF is used" validator:"validateDRCPPurity" `
+	PoolName  string `ns_name:"pool_name"  help:"sets the name of the DRCP pool to use"`
+}
+
+func (config DatabaseResidentConnectionPooling) String() string {
+	return toString(&config)
 }
 
 // String implements the Stringer interface
@@ -206,7 +225,6 @@ func (config *OracleDriverConfig) ToNSConnectionParameters() string {
 				}
 				sb.WriteString(fmt.Sprintf("%s=%s", NsNAme, parameterValue))
 			}
-
 		}
 	}
 	return sb.String()
@@ -966,6 +984,8 @@ func init() {
 	_fieldsValidators["validateZeroOrPositive"] = validateZeroOrPositive
 	_fieldsValidators["validateLoggingLevel"] = validateLoggingLevel
 	_fieldsValidators["validateUserName"] = validateUserName
+	_fieldsValidators["validateServerType"] = validateServerType
+	_fieldsValidators["validateDRCPPurity"] = validateDRCPPurity
 	_fieldsValidators["validateTokenAuth"] = validateTokenAuth
 	_fieldsValidators["validateTokenLocation"] = validateTokenLocation
 
@@ -1109,7 +1129,53 @@ func validateLoggingLevel(value reflect.Value, valueName string) (any, error) {
 	)
 }
 
-// validateZeroOrPositive validates that a value is a positive, non-zero integer.
+// validateServerType parses a string to a valid remote server process type
+// parameters:
+//   - key : property key to be parsed
+//   - value : property value
+//
+// error:
+//   - value is not assignable to string
+//   - parsing has failed
+func validateServerType(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() == reflect.String {
+		sType := strings.ToUpper(strings.TrimSpace(value.String()))
+		if sType == "" || sType == common.ServerTypeShared || sType == common.ServerTypeDedicated || sType == common.ServerTypePooled {
+			return sType, nil
+		}
+	}
+	return nil, common.NewOracleError(
+		oracleErrors.InvalidConnectionParameter,
+		nil,
+		value,
+		valueName,
+		[]string{common.ServerTypeShared, common.ServerTypeDedicated, common.ServerTypePooled})
+}
+
+// validateDRCPPurity parses a string to a valid DRCP purity setting
+// parameters:
+//   - key : property key to be parsed
+//   - value : property value
+//
+// error:
+//   - value is not assignable to string
+//   - parsing has failed
+func validateDRCPPurity(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() == reflect.String {
+		purity := strings.ToUpper(strings.TrimSpace(value.String()))
+		if purity == "" || purity == common.DrcpPurityNew || purity == common.DrcpPuritySelf {
+			return purity, nil
+		}
+	}
+	return nil, common.NewOracleError(
+		oracleErrors.InvalidConnectionParameter,
+		nil,
+		value,
+		valueName,
+		[]string{common.DrcpPurityNew, common.DrcpPuritySelf})
+}
+
+// validateZeroOrPositive validator for positive non-zero integer value.
 // errors:
 //   - the value is not assignable to an int
 //   - the integer value is less than or equal to zero
@@ -1170,7 +1236,7 @@ func validateLanguage(value reflect.Value, valueName string) (any, error) {
 	}
 	// is it already a Tag ?
 	if value.IsValid() && value.Type() == _languageTagType {
-		return value, nil
+		return value.Interface().(language.Tag), nil
 	}
 
 	return language.Tag{}, common.NewOracleError(
