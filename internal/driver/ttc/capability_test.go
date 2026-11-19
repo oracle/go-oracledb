@@ -118,13 +118,13 @@ func TestCapabilityNewDefault(t *testing.T) {
 	}
 }
 
-func TestDefaultCapabilityDoesNotAdvertiseResetState(t *testing.T) {
+func TestDefaultCapabilityAdvertisesLoginResetState(t *testing.T) {
 	t.Parallel()
 
 	cap := newDefaultCapability()
-	resetState := cap.knownUsedCompileTimeCapabilities[kpccapCtResetState]
-	if got := cap.compileTimeCapabilities[resetState.index] & resetState.value; got != 0 {
-		t.Errorf("reset-state capability = %#x, want 0", got)
+	resetState := cap.knownUsedCompileTimeCapabilities[kpccapCtResetStateLogin]
+	if got := cap.compileTimeCapabilities[resetState.index] & resetState.value; got != resetState.value {
+		t.Errorf("LOGIN reset-state capability = %#x, want %#x", got, resetState.value)
 	}
 }
 
