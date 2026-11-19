@@ -41,7 +41,6 @@ package common
 import (
 	"bytes"
 	"errors"
-	"math"
 	"testing"
 
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -56,8 +55,7 @@ func assertInvalidBufferOperation(t *testing.T, err error) {
 	}
 }
 
-// TestReadBuffer verifies the ReadBuffer contract: byte order, sequential and absolute reads,
-// the cursor, and the views returned by ReadBytes and ReadBytesAt.
+// TestReadBuffer verifies byte order, sequential reads, the cursor, and ReadBytes copies.
 func TestReadBuffer(t *testing.T) {
 	t.Run("byte order", func(t *testing.T) {
 		data := B1Array{0x12, 0x34}
@@ -89,47 +87,21 @@ func TestReadBuffer(t *testing.T) {
 		if r.Position() != 2 {
 			t.Fatalf("Position() = %d after ReadUB2(); want 2", r.Position())
 		}
-		if err := r.SetPosition(1); err != nil {
+		if err := r.Seek(1); err != nil {
 			t.Fatal(err)
 		}
 		if got, err := r.ReadUB1(); err != nil || got != 8 {
-			t.Fatalf("ReadUB1() after SetPosition(1) = %d, %v; want 8", got, err)
+			t.Fatalf("ReadUB1() after Seek(1) = %d, %v; want 8", got, err)
 		}
-		if err := r.SetPosition(r.Size()); err != nil {
+		if err := r.Seek(r.Size()); err != nil {
 			t.Fatal(err)
 		}
 		if r.Position() != 4 {
-			t.Fatalf("Position() = %d after SetPosition(Size()); want 4", r.Position())
+			t.Fatalf("Position() = %d after Seek(Size()); want 4", r.Position())
 		}
 	})
 
-	t.Run("absolute reads do not move the cursor", func(t *testing.T) {
-		r := NewReadBuffer(B1Array{1, 2, 3, 4, 5, 6, 7, 8, 0xFF, 0xFF, 0xFF, 0xFD}, BIG_ENDIAN)
-		reads := []struct {
-			name string
-			read func() (any, error)
-			want any
-		}{
-			{"UB1At", func() (any, error) { return r.ReadUB1At(0) }, UB1(1)},
-			{"UB2At", func() (any, error) { return r.ReadUB2At(1) }, UB2(0x0203)},
-			{"UB4At", func() (any, error) { return r.ReadUB4At(2) }, UB4(0x03040506)},
-			{"UB8At", func() (any, error) { return r.ReadUB8At(0) }, UB8(0x0102030405060708)},
-			{"SB1At", func() (any, error) { return r.ReadSB1At(8) }, SB1(-1)},
-			{"SB2At", func() (any, error) { return r.ReadSB2At(10) }, SB2(-3)},
-			{"SB4At", func() (any, error) { return r.ReadSB4At(8) }, SB4(-3)},
-		}
-		for _, rd := range reads {
-			got, err := rd.read()
-			if err != nil || got != rd.want {
-				t.Fatalf("%s = %v, %v; want %v", rd.name, got, err, rd.want)
-			}
-		}
-		if r.Position() != 0 {
-			t.Fatalf("Position() = %d after absolute reads; want 0", r.Position())
-		}
-	})
-
-	t.Run("ReadBytes returns an aliased view and advances", func(t *testing.T) {
+	t.Run("ReadBytes returns a copy and advances", func(t *testing.T) {
 		data := B1Array{1, 2, 3}
 		r := NewReadBuffer(data, BIG_ENDIAN)
 		view, err := r.ReadBytes(2)
@@ -137,28 +109,22 @@ func TestReadBuffer(t *testing.T) {
 			t.Fatalf("ReadBytes(2) = %v, %v; want [1 2]", view, err)
 		}
 		view[0] = 9
-		if data[0] != 9 {
-			t.Fatal("ReadBytes() did not return a view aliasing the buffer data")
+		if data[0] != 1 {
+			t.Fatal("ReadBytes() returned a slice sharing the buffer data")
+		}
+		data[1] = 9
+		if view[1] != 2 {
+			t.Fatal("ReadBytes() result changed when the buffer data changed")
 		}
 		if r.Position() != 2 {
 			t.Fatalf("Position() = %d after ReadBytes(2); want 2", r.Position())
 		}
 	})
 
-	t.Run("ReadBytesAt returns the range without moving the cursor", func(t *testing.T) {
-		r := NewReadBuffer(B1Array{1, 2, 3, 4}, BIG_ENDIAN)
-		got, err := r.ReadBytesAt(1, 2)
-		if err != nil || !bytes.Equal(got, B1Array{2, 3}) {
-			t.Fatalf("ReadBytesAt(1, 2) = %v, %v; want [2 3]", got, err)
-		}
-		if r.Position() != 0 {
-			t.Fatalf("Position() = %d after ReadBytesAt(); want 0", r.Position())
-		}
-	})
 }
 
 // TestWriteBuffer verifies the WriteBuffer contract: appends in both byte orders, growth,
-// independent copies from Bytes, Reserve, and in-place overwrites with Write*At.
+// independent copies from Bytes, Reserve, and cursor-based overwrites.
 func TestWriteBuffer(t *testing.T) {
 	t.Run("round trip in both byte orders", func(t *testing.T) {
 		for _, order := range []ByteOrder{BIG_ENDIAN, LITTLE_ENDIAN} {
@@ -211,7 +177,7 @@ func TestWriteBuffer(t *testing.T) {
 	})
 
 	t.Run("growth beyond preallocated capacity", func(t *testing.T) {
-		w := NewWriteBufferWithCapacity(1, BIG_ENDIAN)
+		w := NewWriteBufferWithCapacity(BIG_ENDIAN, 1)
 		w.WriteUB4(0x01020304)
 		if !bytes.Equal(w.Bytes(), B1Array{1, 2, 3, 4}) {
 			t.Fatalf("Bytes() = %v; want [1 2 3 4]", w.Bytes())
@@ -248,35 +214,33 @@ func TestWriteBuffer(t *testing.T) {
 		}
 	})
 
-	t.Run("Write*At overwrites without moving position", func(t *testing.T) {
-		tests := []struct {
-			name  string
-			write func(w WriteBuffer) error
-			want  B1Array
-		}{
-			{"UB1At", func(w WriteBuffer) error { return w.WriteUB1At(0, 0xAB) }, B1Array{0xAB, 0, 0, 0, 0, 0, 0, 0}},
-			{"UB2At", func(w WriteBuffer) error { return w.WriteUB2At(1, 0x1234) }, B1Array{0, 0x12, 0x34, 0, 0, 0, 0, 0}},
-			{"UB4At", func(w WriteBuffer) error { return w.WriteUB4At(0, 0x01020304) }, B1Array{1, 2, 3, 4, 0, 0, 0, 0}},
-			{"UB8At", func(w WriteBuffer) error { return w.WriteUB8At(0, 0x0102030405060708) }, B1Array{1, 2, 3, 4, 5, 6, 7, 8}},
-			{"SB1At", func(w WriteBuffer) error { return w.WriteSB1At(7, -1) }, B1Array{0, 0, 0, 0, 0, 0, 0, 0xFF}},
-			{"SB2At", func(w WriteBuffer) error { return w.WriteSB2At(6, -2) }, B1Array{0, 0, 0, 0, 0, 0, 0xFF, 0xFE}},
-			{"SB4At", func(w WriteBuffer) error { return w.WriteSB4At(4, -3) }, B1Array{0, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFD}},
-			{"BytesAt", func(w WriteBuffer) error { return w.WriteBytesAt(2, B1Array{9, 8}) }, B1Array{0, 0, 9, 8, 0, 0, 0, 0}},
+	t.Run("seek, overwrite, and extend", func(t *testing.T) {
+		w := NewWriteBuffer(BIG_ENDIAN)
+		w.WriteBytes(B1Array{1, 2, 3, 4})
+		w.Set()
+		if err := w.Seek(1); err != nil {
+			t.Fatal(err)
 		}
-		for _, tt := range tests {
-			w := NewWriteBuffer(BIG_ENDIAN)
-			w.Reserve(8)
-			if err := tt.write(w); err != nil {
-				t.Fatalf("%s: %v", tt.name, err)
-			}
-			if w.Position() != 8 {
-				t.Fatalf("%s: Position() = %d; want 8", tt.name, w.Position())
-			}
-			if !bytes.Equal(w.Bytes(), tt.want) {
-				t.Fatalf("%s: Bytes() = %v; want %v", tt.name, w.Bytes(), tt.want)
-			}
+		w.WriteUB2(0x0908)
+		if w.Size() != 4 || w.Position() != 3 {
+			t.Fatalf("size = %d, position = %d", w.Size(), w.Position())
+		}
+		if err := w.Rewind(); err != nil {
+			t.Fatal(err)
+		}
+		w.WriteUB1(5)
+		if got := w.Bytes(); !bytes.Equal(got, B1Array{1, 9, 8, 4, 5}) {
+			t.Fatalf("Bytes() = %v", got)
+		}
+		if err := w.Seek(3); err != nil {
+			t.Fatal(err)
+		}
+		w.Reserve(3)
+		if got := w.Bytes(); !bytes.Equal(got, B1Array{1, 9, 8, 0, 0, 0}) {
+			t.Fatalf("Bytes() after Reserve = %v", got)
 		}
 	})
+
 }
 
 // TestInvalidBufferOperation verifies that every read or write whose position, offset, or range
@@ -291,7 +255,7 @@ func TestInvalidBufferOperation(t *testing.T) {
 			name string
 			read func() error
 		}{
-			{"SetPosition past size", func() error { return r.SetPosition(3) }},
+			{"Seek past size", func() error { return r.Seek(3) }},
 			{"UB1", func() error { _, err := r.ReadUB1(); return err }},
 			{"UB2", func() error { _, err := r.ReadUB2(); return err }},
 			{"UB4", func() error { _, err := r.ReadUB4(); return err }},
@@ -300,15 +264,6 @@ func TestInvalidBufferOperation(t *testing.T) {
 			{"SB2", func() error { _, err := r.ReadSB2(); return err }},
 			{"SB4", func() error { _, err := r.ReadSB4(); return err }},
 			{"ReadBytes", func() error { _, err := r.ReadBytes(1); return err }},
-			{"UB1At offset past size", func() error { _, err := r.ReadUB1At(3); return err }},
-			{"UB1At range past end", func() error { _, err := r.ReadUB1At(2); return err }},
-			{"UB2At range past end", func() error { _, err := r.ReadUB2At(2); return err }},
-			{"UB4At range past end", func() error { _, err := r.ReadUB4At(2); return err }},
-			{"UB8At range past end", func() error { _, err := r.ReadUB8At(2); return err }},
-			{"SB1At range past end", func() error { _, err := r.ReadSB1At(2); return err }},
-			{"SB2At range past end", func() error { _, err := r.ReadSB2At(2); return err }},
-			{"SB4At range past end", func() error { _, err := r.ReadSB4At(2); return err }},
-			{"ReadBytesAt range past end", func() error { _, err := r.ReadBytesAt(2, 1); return err }},
 		}
 		for _, rd := range reads {
 			t.Run(rd.name, func(t *testing.T) {
@@ -320,27 +275,32 @@ func TestInvalidBufferOperation(t *testing.T) {
 		}
 	})
 
-	t.Run("writes", func(t *testing.T) {
-		tests := []struct {
-			name  string
-			write func(w WriteBuffer) error
-		}{
-			{"offset past end", func(w WriteBuffer) error { return w.WriteUB1At(math.MaxUint, 0) }},
-			{"UB1At", func(w WriteBuffer) error { return w.WriteUB1At(1, 0) }},
-			{"UB2At", func(w WriteBuffer) error { return w.WriteUB2At(1, 0) }},
-			{"UB4At", func(w WriteBuffer) error { return w.WriteUB4At(1, 0) }},
-			{"UB8At", func(w WriteBuffer) error { return w.WriteUB8At(1, 0) }},
-			{"SB1At", func(w WriteBuffer) error { return w.WriteSB1At(1, 0) }},
-			{"SB2At", func(w WriteBuffer) error { return w.WriteSB2At(1, 0) }},
-			{"SB4At", func(w WriteBuffer) error { return w.WriteSB4At(1, 0) }},
-			{"BytesAt", func(w WriteBuffer) error { return w.WriteBytesAt(1, B1Array{0, 0}) }},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				w := NewWriteBuffer(BIG_ENDIAN)
-				w.WriteUB1(1)
-				assertInvalidBufferOperation(t, tt.write(w))
-			})
+	t.Run("seek and nested saved positions", func(t *testing.T) {
+		buffers := []Seekable{NewReadBuffer(B1Array{1, 2}, BIG_ENDIAN), NewWriteBuffer(BIG_ENDIAN)}
+		buffers[1].(WriteBuffer).WriteBytes(B1Array{1, 2})
+		for _, b := range buffers {
+			if err := b.Seek(0); err != nil {
+				t.Fatal(err)
+			}
+			b.Set()
+			if err := b.Seek(1); err != nil {
+				t.Fatal(err)
+			}
+			b.Set()
+			if err := b.Seek(2); err != nil {
+				t.Fatal(err)
+			}
+			assertInvalidBufferOperation(t, b.Seek(3))
+			if b.Position() != 2 {
+				t.Fatal("failed seek changed position")
+			}
+			if err := b.Rewind(); err != nil || b.Position() != 1 {
+				t.Fatalf("first rewind: %d, %v", b.Position(), err)
+			}
+			if err := b.Rewind(); err != nil || b.Position() != 0 {
+				t.Fatalf("second rewind: %d, %v", b.Position(), err)
+			}
+			assertInvalidBufferOperation(t, b.Rewind())
 		}
 	})
 }
