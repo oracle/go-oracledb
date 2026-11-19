@@ -286,6 +286,9 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 // checkNamedValue validates sql.Out destinations and returns shelf-localized
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
+	if err := checkVectorNamedValue(nv); err == nil {
+		return nil
+	}
 	// connectionWrapper.Fetch passes an already-decoded driver.Rows to the internal
 	// REF CURSOR statement executor. This is not a REF CURSOR OUT-bind destination.
 	if _, ok := nv.Value.(driver.Rows); ok {

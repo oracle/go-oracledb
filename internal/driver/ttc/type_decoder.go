@@ -634,6 +634,19 @@ func DecodeBinaryColumn(_ columnContext, value any) (driver.Value, error) {
 	return []byte(data), nil
 }
 
+// DecodeVectorColumn decodes a fully prefetched TTC VECTOR envelope.
+func DecodeVectorColumn(columnContext columnContext, value any) (driver.Value, error) {
+	data, err := rawColumnData(value)
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := converters.DecodeVector(data)
+	if err != nil {
+		return nil, rowDecodeError(columnContext, err, "VECTOR")
+	}
+	return decoded, nil
+}
+
 // rawColumnData returns the raw TTC payload required by scalar decoders.
 func rawColumnData(value any) (driverCommon.B1Array, error) {
 	data, ok := value.(driverCommon.B1Array)

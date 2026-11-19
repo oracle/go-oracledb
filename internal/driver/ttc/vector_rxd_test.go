@@ -29,13 +29,13 @@ func TestUnmarshalVectorColumn(t *testing.T) {
 		t.Fatalf("marshal locator: %v", err)
 	}
 
-	rxd := newTTIrxd().(*tTIrxd)
-	rxd.row = make([]driverCommon.B1Array, 1)
 	reader := createMarshaller(buf.bytes[:buf.currentWritePosition], 0, 0)
-	if err := rxd._unmarshalVectorColumn(ctx, reader, 0); err != nil {
+	payload, err := unwrapVectorColumn(ctx, reader, columnUnwrapContext{})
+	if err != nil {
 		t.Fatalf("unmarshal vector column: %v", err)
 	}
-	if !bytes.Equal(rxd.row[0], prefetched) {
-		t.Fatalf("prefetched data mismatch: got %v want %v", rxd.row[0], prefetched)
+	got, ok := payload.data.(driverCommon.B1Array)
+	if !ok || !bytes.Equal(got, prefetched) {
+		t.Fatalf("prefetched data mismatch: got %v want %v", payload.data, prefetched)
 	}
 }
