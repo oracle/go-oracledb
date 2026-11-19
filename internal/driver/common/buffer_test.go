@@ -87,17 +87,17 @@ func TestReadBuffer(t *testing.T) {
 		if r.Position() != 2 {
 			t.Fatalf("Position() = %d after ReadUB2(); want 2", r.Position())
 		}
-		if err := r.Seek(1); err != nil {
+		if err := r.Seek(-1); err != nil {
 			t.Fatal(err)
 		}
 		if got, err := r.ReadUB1(); err != nil || got != 8 {
 			t.Fatalf("ReadUB1() after Seek(1) = %d, %v; want 8", got, err)
 		}
-		if err := r.Seek(r.Size()); err != nil {
+		if err := r.Seek(2); err != nil {
 			t.Fatal(err)
 		}
 		if r.Position() != 4 {
-			t.Fatalf("Position() = %d after Seek(Size()); want 4", r.Position())
+			t.Fatalf("Position() = %d after seeking forward; want 4", r.Position())
 		}
 	})
 
@@ -162,14 +162,15 @@ func TestWriteBuffer(t *testing.T) {
 
 	t.Run("appends advance position and size", func(t *testing.T) {
 		w := NewWriteBuffer(BIG_ENDIAN)
-		if w.Position() != 0 || w.Size() != 0 {
-			t.Fatalf("new buffer Position() = %d, Size() = %d; want 0, 0", w.Position(), w.Size())
+		s := w.(Seekable)
+		if s.Position() != 0 || w.Size() != 0 {
+			t.Fatalf("new buffer Position() = %d, Size() = %d; want 0, 0", s.Position(), w.Size())
 		}
 		w.WriteUB1(1)
 		w.WriteUB2(0x0203)
 		w.WriteBytes(B1Array{4})
-		if w.Position() != 4 || w.Size() != 4 {
-			t.Fatalf("Position() = %d, Size() = %d; want 4, 4", w.Position(), w.Size())
+		if s.Position() != 4 || w.Size() != 4 {
+			t.Fatalf("Position() = %d, Size() = %d; want 4, 4", s.Position(), w.Size())
 		}
 		if !bytes.Equal(w.Bytes(), B1Array{1, 2, 3, 4}) {
 			t.Fatalf("Bytes() = %v; want [1 2 3 4]", w.Bytes())
@@ -216,23 +217,24 @@ func TestWriteBuffer(t *testing.T) {
 
 	t.Run("seek, overwrite, and extend", func(t *testing.T) {
 		w := NewWriteBuffer(BIG_ENDIAN)
+		s := w.(Seekable)
 		w.WriteBytes(B1Array{1, 2, 3, 4})
-		w.Set()
-		if err := w.Seek(1); err != nil {
+		s.Set()
+		if err := s.Seek(-3); err != nil {
 			t.Fatal(err)
 		}
 		w.WriteUB2(0x0908)
-		if w.Size() != 4 || w.Position() != 3 {
-			t.Fatalf("size = %d, position = %d", w.Size(), w.Position())
+		if w.Size() != 4 || s.Position() != 3 {
+			t.Fatalf("size = %d, position = %d", w.Size(), s.Position())
 		}
-		if err := w.Rewind(); err != nil {
+		if err := s.Rewind(); err != nil {
 			t.Fatal(err)
 		}
 		w.WriteUB1(5)
 		if got := w.Bytes(); !bytes.Equal(got, B1Array{1, 9, 8, 4, 5}) {
 			t.Fatalf("Bytes() = %v", got)
 		}
-		if err := w.Seek(3); err != nil {
+		if err := s.Seek(-2); err != nil {
 			t.Fatal(err)
 		}
 		w.Reserve(3)
@@ -251,11 +253,16 @@ func TestInvalidBufferOperation(t *testing.T) {
 		if _, err := r.ReadUB2(); err != nil {
 			t.Fatal(err)
 		}
+		maxInt := int(^uint(0) >> 1)
+		minInt := -maxInt - 1
 		reads := []struct {
 			name string
 			read func() error
 		}{
 			{"Seek past size", func() error { return r.Seek(3) }},
+			{"Seek before zero", func() error { return r.Seek(-3) }},
+			{"Seek with maximum offset", func() error { return r.Seek(maxInt) }},
+			{"Seek with minimum offset", func() error { return r.Seek(minInt) }},
 			{"UB1", func() error { _, err := r.ReadUB1(); return err }},
 			{"UB2", func() error { _, err := r.ReadUB2(); return err }},
 			{"UB4", func() error { _, err := r.ReadUB4(); return err }},
@@ -264,6 +271,7 @@ func TestInvalidBufferOperation(t *testing.T) {
 			{"SB2", func() error { _, err := r.ReadSB2(); return err }},
 			{"SB4", func() error { _, err := r.ReadSB4(); return err }},
 			{"ReadBytes", func() error { _, err := r.ReadBytes(1); return err }},
+			{"ReadBytes negative length", func() error { _, err := r.ReadBytes(-1); return err }},
 		}
 		for _, rd := range reads {
 			t.Run(rd.name, func(t *testing.T) {
@@ -276,8 +284,13 @@ func TestInvalidBufferOperation(t *testing.T) {
 	})
 
 	t.Run("seek and nested saved positions", func(t *testing.T) {
-		buffers := []Seekable{NewReadBuffer(B1Array{1, 2}, BIG_ENDIAN), NewWriteBuffer(BIG_ENDIAN)}
-		buffers[1].(WriteBuffer).WriteBytes(B1Array{1, 2})
+		w := NewWriteBuffer(BIG_ENDIAN)
+		w.WriteBytes(B1Array{1, 2})
+		writeCursor := w.(Seekable)
+		if err := writeCursor.Seek(-2); err != nil {
+			t.Fatal(err)
+		}
+		buffers := []Seekable{NewReadBuffer(B1Array{1, 2}, BIG_ENDIAN), writeCursor}
 		for _, b := range buffers {
 			if err := b.Seek(0); err != nil {
 				t.Fatal(err)
@@ -287,10 +300,15 @@ func TestInvalidBufferOperation(t *testing.T) {
 				t.Fatal(err)
 			}
 			b.Set()
-			if err := b.Seek(2); err != nil {
+			if err := b.Seek(1); err != nil {
 				t.Fatal(err)
 			}
-			assertInvalidBufferOperation(t, b.Seek(3))
+			assertInvalidBufferOperation(t, b.Seek(1))
+			assertInvalidBufferOperation(t, b.Seek(-3))
+			maxInt := int(^uint(0) >> 1)
+			minInt := -maxInt - 1
+			assertInvalidBufferOperation(t, b.Seek(maxInt))
+			assertInvalidBufferOperation(t, b.Seek(minInt))
 			if b.Position() != 2 {
 				t.Fatal("failed seek changed position")
 			}

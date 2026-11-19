@@ -49,15 +49,12 @@ import (
 // Seekable controls a buffer's cursor and saved positions.
 type Seekable interface {
 	// Position returns the offset of the next read or write.
-	Position() uint
+	Position() int
 
-	// Size returns the number of bytes in the buffer.
-	Size() uint
-
-	// Seek moves the cursor to position. Position may equal Size. If position
-	// exceeds Size, Seek returns InvalidBufferOperation and leaves the cursor
-	// unchanged.
-	Seek(position uint) error
+	// Seek moves the cursor by offset bytes relative to its current position. A
+	// negative offset moves backward. If the target is outside the buffer, Seek
+	// returns InvalidBufferOperation and leaves the cursor unchanged.
+	Seek(offset int) error
 
 	// Set saves the current position. Calls to Set may be nested.
 	Set()
@@ -68,11 +65,12 @@ type Seekable interface {
 }
 
 // ReadBuffer reads values at its cursor using the byte order selected at
-// construction. Each successful read advances the cursor by the number of
-// bytes read. A read that exceeds the buffer returns InvalidBufferOperation
-// and leaves the cursor unchanged.
+// construction.
 type ReadBuffer interface {
 	Seekable
+
+	// Size returns the number of bytes in the buffer.
+	Size() int
 
 	// ReadUB1 reads a one-byte unsigned integer.
 	ReadUB1() (UB1, error)
@@ -89,15 +87,18 @@ type ReadBuffer interface {
 	// ReadSB4 reads a four-byte signed integer.
 	ReadSB4() (SB4, error)
 
-	// ReadBytes reads length bytes and returns an independent copy.
-	ReadBytes(length uint) (B1Array, error)
+	// ReadBytes reads length bytes and returns an independent copy. A negative
+	// length or a length greater than the remaining bytes returns
+	// InvalidBufferOperation without advancing the cursor.
+	ReadBytes(length int) (B1Array, error)
 }
 
 // WriteBuffer writes values at its cursor using the byte order selected at
 // construction. Each write advances the cursor, overwriting existing bytes and
 // extending the buffer as needed.
 type WriteBuffer interface {
-	Seekable
+	// Size returns the number of bytes written to the buffer.
+	Size() int
 
 	// WriteUB1 writes a one-byte unsigned integer.
 	WriteUB1(value UB1)
@@ -119,7 +120,7 @@ type WriteBuffer interface {
 
 	// Reserve writes length zero bytes at the cursor and returns their starting
 	// offset.
-	Reserve(length uint) uint
+	Reserve(length int) int
 
 	// Bytes returns a non-nil copy of all bytes in the buffer.
 	Bytes() B1Array
@@ -139,10 +140,10 @@ func NewWriteBuffer(order ByteOrder) WriteBuffer {
 }
 
 // NewWriteBufferWithCapacity returns a WriteBuffer preallocated for capacity
-// bytes. The capacity is a performance hint only; the buffer grows
-// automatically as bytes are written.
-func NewWriteBufferWithCapacity(order ByteOrder, capacity uint) WriteBuffer {
-	return &writeBuffer{data: make(B1Array, 0, int(capacity)), converter: bufferByteOrder(order)}
+// bytes. Capacity must be non-negative and is a performance hint only; the
+// buffer grows automatically as bytes are written.
+func NewWriteBufferWithCapacity(order ByteOrder, capacity int) WriteBuffer {
+	return &writeBuffer{data: make(B1Array, 0, capacity), converter: bufferByteOrder(order)}
 }
 
 // bufferByteOrder maps the driver's byte-order marker to its standard library
@@ -157,29 +158,30 @@ func bufferByteOrder(order ByteOrder) binary.ByteOrder {
 // readBuffer is the ReadBuffer implementation over a fixed byte slice.
 type readBuffer struct {
 	data      B1Array
-	pos       uint
-	marks     []uint
+	pos       int
+	marks     []int
 	converter binary.ByteOrder
 }
 
 // Position returns the offset of the next sequential read.
-func (b *readBuffer) Position() uint {
+func (b *readBuffer) Position() int {
 	return b.pos
 }
 
 // Size returns the number of bytes in the buffer.
-func (b *readBuffer) Size() uint {
-	return uint(len(b.data))
+func (b *readBuffer) Size() int {
+	return len(b.data)
 }
 
-// Seek moves the read cursor to position.
-func (b *readBuffer) Seek(position uint) error {
-	if position <= b.Size() {
-		b.pos = position
-		return nil
+// Seek moves the read cursor by offset bytes relative to its current position.
+func (b *readBuffer) Seek(offset int) error {
+	position := b.pos + offset
+	if position < 0 || position > b.Size() {
+		common.Odl.Finest("readBuffer.Seek: failed", "reason", "target outside buffer", "offset", offset, "position", b.pos, "size", b.Size())
+		return common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 	}
-	common.Odl.Finest("readBuffer.Seek: failed", "reason", "position outside buffer", "position", position, "size", b.Size())
-	return common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
+	b.pos = position
+	return nil
 }
 
 // Set saves the current read position.
@@ -253,7 +255,7 @@ func (b *readBuffer) ReadSB4() (SB4, error) {
 }
 
 // ReadBytes reads length bytes into an independent copy and advances the cursor.
-func (b *readBuffer) ReadBytes(length uint) (B1Array, error) {
+func (b *readBuffer) ReadBytes(length int) (B1Array, error) {
 	data, err := b._read(length)
 	if err != nil {
 		return nil, err
@@ -263,40 +265,41 @@ func (b *readBuffer) ReadBytes(length uint) (B1Array, error) {
 
 // _read returns the next length bytes and advances the cursor, or fails when
 // fewer bytes remain.
-func (b *readBuffer) _read(length uint) (B1Array, error) {
+func (b *readBuffer) _read(length int) (B1Array, error) {
 	remaining := b.Size() - b.pos
-	if length > remaining {
-		common.Odl.Finest("readBuffer._read: failed", "reason", "buffer underflow", "position", b.pos, "length", length, "remaining", remaining, "size", b.Size())
+	if length < 0 || length > remaining {
+		common.Odl.Finest("readBuffer._read: failed", "reason", "invalid read range", "position", b.pos, "length", length, "remaining", remaining, "size", b.Size())
 		return nil, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 	}
 	start := b.pos
 	b.pos += length
-	return b.data[int(start):int(b.pos)], nil
+	return b.data[start:b.pos], nil
 }
 
 // writeBuffer is the WriteBuffer implementation over an automatically
 // growing byte slice.
 type writeBuffer struct {
 	data      B1Array
-	pos       uint
-	marks     []uint
+	pos       int
+	marks     []int
 	converter binary.ByteOrder
 }
 
 // Position returns the offset of the next write.
-func (b *writeBuffer) Position() uint {
+func (b *writeBuffer) Position() int {
 	return b.pos
 }
 
 // Size returns the number of bytes written.
-func (b *writeBuffer) Size() uint {
-	return uint(len(b.data))
+func (b *writeBuffer) Size() int {
+	return len(b.data)
 }
 
-// Seek moves the write cursor within the written bytes.
-func (b *writeBuffer) Seek(position uint) error {
-	if position > b.Size() {
-		common.Odl.Finest("writeBuffer.Seek: failed", "reason", "position outside buffer", "position", position, "size", b.Size())
+// Seek moves the write cursor by offset bytes relative to its current position.
+func (b *writeBuffer) Seek(offset int) error {
+	position := b.pos + offset
+	if position < 0 || position > b.Size() {
+		common.Odl.Finest("writeBuffer.Seek: failed", "reason", "target outside buffer", "offset", offset, "position", b.pos, "size", b.Size())
 		return common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 	}
 	b.pos = position
@@ -360,12 +363,12 @@ func (b *writeBuffer) WriteSB4(value SB4) {
 
 // WriteBytes writes the bytes of value.
 func (b *writeBuffer) WriteBytes(value B1Array) {
-	dest := b.prepareWrite(uint(len(value)))
+	dest := b.prepareWrite(len(value))
 	copy(dest, value)
 }
 
 // Reserve writes length zero-filled bytes and returns their initial offset.
-func (b *writeBuffer) Reserve(length uint) uint {
+func (b *writeBuffer) Reserve(length int) int {
 	start := b.Position()
 	dest := b.prepareWrite(length)
 	clear(dest)
@@ -378,13 +381,13 @@ func (b *writeBuffer) Bytes() B1Array {
 }
 
 // prepareWrite advances the cursor and returns the writable range, extending data if needed.
-func (b *writeBuffer) prepareWrite(length uint) B1Array {
-	start := int(b.pos)
-	end := start + int(length)
+func (b *writeBuffer) prepareWrite(length int) B1Array {
+	start := b.pos
+	end := start + length
 	if end > len(b.data) {
 		b.data = slices.Grow(b.data, end-len(b.data))
 		b.data = b.data[:end]
 	}
-	b.pos = uint(end)
+	b.pos = end
 	return b.data[start:end]
 }
