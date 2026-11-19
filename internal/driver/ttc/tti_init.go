@@ -46,7 +46,7 @@ import (
 
 const (
 	ttiInitVersion             = 1
-	ttiInitServerConvertsChars = 0x01
+	ttiInitServerConvertsChars = 0x01 // Server converts character data; assumed database charset IDs are not validated.
 )
 
 // ttiInitMessage contains the TTIINIT envelope and embedded protocol request.
