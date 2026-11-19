@@ -103,6 +103,51 @@ func TestDriver_Table_Select(t *testing.T) {
 
 }
 
+// TestDriver_Select_LeadingCommentsAndWithClause verifies SELECT statements
+// with leading comments and a WITH clause execute and return their results.
+func TestDriver_Select_LeadingCommentsAndWithClause(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	tests := []struct {
+		name string
+		stmt string
+	}{
+		{
+			name: "line comment",
+			stmt: "-- leading comment\nSELECT 1 FROM dual",
+		},
+		{
+			name: "block comment",
+			stmt: "/* leading comment */ SELECT 1 FROM dual",
+		},
+		{
+			name: "with clause",
+			stmt: "WITH values_cte AS (SELECT 1 AS value FROM dual) SELECT value FROM values_cte",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var value int64
+			if err := db.QueryRowContext(context.Background(), test.stmt).Scan(&value); err != nil {
+				t.Fatalf("query failed: %v", err)
+			}
+			if value != 1 {
+				t.Fatalf("got %d, want 1", value)
+			}
+		})
+	}
+}
+
 // TestDriver_Select_5000Rows_NumberColumn verifies that the driver can fetch
 // and decode at least 5,000 rows containing NUMBER values without losing rows
 // or returning an error while iterating through the result set.

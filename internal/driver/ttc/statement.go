@@ -183,8 +183,6 @@ func newStatement(
 		execStatementExecutor:  execExecutor,
 		_rows:                  nil,
 	}
-	// register myself to the shelf so connection close can garbage me.
-	stmt.shelf.AddStatement(stmt)
 	return stmt, nil
 }
 
@@ -272,8 +270,6 @@ func (s *Statement) Close() error {
 		common.Odl.Debug("Failed to close statement", "error", err)
 		finalErr = s.shelf.LocalizeError(common.NewOracleError(oracleErrors.StatementCloseFailed, err)).(oracleErrors.SQLError)
 	}
-
-	s.shelf.RemoveStatement(s)
 
 	return finalErr
 }

@@ -50,7 +50,8 @@ import (
 	"golang.org/x/text/language"
 )
 
-func TestAuthencationFactoryWithNilParameters(t *testing.T) {
+// TestAuthenticationFactoryWithNilParameters verifies nil configuration is rejected.
+func TestAuthenticationFactoryWithNilParameters(t *testing.T) {
 	t.Parallel()
 
 	auth, err := GetAuthenticator(nil, nil)
@@ -62,7 +63,8 @@ func TestAuthencationFactoryWithNilParameters(t *testing.T) {
 	}
 }
 
-func TestAuthencationFactoryBasic(t *testing.T) {
+// TestAuthenticationFactoryBasic verifies credentials create an authenticator.
+func TestAuthenticationFactoryBasic(t *testing.T) {
 	t.Parallel()
 	c := oracleconfig.NewOracleDriverConfig()
 	c.Credentials.User = "foo"
@@ -77,6 +79,7 @@ func TestAuthencationFactoryBasic(t *testing.T) {
 	}
 }
 
+// TestGetConnection verifies connection creation, error propagation, and user properties.
 func TestGetConnection(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -136,7 +139,7 @@ func TestGetConnection(t *testing.T) {
 				},
 				authenticator:       &mockAuthenticator{err: tt.authErr},
 				ns:                  ns,
-				drvierConfig:        oracleconfig,
+				driverConfig:        oracleconfig,
 				localizationService: common.NewLocalizationService(language.English),
 				newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
 					return newTestConnection(shelf, sessCtx, ns), nil
@@ -177,6 +180,87 @@ func TestGetConnection(t *testing.T) {
 	}
 }
 
+// TestGetConnectionQueuesInitialRequestBegin verifies a fresh connection queues
+// an initial begin-request boundary when the server supports it.
+func TestGetConnectionQueuesInitialRequestBegin(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name                   string
+		sessionStateSupported  bool
+		explicitBoundSupported bool
+		want                   []driverCommon.UB8
+	}{
+		{
+			name:                   "session-state operations and explicit boundaries supported",
+			sessionStateSupported:  true,
+			explicitBoundSupported: true,
+			want: []driverCommon.UB8{
+				driverCommon.UB8(sessionStateExplBound | sessionStateRequestBegin),
+			},
+		},
+		{
+			name: "session-state operations unsupported",
+		},
+		{
+			name:                  "explicit boundaries unsupported",
+			sessionStateSupported: true,
+			want: []driverCommon.UB8{
+				driverCommon.UB8(sessionStateRequestBegin),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			caps := make(map[string]driverCommon.Capability)
+			if tt.sessionStateSupported {
+				caps[kpccapRtbTtcSessstateops] = driverCommon.Capability{IsSet: true}
+			}
+			if tt.explicitBoundSupported {
+				caps[kpccapCtbTtc4ExplBound] = driverCommon.Capability{IsSet: true}
+			}
+			shelf := newShelf[driverCommon.MessageType]()
+			shelf.RegisterCapabilities(caps)
+			streamer := &mockStreamer{}
+			shelf.RegisterMessageStreamer(streamer)
+			shelf.RegisterMessageFactory(NewMessageFactoryForProtocol(18, caps))
+
+			instantiator := &connectionInstantiator{
+				negotiator: &mockNegotiator{
+					sessCtx: driverCommon.NewSessionContext(),
+					shelf:   shelf,
+				},
+				authenticator:       &mockAuthenticator{},
+				ns:                  &mockNetworkSession{},
+				driverConfig:        &oracleconfig.OracleDriverConfig{},
+				localizationService: common.NewLocalizationService(language.English),
+				newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
+					return newTestConnection(shelf, sessCtx, ns), nil
+				},
+			}
+
+			conn, err := instantiator.GetConnection(context.Background())
+			if err != nil {
+				t.Fatalf("GetConnection() error = %v", err)
+			}
+			if _, ok := conn.(*connection); !ok {
+				t.Fatalf("connection type = %T, want *connection", conn)
+			}
+			got := pushedSessionStateFlags(t, streamer)
+			if len(got) != len(tt.want) {
+				t.Fatalf("pushed flags = %v, want %v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("pushed flags = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// TestGetConnectionMissingLocalizationService verifies connection creation fails with the expected error when localization is unavailable.
 func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -198,7 +282,7 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 		newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
 			return newTestConnection(shelf, sessCtx, ns), nil
 		},
-		drvierConfig:        oracleconfig,
+		driverConfig:        oracleconfig,
 		localizationService: nil,
 	}
 
@@ -219,5 +303,42 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	expected := "OGD-00067 - missing localization service on shelf"
 	if err.Error() != expected {
 		t.Fatalf("expected error %q, got %q", expected, err.Error())
+	}
+}
+
+type lobPrefetchTestNetworkSession struct {
+	*mockNetworkSession
+	*TestDataBuffer
+}
+
+// TestConnectionNegotiatorConfiguredLobPrefetchSize verifies that connection
+// properties are installed on the shelf and configure the final marshaller during negotiation.
+func TestConnectionNegotiatorConfiguredLobPrefetchSize(t *testing.T) {
+	t.Parallel()
+	const prefetchSize = 8192
+	config := oracleconfig.NewOracleDriverConfig()
+	config.Credentials.User = "foo"
+	config.Credentials.Password = "bar"
+	config.DriverProperties.DefaultLobPrefetchSize = prefetchSize
+	buffer := NewTestDataBuffer()
+	buffer.OnWriteDefaults = successOnWriteEOCS(6)
+	ns := &lobPrefetchTestNetworkSession{mockNetworkSession: &mockNetworkSession{}, TestDataBuffer: buffer}
+
+	instantiator, err := NewTTCConnectionInstantiator(config, ns, nil)
+	if err != nil {
+		t.Fatalf("create instantiator: %v", err)
+	}
+	_, shelf, err := instantiator.(*connectionInstantiator).negotiator.Negotiate(context.Background())
+	if err != nil {
+		t.Fatalf("negotiate: %v", err)
+	}
+
+	props := shelf.GetConnectionProperties()
+	if props == nil || props.GetDefaultLobPrefetchSize() != prefetchSize {
+		t.Fatal("configured connection properties were not installed during negotiation")
+	}
+	marshaller := shelf.GetMarshaller().(*MarshalEngine)
+	if got := marshaller._defaultLobPrefetchSize; got != prefetchSize {
+		t.Fatalf("LOB prefetch size = %d, want %d", got, prefetchSize)
 	}
 }

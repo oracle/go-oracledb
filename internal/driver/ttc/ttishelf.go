@@ -41,9 +41,6 @@ package ttc
 import (
 	"context"
 
-	"maps"
-	"weak"
-
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	common "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -68,7 +65,6 @@ type ttiShelf[T any] struct {
 	*common.Shelf[T]
 	codecFactory             codecFactory
 	_providerRegistry        internalCommon.Registry[providers.Provider]
-	_statements              map[*Statement]weak.Pointer[Statement]
 	_refCursors              map[*ttcRowsRefCursor]struct{}
 	_currentTransaction      *transaction
 	_cancelExecutionFunction StmtCancellationFunction
@@ -85,7 +81,6 @@ func newShelf[T any]() *ttiShelf[T] {
 	return &ttiShelf[T]{
 		Shelf:              base,
 		codecFactory:       nil,
-		_statements:        make(map[*Statement]weak.Pointer[Statement]),
 		_refCursors:        make(map[*ttcRowsRefCursor]struct{}),
 		_eventService:      newEventService(),
 		_validatorRegistry: internalCommon.NewRegistry[stateValidator](),
@@ -140,42 +135,6 @@ func (s *ttiShelf[T]) registerProviderRegistry(providerRegistry internalCommon.R
 //   - the provider registry registered on the shelf, or nil if none was registered.
 func (s *ttiShelf[T]) getProviderRegistry() internalCommon.Registry[providers.Provider] {
 	return s._providerRegistry
-}
-
-// GetStatements gets all opened statements
-//
-//	 parameters:
-//	   - drain : if true, open statement list is also drained out of the shelf
-//		returns a slice of statements
-func (s *ttiShelf[T]) GetStatements(drain bool) []*Statement {
-	ss := make([]*Statement, len(s._statements))
-	var i = 0
-	for v := range maps.Values(s._statements) {
-		if v.Value() != nil {
-			ss[i] = v.Value()
-			i++
-		}
-	}
-	if drain {
-		clear(s._statements)
-	}
-	return ss[:i]
-}
-
-// AddStatement adds a statement to this shelf
-// parameter:
-//
-//	statement the statement to be added
-func (s *ttiShelf[T]) AddStatement(statement *Statement) {
-	s._statements[statement] = weak.Make(statement)
-}
-
-// RemoveStatement removes a statement from this shelf
-// parameter:
-//
-//	statement the statement to be removed
-func (s *ttiShelf[T]) RemoveStatement(statement *Statement) {
-	delete(s._statements, statement)
 }
 
 // isInTransaction returns true if a transaction is in progress, otherwise false
