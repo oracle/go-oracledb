@@ -55,13 +55,13 @@ import (
 const maxSessionlessGlobalTransactionIDSize = 64
 const maxSessionlessBQUALSize = 64
 
-// TransactionStartOperation identifies the sessionless start or resume request
+// PreparedSessionlessTransactionStartOperation identifies the sessionless start or resume request
 // prepared for the following BeginTx call.
-type TransactionStartOperation uint8
+type PreparedSessionlessTransactionStartOperation uint8
 
 const (
 	// SessionlessStart marks a prepared sessionless start.
-	SessionlessStart TransactionStartOperation = iota
+	SessionlessStart PreparedSessionlessTransactionStartOperation = iota
 	// SessionlessResume marks a prepared sessionless resume.
 	SessionlessResume
 )
@@ -76,7 +76,7 @@ type sessionlessTransaction struct {
 	// Start: suspended lifetime; resume: wait for the transaction to become available.
 	timeout uint16
 	// startOperation indicates whether BeginTx starts or resumes this transaction.
-	startOperation TransactionStartOperation
+	startOperation PreparedSessionlessTransactionStartOperation
 	// endOperationMutex prevents suspend and rollback from running simultaneously
 	// when the transaction is rolled back due to context cancellation
 	endOperationMutex sync.Mutex
