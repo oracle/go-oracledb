@@ -119,6 +119,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_Select_Number_MaxPrecisionInteger", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_Number_MaxPrecisionInteger},
 	{Name: "TestDriver_Select_Number_And_BinaryDouble", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_Number_And_BinaryDouble},
 	{Name: "TestDriver_Table_Select", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Select},
+	{Name: "TestDriver_Select_LeadingCommentsAndWithClause", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_LeadingCommentsAndWithClause},
 	{Name: "TestTimeoutConnectWithTransportConnectTimeout", Categories: "functional", Exclusive: false, Fn: TestTimeoutConnectWithTransportConnectTimeout},
 	{Name: "TestTimeoutConnectWithTransportConnectTimeoutAndContext", Categories: "functional", Exclusive: false, Fn: TestTimeoutConnectWithTransportConnectTimeoutAndContext},
 	{Name: "TestTimeoutConnectWithTransportConnectTimeoutAndContextGreater", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectWithTransportConnectTimeoutAndContextGreater},
@@ -131,6 +132,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTimeoutConnectTimeoutPrecedence3", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectTimeoutPrecedence3},
 	{Name: "TestTimeoutConnectTimeoutPrecedence4", Categories: "functional", Exclusive: false, Fn: TestTimeoutConnectTimeoutPrecedence4},
 	{Name: "TestDriver_Functional_SelectDual", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_Functional_SelectDual},
+	{Name: "TestDriver_Functional_SelectDualSmallValues", Categories: "functional", Exclusive: false, Fn: TestDriver_Functional_SelectDualSmallValues},
 	{Name: "TestDriver_SimpleConnection", Categories: "sanity,functional", Exclusive: false, Fn: TestDriver_SimpleConnection},
 	{Name: "TestDriver_Authentication_TTIWRN", Categories: "functional", Exclusive: true, Fn: TestDriver_Authentication_TTIWRN},
 	{Name: "TestDriver_Authentication_Proxy", Categories: "functional", Exclusive: false, Fn: TestDriver_Authentication_Proxy},
@@ -322,6 +324,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OSON_ZeroValue", Categories: "unitary", Exclusive: false, Fn: TestDriver_OSON_ZeroValue},
 	{Name: "TestDriver_OSON_NullDistinction", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NullDistinction},
 	{Name: "TestDriver_OpenConnectorPreservesQuotedInParameters", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorPreservesQuotedInParameters},
+	{Name: "TestDriver_Select_BLOB_Type", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BLOB_Type},
 }
 
 func TestCategoryExecutor(t *testing.T) {
