@@ -63,11 +63,6 @@ func (c *connection) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), _connCloseTimeout)
 	defer cancel()
 
-	common.Odl.Fine("Closing statements")
-	// We do close opened statements as they are automatically closed by the
-	// server. So we just drain the list of statements
-	_ = c.shelf.GetStatements(true)
-
 	// Close the TTC connection.
 	ttcCloseErr := c._closeTTCConnection(ctx)
 
