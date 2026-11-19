@@ -52,12 +52,12 @@ import (
 
 // TestImplicitResultRowsNextResultSet switches between prefetched implicit result sets.
 func TestImplicitResultRowsNextResultSet(t *testing.T) {
-	first := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("FIRST"), DataType: DtyChr}}), 0)
+	first := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("FIRST"), DataType: common.DtyChr}}), 0)
 	first.rowData = [][]columnPayload{{{data: []byte("one")}}}
 	first.numOfRows = 1
 	first.fetched = true
 
-	second := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("SECOND"), DataType: DtyChr}}), 0)
+	second := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("SECOND"), DataType: common.DtyChr}}), 0)
 	second.rowData = [][]columnPayload{{{data: []byte("two")}}}
 	second.numOfRows = 1
 	second.fetched = true
@@ -100,7 +100,7 @@ func TestTTCRows_RefCursorNextAndClose(t *testing.T) {
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(MinTTCProtocolVersion))
 	child := newRefCursorResultRows(newTTCRows(nil), 0)
-	rows := newRefCursorRows(0, []columnContext{{Name: []byte("CUR"), DataType: DtyCur}})
+	rows := newRefCursorRows(0, []columnContext{{Name: []byte("CUR"), DataType: common.DtyCur}})
 	rows.attachShelf(shelf)
 	rows.rowData = [][]columnPayload{{{data: child}}}
 	rows.numOfRows = 1
@@ -345,7 +345,7 @@ func TestTTIimplres_PrefetchColumnPresenceVector(t *testing.T) {
 		t.Fatalf("marshal successful implicit-result OER: %v", err)
 	}
 
-	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: DtyChr}}), 0)
+	rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: common.DtyChr}}), 0)
 	if err := newTestImplres(newImplicitResultPrefetchFactory()).unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err != nil {
 		t.Fatalf("unmarshal implicit-result BVC: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestTTIimplres_DecodeErrors(t *testing.T) {
 			if err := mar.MarshalUB1(ctx, driverCommon.UB1(code)); err != nil {
 				t.Fatal(err)
 			}
-			rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: DtyChr}}), 0)
+			rows := newRefCursorResultRows(newTTCRows([]columnContext{{Name: []byte("C"), DataType: common.DtyChr}}), 0)
 			if err := configured().unmarshalPrefetch(ctx, mar, rows, rows.columnContexts); err == nil {
 				t.Fatalf("truncated %s returned nil error", TTCMsgTypeName[code])
 			}
@@ -558,7 +558,7 @@ func marshalImplicitResultDCB(ctx context.Context, mar driverCommon.Marshaller) 
 	if err := mar.MarshalUB1(ctx, 0); err != nil { // undocumented DCB marker
 		return err
 	}
-	if err := newTTIoac(DtyChr, 1).MarshalTo(ctx, mar); err != nil {
+	if err := newTTIoac(common.DtyChr, 1).MarshalTo(ctx, mar); err != nil {
 		return err
 	}
 	if err := mar.MarshalUB1(ctx, 0); err != nil { // nullable

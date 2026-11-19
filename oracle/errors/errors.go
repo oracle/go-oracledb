@@ -179,6 +179,13 @@ const (
 	InvalidIdentifier ErrorCode = "OGD-00162"
 	// NetworkInternalError indicates an unexpected network-driver state.
 	NetworkInternalError ErrorCode = "OGD-00163"
+	// ADTMetadataError indicates invalid or incomplete ADT metadata returned by
+	// DBMS_PICKLER or encountered while parsing a type descriptor.
+	ADTMetadataError ErrorCode = "OGD-00164"
+	// ADTEncodingError indicates malformed ADT object or collection image data.
+	ADTEncodingError ErrorCode = "OGD-00165"
+	// ADTValueError indicates an invalid ADT value or object/collection operation.
+	ADTValueError ErrorCode = "OGD-00166"
 	// ImplicitResultMessageCreationFailed indicates that the driver could not
 	// create the TTC message used to decode implicit results.
 	ImplicitResultMessageCreationFailed ErrorCode = "OGD-00169"

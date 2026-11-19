@@ -47,6 +47,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -84,16 +85,16 @@ Description:
 		_ = oac // e.g. used to describe bind metadata (type/length) in TTC messages
 
 		// Row/scan path: resolve a decoder for an Oracle database type id.
-		decoder, _ := f.getDecoder(DtyVCS)
+		decoder, _ := f.getDecoder(common.DtyVCS)
 		v, _ := decoder.decodeToType(columnContext{Name: "C1", Index: 0}, payload)
 		_ = v // decoded driver.Value (string, number, time.Time, etc.)
 */
 type codecFactory interface {
 	getEncoderForGoType(bindValueMetadata) (*typeEncoder, error)
-	getEncoderForDtyType(DtyType, bindValueMetadata) (*typeEncoder, error)
-	getDecoder(DtyType) (*typeDecoder, error)
+	getEncoderForDtyType(common.DtyType, bindValueMetadata) (*typeEncoder, error)
+	getDecoder(common.DtyType) (*typeDecoder, error)
 	getBindOac(bindValueMetadata, driverCommon.UB4) (driverCommon.Marshallable, error)
-	getDefineOac(DtyType, columnContext, driverCommon.DriverProperties) driverCommon.Marshallable
+	getDefineOac(common.DtyType, columnContext, driverCommon.DriverProperties) driverCommon.Marshallable
 }
 
 // encoderFunc encodes a Go bind value into its logical payload bytes.
@@ -106,13 +107,25 @@ type columnWrapFunc func(context.Context, driverCommon.Marshaller, driverCommon.
 // typeEncoder groups logical value encoding and TTC bind framing for one Go
 // type and TTC protocol version.
 type typeEncoder struct {
-	encodeToType encoderFunc
-	wrapColumn   columnWrapFunc
+	encodeToType      encoderFunc
+	encodeWithFactory func(driver.Value, codecFactory) (driverCommon.B1Array, error)
+	wrapColumn        columnWrapFunc
 }
 
 // newTypeEncoder associates a value encoder with its TTIRXD bind framing.
 func newTypeEncoder(encode encoderFunc, wrap columnWrapFunc) *typeEncoder {
 	return &typeEncoder{encodeToType: encode, wrapColumn: wrap}
+}
+
+func newFactoryBindEncoder(encode func(driver.Value, codecFactory) (driverCommon.B1Array, error), wrap columnWrapFunc) *typeEncoder {
+	return &typeEncoder{encodeWithFactory: encode, wrapColumn: wrap}
+}
+
+func (e *typeEncoder) encode(value driver.Value, factory codecFactory) (driverCommon.B1Array, error) {
+	if e.encodeWithFactory != nil {
+		return e.encodeWithFactory(value, factory)
+	}
+	return e.encodeToType(value)
 }
 
 // decoderFunc defines the signature for TTC decoder implementors registered with the
@@ -129,8 +142,9 @@ type bindOacFunc func(driverCommon.UB4) driverCommon.Marshallable
 // and scale metadata that should be applied for OUT bind handling.
 type bindOacType struct {
 	bindOacFunc
-	maxLength driverCommon.UB4
-	scale     driverCommon.SB1
+	bindOacWithMetadata func(bindValueMetadata, driverCommon.UB4) (driverCommon.Marshallable, error)
+	maxLength           driverCommon.UB4
+	scale               driverCommon.SB1
 }
 
 // defineOacFunc defines the signature for define OAC constructor functions
@@ -166,10 +180,11 @@ Description:
     OUT bind (sql.Out with In == false), which affects encoder and bind OAC behavior.
 */
 type bindValueMetadata struct {
-	goType    reflect.Type
-	isNull    bool
-	isOut     bool
-	isOutOnly bool
+	goType     reflect.Type
+	objectType *datatype.ObjectType
+	isNull     bool
+	isOut      bool
+	isOutOnly  bool
 }
 
 /*
@@ -191,7 +206,10 @@ Returns:
   - bindValueMetadata: the metadata used by getEncoderForGoType and getBindOac.
 */
 func extractBindValueMetadata(bindValue driver.Value) bindValueMetadata {
-	metadata, _ := normalizeBindValue(bindValue)
+	metadata, value := normalizeBindValue(bindValue)
+	if typ, ok := namedTypeForBind(value); ok {
+		metadata.objectType = typ
+	}
 	return metadata
 }
 
@@ -402,7 +420,7 @@ func (r *codecRegistry[K, F]) getCandidates(key K) []codecRegistryEntry[F] {
 // encoderKey selects a value encoder. A zero dtyType selects the ordinary
 // encoder for goType; a non-zero dtyType is an ADT-specific override.
 type encoderKey struct {
-	dtyType DtyType
+	dtyType common.DtyType
 	goType  reflect.Type
 }
 
@@ -412,14 +430,14 @@ type encoderKey struct {
 var EncoderRegistry = newCodecRegistry[encoderKey, *typeEncoder]()
 
 // DecoderRegistry is the global registry for decoders keyed by Oracle database type.
-var DecoderRegistry = newCodecRegistry[DtyType, *typeDecoder]()
+var DecoderRegistry = newCodecRegistry[common.DtyType, *typeDecoder]()
 
 // BindOacRegistry is the global registry for bind OAC metadata keyed by Go type.
 var BindOacRegistry = newCodecRegistry[reflect.Type, bindOacType]()
 
 // DefineOacRegistry is the global registry for define OAC instances keyed by Oracle database type,
 // column context and connection properties.
-var DefineOacRegistry = newCodecRegistry[DtyType, defineOacFunc]()
+var DefineOacRegistry = newCodecRegistry[common.DtyType, defineOacFunc]()
 
 /*
 CodecFactoryImpl is the codecFactory implementation used by TTC to resolve encoders/decoders/OAC makers.
@@ -427,7 +445,7 @@ CodecFactoryImpl is the codecFactory implementation used by TTC to resolve encod
 Description:
 
 	Uses the negotiated TTC protocol version to select the "best" registered implementation candidate from:
-	- EncoderRegistry ((optional Oracle DtyType, Go reflect.Type) -> typeEncoder)
+	- EncoderRegistry ((optional Oracle common.DtyType, Go reflect.Type) -> typeEncoder)
 	- DecoderRegistry (Oracle db type id -> decoderFunc)
 	- BindOacRegistry (Go reflect.Type -> bindOacType)
 	- DefineOacRegistry (Oracle db type id -> defineOacFunc)
@@ -435,9 +453,9 @@ Description:
 type CodecFactoryImpl struct {
 	ttcVersion int8
 	encoders   *codecRegistry[encoderKey, *typeEncoder]
-	decoders   *codecRegistry[DtyType, *typeDecoder]
+	decoders   *codecRegistry[common.DtyType, *typeDecoder]
 	bindOacs   *codecRegistry[reflect.Type, bindOacType]
-	defineOacs *codecRegistry[DtyType, defineOacFunc]
+	defineOacs *codecRegistry[common.DtyType, defineOacFunc]
 }
 
 /*
@@ -487,16 +505,22 @@ Errors:
   - Returns a common.OracleError with code common.InternalError when no encoder candidate exists for the bind type.
 */
 func (f *CodecFactoryImpl) getEncoderForGoType(metadata bindValueMetadata) (*typeEncoder, error) {
-	if metadata.isOutOnly || metadata.isNull {
+	common.Odl.Finest("New encoder requested", "goType", metadata.goType)
+	// A scalar typed NULL retains its OAC type but has no Go payload for that
+	// type's encoder. Named ADT NULLs are the exception: they require their
+	// registered NAMED_TYPE envelope to preserve the descriptor.
+	if metadata.isNull && metadata.objectType == nil {
 		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
-	common.Odl.Finest("New encoder requested", "goType", metadata.goType)
 
 	candidates := f.encoders.getCandidates(encoderKey{goType: metadata.goType})
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
 		common.Odl.Finest("Encoder returned", "candidate", bestCandidate)
 		return bestCandidate.makeFunc, nil
+	}
+	if metadata.isOutOnly || metadata.isNull {
+		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
 
 	err := common.NewOracleError(oracleErrors.InternalError, nil)
@@ -507,15 +531,11 @@ func (f *CodecFactoryImpl) getEncoderForGoType(metadata bindValueMetadata) (*typ
 // getEncoderForDtyType returns an ADT-specific encoder when one is registered
 // for the declared Oracle type and Go type. Otherwise it uses the ordinary
 // Go-type encoder.
-func (f *CodecFactoryImpl) getEncoderForDtyType(dty DtyType, metadata bindValueMetadata) (*typeEncoder, error) {
-	if metadata.isOutOnly || metadata.isNull {
-		return newCLRBindEncoder(converters.EncodeNull), nil
-	}
-
+func (f *CodecFactoryImpl) getEncoderForDtyType(dty common.DtyType, metadata bindValueMetadata) (*typeEncoder, error) {
 	candidates := f.encoders.getCandidates(encoderKey{dtyType: dty, goType: metadata.goType})
 	bestCandidate := getEntryFromRegistry(f.ttcVersion, candidates)
 	if bestCandidate != nil {
-		common.Odl.Finest("DtyType encoder returned", "dtyType", dty, "goType", metadata.goType, "candidate", bestCandidate)
+		common.Odl.Finest("common.DtyType encoder returned", "dtyType", dty, "goType", metadata.goType, "candidate", bestCandidate)
 		return bestCandidate.makeFunc, nil
 	}
 
@@ -532,7 +552,7 @@ Description:
 	negotiated version.
 
 Parameters:
-  - dbType: Oracle database type id (DtyType) describing the column type.
+  - dbType: Oracle database type id (common.DtyType) describing the column type.
 
 Returns:
   - *typeDecoder: The selected decoder implementation.
@@ -541,7 +561,7 @@ Returns:
 Errors:
   - Returns a common.OracleError with code common.InternalError when no decoder candidate exists for dbType.
 */
-func (f *CodecFactoryImpl) getDecoder(dbType DtyType) (*typeDecoder, error) {
+func (f *CodecFactoryImpl) getDecoder(dbType common.DtyType) (*typeDecoder, error) {
 	common.Odl.Finest("New decoder requested", "dbType", dbType, "ttcVersion", f.ttcVersion)
 
 	candidates := f.decoders.getCandidates(dbType)
@@ -616,7 +636,16 @@ func (f *CodecFactoryImpl) getBindOac(metadata bindValueMetadata, maxLength driv
 		// the function that can build the OAC, and type specific data
 		// to build the oac for out parameters
 		bindOacTypeObj := bestCandidate.makeFunc
-		oac := bindOacTypeObj.bindOacFunc(maxLength)
+		var oac driverCommon.Marshallable
+		var err error
+		if bindOacTypeObj.bindOacWithMetadata != nil {
+			oac, err = bindOacTypeObj.bindOacWithMetadata(metadata, maxLength)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			oac = bindOacTypeObj.bindOacFunc(maxLength)
+		}
 		// In case of out parameters, we need to override the oac maxlength
 		// scale as per the type we are sending. This must be the max possible
 		// values to enable the server to return the scalar type.
@@ -643,7 +672,7 @@ Description:
 	properties. If no compatible candidate is registered, a scalar define OAC is used as fallback.
 
 Parameters:
-  - dbType: Oracle database type id (DtyType) describing the column type.
+  - dbType: Oracle database type id (common.DtyType) describing the column type.
   - columnContext: Column metadata used to build the define OAC.
   - connectionProperties: Connection properties used to derive define settings such as LOB prefetch size.
 
@@ -651,7 +680,7 @@ Returns:
   - common.Marshallable: The selected define OAC instance.
 */
 func (f *CodecFactoryImpl) getDefineOac(
-	dbType DtyType,
+	dbType common.DtyType,
 	columnContext columnContext,
 	connectionProperties driverCommon.DriverProperties,
 ) driverCommon.Marshallable {

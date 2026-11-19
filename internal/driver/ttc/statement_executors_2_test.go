@@ -49,6 +49,7 @@ import (
 	"testing"
 	"time"
 
+	typeCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -63,7 +64,7 @@ import (
 func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion int8) {
 	encoderRegistry := newCodecRegistry[encoderKey, *typeEncoder]()
 	maps.Copy(encoderRegistry.entries, EncoderRegistry.entries)
-	var decoderRegistry = newCodecRegistry[DtyType, *typeDecoder]()
+	var decoderRegistry = newCodecRegistry[typeCommon.DtyType, *typeDecoder]()
 	maps.Copy(decoderRegistry.entries, DecoderRegistry.entries)
 	var bindOacRegistry = newCodecRegistry[reflect.Type, bindOacType]()
 	maps.Copy(bindOacRegistry.entries, BindOacRegistry.entries)
@@ -91,42 +92,42 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	// Register bind OAC makers used by bind preparation tests.
 	_ = bindOacRegistry.Register(reflect.TypeOf(int64(0)), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyNum, maxLength)
+			return newTTIoac(typeCommon.DtyNum, maxLength)
 		},
 		maxLength: converters.MaxNumberLength,
 	})
 	_ = bindOacRegistry.Register(reflect.TypeOf(""), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyVCS, maxLength)
+			return newTTIoac(typeCommon.DtyVCS, maxLength)
 		},
 		maxLength: 32768,
 	})
 	_ = bindOacRegistry.Register(reflect.TypeOf([]byte(nil)), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyVbi, maxLength)
+			return newTTIoac(typeCommon.DtyVbi, maxLength)
 		},
 		maxLength: 32767,
 	})
 	_ = bindOacRegistry.Register(reflect.TypeOf(true), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyBol, maxLength)
+			return newTTIoac(typeCommon.DtyBol, maxLength)
 		},
 		maxLength: converters.MaxBoolLength,
 	})
 	_ = bindOacRegistry.Register(reflect.TypeOf(time.Time{}), 2, bindOacType{
 		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(DtyStz, maxLength)
+			return newTTIoac(typeCommon.DtyStz, maxLength)
 		},
 		maxLength: converters.MaxTimeStampLength,
 	})
 
 	// Decoders are not exercised by statement_executors_2_test directly today, but the task
 	// explicitly requests registering them. Add minimal decoders to keep registry complete.
-	_ = decoderRegistry.Register(DtyVCS, 2, newTypeDecoder(func(_ columnContext, value any) (sqldriver.Value, error) {
+	_ = decoderRegistry.Register(typeCommon.DtyVCS, 2, newTypeDecoder(func(_ columnContext, value any) (sqldriver.Value, error) {
 		data := value.(common.B1Array)
 		return string(data), nil
 	}, nil, unwrapCLRColumn))
-	_ = decoderRegistry.Register(DtyBin, 2, newTypeDecoder(func(_ columnContext, value any) (sqldriver.Value, error) {
+	_ = decoderRegistry.Register(typeCommon.DtyBin, 2, newTypeDecoder(func(_ columnContext, value any) (sqldriver.Value, error) {
 		data := value.(common.B1Array)
 		return []byte(data), nil
 	}, nil, unwrapCLRColumn))
@@ -410,12 +411,12 @@ func TestPrepareBindsAndOAC_OAC_Supported(t *testing.T) {
 	ts := time.Date(2025, 1, 2, 3, 4, 5, 0, tz)
 
 	args := []sqldriver.Value{
-		int64(5),     // -> DtyNum, len 22
-		"abc",        // -> DtyVCS (wire dataType DtyChr), len 3
-		[]byte{0xAA}, // -> DtyVbi (wire dataType DtyBin), len 1
-		true,         // -> DtyBol, len 2
-		nil,          // -> DtyVCS (wire dataType DtyChr), len 0
-		ts,           // -> DtyStz, len 11/13 per current implementation
+		int64(5),     // -> typeCommon.DtyNum, len 22
+		"abc",        // -> typeCommon.DtyVCS (wire dataType typeCommon.DtyChr), len 3
+		[]byte{0xAA}, // -> typeCommon.DtyVbi (wire dataType typeCommon.DtyBin), len 1
+		true,         // -> typeCommon.DtyBol, len 2
+		nil,          // -> typeCommon.DtyVCS (wire dataType typeCommon.DtyChr), len 0
+		ts,           // -> typeCommon.DtyStz, len 11/13 per current implementation
 	}
 
 	shelf := newShelf[common.MessageType]()
@@ -431,12 +432,12 @@ func TestPrepareBindsAndOAC_OAC_Supported(t *testing.T) {
 	}
 
 	// int64 -> NUMBER
-	if got := oacs[0].(*tTIoac); got == nil || got.dataType != common.UB1(DtyNum) || got.maxLength != 22 {
+	if got := oacs[0].(*tTIoac); got == nil || got.dataType != common.UB1(typeCommon.DtyNum) || got.maxLength != 22 {
 		t.Fatalf("oac[0] mismatch: dataType=%d maxLength=%d", got.dataType, got.maxLength)
 	}
 
-	// string -> VARCHAR (wire dataType DtyChr) with len=3
-	if got := oacs[1].(*tTIoac); got == nil || got.dataType != common.UB1(DtyChr) || got.maxLength != 3 {
+	// string -> VARCHAR (wire dataType typeCommon.DtyChr) with len=3
+	if got := oacs[1].(*tTIoac); got == nil || got.dataType != common.UB1(typeCommon.DtyChr) || got.maxLength != 3 {
 		t.Fatalf("oac[1] mismatch: dataType=%d maxLength=%d", got.dataType, got.maxLength)
 	}
 	if oacs[1].(*tTIoac).flags&_uacFlagIndicator == 0 || oacs[1].(*tTIoac).flags&_uacFlagLengthVector == 0 {
@@ -446,22 +447,22 @@ func TestPrepareBindsAndOAC_OAC_Supported(t *testing.T) {
 		t.Fatalf("oac[1] flagsContinuation missing noadj bit: flagsContinuation=%d", oacs[1].(*tTIoac).flagsContinuation)
 	}
 
-	// raw -> VBI (wire dataType DtyBin) with len=1
-	if got := oacs[2]; got == nil || got.(*tTIoac).dataType != common.UB1(DtyBin) || got.(*tTIoac).maxLength != 1 {
+	// raw -> VBI (wire dataType typeCommon.DtyBin) with len=1
+	if got := oacs[2]; got == nil || got.(*tTIoac).dataType != common.UB1(typeCommon.DtyBin) || got.(*tTIoac).maxLength != 1 {
 		t.Fatalf("oac[2] mismatch: dataType=%d maxLength=%d", got.(*tTIoac).dataType, got.(*tTIoac).maxLength)
 	}
 	// bool -> BOL with len=2
-	if got := oacs[3]; got == nil || got.(*tTIoac).dataType != common.UB1(DtyBol) || got.(*tTIoac).maxLength != converters.MaxBoolLength {
+	if got := oacs[3]; got == nil || got.(*tTIoac).dataType != common.UB1(typeCommon.DtyBol) || got.(*tTIoac).maxLength != converters.MaxBoolLength {
 		t.Fatalf("oac[3] mismatch: dataType=%d maxLength=%d", got.(*tTIoac).dataType, got.(*tTIoac).maxLength)
 	}
 
 	// nil -> VARCHAR with len=4
-	if got := oacs[4]; got == nil || got.(*tTIoac).dataType != common.UB1(DtyChr) || got.(*tTIoac).maxLength != 4 {
+	if got := oacs[4]; got == nil || got.(*tTIoac).dataType != common.UB1(typeCommon.DtyChr) || got.(*tTIoac).maxLength != 4 {
 		t.Fatalf("oac[4] mismatch: dataType=%d maxLength=%d", got.(*tTIoac).dataType, got.(*tTIoac).maxLength)
 	}
 
 	// time.Time -> STZ with len=13 (per current code)
-	if got := oacs[5]; got == nil || got.(*tTIoac).dataType != common.UB1(DtyStz) || got.(*tTIoac).maxLength != 13 {
+	if got := oacs[5]; got == nil || got.(*tTIoac).dataType != common.UB1(typeCommon.DtyStz) || got.(*tTIoac).maxLength != 13 {
 		t.Fatalf("oac[5] mismatch: dataType=%d maxLength=%d", got.(*tTIoac).dataType, got.(*tTIoac).maxLength)
 	}
 }

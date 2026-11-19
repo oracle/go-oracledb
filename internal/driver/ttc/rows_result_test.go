@@ -45,6 +45,7 @@ import (
 	"testing"
 	"time"
 
+	typeCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype/json"
@@ -89,20 +90,20 @@ func Test_defaultValueForNull(t *testing.T) {
 	zeroTime := time.Time{}
 	cases := []struct {
 		name  string
-		dtype DtyType
+		dtype typeCommon.DtyType
 		scale int8
 		want  any
 	}{
-		{name: "NUMBER scale 0 -> int64 zero", dtype: DtyNum, scale: 0, want: int64(0)},
-		{name: "NUMBER float sentinel -> float64 zero", dtype: DtyNum, scale: NumberScaleFloatSentinel, want: float64(0)},
-		{name: "NUMBER default -> string zero", dtype: DtyNum, scale: 3, want: "0"},
-		{name: "VARCHAR2 -> empty string", dtype: DtyVCS, want: ""},
-		{name: "RAW -> empty byte slice", dtype: DtyBin, want: common.B1Array{}},
-		{name: "BOOLEAN -> false", dtype: DtyBol, want: false},
-		{name: "DATE -> zero time", dtype: DtyDat, want: zeroTime},
-		{name: "TIMESTAMP WITH TZ -> zero time", dtype: DtyTtz, want: zeroTime},
-		{name: "INTERVAL YEAR TO MONTH -> 00-00", dtype: DtyIym, want: "00-00"},
-		{name: "INTERVAL DAY TO SECOND -> 00 00:00:00.0", dtype: DtyIds, want: "00 00:00:00.0"},
+		{name: "NUMBER scale 0 -> int64 zero", dtype: typeCommon.DtyNum, scale: 0, want: int64(0)},
+		{name: "NUMBER float sentinel -> float64 zero", dtype: typeCommon.DtyNum, scale: NumberScaleFloatSentinel, want: float64(0)},
+		{name: "NUMBER default -> string zero", dtype: typeCommon.DtyNum, scale: 3, want: "0"},
+		{name: "VARCHAR2 -> empty string", dtype: typeCommon.DtyVCS, want: ""},
+		{name: "RAW -> empty byte slice", dtype: typeCommon.DtyBin, want: common.B1Array{}},
+		{name: "BOOLEAN -> false", dtype: typeCommon.DtyBol, want: false},
+		{name: "DATE -> zero time", dtype: typeCommon.DtyDat, want: zeroTime},
+		{name: "TIMESTAMP WITH TZ -> zero time", dtype: typeCommon.DtyTtz, want: zeroTime},
+		{name: "INTERVAL YEAR TO MONTH -> 00-00", dtype: typeCommon.DtyIym, want: "00-00"},
+		{name: "INTERVAL DAY TO SECOND -> 00 00:00:00.0", dtype: typeCommon.DtyIds, want: "00 00:00:00.0"},
 	}
 
 	for _, tc := range cases {
@@ -125,7 +126,7 @@ func Test_defaultValueForNull(t *testing.T) {
 func Test_defaultValueForNullUnknown(t *testing.T) {
 	t.Parallel()
 
-	if got, ok := _defaultValueForNull(DtyType(0x7FFF), 0); ok || got != nil {
+	if got, ok := _defaultValueForNull(typeCommon.DtyType(0x7FFF), 0); ok || got != nil {
 		t.Fatalf("expected unknown type to return (nil, false), got (%#v, %v)", got, ok)
 	}
 }
@@ -134,15 +135,15 @@ func Test_defaultValueForNullUnknown(t *testing.T) {
 func Test_ttcRows_handleNullStrict(t *testing.T) {
 	t.Parallel()
 
-	rows := buildTestTTCRows(true, DtyNum, 0, nil)
+	rows := buildTestTTCRows(true, typeCommon.DtyNum, 0, nil)
 
-	val := rows.handleNull(0, DtyNum, 0)
+	val := rows.handleNull(0, typeCommon.DtyNum, 0)
 	if val != nil {
 		t.Fatalf("strict null handling should return nil, got %#v (%T)", val, val)
 	}
 
-	rows = buildTestTTCRows(true, DtyVCS, 0, new(true))
-	val = rows.handleNull(0, DtyVCS, 0)
+	rows = buildTestTTCRows(true, typeCommon.DtyVCS, 0, new(true))
+	val = rows.handleNull(0, typeCommon.DtyVCS, 0)
 	if val != nil {
 		t.Fatalf("strict null handling should return nil when property is true, got %#v (%T)", val, val)
 	}
@@ -155,18 +156,18 @@ func Test_ttcRows_handleNullDefaulting(t *testing.T) {
 	strict := false
 	cases := []struct {
 		name  string
-		dtype DtyType
+		dtype typeCommon.DtyType
 		scale int8
 		want  any
 	}{
-		{name: "NUMBER int64 default", dtype: DtyNum, scale: 0, want: int64(0)},
-		{name: "NUMBER float default", dtype: DtyNum, scale: NumberScaleFloatSentinel, want: float64(0)},
-		{name: "VARCHAR2 default", dtype: DtyVCS, want: ""},
-		{name: "RAW default", dtype: DtyBin, want: common.B1Array{}},
-		{name: "BOOLEAN default", dtype: DtyBol, want: false},
-		{name: "TIMESTAMP default", dtype: DtyStamp, want: time.Time{}},
-		{name: "INTERVAL YM default", dtype: DtyIym, want: "00-00"},
-		{name: "INTERVAL DS default", dtype: DtyIds, want: "00 00:00:00.0"},
+		{name: "NUMBER int64 default", dtype: typeCommon.DtyNum, scale: 0, want: int64(0)},
+		{name: "NUMBER float default", dtype: typeCommon.DtyNum, scale: NumberScaleFloatSentinel, want: float64(0)},
+		{name: "VARCHAR2 default", dtype: typeCommon.DtyVCS, want: ""},
+		{name: "RAW default", dtype: typeCommon.DtyBin, want: common.B1Array{}},
+		{name: "BOOLEAN default", dtype: typeCommon.DtyBol, want: false},
+		{name: "TIMESTAMP default", dtype: typeCommon.DtyStamp, want: time.Time{}},
+		{name: "INTERVAL YM default", dtype: typeCommon.DtyIym, want: "00-00"},
+		{name: "INTERVAL DS default", dtype: typeCommon.DtyIds, want: "00 00:00:00.0"},
 	}
 
 	for _, tc := range cases {
@@ -208,7 +209,7 @@ func TestTTCRowsImplementsColumnTypeInterfaces(t *testing.T) {
 }
 
 // buildTestTTCRows constructs a minimal ttcRows populated with the supplied metadata.
-func buildTestTTCRows(nullable bool, dtype DtyType, scale int8, strictNull *bool) *ttcRows {
+func buildTestTTCRows(nullable bool, dtype typeCommon.DtyType, scale int8, strictNull *bool) *ttcRows {
 	shelf := newShelf[common.MessageType]()
 	if strictNull != nil {
 		props := oracleconfig.OracleDriverProperties{}
@@ -261,43 +262,43 @@ func valuesEqual(got, want any) bool {
 func TestTTCRowsColumnTypeScanType(t *testing.T) {
 	cases := []struct {
 		name  string
-		dtype DtyType
+		dtype typeCommon.DtyType
 		scale int8
 		want  reflect.Type
 	}{
-		{name: "NUMBER as INT", dtype: DtyNum, scale: 0, want: reflect.TypeFor[int64]()},
-		{name: "NUMBER as FLOAT", dtype: DtyNum, scale: NumberScaleFloatSentinel, want: reflect.TypeFor[float64]()},
-		{name: "NUMBER as STRING", dtype: DtyNum, scale: 1, want: reflect.TypeFor[string]()},
+		{name: "NUMBER as INT", dtype: typeCommon.DtyNum, scale: 0, want: reflect.TypeFor[int64]()},
+		{name: "NUMBER as FLOAT", dtype: typeCommon.DtyNum, scale: NumberScaleFloatSentinel, want: reflect.TypeFor[float64]()},
+		{name: "NUMBER as STRING", dtype: typeCommon.DtyNum, scale: 1, want: reflect.TypeFor[string]()},
 
-		{name: "VARCHAR", dtype: DtyChr, want: reflect.TypeFor[string]()},
-		{name: "CHAR", dtype: DtyAfc, want: reflect.TypeFor[string]()},
+		{name: "VARCHAR", dtype: typeCommon.DtyChr, want: reflect.TypeFor[string]()},
+		{name: "CHAR", dtype: typeCommon.DtyAfc, want: reflect.TypeFor[string]()},
 
-		{name: "BOOLEAN", dtype: DtyBol, want: reflect.TypeFor[bool]()},
+		{name: "BOOLEAN", dtype: typeCommon.DtyBol, want: reflect.TypeFor[bool]()},
 
-		{name: "BINARY_FLOAT", dtype: DtyIbFloat, want: reflect.TypeFor[float64]()},
-		{name: "BINARY_DOUBLE", dtype: DtyIbDouble, want: reflect.TypeFor[float64]()},
+		{name: "BINARY_FLOAT", dtype: typeCommon.DtyIbFloat, want: reflect.TypeFor[float64]()},
+		{name: "BINARY_DOUBLE", dtype: typeCommon.DtyIbDouble, want: reflect.TypeFor[float64]()},
 
-		{name: "INTERVAL YEAR TO MONTH", dtype: DtyIym, want: reflect.TypeFor[string]()},
-		{name: "extended INTERVAL YEAR TO MONTH", dtype: DtyEiym, want: reflect.TypeFor[string]()},
-		{name: "INTERVAL DAY TO SECOND", dtype: DtyIds, want: reflect.TypeFor[string]()},
-		{name: "extended INTERVAL DAY TO SECOND", dtype: DtyEids, want: reflect.TypeFor[string]()},
+		{name: "INTERVAL YEAR TO MONTH", dtype: typeCommon.DtyIym, want: reflect.TypeFor[string]()},
+		{name: "extended INTERVAL YEAR TO MONTH", dtype: typeCommon.DtyEiym, want: reflect.TypeFor[string]()},
+		{name: "INTERVAL DAY TO SECOND", dtype: typeCommon.DtyIds, want: reflect.TypeFor[string]()},
+		{name: "extended INTERVAL DAY TO SECOND", dtype: typeCommon.DtyEids, want: reflect.TypeFor[string]()},
 
-		{name: "DATE", dtype: DtyDat, want: reflect.TypeFor[time.Time]()},
-		{name: "extended DATE", dtype: DtyEdate, want: reflect.TypeFor[time.Time]()},
+		{name: "DATE", dtype: typeCommon.DtyDat, want: reflect.TypeFor[time.Time]()},
+		{name: "extended DATE", dtype: typeCommon.DtyEdate, want: reflect.TypeFor[time.Time]()},
 
-		{name: "TIMESTAMP", dtype: DtyStamp, want: reflect.TypeFor[time.Time]()},
-		{name: "extended TIMESTAMP", dtype: DtyEstamp, want: reflect.TypeFor[time.Time]()},
-		{name: "TIMESTAMP WITH TIME ZONE", dtype: DtyStz, want: reflect.TypeFor[time.Time]()},
-		{name: "extended TIMESTAMP WITH TIME ZONE", dtype: DtyEstz, want: reflect.TypeFor[time.Time]()},
-		{name: "TIMESTAMP WITH LOCAL TIME ZONE", dtype: DtySitz, want: reflect.TypeFor[time.Time]()},
-		{name: "extended TIMESTAMP WITH LOCAL TIME ZONE", dtype: DtyEsitz, want: reflect.TypeFor[time.Time]()},
+		{name: "TIMESTAMP", dtype: typeCommon.DtyStamp, want: reflect.TypeFor[time.Time]()},
+		{name: "extended TIMESTAMP", dtype: typeCommon.DtyEstamp, want: reflect.TypeFor[time.Time]()},
+		{name: "TIMESTAMP WITH TIME ZONE", dtype: typeCommon.DtyStz, want: reflect.TypeFor[time.Time]()},
+		{name: "extended TIMESTAMP WITH TIME ZONE", dtype: typeCommon.DtyEstz, want: reflect.TypeFor[time.Time]()},
+		{name: "TIMESTAMP WITH LOCAL TIME ZONE", dtype: typeCommon.DtySitz, want: reflect.TypeFor[time.Time]()},
+		{name: "extended TIMESTAMP WITH LOCAL TIME ZONE", dtype: typeCommon.DtyEsitz, want: reflect.TypeFor[time.Time]()},
 
-		{name: "RAW", dtype: DtyBin, want: reflect.TypeFor[[]byte]()},
+		{name: "RAW", dtype: typeCommon.DtyBin, want: reflect.TypeFor[[]byte]()},
 
-		{name: "CLOB", dtype: DtyClob, want: reflect.TypeFor[string]()},
-		{name: "BLOB", dtype: DtyBlob, want: reflect.TypeFor[[]byte]()},
+		{name: "CLOB", dtype: typeCommon.DtyClob, want: reflect.TypeFor[string]()},
+		{name: "BLOB", dtype: typeCommon.DtyBlob, want: reflect.TypeFor[[]byte]()},
 
-		{name: "JSON", dtype: DtyJSON, want: reflect.TypeFor[json.JSON]()},
+		{name: "JSON", dtype: typeCommon.DtyJSON, want: reflect.TypeFor[json.JSON]()},
 	}
 
 	for _, tc := range cases {

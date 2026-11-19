@@ -230,6 +230,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestSqlKind_InvalidValues", Categories: "unitary", Exclusive: false, Fn: TestSqlKind_InvalidValues},
 	{Name: "TestSqlKind_String_All", Categories: "unitary", Exclusive: false, Fn: TestSqlKind_String_All},
 	{Name: "TestGetQueryStatementExecutor_ReturnsSelect", Categories: "unitary", Exclusive: false, Fn: TestGetQueryStatementExecutor_ReturnsSelect},
+	{Name: "TestGetQueryStatementExecutor_ReturnsRefCursor", Categories: "unitary", Exclusive: false, Fn: TestGetQueryStatementExecutor_ReturnsRefCursor},
 	{Name: "TestGetExecStatementExecutor_Mapping", Categories: "unitary", Exclusive: false, Fn: TestGetExecStatementExecutor_Mapping},
 	{Name: "TestGetQueryStatementExecutor_UnsupportedForNonSelect", Categories: "unitary", Exclusive: false, Fn: TestGetQueryStatementExecutor_UnsupportedForNonSelect},
 	{Name: "TestGetExecStatementExecutor_SelectIsError", Categories: "unitary", Exclusive: false, Fn: TestGetExecStatementExecutor_SelectIsError},
@@ -310,7 +311,25 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIoac_UnmarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnmarshalFrom_Fail},
 	{Name: "TestTTIoac_MarshalTo_Success", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_MarshalTo_Success},
 	{Name: "TestTTIoac_MarshalTo_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_MarshalTo_Fail},
+	{Name: "TestTTIoac_SignedArrayElementCount", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_SignedArrayElementCount},
+	{Name: "TestTTIoac_AddFlagsContinuation", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_AddFlagsContinuation},
+	{Name: "TestTTIoac_UnmarshalNormalizesNumberLength", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnmarshalNormalizesNumberLength},
+	{Name: "TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_UnmarshalNormalizesDateAndTimestampTZLength},
 	{Name: "TestTTIoac_Setters", Categories: "unitary", Exclusive: false, Fn: TestTTIoac_Setters},
+	{Name: "TestImplicitResultRowsNextResultSet", Categories: "unitary", Exclusive: false, Fn: TestImplicitResultRowsNextResultSet},
+	{Name: "TestTTCRows_RefCursorNextAndClose", Categories: "unitary", Exclusive: false, Fn: TestTTCRows_RefCursorNextAndClose},
+	{Name: "TestRefCursorRowsExecutor", Categories: "unitary", Exclusive: false, Fn: TestRefCursorRowsExecutor},
+	{Name: "TestTTIimplres_ZeroResultSets", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_ZeroResultSets},
+	{Name: "TestTTIimplres_NewDCBUsesMessageVersion", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_NewDCBUsesMessageVersion},
+	{Name: "TestTTIimplres_MultipleResultSets", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_MultipleResultSets},
+	{Name: "TestTTIimplres_RejectsTruncatedMessages", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_RejectsTruncatedMessages},
+	{Name: "TestTTIimplres_PrefetchCompletion", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchCompletion},
+	{Name: "TestTTIimplres_PrefetchColumnPresenceVector", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchColumnPresenceVector},
+	{Name: "TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_ConfigurationAndUnexpectedPrefetchMessage},
+	{Name: "TestTTIimplres_DecodeErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_DecodeErrors},
+	{Name: "TestTTIimplres_DescriptorAndPrefetchErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_DescriptorAndPrefetchErrors},
+	{Name: "TestTTIimplres_PrefetchOERErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_PrefetchOERErrors},
+	{Name: "TestTTIimplres_RefCursorDCBHeaderErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIimplres_RefCursorDCBHeaderErrors},
 	{Name: "TestTTIOallRPA_Unmarshal_Drop", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Drop},
 	{Name: "TestTTIOallRPA_Unmarshal_Create", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Create},
 	{Name: "TestTTIOallRPA_Unmarshal_Insert", Categories: "unitary", Exclusive: false, Fn: TestTTIOallRPA_Unmarshal_Insert},
@@ -481,7 +500,9 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestZoneMaps_Sanity", Categories: "unitary", Exclusive: false, Fn: TestZoneMaps_Sanity},
 	{Name: "TestCodecFactory_getEncoderForGoType", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getEncoderForGoType},
 	{Name: "TestCodecFactory_getDecoder", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_getDecoder},
+	{Name: "TestCodecFactory_RefCursorRegistrations", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RefCursorRegistrations},
 	{Name: "TestCodecFactory_RegisterEncoderGeneric", Categories: "unitary", Exclusive: false, Fn: TestCodecFactory_RegisterEncoderGeneric},
+	{Name: "TestConnectionGetRowsUsesCallerContext", Categories: "unitary", Exclusive: false, Fn: TestConnectionGetRowsUsesCallerContext},
 	{Name: "TestTTIShelf_NewShelf", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_NewShelf},
 	{Name: "TestTTIShelf_RegisterCodecFactoryAndGetter", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_RegisterCodecFactoryAndGetter},
 
@@ -559,6 +580,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConnection_ExecContext_LocalizesError", Categories: "unitary", Exclusive: false, Fn: TestConnection_ExecContext_LocalizesError},
 	{Name: "TestConnection_LocalizationStaysBoundToEachShelf", Categories: "unitary", Exclusive: false, Fn: TestConnection_LocalizationStaysBoundToEachShelf},
 	{Name: "TestConnection_ParseTimeZoneRejectsMalformedValues", Categories: "unitary", Exclusive: false, Fn: TestConnection_ParseTimeZoneRejectsMalformedValues},
+	{Name: "TestIsRefCursorDestination", Categories: "unitary", Exclusive: false, Fn: TestIsRefCursorDestination},
 	{Name: "TestConnection_QueryContext_LocalizesError", Categories: "unitary", Exclusive: false, Fn: TestConnection_QueryContext_LocalizesError},
 	{Name: "TestConnection_cancelCurrentExecution", Categories: "unitary", Exclusive: false, Fn: TestConnection_cancelCurrentExecution},
 	{Name: "TestEncryptPasswordBufferTooSmall", Categories: "unitary", Exclusive: false, Fn: TestEncryptPasswordBufferTooSmall},
@@ -994,6 +1016,7 @@ func (t *TestDataBuffer) ReadBytesWithContext(ctx context.Context, n int32) (*[]
 // mockStreamer implements common.Streamer[common.MessageType] for testing
 type mockStreamer struct {
 	pushCalled bool
+	pushCtx    context.Context
 	pushedMsg  list.List
 	pushErr    error
 	flushErr   error
@@ -1072,8 +1095,9 @@ func (m *wrappedMockStreamer) UnRegisterPreUnmarshallCallback(t common.MessageTy
 	m.streamer.UnRegisterPreUnmarshallCallback(t)
 }
 
-func (m *mockStreamer) Push(_ context.Context, msg common.Message[common.MessageType]) error {
+func (m *mockStreamer) Push(ctx context.Context, msg common.Message[common.MessageType]) error {
 	m.pushCalled = true
+	m.pushCtx = ctx
 	m.pushedMsg.PushBack(&msg)
 	return m.pushErr
 }

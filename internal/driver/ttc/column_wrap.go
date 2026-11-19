@@ -70,3 +70,46 @@ func wrapCLRColumn(ctx context.Context, mar driverCommon.Marshaller, payload dri
 	}
 	return nil
 }
+
+// wrapRefCursorColumn writes the two-byte RXD representation required for a
+// typed REF CURSOR OUT bind. REF CURSOR bind descriptors do not carry a CLR
+// payload, so their OUT indicator must be framed independently of the
+// ordinary null-value representation.
+func wrapRefCursorColumn(ctx context.Context, mar driverCommon.Marshaller, _ driverCommon.B1Array) error {
+	if err := mar.MarshalUB1(ctx, 1); err != nil {
+		common.Odl.Error("wrapRefCursorColumn: failed to write REF CURSOR indicator", "error", err, "stage", "indicator")
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if err := mar.MarshalUB1(ctx, 0); err != nil {
+		common.Odl.Error("wrapRefCursorColumn: failed to write REF CURSOR null indicator", "error", err, "stage", "null-indicator")
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	return nil
+}
+
+// wrapNamedTypeColumn writes the TTC NAMED_TYPE envelope followed by a pickled
+// ADT image. The bind encoder registry selects this wrapper for ADT values.
+func wrapNamedTypeColumn(ctx context.Context, mar driverCommon.Marshaller, payload driverCommon.B1Array) error {
+	for range 3 {
+		empty := dynamicAllocatedArray{}
+		if err := empty.MarshalTo(ctx, mar); err != nil {
+			return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[TTIRXD])
+		}
+	}
+	if err := mar.MarshalUB2(ctx, 0); err != nil {
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if err := mar.MarshalUB4(ctx, driverCommon.UB4(len(payload))); err != nil {
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if err := mar.MarshalUB2(ctx, 1); err != nil {
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if len(payload) == 0 {
+		return nil
+	}
+	if err := mar.MarshalCLR(ctx, payload, 0, len(payload)); err != nil {
+		return common.NewOracleError(oracleErrors.FailMarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	return nil
+}

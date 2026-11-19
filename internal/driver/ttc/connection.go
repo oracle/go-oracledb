@@ -42,12 +42,12 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"reflect"
+	"sync"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -76,6 +76,11 @@ type connection struct {
 	// failure) or when then connectionShouldBeDropped flag is received on an STA
 	// or OER message (TODO).
 	_isValid bool
+	// adtTypes is scoped to this physical TTC connection. A named-type
+	// descriptor contains server-specific TOID/version metadata and must not be
+	// populated through one pooled connection then used on another.
+	adtMu    sync.Mutex
+	adtTypes map[string]*datatype.ObjectType
 }
 
 // newConnection constructs a new Oracle connection wrapping negotiated state.
@@ -92,6 +97,7 @@ func newConnection(
 		ns:        ns,
 		_isClosed: false,
 		_isValid:  true,
+		adtTypes:  make(map[string]*datatype.ObjectType),
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
 	conn._registerHandleConnectionShouldBeDropped()
@@ -147,7 +153,7 @@ Returns:
 - error: Non-nil if the connection is closed/invalid.
 */
 func (c *connection) PrepareContext(_ context.Context, query string) (driver.Stmt, error) {
-	common.Odl.Fine("Connection.PrepareContext: creating statement...")
+	common.Odl.Debug("Connection.PrepareContext: creating statement...")
 	stmt, err := newStatement(c.shelf, c.sessCtx, query)
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
@@ -158,7 +164,7 @@ func (c *connection) PrepareContext(_ context.Context, query string) (driver.Stm
 // ExecContext implements driver.ExecerContext.
 // It creates a TTC Statement and delegates the execution.
 func (c *connection) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	common.Odl.Fine("Connection.ExecContext: creating statement...")
+	common.Odl.Debug("Connection.ExecContext: creating statement...")
 	stmt, err := newStatement(c.shelf, c.sessCtx, query)
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
@@ -180,7 +186,7 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 		_ = stmt.Close()
 		return nil, c.shelf.LocalizeError(err)
 	}
-	return result, nil
+	return result, c.shelf.LocalizeError(err)
 }
 
 // GetRows fetches an already-decoded REF CURSOR on its owning connection.
@@ -188,13 +194,10 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 // standard database/sql rows.
 func (c *connection) GetRows(ctx context.Context, rows driver.Rows) error {
 	cursor, _ := rows.(*ttcRowsRefCursor)
-	// Check ownership before setting any fetch dependencies. Doing this after
-	// injection would let a cursor returned by another physical connection be claimed.
-	if !c.shelf.hasRefCursor(cursor) {
-		common.Odl.Error("REF CURSOR fetch rejected because cursor belongs to another connection", "cursorID", cursor.cursorID)
+	if cursor == nil || !c.shelf.hasRefCursor(cursor) {
+		common.Odl.Error("REF CURSOR fetch rejected because cursor belongs to another connection")
 		return common.NewOracleError(oracleErrors.RefCursorConnectionMismatch, nil)
 	}
-	// Configure the rows with their owning connection's dependencies.
 	cursor.attachShelf(c.shelf)
 	cursor.attachSessionContext(c.sessCtx)
 	err := cursor.Fetch(ctx)
@@ -264,13 +267,13 @@ func (c *connection) notify(event eventType) {
 	var wasValid = c._isValid == true
 	switch event {
 	case streamerStaleEvent:
-		common.Odl.Fine("Connection.notify: streamer stale received")
+		common.Odl.Debug("Connection.notify: streamer stale received")
 		c._isValid = false
 	case streamerOverFlowEvent:
-		common.Odl.Fine("Connection.notify: streamer overflow received")
+		common.Odl.Debug("Connection.notify: streamer overflow received")
 		c._isValid = false
 	default:
-		common.Odl.Fine("Connection.notify: received", "evt", event)
+		common.Odl.Debug("Connection.notify: received", "evt", event)
 	}
 	if wasValid == true && c._isValid == false {
 		c.shelf.getEventService().post(connectionInvalidatedEvent)
@@ -286,40 +289,48 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 // checkNamedValue validates sql.Out destinations and returns shelf-localized
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
-	// connectionWrapper.Fetch passes an already-decoded driver.Rows to the internal
-	// REF CURSOR statement executor. This is not a REF CURSOR OUT-bind destination.
+	// Rows.GetRows passes an already-decoded driver.Rows to the internal
+	// refcursor statement executor. This is not a REF CURSOR OUT-bind destination.
 	if _, ok := nv.Value.(driver.Rows); ok {
 		return nil
 	}
+	// Named SQL types carry their own TOID/version metadata and must bypass
+	// database/sql's scalar parameter conversion.
+	if isADTBindValue(nv.Value) {
+		return nil
+	}
 	if out, ok := nv.Value.(sql.Out); ok {
+		if isADTBindDestination(out.Dest) || isRefCursorDestination(out.Dest) {
+			return nil
+		}
 		if isRefCursorDestination(out.Dest) {
 			return nil
 		}
-		// REF CURSOR OUT binds must use *datatype.Cursor, not the driver.Rows
+		// REF CURSOR OUT binds must use datatype.Cursor, not the driver.Rows
 		// protocol interface.
 		if _, ok := out.Dest.(*driver.Rows); ok {
 			return common.NewOracleError(oracleErrors.InvalidRefCursorOutParameter, nil)
 		}
 		// Destination must be provided for output binding.
 		if out.Dest == nil {
-			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("nil destination"))
+			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, nil, "nil destination")
 		}
 
 		destInfo := reflect.ValueOf(out.Dest)
 		// Destination must be a pointer so the driver can write back the value.
 		if destInfo.Kind() != reflect.Ptr {
-			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("non pointer"))
+			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, nil, "non pointer")
 		}
 
 		// Destination pointer must not be nil.
 		if destInfo.IsNil() {
-			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("nil pointer"))
+			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, nil, "nil pointer")
 		}
 
 		pointedValue := reflect.Indirect(destInfo)
 		// Pointer-to-pointer is not supported; only pointer-to-value is allowed.
 		if pointedValue.Kind() == reflect.Ptr {
-			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, errors.New("double pointer"))
+			return common.NewOracleError(oracleErrors.InvalidSqlOutParameter, nil, "double pointer")
 		}
 
 		_, err := driver.DefaultParameterConverter.ConvertValue(out.Dest)
@@ -332,6 +343,24 @@ func checkNamedValue(nv *driver.NamedValue) error {
 func isRefCursorDestination(v any) bool {
 	_, ok := v.(*datatype.Cursor)
 	return ok
+}
+
+func isADTBindValue(v any) bool {
+	switch v.(type) {
+	case datatype.ObjectCollection, *datatype.ObjectCollection, *datatype.Object:
+		return true
+	default:
+		return false
+	}
+}
+
+func isADTBindDestination(v any) bool {
+	switch v.(type) {
+	case *datatype.ObjectCollection, *datatype.Object:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {

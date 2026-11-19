@@ -46,6 +46,7 @@ import (
 	"reflect"
 	"testing"
 
+	typeCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -55,14 +56,14 @@ type bindCodecFactoryStub struct{ encoder *typeEncoder }
 func (s bindCodecFactoryStub) getEncoderForGoType(bindValueMetadata) (*typeEncoder, error) {
 	return s.encoder, nil
 }
-func (s bindCodecFactoryStub) getEncoderForDtyType(DtyType, bindValueMetadata) (*typeEncoder, error) {
+func (s bindCodecFactoryStub) getEncoderForDtyType(typeCommon.DtyType, bindValueMetadata) (*typeEncoder, error) {
 	return s.encoder, nil
 }
-func (bindCodecFactoryStub) getDecoder(DtyType) (*typeDecoder, error) { return nil, nil }
+func (bindCodecFactoryStub) getDecoder(typeCommon.DtyType) (*typeDecoder, error) { return nil, nil }
 func (bindCodecFactoryStub) getBindOac(bindValueMetadata, common.UB4) (common.Marshallable, error) {
 	return nil, nil
 }
-func (bindCodecFactoryStub) getDefineOac(DtyType, columnContext, common.DriverProperties) common.Marshallable {
+func (bindCodecFactoryStub) getDefineOac(typeCommon.DtyType, columnContext, common.DriverProperties) common.Marshallable {
 	return nil
 }
 
@@ -245,7 +246,7 @@ func TestTTIrxd_BvcOnFirstRow_ReturnsError(t *testing.T) {
 	rxd := newTTIrxd().(*tTIrxd)
 	rxd.setNumberOfColumns(2)
 	rxd.setRowCount(0)
-	rxd.setColumnContexts([]columnContext{{DataType: DtyVCS}, {DataType: DtyVCS}})
+	rxd.setColumnContexts([]columnContext{{DataType: typeCommon.DtyVCS}, {DataType: typeCommon.DtyVCS}})
 	bitset := common.NewBitSet(2)
 	bitset.SetBytes(0, []byte{0x03})
 	rxd.setBvcState(bitset, true)
@@ -384,7 +385,7 @@ func TestTTIrxd_UnmarshalFrom_ErrorCases(t *testing.T) {
 			tc.setup(rxd)
 			columnContexts := make([]columnContext, int(rxd.numberOfColumns))
 			for i := range columnContexts {
-				columnContexts[i].DataType = DtyVCS
+				columnContexts[i].DataType = typeCommon.DtyVCS
 			}
 			rxd.setColumnContexts(columnContexts)
 			// Create the test marshaller with provided payload
@@ -420,7 +421,7 @@ func TestTTIrxd_UnmarshalFrom(t *testing.T) {
 	rxd.setRowCount(rowCount)
 	rxd.setPrevRow(nil)
 	rxd.setBvcState(nil, false)
-	rxd.setColumnContexts([]columnContext{{DataType: DtyVCS}, {DataType: DtyVCS}})
+	rxd.setColumnContexts([]columnContext{{DataType: typeCommon.DtyVCS}, {DataType: typeCommon.DtyVCS}})
 
 	// Attempt to unmarshal: should succeed with valid data
 	err := rxd.UnmarshalFrom(context.Background(), mar)
@@ -530,7 +531,7 @@ func runBvcIntegration(t *testing.T, dump []string, expRows [][][]byte, noCols c
 			rxd.setPrevRow(prevRow)
 			columnContexts := make([]columnContext, int(noCols))
 			for i := range columnContexts {
-				columnContexts[i].DataType = DtyVCS
+				columnContexts[i].DataType = typeCommon.DtyVCS
 			}
 			rxd.setColumnContexts(columnContexts)
 			// Step: Attempt to unmarshal row data
@@ -583,7 +584,7 @@ func TestTTIrxd_BvcPresentColumn_UnmarshalError(t *testing.T) {
 	bitset := common.NewBitSet(numCols)
 	bitset.SetBytes(0, []byte{0x01}) // Only column 0 marked present
 	rxd.setBvcState(bitset, true)
-	rxd.setColumnContexts([]columnContext{{DataType: DtyVCS}, {DataType: DtyVCS}})
+	rxd.setColumnContexts([]columnContext{{DataType: typeCommon.DtyVCS}, {DataType: typeCommon.DtyVCS}})
 
 	// Payload with only length byte, not enough data (forces error in _unmarshalScalarColumn)
 	payload := []byte{5}
@@ -612,8 +613,8 @@ func TestTTIrxd_BvcCarriedNullKeepsLobContextAligned(t *testing.T) {
 	rxd.setRowCount(2)
 	rxd.setPrevRow(testColumnRow([]common.B1Array{{0x11}, nil}))
 	rxd.setColumnContexts([]columnContext{
-		{DataType: DtyVCS},
-		{DataType: DtyClob},
+		{DataType: typeCommon.DtyVCS},
+		{DataType: typeCommon.DtyClob},
 	})
 
 	// Only column 0 is present in this row. Column 1 is SQL NULL and must be
@@ -652,8 +653,8 @@ func TestTTIrxd_BvcCarriedClobPreservesLobContext(t *testing.T) {
 			sessCtx: common.NewSessionContext(),
 		},
 		resultMetadata: selectResultMetadata{columns: []columnContext{
-			{DataType: DtyVCS},
-			{DataType: DtyClob},
+			{DataType: typeCommon.DtyVCS},
+			{DataType: typeCommon.DtyClob},
 		}},
 	}
 
