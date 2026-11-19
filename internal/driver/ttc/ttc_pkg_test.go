@@ -272,7 +272,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTokenAuthenticatorSignHeaderForSignedProvider", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorSignHeaderForSignedProvider},
 	{Name: "TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty},
 	{Name: "TestValidateJWTExpirationExpired", Categories: "unitary", Exclusive: false, Fn: TestValidateJWTExpirationExpired},
-	{Name: "TestTokenAuthenticatorAuthenticateValidation", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorAuthenticateValidation},
+	{Name: "TestTokenAuthenticatorPrepareOAuthValidation", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorPrepareOAuthValidation},
 	{Name: "TestTokenAuthenticatorHelpers", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorHelpers},
 	{Name: "TestValidateJWTExpirationNonExpiredAndMalformed", Categories: "unitary", Exclusive: false, Fn: TestValidateJWTExpirationNonExpiredAndMalformed},
 	{Name: "TestTokenAuthenticatorAuthenticateBuildsOAuthMessage", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorAuthenticateBuildsOAuthMessage},
