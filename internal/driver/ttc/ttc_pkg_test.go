@@ -227,6 +227,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestPlSqlNamedValues_LaterNamedBindWithoutEarlierBind", Categories: "unitary", Exclusive: false, Fn: TestPlSqlNamedValues_LaterNamedBindWithoutEarlierBind},
 	{Name: "TestParsePlaceholders_Uint16IndexesDoNotWrapAfter255", Categories: "unitary", Exclusive: false, Fn: TestParsePlaceholders_Uint16IndexesDoNotWrapAfter255},
 	{Name: "TestClassifySQL_AllKinds", Categories: "unitary", Exclusive: false, Fn: TestClassifySQL_AllKinds},
+	{Name: "TestSkipLeadingComments", Categories: "unitary", Exclusive: false, Fn: TestSkipLeadingComments},
 	{Name: "TestSqlKind_InvalidValues", Categories: "unitary", Exclusive: false, Fn: TestSqlKind_InvalidValues},
 	{Name: "TestSqlKind_String_All", Categories: "unitary", Exclusive: false, Fn: TestSqlKind_String_All},
 	{Name: "TestGetQueryStatementExecutor_ReturnsSelect", Categories: "unitary", Exclusive: false, Fn: TestGetQueryStatementExecutor_ReturnsSelect},

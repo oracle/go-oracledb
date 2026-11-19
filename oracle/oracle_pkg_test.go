@@ -119,6 +119,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_Select_Number_MaxPrecisionInteger", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_Number_MaxPrecisionInteger},
 	{Name: "TestDriver_Select_Number_And_BinaryDouble", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_Number_And_BinaryDouble},
 	{Name: "TestDriver_Table_Select", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_Select},
+	{Name: "TestDriver_Select_LeadingCommentsAndWithClause", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_LeadingCommentsAndWithClause},
 	{Name: "TestTimeoutConnectWithTransportConnectTimeout", Categories: "functional", Exclusive: false, Fn: TestTimeoutConnectWithTransportConnectTimeout},
 	{Name: "TestTimeoutConnectWithTransportConnectTimeoutAndContext", Categories: "functional", Exclusive: false, Fn: TestTimeoutConnectWithTransportConnectTimeoutAndContext},
 	{Name: "TestTimeoutConnectWithTransportConnectTimeoutAndContextGreater", Categories: "functional/cyclops", Exclusive: false, Fn: TestTimeoutConnectWithTransportConnectTimeoutAndContextGreater},

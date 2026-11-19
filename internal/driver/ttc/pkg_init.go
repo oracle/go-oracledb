@@ -1062,6 +1062,7 @@ func init() {
 	}
 
 	_sqlKindMap["select"] = select_
+	_sqlKindMap["with"] = select_
 	_sqlKindMap["insert"] = dml
 	_sqlKindMap["update"] = dml
 	_sqlKindMap["delete"] = dml
