@@ -46,15 +46,17 @@ import (
 // connectionNegotiatorCommon provides resource creation and client configuration
 // shared by normal and TTIINIT negotiation for one connection.
 type connectionNegotiatorCommon struct {
-	_dataBuffer driverCommon.DataBuffer
+	_dataBuffer           driverCommon.DataBuffer
+	_connectionProperties driverCommon.DriverProperties
 }
 
 // initializeNegotiationResources creates the shelf, session context, marshallers,
 // streamer, and initial message factory without exchanging negotiation messages.
 func (shared *connectionNegotiatorCommon) initializeNegotiationResources() (*ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext, *MessageStreamer, driverCommon.Factory) {
 	common.Odl.Fine("connectionNegotiator: Negotiation start")
-	// 1. Create Shelf & Session Context
+	// 1. Create Shelf & Session Context and install connection properties
 	shelf, sessCtx := _createShelfAndSessionContext()
+	shelf.UpdateConnectionProperties(shared._connectionProperties)
 
 	// 2. Fetch new Marshaller & TTC Msg Streamer
 	marshallerFactory := _createMarshallerFactory(shared._dataBuffer, shelf)

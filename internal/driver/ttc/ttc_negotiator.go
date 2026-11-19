@@ -94,6 +94,11 @@ func (cn *connectionNegotiator) SetDataBuffer(buf driverCommon.DataBuffer) {
 	cn._dataBuffer = buf
 }
 
+// SetConnectionProperties sets the connection properties used during negotiation.
+func (cn *connectionNegotiator) SetConnectionProperties(properties driverCommon.DriverProperties) {
+	cn._connectionProperties = properties
+}
+
 // _negotiateDatatype negotiates the datatype (TTIDTY) and returns the negotiated *ttc.tTIdty.
 func (cn *connectionNegotiator) _negotiateDatatype(
 	ctx context.Context,

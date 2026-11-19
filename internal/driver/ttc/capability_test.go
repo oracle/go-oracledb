@@ -118,6 +118,16 @@ func TestCapabilityNewDefault(t *testing.T) {
 	}
 }
 
+func TestDefaultCapabilityAdvertisesLoginResetState(t *testing.T) {
+	t.Parallel()
+
+	cap := newDefaultCapability()
+	resetState := cap.knownUsedCompileTimeCapabilities[kpccapCtResetLogin]
+	if got := cap.compileTimeCapabilities[resetState.index] & resetState.value; got != resetState.value {
+		t.Errorf("LOGIN reset-state capability = %#x, want %#x", got, resetState.value)
+	}
+}
+
 // TestCapabilityMarshalTo_Success checks success path marshaling.
 func TestCapabilityMarshalTo_Success(t *testing.T) {
 	t.Parallel()
