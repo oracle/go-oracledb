@@ -75,9 +75,14 @@ type propertiesEventData struct {
 	properties *driverCommon.Properties[string]
 }
 
-// sessionProperties returns the properties carried by this event.
+// sessionProperties returns the properties carried by this event, or empty
+// properties if nil
 func (p propertiesEventData) sessionProperties() *driverCommon.Properties[string] {
-	return p.properties
+	if p.properties != nil {
+		return p.properties
+	} else {
+		return driverCommon.NewProperties[string]()
+	}
 }
 
 // eventService dispatches events to listeners registered for each event type.
