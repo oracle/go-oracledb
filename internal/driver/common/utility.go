@@ -40,6 +40,7 @@ package common
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"strconv"
 	"strings"
 	"time"
@@ -220,4 +221,14 @@ func ToBinArray(hexStr string) []byte {
 	}
 
 	return bArray
+}
+
+// GenUUID generates a UUID for connection ID
+func GenUUID() (string, error) {
+	buf := make([]byte, 16)
+	_, err := rand.Read(buf)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
 }

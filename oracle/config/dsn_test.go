@@ -178,6 +178,38 @@ func TestHandleDsnBuildsConnectionPlans(t *testing.T) {
 	})
 }
 
+// TestHandleDsnRejectsMalformedDescriptors verifies that malformed TNS
+// descriptors fail while building the normalized connection plan, before an
+// iterator or network session is created.
+func TestHandleDsnRejectsMalformedDescriptors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		dsn     string
+		wantErr oracleErrors.ErrorCode
+	}{
+		{
+			name:    "unclosed descriptor",
+			dsn:     "(DESCRIPTION",
+			wantErr: oracleErrors.NamingParseBounds,
+		},
+		{
+			name:    "missing CONNECT_DATA",
+			dsn:     "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=127.0.0.1)(PORT=1521)))",
+			wantErr: oracleErrors.NamingContextError,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := HandleDsn(test.dsn, NewOracleDriverConfig())
+			assertConfigErrorCode(t, err, test.wantErr)
+		})
+	}
+}
+
 // TestConnectionAttemptBuildsConnectDescriptorWithClientInfo verifies that
 // session-specific CONNECT_DATA is serialized from the resolved attempt and
 // replaces any caller-supplied CID or CONNECTION_ID fields.
@@ -224,7 +256,7 @@ func TestConnectionAttemptBuildsConnectDescriptorWithClientInfo(t *testing.T) {
 func TestHandleDsnPreservesExplicitEmptyConnectDataQuery(t *testing.T) {
 	t.Parallel()
 
-	plans, err := HandleDsn("(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=db.example.com)(PORT=1521)))?service_name=", NewOracleDriverConfig())
+	plans, err := HandleDsn("(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=db.example.com)(PORT=1521))(CONNECT_DATA=))?service_name=", NewOracleDriverConfig())
 	if err != nil {
 		t.Fatalf("HandleDsn failed: %v", err)
 	}

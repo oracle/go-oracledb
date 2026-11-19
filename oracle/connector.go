@@ -130,9 +130,6 @@ func buildOracleConnector(driver driver.Driver, plans *oracleconfig.ConnectionPl
 //   - driver.Connector: connector holding the supplied plan and functions.
 //   - error: internal configuration error if a required input is nil.
 func newOracleConnector(plans *oracleconfig.ConnectionPlans, connCreator ConnCreator, connInstantiatorFactory ConnInstantiatorFactory) (driver.Connector, error) {
-	if plans == nil || plans.BaseConfig == nil || connCreator == nil || connInstantiatorFactory == nil {
-		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
-	}
 	return &connector{
 		connectionPlans:         plans,
 		connCreator:             connCreator,
@@ -153,7 +150,7 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	isConnectionEstablished := false
 
 	localizationService := common.NewLocalizationService(c.connectionPlans.BaseConfig.Locale.ClientLanguage)
-	sessionUid, err := session.GenUUID()
+	sessionUid, err := driverCommon.GenUUID()
 	if err != nil {
 		return nil, localizationService.LocalizeError(common.NewOracleError(oracleErrors.ConnectFailed, err))
 	}

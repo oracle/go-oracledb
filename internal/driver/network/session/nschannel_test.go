@@ -49,10 +49,10 @@ import (
 func TestPrepareReadBuffer(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT, buf: ns.rcvBuf} // no data
 
 	// Test with no data, triggers recv
@@ -75,10 +75,10 @@ func TestPrepareReadBuffer(t *testing.T) {
 func TestPrepareReadBufferWithError(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{receiveErr: errors.New("recv error")}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT, buf: ns.rcvBuf}
 
 	err := ns.PrepareReadBuffer(context.Background())
@@ -90,10 +90,10 @@ func TestPrepareReadBufferWithError(t *testing.T) {
 func TestReadUI8(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 1, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 	ns.rcvDatapkt.buf[NSPDADAT] = 42
@@ -110,10 +110,10 @@ func TestReadUI8(t *testing.T) {
 func TestReadUI8WithError(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{receiveErr: errors.New("recv error")}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT, buf: ns.rcvBuf}
 
 	_, err := ns.ReadUI8(context.Background())
@@ -125,10 +125,10 @@ func TestReadUI8WithError(t *testing.T) {
 func TestReadUI16(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 2, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 	binary.BigEndian.PutUint16(ns.rcvDatapkt.buf[NSPDADAT:], 1234)
@@ -145,10 +145,10 @@ func TestReadUI16(t *testing.T) {
 func TestReadUI16MultiPacket(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 20}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 20}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT + 1, len: NSPDADAT + 2, buf: ns.rcvBuf}
 	ns.rcvDatapkt.buf[ns.rcvDatapkt.offset] = 0x04 // first byte of 1234 (0x04D2)
 
@@ -171,10 +171,10 @@ func TestReadUI16MultiPacket(t *testing.T) {
 func TestReadNativeUI16(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 2, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 	binary.LittleEndian.PutUint16(ns.rcvDatapkt.buf[NSPDADAT:], 1234)
@@ -191,10 +191,10 @@ func TestReadNativeUI16(t *testing.T) {
 func TestReadUI32(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 4, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 	binary.BigEndian.PutUint32(ns.rcvDatapkt.buf[NSPDADAT:], 12345678)
@@ -211,10 +211,10 @@ func TestReadUI32(t *testing.T) {
 func TestReadText(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 5, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 	copy(ns.rcvDatapkt.buf[NSPDADAT:], []byte("test\x00"))
@@ -231,10 +231,10 @@ func TestReadText(t *testing.T) {
 func TestReadBA(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 4, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 	copy(ns.rcvDatapkt.buf[NSPDADAT:], []byte{1, 2, 3, 4})
@@ -251,10 +251,10 @@ func TestReadBA(t *testing.T) {
 func TestWriteUI8(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.sndBuf = make([]byte, ns.sAtts.sdu)
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.sndDatapkt = &dataPacket{offset: NSPDADAT, buf: ns.sndBuf, bufLen: len(ns.sndBuf)}
 	ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 
@@ -270,10 +270,10 @@ func TestWriteUI8(t *testing.T) {
 func TestWriteI32(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.sndBuf = make([]byte, ns.sAtts.sdu)
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.sndDatapkt = &dataPacket{offset: NSPDADAT, buf: ns.sndBuf, bufLen: len(ns.sndBuf)}
 	ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 
@@ -289,10 +289,10 @@ func TestWriteI32(t *testing.T) {
 func TestWriteBA(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.sndBuf = make([]byte, ns.sAtts.sdu)
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.sndDatapkt = &dataPacket{offset: NSPDADAT, buf: ns.sndBuf, bufLen: len(ns.sndBuf)}
 	ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 
@@ -309,10 +309,10 @@ func TestWriteBA(t *testing.T) {
 func TestSkipNBytes(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 10, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 	copy(ns.rcvDatapkt.buf[NSPDADAT:], []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
@@ -329,11 +329,11 @@ func TestCancelOperation(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
 	ns.connected = true
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
-	ns.sndBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.sndDatapkt = &dataPacket{offset: NSPDADAT, buf: ns.sndBuf, bufLen: len(ns.sndBuf)}
 	ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT, buf: ns.rcvBuf}
@@ -379,10 +379,10 @@ func TestIsInBreakReset(t *testing.T) {
 func TestReadMultiPacket(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 20}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 20}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT + 5, len: NSPDADAT + 10, buf: ns.rcvBuf} // 5 bytes remaining
 
 	copy(ns.rcvDatapkt.buf[ns.rcvDatapkt.offset:], []byte{1, 2, 3, 4, 5})
@@ -411,10 +411,10 @@ func TestFlush(t *testing.T) {
 	t.Parallel()
 	t.Run("WithBufferedData", func(t *testing.T) {
 		ns := newNetworkSession()
-		ns.sAtts = &sessionAtts{sdu: 8192}
+		ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 		mock := &mockNTAdapter{}
 		ns.ntAdapter = mock
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt = &dataPacket{}
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 		ns.sndDatapkt.FillBuf([]byte("test data"), 0, 9)
@@ -433,10 +433,10 @@ func TestFlush(t *testing.T) {
 
 	t.Run("WithoutBufferedData", func(t *testing.T) {
 		ns := newNetworkSession()
-		ns.sAtts = &sessionAtts{sdu: 8192}
+		ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 		mock := &mockNTAdapter{}
 		ns.ntAdapter = mock
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt = &dataPacket{}
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 
@@ -456,12 +456,12 @@ func TestFlush(t *testing.T) {
 func TestSendReset(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
 	ns.connected = true
-	ns.sndBuf = make([]byte, ns.sAtts.sdu)
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.sndDatapkt = &dataPacket{}
 	ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 	ns.rcvDatapkt = &dataPacket{buf: ns.rcvBuf}
@@ -487,10 +487,10 @@ func TestSendReset(t *testing.T) {
 func TestPrepareReadBufferWithData(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 10, buf: ns.rcvBuf}
 
 	err := ns.PrepareReadBuffer(context.Background())
@@ -504,10 +504,10 @@ func TestPrepareReadBufferWithData(t *testing.T) {
 func TestReadUI32MultiPacket(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 20}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 20}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 2, buf: ns.rcvBuf}
 	binary.BigEndian.PutUint16(ns.rcvDatapkt.buf[ns.rcvDatapkt.offset:], 0x1234) // partial
 
@@ -529,10 +529,10 @@ func TestReadUI32MultiPacket(t *testing.T) {
 func TestWriteUI16WithFlush(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 10}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 10}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.sndBuf = make([]byte, ns.sAtts.sdu+NSPDADAT)
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU()+NSPDADAT)
 	ns.sndDatapkt = &dataPacket{buf: ns.sndBuf, bufLen: len(ns.sndBuf)} // almost full
 	ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 	ns.sndDatapkt.offset = len(ns.sndBuf) - 1
@@ -558,10 +558,10 @@ func TestSendWithBreak(t *testing.T) {
 func TestWriteBytesWithContext(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.sndBuf = make([]byte, ns.sAtts.sdu)
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.sndDatapkt = &dataPacket{offset: NSPDADAT, buf: ns.sndBuf, bufLen: len(ns.sndBuf)}
 	ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 
@@ -578,10 +578,10 @@ func TestWriteBytesWithContext(t *testing.T) {
 func TestReadByteWithContext(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 1, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 	ns.rcvDatapkt.buf[NSPDADAT] = 42
@@ -598,10 +598,10 @@ func TestReadByteWithContext(t *testing.T) {
 func TestReadBytesWithContext(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + 4, buf: ns.rcvBuf}
 	ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 	copy(ns.rcvDatapkt.buf[NSPDADAT:], []byte{1, 2, 3, 4})
@@ -618,7 +618,7 @@ func TestReadBytesWithContext(t *testing.T) {
 func TestReadBytesWithContextDoesNotTruncateLargeLength(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{sdu: NSPABSSDULN}
+	ns.sAtts = &sessionAtts{negotiatedSDU: NSPABSSDULN}
 	length := 65536
 	ns.rcvBuf = make([]byte, NSPDADAT+length)
 	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT + length, buf: ns.rcvBuf}

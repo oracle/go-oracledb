@@ -44,6 +44,7 @@ import (
 	"strings"
 	"testing"
 
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -101,11 +102,9 @@ func TestConnectPacketMarshal(t *testing.T) {
 	t.Parallel()
 	sAtts := &sessionAtts{
 		version:                     TNS_VERSION_DESIRED,
-		sdu:                         512,
 		tdu:                         512,
 		naFlags:                     NSINANOSERVICES,
-		networkCompression:          true,
-		networkCompressionLevels:    []string{"high"},
+		transportOptions:            oracleconfig.TransportOptions{SDU: 512, Compression: true, CompressionLevels: []string{"high"}},
 		networkCompressionThreshold: 1024,
 	}
 	data := []byte("short data")
@@ -143,7 +142,7 @@ func TestConnectPacketMarshal(t *testing.T) {
 	}
 
 	// No compression
-	sAtts.networkCompression = false
+	sAtts.transportOptions.Compression = false
 	cp.marshal(data, sAtts, 0)
 	compressionField = binary.BigEndian.Uint16(cp.buf[NSPCNCFL:])
 	if compressionField != 0 {
@@ -151,7 +150,7 @@ func TestConnectPacketMarshal(t *testing.T) {
 	}
 
 	// SDU capping
-	sAtts.sdu = NSPMXSDULN + 1
+	sAtts.transportOptions.SDU = NSPMXSDULN + 1
 	cp.marshal(data, sAtts, 0)
 	if binary.BigEndian.Uint16(cp.buf[NSPCNSDU:]) != NSPMXSDULN {
 		t.Errorf("SDU not capped")
@@ -317,7 +316,7 @@ func TestAcceptPacketUnmarshal(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unmarshal failed: %v", err)
 	}
-	if sAtts.version != 315 || sAtts.options != 1 || sAtts.sdu != 8192 || sAtts.tdu != 8192 || !sAtts.largeSDU {
+	if sAtts.version != 315 || sAtts.options != 1 || sAtts.sessionSDU() != 8192 || sAtts.tdu != 8192 || !sAtts.largeSDU {
 		t.Errorf("Basic fields mismatch")
 	}
 	if !sAtts.networkCompressionEnabled || sAtts.negotiatedNetworkCompressionScheme != NETWORK_COMPRESSION_ZLIB || !sAtts.firstRecvCompressedPacket || !sAtts.firstSendCompressedPacket {
@@ -337,7 +336,7 @@ func TestAcceptPacketUnmarshal(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unmarshal old version failed: %v", err)
 	}
-	if sAtts.sdu != 512 || sAtts.tdu != 512 {
+	if sAtts.sessionSDU() != 512 || sAtts.tdu != 512 {
 		t.Errorf("SDU/TDU not updated for old version")
 	}
 
@@ -402,8 +401,8 @@ func TestAcceptPacketClampsOversizedValues(t *testing.T) {
 		if err := ap.unmarshal(buf, sAtts, hdr); err != nil {
 			t.Fatalf("unmarshal failed: %v", err)
 		}
-		if sAtts.sdu != NSPMXSDULN {
-			t.Fatalf("expected SDU capped to %d, got %d", NSPMXSDULN, sAtts.sdu)
+		if sAtts.sessionSDU() != NSPMXSDULN {
+			t.Fatalf("expected SDU capped to %d, got %d", NSPMXSDULN, sAtts.sessionSDU())
 		}
 		if sAtts.tdu != int(sixteenBitMax) {
 			t.Fatalf("expected TDU to remain %d, got %d", sixteenBitMax, sAtts.tdu)
@@ -424,8 +423,8 @@ func TestAcceptPacketClampsOversizedValues(t *testing.T) {
 		if err := ap.unmarshal(buf, sAtts, hdr); err != nil {
 			t.Fatalf("unmarshal failed: %v", err)
 		}
-		if sAtts.sdu != NSPABSSDULN {
-			t.Fatalf("expected SDU capped to %d, got %d", NSPABSSDULN, sAtts.sdu)
+		if sAtts.sessionSDU() != NSPABSSDULN {
+			t.Fatalf("expected SDU capped to %d, got %d", NSPABSSDULN, sAtts.sessionSDU())
 		}
 		if sAtts.tdu != NSPMXTDULN {
 			t.Fatalf("expected TDU capped to %d, got %d", NSPMXTDULN, sAtts.tdu)

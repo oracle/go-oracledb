@@ -92,7 +92,7 @@ func TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate(t *testing.T) {
 		SSLAllowWeakDNMatch: true,
 	})
 	nt.stream = tlsConn
-	nt.hostname = "db.example.com"
+	nt.tlsHostname = "db.example.com"
 
 	if err := nt.VerifyPostAcceptDNMatch(); err != nil {
 		t.Fatalf("post-accept DN match failed: %v", err)
@@ -109,7 +109,7 @@ func TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate(t *testi
 		SSLAllowWeakDNMatch: true,
 	})
 	nt.stream = tlsConn
-	nt.hostname = "other.example.com"
+	nt.tlsHostname = "other.example.com"
 
 	err := nt.VerifyPostAcceptDNMatch()
 	if err == nil {
@@ -131,7 +131,7 @@ func TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback(t *testing.T) 
 		Servicename:         "service-name",
 	})
 	nt.stream = tlsConn
-	nt.hostname = "other.example.com"
+	nt.tlsHostname = "other.example.com"
 
 	if err := nt.VerifyPostAcceptDNMatch(); err != nil {
 		t.Fatalf("expected post-accept weak service-name fallback to pass, got %v", err)

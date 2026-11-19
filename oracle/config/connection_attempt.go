@@ -107,17 +107,44 @@ type TransportOptions struct {
 // database listener. It contains the selected address, effective transport
 // options, connect data, and effective driver configuration.
 type ConnectionAttempt struct {
+	// transportOptions contains the resolved transport and Oracle Net settings
+	// for this specific target. Its Host is the resolved IP when available, or
+	// the original hostname as a fallback.
 	transportOptions TransportOptions
-	effectiveConfig  *OracleDriverConfig
-	connectionID     string
-	resolvedIP       string
-	connectData      ConnectData
-	connectDataSet   map[string]bool
-	description      ConnectionDescription
-	addressGroup     ConnectionAddressGroup
-	accessPoint      RemoteAccessPoint
-	policy           attemptPolicy
-	additional       map[string]string
+	// effectiveConfig is the attempt-specific configuration after base and query
+	// settings are combined with the selected DESCRIPTION and ADDRESS settings.
+	effectiveConfig *OracleDriverConfig
+	// connectionID is the identifier included in this attempt's Oracle Net
+	// handshake, including any configured connection ID prefix.
+	connectionID string
+	// resolvedIP is the listener IP selected for this attempt, whether from DNS
+	// or an IP literal. It is separate from accessPoint.Host, which retains the
+	// hostname from the DSN, and is empty when DNS fails or returns no addresses.
+	resolvedIP string
+	// connectData contains the effective CONNECT_DATA values for this attempt,
+	// with selected DESCRIPTION values taking precedence over query values.
+	connectData ConnectData
+	// connectDataSet records which CONNECT_DATA fields were explicitly set by
+	// the query or descriptor, including fields explicitly set to empty values.
+	connectDataSet map[string]bool
+	// description contains the selected DESCRIPTION's scoped settings, with its
+	// CONNECT_DATA replaced by the effective merged values for this attempt.
+	description ConnectionDescription
+	// addressGroup is the parent group (explicit ADDRESS_LIST or implicit group)
+	// containing the selected endpoint. It retains group policies and its full
+	// access-point list; accessPoint below identifies the one selected member.
+	addressGroup ConnectionAddressGroup
+	// accessPoint is the selected ADDRESS within addressGroup. It retains the
+	// original DSN hostname and address-specific settings such as proxy and
+	// socket buffer overrides.
+	accessPoint RemoteAccessPoint
+	// policy contains the resolved description-level failover, load-balance,
+	// retry-count, and retry-delay behavior used to produce this attempt.
+	policy attemptPolicy
+	// additional contains unrecognized scalar settings preserved from the plan,
+	// selected description, address group, and selected access point. Query
+	// settings mapped to known config fields are held in effectiveConfig instead.
+	additional map[string]string
 }
 
 // GetTransportOptions returns an independent copy of the options used to open

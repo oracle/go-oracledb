@@ -144,7 +144,7 @@ func (cp *connectPacket) marshal(connectData []byte, sAtts *sessionAtts, flags u
 	options := NSGDONTCARE
 	binary.BigEndian.PutUint16(cp.buf[NSPCNOPT:], uint16(options))
 
-	sdu := sAtts.sdu
+	sdu := sAtts.sessionSDU()
 	if sdu > NSPMXSDULN {
 		sdu = NSPMXSDULN
 	}
@@ -167,13 +167,17 @@ func (cp *connectPacket) marshal(connectData []byte, sAtts *sessionAtts, flags u
 	binary.BigEndian.PutUint16(cp.buf[NSPCNTCK:], 0)
 	binary.BigEndian.PutUint16(cp.buf[NSPCNADL:], 0)
 	binary.BigEndian.PutUint16(cp.buf[NSPCNAOF:], 0)
-	binary.BigEndian.PutUint32(cp.buf[NSPCNLSD:], uint32(sAtts.sdu))
+	binary.BigEndian.PutUint32(cp.buf[NSPCNLSD:], uint32(sAtts.sessionSDU()))
 	binary.BigEndian.PutUint32(cp.buf[NSPCNLTD:], uint32(sAtts.tdu))
 
 	var compressionField uint16
-	if sAtts.networkCompression {
+	if sAtts.transportOptions.Compression {
 		compressionField = NSPACCFON << 8
-		if contains(sAtts.networkCompressionLevels, "high") {
+		compressionLevels := sAtts.transportOptions.CompressionLevels
+		if len(compressionLevels) == 0 {
+			compressionLevels = []string{"high"}
+		}
+		if contains(compressionLevels, "high") {
 			compressionField |= NETWORK_COMPRESSION_ZLIB << 10
 		}
 	}
@@ -334,7 +338,7 @@ func (ap *acceptPacket) unmarshal(buffer []byte, sAtts *sessionAtts, hdr *header
 			sAtts.networkCompressionEnabled = false
 		}
 	}
-	sAtts.sdu = sdu
+	sAtts.negotiatedSDU = sdu
 	sAtts.tdu = tdu
 	ap.flag0 = buffer[NSPACFL0]
 	ap.flag1 = buffer[NSPACFL1]

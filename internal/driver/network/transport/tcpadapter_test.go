@@ -18,7 +18,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -257,11 +256,9 @@ func TestNTTCPConnectThroughHTTPSProxyDialFailure(t *testing.T) {
 
 	nt := NewNTTCP(NTattributes{}, 1522)
 	err = nt.nTConnect(context.Background(), Address{
-		Address: naming.Address{
-			Protocol: driverCommon.ProtocolTCPS,
-			Host:     "dbhost",
-			Port:     1522,
-		},
+		Protocol:       driverCommon.ProtocolTCPS,
+		DialHost:       "dbhost",
+		Port:           1522,
 		HTTPSProxy:     "127.0.0.1",
 		HTTPSProxyPort: port,
 	})
@@ -292,11 +289,10 @@ func startTestProxy(t *testing.T, handler func(net.Conn) error) (Address, <-chan
 	t.Cleanup(func() { _ = listener.Close() })
 
 	return Address{
-		Address: naming.Address{
-			Protocol: driverCommon.ProtocolTCPS,
-			Host:     "dbhost",
-			Port:     1522,
-		},
+		Protocol:       driverCommon.ProtocolTCPS,
+		DialHost:       "dbhost",
+		TLSHostname:    "dbhost",
+		Port:           1522,
 		HTTPSProxy:     "127.0.0.1",
 		HTTPSProxyPort: listener.Addr().(*net.TCPAddr).Port,
 	}, result

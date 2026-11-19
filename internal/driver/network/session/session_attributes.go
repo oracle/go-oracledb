@@ -39,8 +39,6 @@
 package session
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +46,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 )
@@ -60,19 +57,16 @@ const systemWalletLocation = "SYSTEM"
 
 // sessionAtts represents network session attributes
 type sessionAtts struct {
-	largeSDU                           bool
-	sdu                                int
-	tdu                                int
-	nt                                 transport.NTattributes
-	uuid                               string
+	largeSDU bool
+	// negotiatedSDU is populated after ACCEPT. Before then, sessionSDU reads the
+	// requested SDU directly from transportOptions.
+	negotiatedSDU int
+	tdu           int
+	// transportOptions is the attempt's effective options and remains the source
+	// for requested settings that the session protocol reads.
+	transportOptions                   oracleconfig.TransportOptions
 	networkCompressionThreshold        int
-	networkCompression                 bool
-	networkCompressionLevels           []string
-	connectTimeout                     int
-	recvTimeout                        int
-	sendTimeout                        int
 	naFlags                            int
-	cDataNVPair                        interface{} // Placeholder for nvStrToNvPair data
 	negotiatedNetworkCompressionScheme int
 	networkCompressionEnabled          bool
 	firstRecvCompressedPacket          bool
@@ -81,228 +75,110 @@ type sessionAtts struct {
 	options                            int
 }
 
-// GenUUID generates a UUID for connection ID
-func GenUUID() (string, error) {
-	buf := make([]byte, 16)
-	_, err := rand.Read(buf)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(buf), nil
-}
-
 // newSessionAtts creates a new sessionAtts instance
-func newSessionAtts(uuid string) *sessionAtts {
+func newSessionAtts() *sessionAtts {
 	return &sessionAtts{
 		largeSDU:                    false,
-		sdu:                         NSPDFSDULN,
 		tdu:                         NSPDFTDULN,
-		nt:                          transport.NTattributes{Connectionidprefix: "", TCPNODelay: true, SSLServerDNMatch: true},
-		uuid:                        uuid,
 		networkCompressionThreshold: 1024,
 		naFlags:                     NSINANOSERVICES,
 	}
 }
 
-func (sa *sessionAtts) setFrom(source interface{}) {
-	if source == nil {
-		return
-	}
-
-	var sdu float64
-	var networkCompression bool
-	var networkCompressionLevels []string
-	var networkCompressionThreshold float64
-	var expireTime float64
-	var connectTimeout float64
-	var transportConnectTimeout float64
-	var recvTimeout float64
-	var sendTimeout float64
-	var recvBufSize float64
-	var sendBufSize float64
-	var connectionIDPrefix string
-	var tcpNoDelay bool
-	var sslAllowWeakDNMatch bool
-	var sslServerDNMatch bool
-	var sslServerCertDN string
-	var enable string
-	var httpsProxy string
-	var httpsProxyPort float64
-	var walletLocation string
-	var walletPassword string
-	var useSNI bool
-
-	switch src := source.(type) {
-	case *naming.Description:
-		sdu = float64(src.SDU)
-		networkCompression = src.IsCompressionEnabled()
-		networkCompressionLevels = src.CompressionLevels
-		expireTime = float64(src.ExpireTime)
-		connectTimeout = float64(src.ConnectTimeout)
-		transportConnectTimeout = float64(src.TransportConnectTimeout)
-		recvTimeout = float64(src.RecvTimeout)
-		sendTimeout = float64(src.SendTimeout)
-		recvBufSize = float64(src.RecvBufSize)
-		sendBufSize = float64(src.SendBufSize)
-		connectionIDPrefix = src.ConnectionIDPrefix
-		tcpNoDelay = true
-		sslAllowWeakDNMatch = src.Security.IsSSLAllowWeakDNMatchEnabled()
-		sslServerDNMatch = src.Security.IsSSLServerDNMatchEnabled()
-		sslServerCertDN = src.Security.SSLServerCertDN
-		enable = src.Enable
-		walletLocation = src.Security.WalletLocation
-		useSNI = src.IsUseSNIEnabled()
-	case oracleconfig.TransportOptions:
-		sdu = float64(src.SDU)
-		networkCompression = src.Compression
-		networkCompressionLevels = src.CompressionLevels
-		expireTime = float64(src.ExpireTime / time.Minute)
-		connectTimeout = float64(src.ConnectTimeout / time.Millisecond)
-		transportConnectTimeout = float64(src.TransportConnectTimeout / time.Millisecond)
-		recvTimeout = float64(src.ReceiveTimeout / time.Millisecond)
-		sendTimeout = float64(src.SendTimeout / time.Millisecond)
-		recvBufSize = float64(src.ReceiveBufferSize)
-		sendBufSize = float64(src.SendBufferSize)
-		connectionIDPrefix = src.ConnectionIDPrefix
-		tcpNoDelay = true
-		sslAllowWeakDNMatch = src.Security.SSLAllowWeakDNMatch
-		sslServerDNMatch = src.Security.SSLServerDNMatch
-		sslServerCertDN = src.Security.SSLServerCertDN
-		enable = src.Enable
-		httpsProxy = src.HTTPSProxy
-		httpsProxyPort = float64(src.HTTPSProxyPort)
-		walletLocation = src.Security.WalletLocation
-		useSNI = src.UseSNI
-
-	default:
-		return
-	}
-
-	// Assuming we don't have the password read until now by any means
-	// Hence reading using environment variable
-	if walletPassword == "" {
-		walletPassword = os.Getenv(walletPasswordEnvVar)
-	}
-	if walletPassword == "" {
-		walletPassword = os.Getenv(walletPasswordEnvVarAlt)
-	}
-
-	// Set from extracted values
-	if sdu > 0 {
-		sa.sdu = int(sdu)
-	}
-	if networkCompression {
-		sa.networkCompression = true
-		sa.networkCompressionLevels = networkCompressionLevels
-
-		if len(sa.networkCompressionLevels) == 0 {
-			sa.networkCompressionLevels = []string{"high"}
-		}
-	}
-	if networkCompressionThreshold >= 200 {
-		sa.networkCompressionThreshold = int(networkCompressionThreshold)
-	}
-	if expireTime > 0 {
-		sa.nt.ExpireTime = int(expireTime * 1000 * 60)
-	}
-	if connectTimeout > 0 {
-		sa.connectTimeout = int(connectTimeout)
-	}
-	if transportConnectTimeout > 0 {
-		sa.nt.Transportconnecttimeout = int(transportConnectTimeout)
-	}
-	if recvTimeout > 0 {
-		sa.nt.RecvTimeout = int(recvTimeout)
-	}
-	if sendTimeout > 0 {
-		sa.nt.SendTimeout = int(sendTimeout)
-	}
-	if recvBufSize > 0 {
-		sa.nt.RecvBufSize = int(recvBufSize)
-	}
-	if sendBufSize > 0 {
-		sa.nt.SendBufSize = int(sendBufSize)
-	}
-	if connectionIDPrefix != "" {
-		sa.nt.Connectionidprefix = connectionIDPrefix
-	}
-	sa.nt.TCPNODelay = tcpNoDelay
-
-	if strings.ToUpper(enable) == "BROKEN" {
-		sa.nt.EnabledDCD = true
-	}
-	if httpsProxy != "" {
-		sa.nt.HttpsProxy = httpsProxy
-	}
-	if httpsProxyPort >= 0 {
-		sa.nt.HttpsProxyPort = int(httpsProxyPort)
-	}
-	sa.nt.WalletLocation = walletLocation
-	sa.nt.SSLAllowWeakDNMatch = sslAllowWeakDNMatch
-	sa.nt.SSLServerDNMatch = sslServerDNMatch
-	sa.nt.SSLServerCertDN = sslServerCertDN
-	sa.nt.WalletPassword = walletPassword
-	sa.nt.UseSNI = useSNI // Assuming NT has UseSNI; add if not
-
+// setFrom stores the resolved options for this connection attempt. The
+// session reads requested values from this snapshot until Oracle Net returns
+// negotiated values from the server.
+//
+// Input:
+//   - src: effective options for the selected access point. The caller owns the
+//     attempt configuration; this session keeps the supplied snapshot for its
+//     lifetime and does not modify its transport settings.
+//
+// Output: none.
+func (sa *sessionAtts) setFrom(src oracleconfig.TransportOptions) {
+	sa.transportOptions = src
 }
 
-// readWalletFile reads the wallet file
-func (sa *sessionAtts) readWalletFile() ([]byte, error) {
-	path := filepath.Join(sa.nt.WalletLocation, PEM_WALLET_FILE_NAME)
+// sessionSDU returns the server-negotiated SDU when available, otherwise the
+// clamped SDU requested by the selected connection attempt.
+//
+// Input: none.
+//
+// Output:
+//   - int: active session data unit size in bytes.
+func (sa *sessionAtts) sessionSDU() int {
+	if sa.negotiatedSDU > 0 {
+		return sa.negotiatedSDU
+	}
+	sdu := sa.transportOptions.SDU
+	if sdu == 0 {
+		sdu = NSPDFSDULN
+	}
+	return clamp(sdu, NSPMNSDULN, NSPABSSDULN)
+}
+
+// readWalletFile reads the PEM wallet from the configured wallet location.
+//
+// Input:
+//   - walletLocation: directory containing the PEM wallet file.
+//
+// Output:
+//   - []byte: wallet contents for the TLS adapter.
+//   - error: file access error, if the wallet cannot be read.
+func readWalletFile(walletLocation string) ([]byte, error) {
+	path := filepath.Join(walletLocation, PEM_WALLET_FILE_NAME)
 	return os.ReadFile(path)
 }
 
-// prepare prepares attributes for connection
-func (sa *sessionAtts) prepare(protocol driverCommon.Protocol) error {
-	return sa.prepareWithConnectionID(protocol, "")
-}
-
-// prepareWithConnectionID prepares transport attributes and uses a previously
-// resolved connection ID when one is supplied.
+// prepare builds transport adapter attributes for this session from its
+// effective options.
 //
 // Input:
 //   - protocol: transport protocol used to configure TLS and wallet behavior.
-//   - connectionID: final driver-resolved ID; empty preserves UUID generation
-//     and prefix handling performed by prepare.
 //
 // Output:
-//   - error: UUID generation or wallet loading error encountered during setup.
-func (sa *sessionAtts) prepareWithConnectionID(protocol driverCommon.Protocol, connectionID string) error {
-	sa.sdu = clamp(sa.sdu, NSPMNSDULN, NSPABSSDULN)
+//   - transport.NTattributes: adapter-specific projection of the effective
+//     options, including wallet data loaded for TCPS.
+//   - error: wallet loading error encountered during setup.
+func (sa *sessionAtts) prepare(protocol driverCommon.Protocol) (transport.NTattributes, error) {
+	options := sa.transportOptions
 
-	if connectionID != "" {
-		sa.uuid = connectionID
-	} else if sa.uuid == "" {
-		uuid, err := GenUUID()
-		if err != nil {
-			return err
-		}
-		sa.uuid = uuid
+	attributes := transport.NTattributes{
+		TCPNODelay:              true,
+		SendTimeout:             int(options.SendTimeout / time.Millisecond),
+		RecvTimeout:             int(options.ReceiveTimeout / time.Millisecond),
+		SendBufSize:             options.SendBufferSize,
+		RecvBufSize:             options.ReceiveBufferSize,
+		ExpireTime:              int(options.ExpireTime / time.Millisecond),
+		SSLServerDNMatch:        options.Security.SSLServerDNMatch,
+		SSLAllowWeakDNMatch:     options.Security.SSLAllowWeakDNMatch,
+		EnabledDCD:              strings.EqualFold(options.Enable, "BROKEN"),
+		UseSNI:                  options.UseSNI,
+		SSLServerCertDN:         options.Security.SSLServerCertDN,
+		WalletLocation:          options.Security.WalletLocation,
+		Transportconnecttimeout: int(options.TransportConnectTimeout / time.Millisecond),
 	}
-	if connectionID != "" {
-		sa.nt.Connectionid = connectionID
-	} else if sa.nt.Connectionidprefix != "" {
-		sa.nt.Connectionid = sa.nt.Connectionidprefix + sa.uuid
-	} else {
-		sa.nt.Connectionid = sa.uuid
+	if attributes.Transportconnecttimeout == 0 && options.ConnectTimeout == 0 {
+		attributes.Transportconnecttimeout = DEFAULT_TRANSPORT_CONNECT_TIMEOUT
 	}
 
-	walletLocation := strings.TrimSpace(sa.nt.WalletLocation)
-	sa.nt.UseSystemTrust = protocol == driverCommon.ProtocolTCPS &&
+	// TODO : do we support this ?
+	attributes.WalletPassword = os.Getenv(walletPasswordEnvVar)
+	if attributes.WalletPassword == "" {
+		attributes.WalletPassword = os.Getenv(walletPasswordEnvVarAlt)
+	}
+
+	walletLocation := strings.TrimSpace(attributes.WalletLocation)
+	attributes.UseSystemTrust = protocol == driverCommon.ProtocolTCPS &&
 		(walletLocation == "" || strings.EqualFold(walletLocation, systemWalletLocation))
-	if protocol == driverCommon.ProtocolTCPS && sa.nt.WalletContent == nil && !sa.nt.UseSystemTrust {
-		data, err := sa.readWalletFile()
+	if protocol == driverCommon.ProtocolTCPS && !attributes.UseSystemTrust {
+		data, err := readWalletFile(attributes.WalletLocation)
 		if err != nil {
-			return err
+			common.Odl.Debug("Error reading wallet file", "error", err)
+			return transport.NTattributes{}, err
 		}
-		sa.nt.WalletContent = data
+		attributes.WalletContent = data
 	}
 
-	if sa.connectTimeout == 0 && sa.nt.Transportconnecttimeout == 0 {
-		sa.nt.Transportconnecttimeout = DEFAULT_TRANSPORT_CONNECT_TIMEOUT
-	}
-	common.Odl.Debug("connection timeout set", "tm",
-		sa.nt.Transportconnecttimeout)
-
-	return nil
+	return attributes, nil
 }

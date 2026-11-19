@@ -40,8 +40,9 @@ package transport
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
 type NTAdapter interface {
@@ -51,13 +52,39 @@ type NTAdapter interface {
 	Disconnect() error
 }
 
+// Address contains the resolved transport destination and the hostname
+// identity needed for TLS and proxy CONNECT handling.
 type Address struct {
-	naming.Address
-	Hostname       string
-	HTTPSProxy     string
+	// DialHost is the resolved IP or original hostname used to open the socket.
+	DialHost string
+	// Port is the listener port.
+	Port uint16
+	// Protocol is the transport protocol used for this attempt.
+	Protocol driverCommon.Protocol
+	// TLSHostname is the selected DSN hostname used for TLS verification and as
+	// the target hostname in an HTTP CONNECT request.
+	TLSHostname string
+	// PreviousHostname is the preceding endpoint hostname used as a certificate
+	// verification fallback after a listener redirect.
+	PreviousHostname string
+	// HTTPSProxy is the optional HTTP CONNECT proxy hostname.
+	HTTPSProxy string
+	// HTTPSProxyPort is the HTTP CONNECT proxy port.
 	HTTPSProxyPort int
+	// ConnectionID is the resolved identifier used to correlate transport logs
+	// and errors with the Oracle Net connection attempt.
+	ConnectionID string
 }
 
+// String formats the dial destination as host:port for network errors and logs.
+func (address Address) String() string {
+	return fmt.Sprintf("%s:%d", address.DialHost, address.Port)
+}
+
+// NTattributes contains adapter-specific settings projected from the resolved
+// transport options, plus runtime TLS material such as loaded wallet contents.
+// ConnectionID is carried on Address because it identifies the attempt rather
+// than configuring the transport.
 type NTattributes struct {
 	TCPNODelay              bool
 	SendTimeout             int
@@ -68,12 +95,8 @@ type NTattributes struct {
 	SSLServerDNMatch        bool
 	SSLAllowWeakDNMatch     bool
 	EnabledDCD              bool
-	HttpsProxy              string
-	HttpsProxyPort          int
 	UseSNI                  bool
 	Transportconnecttimeout int
-	Connectionidprefix      string
-	Connectionid            string
 	WalletContent           []byte
 	WalletPassword          string
 	SSLServerCertDN         string

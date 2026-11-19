@@ -147,48 +147,48 @@ type OracleConnectionProperties struct {
 
 	// ReceiveTimeout sets the Oracle Net receive timeout. It accepts Oracle Net
 	// or Go duration syntax, such as "5sec" or "500ms".
-	ReceiveTimeout string `aliases:"recv_timeout" validator:"validateDurationString" help:"sets the Oracle Net receive timeout"`
+	ReceiveTimeout string `ns_name:"recv_timeout" validator:"validateDurationString" help:"sets the Oracle Net receive timeout"`
 
 	// SendTimeout sets the Oracle Net send timeout. It accepts Oracle Net or Go
 	// duration syntax, such as "5sec" or "500ms".
-	SendTimeout string `aliases:"send_timeout" validator:"validateDurationString" help:"sets the Oracle Net send timeout"`
+	SendTimeout string `ns_name:"send_timeout" validator:"validateDurationString" help:"sets the Oracle Net send timeout"`
 
 	// Enable contains the Oracle Net ENABLE value, such as BROKEN.
-	Enable string `aliases:"enable" help:"sets the Oracle Net ENABLE value"`
+	Enable string `ns_name:"enable" help:"sets the Oracle Net ENABLE value"`
 
 	// CompressionLevels contains comma-separated Oracle Net compression levels
 	// or algorithms.
-	CompressionLevels string `aliases:"compression_levels" validator:"validateStringList" help:"sets Oracle Net compression levels or algorithms"`
+	CompressionLevels string `ns_name:"compression_levels" validator:"validateStringList" help:"sets Oracle Net compression levels or algorithms"`
 
 	// TypeOfService contains the Oracle Net type-of-service value.
-	TypeOfService string `aliases:"type_of_service" help:"sets the Oracle Net type of service"`
+	TypeOfService string `ns_name:"type_of_service" help:"sets the Oracle Net type of service"`
 
 	// ConnectionIDPrefix prefixes generated Oracle Net connection identifiers.
-	ConnectionIDPrefix string `aliases:"connection_id_prefix" tns_section:"CONNECT_DATA" help:"prefixes generated Oracle Net connection identifiers"`
+	ConnectionIDPrefix string `ns_name:"connection_id_prefix" tns_section:"CONNECT_DATA" help:"prefixes generated Oracle Net connection identifiers"`
 
 	// ServiceName identifies the database service requested by the client.
-	ServiceName string `aliases:"service_name" tns_section:"CONNECT_DATA" help:"identifies the database service"`
+	ServiceName string `ns_name:"service_name" tns_section:"CONNECT_DATA" help:"identifies the database service"`
 
 	// SID identifies a database instance by its Oracle system identifier.
-	SID string `aliases:"sid" tns_section:"CONNECT_DATA" help:"identifies a database instance by SID"`
+	SID string `ns_name:"sid" tns_section:"CONNECT_DATA" help:"identifies a database instance by SID"`
 
 	// ServiceTag contains the Oracle Net service tag.
-	ServiceTag string `aliases:"service_tag" tns_section:"CONNECT_DATA" help:"sets the Oracle Net service tag"`
+	ServiceTag string `ns_name:"service_tag" tns_section:"CONNECT_DATA" help:"sets the Oracle Net service tag"`
 
 	// InstanceName identifies a particular database instance.
-	InstanceName string `aliases:"instance_name" tns_section:"CONNECT_DATA" help:"identifies a database instance"`
+	InstanceName string `ns_name:"instance_name" tns_section:"CONNECT_DATA" help:"identifies a database instance"`
 
 	// FailoverMode contains a scalar Oracle Net client failover mode.
-	FailoverMode string `aliases:"failover_mode" tns_section:"CONNECT_DATA" help:"sets the Oracle Net client failover mode"`
+	FailoverMode string `ns_name:"failover_mode" tns_section:"CONNECT_DATA" help:"sets the Oracle Net client failover mode"`
 
 	// HS enables heterogeneous services when set in CONNECT_DATA.
-	HS string `aliases:"hs" tns_section:"CONNECT_DATA" help:"enables heterogeneous services"`
+	HS string `ns_name:"hs" tns_section:"CONNECT_DATA" help:"enables heterogeneous services"`
 
 	// RDBDatabase identifies a remote database when applicable.
-	RDBDatabase string `aliases:"rdb_database" tns_section:"CONNECT_DATA" help:"identifies a remote database"`
+	RDBDatabase string `ns_name:"rdb_database" tns_section:"CONNECT_DATA" help:"identifies a remote database"`
 
 	// GlobalName identifies the requested global database name.
-	GlobalName string `aliases:"global_name" tns_section:"CONNECT_DATA" help:"sets the requested global database name"`
+	GlobalName string `ns_name:"global_name" tns_section:"CONNECT_DATA" help:"sets the requested global database name"`
 
 	// RetryCount sets how many times the configured host list is traversed when
 	// attempting to connect.

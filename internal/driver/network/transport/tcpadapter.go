@@ -68,17 +68,18 @@ func httpsProxyPortOrDefault(port int) int {
 
 // nttcp represents a TCP network transport adapter
 type nttcp struct {
-	cha        int
-	connected  bool
-	secure     bool
-	host       string
-	hostname   string
-	originHost string
-	port       uint16
-	stream     net.Conn
-	atts       NTattributes
-	_writerWG  sync.WaitGroup
-	_readerWG  sync.WaitGroup
+	cha              int
+	connected        bool
+	secure           bool
+	dialHost         string
+	tlsHostname      string
+	previousHostname string
+	connectionID     string
+	port             uint16
+	stream           net.Conn
+	atts             NTattributes
+	_writerWG        sync.WaitGroup
+	_readerWG        sync.WaitGroup
 }
 
 func NewNTTCP(atts NTattributes, port uint16) *nttcp {
@@ -169,13 +170,13 @@ func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 		return nil
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
-		common.OdlT(nt.atts.Connectionid).Debug("context for Send() cancelled, cancelling writer")
+		common.OdlT(nt.connectionID).Debug("context for Send() cancelled, cancelling writer")
 		nt.stream.SetWriteDeadline(time.Now())
 		nt._writerWG.Wait()
-		common.OdlT(nt.atts.Connectionid).Debug("Send() timed-out, writer is now joined")
+		common.OdlT(nt.connectionID).Debug("Send() timed-out, writer is now joined")
 		// reset the deadline
 		nt.stream.SetWriteDeadline(time.Time{})
-		return common.NewOracleError(oracleErrors.CtxTimeout, ctx.Err(), "send", fmt.Sprintf("%s:%d", nt.host, nt.port), nt.atts.Connectionid)
+		return common.NewOracleError(oracleErrors.CtxTimeout, ctx.Err(), "send", fmt.Sprintf("%s:%d", nt.dialHost, nt.port), nt.connectionID)
 	}
 }
 
@@ -200,7 +201,7 @@ func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 	if nt.atts.RecvTimeout > 0 {
 		ctxToBeUsed, cancel = context.WithTimeoutCause(ctx, time.Duration(nt.atts.RecvTimeout)*time.Millisecond,
 			common.NewCtxTimeoutCauseError("recv-timeout", uint(nt.atts.RecvTimeout),
-				nt.atts.Connectionid))
+				nt.connectionID))
 		defer cancel()
 	}
 
@@ -230,10 +231,10 @@ func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 		return res.byteCount, nil
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
-		common.OdlT(nt.atts.Connectionid).Debug("context for Receive() cancelled, cancelling reader")
+		common.OdlT(nt.connectionID).Debug("context for Receive() cancelled, cancelling reader")
 		nt.stream.SetReadDeadline(time.Now())
 		nt._readerWG.Wait()
-		common.OdlT(nt.atts.Connectionid).Debug("Receive() timed-out, reader is now joined")
+		common.OdlT(nt.connectionID).Debug("Receive() timed-out, reader is now joined")
 		// reset the deadline
 		nt.stream.SetReadDeadline(time.Time{})
 		return 0, context.Cause(ctxToBeUsed)
@@ -243,20 +244,13 @@ func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 // nTConnect establishes a TCP connection
 func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 
-	targetHost := address.Hostname
+	targetHost := address.TLSHostname
 	if targetHost == "" {
-		targetHost = address.Host
+		targetHost = address.DialHost
 	}
 	target := net.JoinHostPort(targetHost, strconv.Itoa(int(address.Port)))
-	var httpsProxy string
-	var httpsProxyPort int
-	if address.HTTPSProxy != "" {
-		httpsProxy = address.HTTPSProxy
-		httpsProxyPort = address.HTTPSProxyPort
-	} else {
-		httpsProxy = nt.atts.HttpsProxy
-		httpsProxyPort = nt.atts.HttpsProxyPort
-	}
+	httpsProxy := address.HTTPSProxy
+	httpsProxyPort := address.HTTPSProxyPort
 	var dialer net.Dialer
 
 	var dialCtxToBeUsed context.Context
@@ -269,7 +263,7 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 				time.Duration(nt.atts.Transportconnecttimeout)*time.Millisecond,
 				common.NewCtxTimeoutCauseError("TransportConnectTimeout",
 					uint(nt.atts.Transportconnecttimeout),
-					nt.atts.Connectionid))
+					nt.connectionID))
 		defer dialCancelToBeUsed()
 	}
 	dialAddress := address.String()
@@ -277,16 +271,16 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 		httpsProxyPort = httpsProxyPortOrDefault(httpsProxyPort)
 		dialAddress = net.JoinHostPort(httpsProxy, strconv.Itoa(httpsProxyPort))
 	}
-	common.OdlT(nt.atts.Connectionid).Debug("dialing remote host")
+	common.OdlT(nt.connectionID).Debug("dialing remote host")
 	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", dialAddress)
 	if err != nil {
 		if httpsProxy == "" {
-			return normalizeDialError(dialCtxToBeUsed, err, address, nt.atts.Connectionid)
+			return normalizeDialError(dialCtxToBeUsed, err, address, nt.connectionID)
 		}
 		proxyAddress := address
-		proxyAddress.Host = httpsProxy
+		proxyAddress.DialHost = httpsProxy
 		proxyAddress.Port = uint16(httpsProxyPort)
-		return normalizeDialError(dialCtxToBeUsed, err, proxyAddress, nt.atts.Connectionid)
+		return normalizeDialError(dialCtxToBeUsed, err, proxyAddress, nt.connectionID)
 	}
 	if httpsProxy != "" {
 		request, reqErr := http.NewRequestWithContext(dialCtxToBeUsed, http.MethodConnect, "http://"+target, nil)
@@ -374,11 +368,12 @@ func normalizeDialError(ctx context.Context, err error, address Address, connect
 
 // Connect establishes a network transport connection
 func (nt *nttcp) Connect(ctx context.Context, address Address) error {
-	nt.originHost = address.OriginHost
-	nt.host = address.Host
-	nt.hostname = address.Hostname
-	if nt.hostname == "" {
-		nt.hostname = address.Host
+	nt.previousHostname = address.PreviousHostname
+	nt.connectionID = address.ConnectionID
+	nt.dialHost = address.DialHost
+	nt.tlsHostname = address.TLSHostname
+	if nt.tlsHostname == "" {
+		nt.tlsHostname = address.DialHost
 	}
 	nt.port = address.Port
 

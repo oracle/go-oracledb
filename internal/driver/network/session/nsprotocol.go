@@ -125,34 +125,6 @@ func refusalDataFromAttempt(attempt *oracleconfig.ConnectionAttempt) connectErro
 	}
 }
 
-// refusalDataFromNode extracts refusal-message fields from an already parsed
-// CONNECT_DATA node.
-//
-// Input:
-//   - node: parsed CONNECT_DATA node from the legacy naming path, or nil.
-//
-// Output:
-//   - connectErrorData: values present in the node; empty when node is nil.
-func refusalDataFromNode(node *naming.Node) connectErrorData {
-	data := connectErrorData{}
-	if node == nil {
-		return data
-	}
-	for _, child := range node.Children {
-		switch child.Name {
-		case "SERVICE_NAME":
-			data.serviceName = child.Value
-		case "SERVER":
-			data.serverType = child.Value
-		case "INSTANCE_NAME":
-			data.instanceName = child.Value
-		case "SID":
-			data.sid = child.Value
-		}
-	}
-	return data
-}
-
 // cidSanitizer prevents OS-provided CID values from changing the naming structure.
 var cidSanitizer = strings.NewReplacer("(", "_", ")", "_", "=", "_")
 
@@ -176,11 +148,6 @@ func buildCIDNode() naming.Node {
 		},
 	}
 }
-
-// cachedCIDNode is initialized once when this package is loaded from the
-// process metadata initialized by common. Connection attempts reuse this
-// immutable process-level CID node.
-var cachedCIDNode = buildCIDNode()
 
 const (
 	maxRedirectCount = 4
@@ -245,14 +212,14 @@ func remoteTCPAddrFromConn(remoteAddr net.Addr) *net.TCPAddr {
 
 // transportConnect establishes the transport-level connection
 func (ns *networkSession) transportConnect(ctx context.Context, address transport.Address) error {
-	if address.Protocol == driverCommon.ProtocolTCP && (address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != "") {
+	if address.Protocol == driverCommon.ProtocolTCP && address.HTTPSProxy != "" {
 		return common.NewOracleError(oracleErrors.HTTPSProxyRequiresTCPS, nil)
 	}
 	if ns.ntAdapter == nil {
 		if address.Protocol == driverCommon.ProtocolTCP {
-			ns.ntAdapter = transport.NewNTTCP(ns.sAtts.nt, TCP_DEFAULT_PORT)
+			ns.ntAdapter = transport.NewNTTCP(transport.NTattributes{}, TCP_DEFAULT_PORT)
 		} else if address.Protocol == driverCommon.ProtocolTCPS {
-			ns.ntAdapter = transport.NewNTTCPS(ns.sAtts.nt)
+			ns.ntAdapter = transport.NewNTTCPS(transport.NTattributes{})
 		}
 	}
 	err := ns.ntAdapter.Connect(ctx, address)
@@ -262,19 +229,14 @@ func (ns *networkSession) transportConnect(ctx context.Context, address transpor
 		// reach this point. When a proxy is configured, the failure may belong
 		// to the proxy rather than the database endpoint, so do not cache the
 		// database address as down.
-		proxyConfigured := address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != ""
-		if !proxyConfigured && isDownHostError(ctx, err) {
-			key := address.ResolvedIP
-			if key == "" {
-				key = address.Host
-			}
-			driverCommon.MarkDownHost(key)
+		if address.HTTPSProxy == "" && isDownHostError(ctx, err) {
+			driverCommon.MarkDownHost(address.DialHost)
 		}
 		return err
 	}
 	//initializes sndDatapkt with SDU size
-	ns.sndBuf = make([]byte, ns.sAtts.sdu)
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 
 	err = ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 	if err != nil {
@@ -353,8 +315,8 @@ func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) err
 		tlsadapter.Clear()
 	}
 	ns.connected = true
-	ns.sndBuf = make([]byte, ns.sAtts.sdu)
-	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
+	ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.controlPkt = &controlPacket{}
 	err := ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 	if err != nil {
@@ -380,7 +342,7 @@ func (ns *networkSession) refuseArgs(errCode string, address transport.Address, 
 		if data.serviceName == "" {
 			return nil, missingValue("SERVICE_NAME")
 		}
-		return []any{data.serviceName, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
+		return []any{data.serviceName, address.DialHost, address.Port, address.ConnectionID}, nil
 	case "12520":
 		if data.serverType == "" {
 			return nil, missingValue("SERVER")
@@ -388,7 +350,7 @@ func (ns *networkSession) refuseArgs(errCode string, address transport.Address, 
 		if data.serviceName == "" {
 			return nil, missingValue("SERVICE_NAME")
 		}
-		return []any{data.serverType, data.serviceName, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
+		return []any{data.serverType, data.serviceName, address.DialHost, address.Port, address.ConnectionID}, nil
 	case "12521":
 		if data.instanceName == "" {
 			return nil, missingValue("INSTANCE_NAME")
@@ -396,12 +358,12 @@ func (ns *networkSession) refuseArgs(errCode string, address transport.Address, 
 		if data.serviceName == "" {
 			return nil, missingValue("SERVICE_NAME")
 		}
-		return []any{data.instanceName, data.serviceName, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
+		return []any{data.instanceName, data.serviceName, address.DialHost, address.Port, address.ConnectionID}, nil
 	case "12505":
 		if data.sid == "" {
 			return nil, missingValue("SID")
 		}
-		return []any{data.sid, address.Host, address.Port, ns.sAtts.nt.Connectionid}, nil
+		return []any{data.sid, address.DialHost, address.Port, address.ConnectionID}, nil
 	default:
 		return nil, nil
 	}
@@ -464,7 +426,7 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 	if err != nil {
 		return err
 	}
-	oldhostname := address.Hostname
+	oldHostname := address.TLSHostname
 	redirCtx, err := naming.ExtractConnectionContext(redirAddressNode)
 	if err != nil {
 		return err
@@ -473,24 +435,19 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 
 	if iter.HasNext() {
 		redirOption := iter.Next()
-		redirOption.Address.OriginHost = oldhostname
 		hostToBeUsed := redirOption.Address.Host
 		if redirOption.Address.ResolvedIP != "" {
 			hostToBeUsed = redirOption.Address.ResolvedIP
 		}
 		newAddress := transport.Address{
-			Address: naming.Address{
-				Host:           hostToBeUsed,
-				Port:           redirOption.Address.Port,
-				Protocol:       redirOption.Address.Protocol,
-				HTTPSProxy:     address.HTTPSProxy,
-				HTTPSProxyPort: address.HTTPSProxyPort,
-				OriginHost:     oldhostname,
-				ResolvedIP:     redirOption.Address.ResolvedIP,
-			},
-			Hostname:       redirOption.Address.Host,
-			HTTPSProxy:     address.HTTPSProxy,
-			HTTPSProxyPort: address.HTTPSProxyPort,
+			DialHost:         hostToBeUsed,
+			Port:             redirOption.Address.Port,
+			Protocol:         redirOption.Address.Protocol,
+			TLSHostname:      redirOption.Address.Host,
+			PreviousHostname: oldHostname,
+			HTTPSProxy:       address.HTTPSProxy,
+			HTTPSProxyPort:   address.HTTPSProxyPort,
+			ConnectionID:     address.ConnectionID,
 		}
 		ns.ntAdapter.Disconnect()
 		ns.connected = false
@@ -501,7 +458,7 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 		ns.connected = true
 		connectPkt := &connectPacket{}
 		//initializes sndDatapkt with SDU size
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 		connectPkt.marshal(redirectConnectData, ns.sAtts, NSPFRDR)
 		err = ns.sendConnect(ctx, connectPkt)
@@ -607,9 +564,6 @@ func (ns *networkSession) connect(ctx context.Context, address transport.Address
 		}
 	}
 }
-func ConnectToOption(ctx context.Context, option *naming.ConnectionOption) (driverCommon.NetworkSession, error) {
-	return ConnectToOptionWithConnectionID(ctx, option, "")
-}
 
 // ConnectToAttempt opens the transport and sends the Oracle Net CONNECT packet
 // for one fully resolved connection attempt.
@@ -624,18 +578,21 @@ func ConnectToOption(ctx context.Context, option *naming.ConnectionOption) (driv
 //     handshake to continue.
 //   - error: invalid attempt data, TLS preparation, or transport establishment error.
 func ConnectToAttempt(ctx context.Context, attempt *oracleconfig.ConnectionAttempt) (driverCommon.NetworkSession, error) {
-	if attempt == nil {
-		return nil, common.NewOracleError(oracleErrors.InternalError, errors.New("connection attempt is nil"))
-	}
 
 	// Step 1: initialize network attributes from the resolved attempt so TLS,
 	// timeouts, buffers, compression, and proxy settings match the chosen target.
 	options := attempt.GetTransportOptions()
 	ns := newNetworkSession()
-	ns.sAtts = newSessionAtts("")
+	ns.sAtts = newSessionAtts()
 	ns.sAtts.setFrom(options)
-	if err := ns.sAtts.prepareWithConnectionID(options.Protocol, attempt.GetConnectionID()); err != nil {
+	attributes, err := ns.sAtts.prepare(options.Protocol)
+	if err != nil {
 		return nil, err
+	}
+	if options.Protocol == driverCommon.ProtocolTCP {
+		ns.ntAdapter = transport.NewNTTCP(attributes, TCP_DEFAULT_PORT)
+	} else if options.Protocol == driverCommon.ProtocolTCPS {
+		ns.ntAdapter = transport.NewNTTCPS(attributes)
 	}
 
 	// Step 2: serialize CONNECT_DATA from this resolved attempt and add the
@@ -657,93 +614,18 @@ func ConnectToAttempt(ctx context.Context, attempt *oracleconfig.ConnectionAttem
 		port = TCP_DEFAULT_PORT
 	}
 	address := transport.Address{
-		Address: naming.Address{
-			Host:           options.Host,
-			Port:           port,
-			Protocol:       options.Protocol,
-			ResolvedIP:     attempt.GetResolvedIP(),
-			HTTPSProxy:     options.HTTPSProxy,
-			HTTPSProxyPort: options.HTTPSProxyPort,
-		},
-		Hostname:       accessPoint.Host,
+		DialHost:       options.Host,
+		Port:           port,
+		Protocol:       options.Protocol,
+		TLSHostname:    accessPoint.Host,
 		HTTPSProxy:     options.HTTPSProxy,
 		HTTPSProxyPort: options.HTTPSProxyPort,
+		ConnectionID:   attempt.GetConnectionID(),
 	}
 	if err := ns.connect(ctx, address, request); err != nil {
 		return nil, err
 	}
 	return ns, nil
-}
-
-func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
-	ns := newNetworkSession()
-	addressOption := option.Address
-	description := option.Description
-
-	portToBeUsed := addressOption.Port
-	if addressOption.Port == 0 {
-		common.Odl.Fine("no port specified, fall-back to default", "port", TCP_DEFAULT_PORT)
-		portToBeUsed = TCP_DEFAULT_PORT
-	}
-
-	ns.sAtts = newSessionAtts(connectionID)
-	if description != nil {
-		ns.sAtts.setFrom(description)
-	}
-	err := ns.sAtts.prepare(addressOption.Protocol)
-	if err != nil {
-		return nil, err
-	}
-	connectStr := option.ConnectString
-	root, err := naming.Parse(connectStr)
-	if err != nil {
-		return nil, err
-	}
-	connectData, err := root.GetNode("DESCRIPTION/CONNECT_DATA")
-	if err != nil {
-		root.Children = append(root.Children, naming.Node{Name: "CONNECT_DATA"})
-		connectData = &root.Children[len(root.Children)-1]
-	}
-	children := connectData.Children[:0]
-	for _, child := range connectData.Children {
-		if child.Name == "CID" || child.Name == "CONNECTION_ID" {
-			continue
-		}
-		children = append(children, child)
-	}
-	connectData.Children = children
-	connectData.Children = append(connectData.Children, cachedCIDNode)
-	connIDNode := naming.Node{Name: "CONNECTION_ID", Value: ns.sAtts.nt.Connectionid}
-	connectData.Children = append(connectData.Children, connIDNode)
-	request := connectRequest{
-		descriptor: []byte(root.ToString()),
-		errorData:  refusalDataFromNode(connectData),
-	}
-
-	hostToBeUsed := addressOption.Host
-	if addressOption.ResolvedIP != "" {
-		hostToBeUsed = addressOption.ResolvedIP
-	}
-	address := transport.Address{
-		Address: naming.Address{
-			Host:           hostToBeUsed,
-			Port:           portToBeUsed,
-			Protocol:       addressOption.Protocol,
-			ResolvedIP:     addressOption.ResolvedIP,
-			HTTPSProxy:     addressOption.HTTPSProxy,
-			HTTPSProxyPort: addressOption.HTTPSProxyPort,
-		},
-		Hostname:       addressOption.Host,
-		HTTPSProxy:     addressOption.HTTPSProxy,
-		HTTPSProxyPort: addressOption.HTTPSProxyPort,
-	}
-
-	err = ns.connect(ctx, address, request)
-	if err != nil {
-		return nil, err
-	}
-	return ns, nil
-
 }
 
 // SendConnect sends the NSPTCN connect packet

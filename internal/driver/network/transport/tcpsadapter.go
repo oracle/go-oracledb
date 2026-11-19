@@ -81,7 +81,6 @@ func (nt *nttcps) RemoteAddr() net.Addr {
 
 // Connect establishes a TLS connection
 func (nt *nttcps) Connect(ctx context.Context, address Address) error {
-	nt.originHost = address.OriginHost
 	if err := nt.nttcp.Connect(ctx, address); err != nil { // Establish a TCP connection
 		return err
 	}
@@ -194,9 +193,9 @@ func (nt *nttcps) verifyServerDN(cert *x509.Certificate) error {
 		return verifyDN(cert, nt.atts.SSLServerCertDN)
 	}
 
-	err := cert.VerifyHostname(nt.hostname)
-	if err != nil && nt.originHost != "" {
-		err = cert.VerifyHostname(nt.originHost)
+	err := cert.VerifyHostname(nt.tlsHostname)
+	if err != nil && nt.previousHostname != "" {
+		err = cert.VerifyHostname(nt.previousHostname)
 	}
 	if err != nil && nt.atts.SSLAllowWeakDNMatch && nt.atts.Servicename == cert.Subject.CommonName {
 		return nil

@@ -892,6 +892,9 @@ func handleConnectDescriptorFormatDsn(dsn string) (ConnectionDescriptionPlan, er
 		return ConnectionDescriptionPlan{}, common.NewOracleError(oracleErrors.NamingContextError, nil, root.Name, "DESCRIPTION")
 	}
 	for _, description := range plan.Descriptions {
+		if description.ConnectData == nil {
+			return ConnectionDescriptionPlan{}, common.NewOracleError(oracleErrors.NamingContextError, nil, "DESCRIPTION", "CONNECT_DATA")
+		}
 		if len(description.AddressGroups) == 0 && len(plan.AddressGroups) == 0 {
 			return ConnectionDescriptionPlan{}, common.NewOracleError(oracleErrors.NamingContextError, nil, "DESCRIPTION", "ADDRESS or ADDRESS_LIST")
 		}

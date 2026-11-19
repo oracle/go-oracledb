@@ -57,6 +57,7 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -100,7 +101,7 @@ func (timeoutTestError) Temporary() bool { return true }
 
 func TestHandleAcceptRequiredANO(t *testing.T) {
 	ns := newNetworkSession()
-	ns.sAtts = newSessionAtts("")
+	ns.sAtts = newSessionAtts()
 	ns.sAtts.version = TNS_VERSION_MIN_DATA_FLAGS
 	p := &acceptPacket{
 		buf:   make([]byte, NSPACFL2+4),
@@ -269,11 +270,11 @@ func TestGetRemoteEndpoint(t *testing.T) {
 func TestTransportConnect(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, sdu: 8192}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 
 	// Test TCP connection attempt (will fail without real server)
 	address := transport.Address{
-		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 9999},
+		DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 9999,
 	}
 	err := ns.transportConnect(context.Background(), address)
 	if err == nil {
@@ -281,7 +282,7 @@ func TestTransportConnect(t *testing.T) {
 	}
 
 	// Test TCPS
-	address.Address.Protocol = driverCommon.ProtocolTCPS
+	address.Protocol = driverCommon.ProtocolTCPS
 	err = ns.transportConnect(context.Background(), address)
 	if err == nil {
 		t.Errorf("Expected connection error")
@@ -289,7 +290,7 @@ func TestTransportConnect(t *testing.T) {
 
 	// Cover ntAdapter nil case for TCP
 	ns.ntAdapter = nil
-	address.Address.Protocol = driverCommon.ProtocolTCP
+	address.Protocol = driverCommon.ProtocolTCP
 	err = ns.transportConnect(context.Background(), address)
 	if err == nil {
 		t.Errorf("Expected connection error for TCP")
@@ -297,7 +298,7 @@ func TestTransportConnect(t *testing.T) {
 
 	// Cover ntAdapter nil case for TCPS
 	ns.ntAdapter = nil
-	address.Address.Protocol = driverCommon.ProtocolTCPS
+	address.Protocol = driverCommon.ProtocolTCPS
 	err = ns.transportConnect(context.Background(), address)
 	if err == nil {
 		t.Errorf("Expected connection error for TCPS")
@@ -384,67 +385,28 @@ func TestIsDownHostError(t *testing.T) {
 	}
 }
 
-// TestConnectToOption tests the ConnectToOption function
-func TestConnectToOption(t *testing.T) {
+// TestConnectToAttempt exercises session setup from a fully resolved connection
+// attempt and verifies that a cancelled transport attempt is returned as an error.
+func TestConnectToAttempt(t *testing.T) {
 	t.Parallel()
-	newOption := func(protocol driverCommon.Protocol, description *naming.Description, connectString string) *naming.ConnectionOption {
-		return naming.NewConnectionOption(
-			naming.Address{
-				Host:     "localhost",
-				Port:     1521,
-				Protocol: protocol,
-			},
-			description,
-			naming.ConnectData{},
-			nil,
-			"",
-			connectString,
-		)
+	dsn := "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=127.0.0.1)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=orcl)))"
+	plans, err := oracleconfig.HandleDsn(dsn, oracleconfig.NewOracleDriverConfig())
+	if err != nil {
+		t.Fatalf("HandleDsn failed: %v", err)
 	}
-	option := newOption(
-		driverCommon.ProtocolTCP,
-		&naming.Description{},
-		"(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=orcl)))",
-	)
-
-	// Test parse error
-	option = newOption(driverCommon.ProtocolTCP, &naming.Description{}, "(DESCRIPTION")
-	_, err := ConnectToOption(context.Background(), option)
-	if err == nil {
-		t.Errorf("Expected parse error")
+	iterator, err := plans.NewConnectionAttemptIterator(context.Background(), "test-connect-id")
+	if err != nil {
+		t.Fatalf("NewConnectionAttemptIterator failed: %v", err)
 	}
-	option = newOption(
-		driverCommon.ProtocolTCP,
-		&naming.Description{},
-		"(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=orcl)))",
-	)
-
-	// Test connection attempt (will fail)
-	_, err = ConnectToOption(context.Background(), option)
-	if err == nil {
-		t.Errorf("Expected connection error")
+	attempt, err := iterator.Next()
+	if err != nil {
+		t.Fatalf("iterator.Next failed: %v", err)
 	}
-
-	// Additional tests to increase coverage
-	t.Run("Missing CONNECT_DATA", func(t *testing.T) {
-		option = newOption(driverCommon.ProtocolTCP, &naming.Description{}, "(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=localhost)(PORT=1521)))")
-		_, err := ConnectToOption(context.Background(), option)
-		if err == nil {
-			t.Errorf("Expected connection error for missing CONNECT_DATA")
-		}
-	})
-
-	t.Run("Prepare Error", func(t *testing.T) {
-		option = newOption(
-			driverCommon.ProtocolTCPS,
-			&naming.Description{Security: naming.Security{WalletLocation: "/nonexistent"}},
-			"(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=orcl)))",
-		)
-		_, err = ConnectToOption(context.Background(), option)
-		if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
-			t.Errorf("Expected prepare error, got %v", err)
-		}
-	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := ConnectToAttempt(ctx, attempt); err == nil {
+		t.Fatal("expected transport connection error")
+	}
 }
 
 // TestCIDNode verifies that buildCIDNode assembles the Oracle Net CID node
@@ -501,7 +463,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: 314, sdu: 8192} // low version
+		ns.sAtts = &sessionAtts{version: 314, negotiatedSDU: 8192} // low version
 		acceptBuf := make([]byte, 50)
 		binary.BigEndian.PutUint16(acceptBuf[0:2], 50) // packet len for !LargeSDU
 		acceptBuf[4] = NSPTAC
@@ -510,7 +472,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.recvPos = 0
 		// Simulate connect flow
 		err := ns.transportConnect(context.Background(), transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		if err != nil {
 			t.Errorf("Unexpected transportConnect error: %v", err)
@@ -541,7 +503,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 		// mock redirect packet from server without overflow
 		redirectData := []byte("(ADDRESS=(PROTOCOL=tcps)(HOST=redirecthost)(PORT=1522))")
 		dataLen := len(redirectData)
@@ -558,25 +520,21 @@ func TestConnectSubtests(t *testing.T) {
 		mock.receivedData = append(mock.receivedData, acceptpacket...)
 		mock.recvPos = 0
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{
-				Protocol:       driverCommon.ProtocolTCPS,
-				Host:           "localhost",
-				Port:           1521,
-				HTTPSProxy:     "proxy.example.com",
-				HTTPSProxyPort: 8080,
-			},
-			Hostname:       "originalhost",
+			Protocol:       driverCommon.ProtocolTCPS,
+			DialHost:       "localhost",
+			Port:           1521,
+			TLSHostname:    "originalhost",
 			HTTPSProxy:     "proxy.example.com",
 			HTTPSProxyPort: 8080,
 		})
 		if err != nil {
 			t.Errorf("Unexpected redirect packet error without overflow: %v", err)
 		}
-		if mock.lastAddress.Hostname != "redirecthost" {
-			t.Errorf("Expected redirected host to be used for DN match, got %q", mock.lastAddress.Hostname)
+		if mock.lastAddress.TLSHostname != "redirecthost" {
+			t.Errorf("Expected redirected host to be used for DN match, got %q", mock.lastAddress.TLSHostname)
 		}
-		if mock.lastAddress.OriginHost != "originalhost" {
-			t.Errorf("Expected original host to be preserved as fallback, got %q", mock.lastAddress.OriginHost)
+		if mock.lastAddress.PreviousHostname != "originalhost" {
+			t.Errorf("Expected original host to be preserved as fallback, got %q", mock.lastAddress.PreviousHostname)
 		}
 		if mock.lastAddress.HTTPSProxy != "proxy.example.com" || mock.lastAddress.HTTPSProxyPort != 8080 {
 			t.Errorf("Expected proxy settings to be preserved, got %q:%d", mock.lastAddress.HTTPSProxy, mock.lastAddress.HTTPSProxyPort)
@@ -587,7 +545,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 		// mock redirect packet from server
 		data := []byte{0x0, 0xa, 0x0, 0x0, 0x5, 0x2, 0x0, 0x0, 0x1, 0x61}
 		// redirect packet overflow data
@@ -598,7 +556,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.receivedData = append(mock.receivedData, acceptpacket...)
 		mock.recvPos = 0
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		if err != nil {
 			t.Errorf("Unexpected redirect packet error: %v", err)
@@ -609,7 +567,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 		ns.redirectCount = maxRedirectCount
 
 		redirectData := []byte("(ADDRESS=(PROTOCOL=tcp)(HOST=redirecthost)(PORT=1522))")
@@ -625,7 +583,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.recvPos = 0
 
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		expectOracleErrorCode(t, err, oracleErrors.NetworkRetryLimitExceeded)
 	})
@@ -633,12 +591,12 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 		// mock refuse packet buf from the server
 		mock.receivedData = []byte{0x0, 0x5f, 0x0, 0x0, 0x4, 0x0, 0x0, 0x0, 0x22, 0x0, 0x0, 0x53, 0x28, 0x44, 0x45, 0x53, 0x43, 0x52, 0x49, 0x50, 0x54, 0x49, 0x4f, 0x4e, 0x3d, 0x28, 0x54, 0x4d, 0x50, 0x3d, 0x29, 0x28, 0x56, 0x53, 0x4e, 0x4e, 0x55, 0x4d, 0x3d, 0x30, 0x29, 0x28, 0x45, 0x52, 0x52, 0x3d, 0x31, 0x32, 0x35, 0x31, 0x34, 0x29, 0x28, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x53, 0x54, 0x41, 0x43, 0x4b, 0x3d, 0x28, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x3d, 0x28, 0x43, 0x4f, 0x44, 0x45, 0x3d, 0x31, 0x32, 0x35, 0x31, 0x34, 0x29, 0x28, 0x45, 0x4d, 0x46, 0x49, 0x3d, 0x34, 0x29, 0x29, 0x29, 0x29}
 		mock.recvPos = 0
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		expectOracleErrorCode(t, err, oracleErrors.InvalidServiceName)
 		ns.Disconnect(context.Background(), 0)
@@ -647,13 +605,13 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 		refuseHdr := []byte{0x00, 0x0c, 0x00, 0x00, 0x04, 0x02, 0x00, 0x00, 0x22, 0x00, 0x00, 0x00}
 		overflowPkt := []byte{0x00, 0x5d, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28, 0x44, 0x45, 0x53, 0x43, 0x52, 0x49, 0x50, 0x54, 0x49, 0x4f, 0x4e, 0x3d, 0x28, 0x54, 0x4d, 0x50, 0x3d, 0x29, 0x28, 0x56, 0x53, 0x4e, 0x4e, 0x55, 0x4d, 0x3d, 0x30, 0x29, 0x28, 0x45, 0x52, 0x52, 0x3d, 0x31, 0x32, 0x35, 0x31, 0x34, 0x29, 0x28, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x5f, 0x53, 0x54, 0x41, 0x43, 0x4b, 0x3d, 0x28, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x3d, 0x28, 0x43, 0x4f, 0x44, 0x45, 0x3d, 0x31, 0x32, 0x35, 0x31, 0x34, 0x29, 0x28, 0x45, 0x4d, 0x46, 0x49, 0x3d, 0x34, 0x29, 0x29, 0x29, 0x29}
 		mock.receivedData = append(refuseHdr, overflowPkt...)
 		mock.recvPos = 0
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		expectOracleErrorCode(t, err, oracleErrors.InvalidServiceName)
 		ns.Disconnect(context.Background(), 0)
@@ -662,7 +620,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 		resendBuf := make([]byte, 10)
 		binary.BigEndian.PutUint16(resendBuf[0:2], 10)
 		resendBuf[4] = NSPTRS
@@ -670,7 +628,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.recvPos = 0
 		// Simulate connect flow
 		err := ns.transportConnect(context.Background(), transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		if err != nil {
 			t.Errorf("Unexpected transportConnect error: %v", err)
@@ -706,7 +664,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 		unknownBuf := make([]byte, 10)
 		binary.BigEndian.PutUint16(unknownBuf[0:2], 10)
 		unknownBuf[4] = 99 // unknown type
@@ -714,7 +672,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.recvPos = 0
 		// Simulate connect flow
 		err := ns.transportConnect(context.Background(), transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		if err != nil {
 			t.Errorf("Unexpected transportConnect error: %v", err)
@@ -735,10 +693,10 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{receiveErr: fmt.Errorf("recv error")}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 		// Simulate connect flow
 		err := ns.transportConnect(context.Background(), transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		if err != nil {
 			t.Errorf("Unexpected transportConnect error: %v", err)
@@ -760,10 +718,10 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{sendErr: fmt.Errorf("send error")}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 		// Simulate connect flow
 		err := ns.transportConnect(context.Background(), transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		if err != nil {
 			t.Errorf("Unexpected transportConnect error: %v", err)
@@ -780,12 +738,12 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt = &dataPacket{}
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
-		ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+		ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.rcvDatapkt = &dataPacket{}
 		ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 
@@ -798,7 +756,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.disconnectErr = nil
 
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		expectOracleErrorCode(t, err, oracleErrors.InvalidNetworkContextExpectedValue)
 	})
@@ -807,12 +765,12 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt = &dataPacket{}
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
-		ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+		ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.rcvDatapkt = &dataPacket{}
 		ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 
@@ -822,7 +780,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.disconnectErr = nil
 
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		expectOracleErrorCode(t, err, oracleErrors.InvalidServiceName)
 	})
@@ -831,12 +789,12 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt = &dataPacket{}
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
-		ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+		ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.rcvDatapkt = &dataPacket{}
 		ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 
@@ -848,7 +806,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.disconnectErr = nil
 
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		if err == nil || !strings.Contains(err.Error(), "EOF") {
 			t.Errorf("Expected handleRedirect error, got %v", err)
@@ -859,12 +817,12 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{sendErr: fmt.Errorf("send error")}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt = &dataPacket{}
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
-		ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+		ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.rcvDatapkt = &dataPacket{}
 		ns.rcvDatapkt.marshal(ns.rcvBuf, ns.sAtts, 0)
 
@@ -876,7 +834,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.disconnectErr = nil
 
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		if err == nil || !strings.Contains(err.Error(), "send error") {
 			t.Errorf("Expected handleResend error, got %v", err)
@@ -886,7 +844,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock := &mockNTAdapter{}
 		ns := newNetworkSession()
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{}, version: TNS_VERSION_MINIMUM, sdu: 8192}
+		ns.sAtts = &sessionAtts{version: TNS_VERSION_MINIMUM, negotiatedSDU: 8192}
 
 		resendBuf := make([]byte, 8)
 		binary.BigEndian.PutUint16(resendBuf[0:2], 8)
@@ -897,7 +855,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.recvPos = 0
 
 		err := connectForTest(ns, transport.Address{
-			Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 1521},
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
 		})
 		expectOracleErrorCode(t, err, oracleErrors.NetworkRetryLimitExceeded)
 		if ns.resendCount != maxResendCount+1 {
@@ -913,7 +871,7 @@ func TestSend(t *testing.T) {
 	ns.connected = true
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.sAtts = &sessionAtts{sdu: 20, largeSDU: false}
+	ns.sAtts = &sessionAtts{negotiatedSDU: 20, largeSDU: false}
 	ns.sndBuf = make([]byte, 20)
 	ns.sndDatapkt = &dataPacket{hdr: &header{}}
 	ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
@@ -971,9 +929,9 @@ func TestReset(t *testing.T) {
 		ns.connected = true
 		mock := &mockNTAdapter{}
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{largeSDU: false, sdu: 8192}
-		ns.rcvBuf = make([]byte, ns.sAtts.sdu)
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sAtts = &sessionAtts{largeSDU: false, negotiatedSDU: 8192}
+		ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt = &dataPacket{}
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 		ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT}
@@ -1264,8 +1222,8 @@ func TestSendConnect(t *testing.T) {
 	ns := newNetworkSession()
 	mock := &mockNTAdapter{}
 	ns.ntAdapter = mock
-	ns.sAtts = &sessionAtts{sdu: 8192}
-	ns.sndBuf = make([]byte, ns.sAtts.sdu)
+	ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
+	ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 	ns.sndDatapkt = &dataPacket{}
 	ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 	connectPkt := &connectPacket{overflow: false, buf: make([]byte, 100)}
@@ -1729,9 +1687,9 @@ func TestRecvPacket(t *testing.T) {
 		ns := newNetworkSession()
 		mock := &mockNTAdapter{}
 		ns.ntAdapter = mock
-		ns.sAtts = &sessionAtts{largeSDU: largeSDU, sdu: 8192}
-		ns.rcvBuf = make([]byte, ns.sAtts.sdu)
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sAtts = &sessionAtts{largeSDU: largeSDU, negotiatedSDU: 8192}
+		ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 		return ns, mock
 	}
@@ -1828,8 +1786,7 @@ func TestRecvPacket(t *testing.T) {
 func TestRefuseArgs(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	address := transport.Address{Address: naming.Address{Host: "host", Port: 1521}, Hostname: "hostname"}
-	ns.sAtts = &sessionAtts{nt: transport.NTattributes{Connectionid: "connid"}}
+	address := transport.Address{DialHost: "host", Port: 1521, TLSHostname: "hostname", ConnectionID: "connid"}
 
 	tests := []struct {
 		name      string
@@ -1875,7 +1832,7 @@ func TestHandleRefuse(t *testing.T) {
 	t.Parallel()
 	setup := func() (*networkSession, *mockNTAdapter) {
 		ns := newNetworkSession()
-		ns.sAtts = &sessionAtts{nt: transport.NTattributes{Connectionid: "testconnid"}}
+		ns.sAtts = newSessionAtts()
 		mock := &mockNTAdapter{}
 		ns.ntAdapter = mock
 		ns.rcvBuf = make([]byte, 8192)
@@ -1884,7 +1841,7 @@ func TestHandleRefuse(t *testing.T) {
 	}
 	t.Run("UnknownCode", func(t *testing.T) {
 		ns, _ := setup()
-		address := transport.Address{Address: naming.Address{Host: "host", Port: 1521}}
+		address := transport.Address{DialHost: "host", Port: 1521}
 		p := &refusePacket{overflow: false, dataBuf: "(DESCRIPTION=(ERR=99999))"}
 		err := ns.handleRefuse(context.Background(), p, address, connectErrorData{serviceName: "orcl"})
 		expectOracleErrorCode(t, err, oracleErrors.ConnectionRefusedDetail)
@@ -1892,7 +1849,7 @@ func TestHandleRefuse(t *testing.T) {
 	t.Run("RecvErrorInOverflow", func(t *testing.T) {
 		ns, mock := setup()
 		mock.receiveErr = fmt.Errorf("recv error")
-		address := transport.Address{Address: naming.Address{Host: "host", Port: 1521}}
+		address := transport.Address{DialHost: "host", Port: 1521}
 		p := &refusePacket{overflow: true, dataBuf: "(DESCRIPTION=(ERR=12514))"}
 		err := ns.handleRefuse(context.Background(), p, address, connectErrorData{serviceName: "orcl"})
 		if err == nil || !strings.Contains(err.Error(), "recv error") {
@@ -1901,7 +1858,7 @@ func TestHandleRefuse(t *testing.T) {
 	})
 	t.Run("ParseError", func(t *testing.T) {
 		ns, _ := setup()
-		address := transport.Address{Address: naming.Address{Host: "host", Port: 1521}}
+		address := transport.Address{DialHost: "host", Port: 1521}
 		p := &refusePacket{overflow: false, dataBuf: "invalid"}
 		err := ns.handleRefuse(context.Background(), p, address, connectErrorData{serviceName: "orcl"})
 		expectOracleErrorCode(t, err, oracleErrors.RefuseDataParseFailed)
@@ -1913,7 +1870,7 @@ func TestHandleResend(t *testing.T) {
 	t.Parallel()
 	t.Run("No SRN", func(t *testing.T) {
 		ns := newNetworkSession()
-		ns.sAtts = &sessionAtts{sdu: 8192}
+		ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 		ns.ntAdapter = &mockNTAdapter{}
 		connectPkt := &connectPacket{buf: make([]byte, 100)}
 		connectPkt.marshal([]byte("(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=orcl)))"), ns.sAtts, NO_HEADER_FLAGS)
@@ -1927,8 +1884,8 @@ func TestHandleResend(t *testing.T) {
 	t.Run("SendConnect Error", func(t *testing.T) {
 		ns := newNetworkSession()
 		ns.connected = true
-		ns.sAtts = &sessionAtts{sdu: 8192}
-		ns.sndBuf = make([]byte, ns.sAtts.sdu)
+		ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
+		ns.sndBuf = make([]byte, ns.sAtts.sessionSDU())
 		ns.sndDatapkt = &dataPacket{}
 		ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
 		mock := &mockNTAdapter{sendErr: fmt.Errorf("send error")}
@@ -1944,7 +1901,7 @@ func TestHandleResend(t *testing.T) {
 
 	t.Run("SRNOnNonTCPS", func(t *testing.T) {
 		ns := newNetworkSession()
-		ns.sAtts = &sessionAtts{sdu: 8192}
+		ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 		ns.ntAdapter = &mockNTAdapter{}
 		connectPkt := &connectPacket{buf: make([]byte, 100)}
 		if err := connectPkt.marshal([]byte("(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=orcl)))"), ns.sAtts, NO_HEADER_FLAGS); err != nil {
@@ -1957,7 +1914,7 @@ func TestHandleResend(t *testing.T) {
 
 	t.Run("SRNOnTCPS", func(t *testing.T) {
 		ns := newNetworkSession()
-		ns.sAtts = &sessionAtts{sdu: 8192}
+		ns.sAtts = &sessionAtts{negotiatedSDU: 8192}
 		mockTCPS := &mockNTTCPS{}
 		ns.ntAdapter = mockTCPS
 		connectPkt := &connectPacket{buf: make([]byte, 100)}
@@ -1992,8 +1949,8 @@ func TestCheckInbandNotification(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ns := newNetworkSession()
 			ns.controlPkt = &controlPacket{}
-			ns.sAtts = &sessionAtts{largeSDU: false, sdu: 8192}
-			ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+			ns.sAtts = &sessionAtts{largeSDU: false, negotiatedSDU: 8192}
+			ns.rcvBuf = make([]byte, ns.sAtts.sessionSDU())
 			mock := &mockNTAdapter{receivedData: tt.mockData}
 			ns.ntAdapter = mock
 

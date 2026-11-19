@@ -157,9 +157,6 @@ type Address struct {
 	Port           uint16
 	HTTPSProxy     string
 	HTTPSProxyPort int
-	// OriginHost preserves the original hostname in redirection scenarios,
-	// used as a fallback for SSL/TLS certificate hostname verification.
-	OriginHost string
 	// ResolvedIP contains the actual IP address to connect to.
 	// For hostnames, this is populated by DNS resolution.
 	// For direct IP addresses, this equals Host.
@@ -175,7 +172,6 @@ func NewAddress() *Address {
 		Protocol:   driverCommon.ProtocolTCP,
 		Host:       "",
 		Port:       0,
-		OriginHost: "",
 		ResolvedIP: "",
 	}
 }
