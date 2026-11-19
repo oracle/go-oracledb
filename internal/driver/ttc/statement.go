@@ -41,6 +41,7 @@ package ttc
 import (
 	"context"
 	"database/sql/driver"
+	"strconv"
 	"sync"
 	"time"
 
@@ -130,6 +131,31 @@ type Statement struct {
 	queryStatementExecutor QueryWithContext
 	execStatementExecutor  ExecWithContext
 	_rows                  driver.Rows // reference on created Rows.
+	cursorLastUsed         uint64
+	cursorCachedAt         uint64
+}
+
+// cursorCacheKey returns the server cursor ID used as this connection's cache
+// key. Cursor IDs are scoped to the physical connection and change when a
+// statement is reparsed after its cursor is closed.
+func (s *Statement) cursorCacheKey() string {
+	return strconv.FormatInt(int64(s.qualifiedQuery.cursorID), 10)
+}
+
+// markCursorUsed records this statement's most recent successful execution.
+// The connection sorts these sequence values when choosing the least-recently-
+// used cursor to evict.
+func (s *Statement) markCursorUsed() {
+	if cache := s.shelf._cursorCache; cache != nil {
+		cache.markUsed(s)
+	}
+}
+
+// markCursorClosed invalidates the local cursor state after either an OCCA
+// close or a server-side reset, preventing reuse of that cursor ID.
+func (s *Statement) markCursorClosed() {
+	s.qualifiedQuery.cursorID = 0
+	s.cursorCachedAt = 0
 }
 
 /*
@@ -219,6 +245,7 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 	selectedRows, e := s.queryStatementExecutor.QueryContext(subContext, s.qualifiedQuery, args)
 	if e == nil {
 		s._rows = selectedRows
+		s.markCursorUsed()
 	}
 
 	if err := s.shelf.checkCurrentState(ctx); err != nil {
@@ -249,7 +276,7 @@ func (s *Statement) _closeCursor() error {
 		common.Odl.Error("Statement.Close: Push(OCCA) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
-	s.qualifiedQuery.cursorID = 0
+	s.markCursorClosed()
 	return nil
 }
 
@@ -265,6 +292,9 @@ func (s *Statement) Close() error {
 			finalErr = s.shelf.LocalizeError(common.NewOracleError(oracleErrors.RowsCloseFailed, err)).(oracleErrors.SQLError)
 		}
 		s._rows = nil
+	}
+	if cache := s.shelf._cursorCache; cache != nil {
+		cache.remove(s)
 	}
 	// close cursors
 	err := s._closeCursor()
@@ -318,6 +348,9 @@ func (s *Statement) ExecContext(ctx context.Context, args []driver.NamedValue) (
 		defer stopTransAfterFunction()
 	}
 	result, err := s.execStatementExecutor.ExecContext(subContext, s.qualifiedQuery, args)
+	if err == nil {
+		s.markCursorUsed()
+	}
 	if err := s.shelf.checkCurrentState(ctx); err != nil {
 		return nil, err
 	}

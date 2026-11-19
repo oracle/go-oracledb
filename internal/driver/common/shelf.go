@@ -43,6 +43,7 @@ import "github.com/oracle/go-oracledb/v26/internal/common"
 type DriverProperties interface {
 	IsStrictNullValueHandling() bool
 	GetDefaultLobPrefetchSize() int
+	GetCursorCacheSize() int
 }
 
 // Capability client/server capabilities

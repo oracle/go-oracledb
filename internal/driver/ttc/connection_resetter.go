@@ -41,12 +41,100 @@ package ttc
 import (
 	"context"
 	"database/sql/driver"
+	"strconv"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
+// resetStateLevel2 indicates that the server resets session state, including
+// open cursors, when a connection is returned to the pool.
+const resetStateLevel2 = 0x02
+
+// addCursorCacheCallbacks configures cursor cache work before the end-request
+// marker, so OCCA messages for evicted cursors remain part of that request.
+func addCursorCacheCallbacks(callbacks *requestCallbacks, c *connection) {
+	if c.resetStateEnabled() {
+		callbacks.appendRequestEndCallback(&requestBoundaryCallback{
+			description: "Invalidate cursors after reset state",
+			function:    c.invalidateCursors,
+		})
+		return
+	}
+	callbacks.appendRequestEndCallback(&requestBoundaryCallback{
+		description: "Cache idle cursors",
+		function:    c.cacheCursors,
+	})
+}
+
+// initializeCursorCache creates the connection's cursor cache from the driver
+// configuration. A zero size disables cursor caching.
+func (c *connection) initializeCursorCache() {
+	cacheSize := 10
+	if properties := c.shelf.GetConnectionProperties(); properties != nil {
+		cacheSize = properties.GetCursorCacheSize()
+	}
+	c.shelf._cursorCache = newCursorCache(cacheSize)
+}
+
+// resetStateEnabled reports whether the negotiated session reset level closes
+// cursors on the server, so the client must invalidate them locally instead.
+func (c *connection) resetStateEnabled() bool {
+	value := c.sessCtx.GetSessionProperties().GetProperty(authResetState)
+	var resetState string
+	switch value := value.(type) {
+	case driverCommon.B1Array:
+		resetState = driverCommon.B1ArrayToString(value)
+	case *driverCommon.KeyValue:
+		resetState = driverCommon.B1ArrayToString(value.Value)
+	case string:
+		resetState = value
+	default:
+		return false
+	}
+	level, err := strconv.Atoi(resetState)
+	return err == nil && level&resetStateLevel2 != 0
+}
+
+// cacheCursors stores the connection's live cursors in least-recently-used
+// order and closes cursors that do not fit in its configured cache. When
+// caching is disabled, it closes every live cursor. A failed cursor-close
+// operation leaves the server-side cursor state uncertain, so it returns
+// driver.ErrBadConn and prevents the connection from being reused.
+func (c *connection) cacheCursors(context.Context) error {
+	statements := c.shelf.GetStatements(false)
+	cache := c.shelf._cursorCache
+	if cache == nil {
+		for _, statement := range statements {
+			if err := statement._closeCursor(); err != nil {
+				return driver.ErrBadConn
+			}
+		}
+		return nil
+	}
+
+	for _, statement := range cache.store(statements) {
+		if err := statement._closeCursor(); err != nil {
+			return driver.ErrBadConn
+		}
+	}
+	return nil
+}
+
+// invalidateCursors mirrors server reset state locally. The reset has already
+// closed server cursors, so this clears their local IDs and cache entries
+// without sending OCCA messages.
+func (c *connection) invalidateCursors(context.Context) error {
+	for _, statement := range c.shelf.GetStatements(false) {
+		statement.markCursorClosed()
+	}
+	if cache := c.shelf._cursorCache; cache != nil {
+		cache.clear()
+	}
+	return nil
+}
+
 // ResetSession implements driver.SessionResetter.
-// - Closes statements that have been left open
 // - Runs request-start callbacks when the connection is borrowed from the pool
 // - Resets session properties
 // - Flushes piggyback messages
@@ -56,15 +144,6 @@ func (c *connection) ResetSession(ctx context.Context) error {
 	if c._isClosed || !c._isValid {
 		return driver.ErrBadConn
 	}
-	statements := c.shelf.GetStatements(true)
-	for _, statement := range statements {
-		if err := statement.Close(); err != nil {
-			common.Odl.Warn("Stale statement left in connection cannot be closed", "error", err)
-			c._isValid = false
-			return driver.ErrBadConn
-		}
-	}
-
 	// Run request-start callbacks. Return if a callback marks the connection bad.
 	common.Odl.Finest("Running request-start callbacks on ResetSession")
 	if err := runRequestBoundaryCallbacks(ctx, c._requestStartCallbacks); err != nil {

@@ -206,3 +206,68 @@ func TestConnectionPinger_IsValidWithInband(t *testing.T) {
 	}
 
 }
+
+// TestConnectionPinger_IsValidCachesCursorsAndEvictsLeastRecent verifies that
+// returning a connection to the pool retains the configured number of most
+// recently used cursors and sends OCCA only for the least-recently-used one.
+func TestConnectionPinger_IsValidCachesCursorsAndEvictsLeastRecent(t *testing.T) {
+	mockStr := &mockStreamer{}
+	shelf := newShelf[common.MessageType]()
+	shelf.RegisterMessageFactory(&mockFactory{returnMsg: newOcca()})
+	shelf.RegisterMessageStreamer(mockStr)
+	connection := newTestConnection(shelf, common.NewSessionContext(), &mockNetworkSession{})
+
+	statements := make([]*Statement, 11)
+	for i := range statements {
+		statement, err := newStatement(shelf, connection.sessCtx, "SELECT * FROM DUAL")
+		if err != nil {
+			t.Fatalf("newStatement failed: %v", err)
+		}
+		statement.qualifiedQuery.cursorID = common.SB4(i + 1)
+		statement.markCursorUsed()
+		statements[i] = statement
+	}
+
+	if !connection.IsValid() {
+		t.Fatal("connection unexpectedly invalid")
+	}
+	if got := statements[0].qualifiedQuery.cursorID; got != 0 {
+		t.Fatalf("least-recent cursor = %d, want closed", got)
+	}
+	if got := statements[10].qualifiedQuery.cursorID; got == 0 {
+		t.Fatal("most-recent cursor was unexpectedly closed")
+	}
+	if mockStr.pushedMsg.Len() != 1 {
+		t.Fatalf("cursor eviction pushed %d messages, want 1", mockStr.pushedMsg.Len())
+	}
+}
+
+// TestConnectionPinger_IsValidInvalidatesCursorsWithResetState verifies that
+// reset-state sessions clear local cursor IDs without sending OCCA, because
+// the server reset has already closed the cursors.
+func TestConnectionPinger_IsValidInvalidatesCursorsWithResetState(t *testing.T) {
+	mockStr := &mockStreamer{}
+	shelf := newShelf[common.MessageType]()
+	shelf.RegisterMessageFactory(&mockFactory{returnMsg: newOcca()})
+	shelf.RegisterMessageStreamer(mockStr)
+	sessionCtx := common.NewSessionContext()
+	sessionCtx.GetSessionProperties().SetProperty(authResetState, common.StringToB1Array("2"))
+	connection := newTestConnection(shelf, sessionCtx, &mockNetworkSession{})
+
+	statement, err := newStatement(shelf, sessionCtx, "SELECT * FROM DUAL")
+	if err != nil {
+		t.Fatalf("newStatement failed: %v", err)
+	}
+	statement.qualifiedQuery.cursorID = 42
+	statement.markCursorUsed()
+
+	if !connection.IsValid() {
+		t.Fatal("connection unexpectedly invalid")
+	}
+	if got := statement.qualifiedQuery.cursorID; got != 0 {
+		t.Fatalf("reset-state cursor = %d, want closed locally", got)
+	}
+	if mockStr.pushedMsg.Len() != 0 {
+		t.Fatalf("reset state sent %d explicit cursor closes, want none", mockStr.pushedMsg.Len())
+	}
+}

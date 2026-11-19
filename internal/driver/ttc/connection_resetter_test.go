@@ -77,8 +77,8 @@ func TestConnectionResetter_Reset(t *testing.T) {
 	sessionCtx.GetSessionProperties().SetProperty("pasta", "carbonara")
 
 	connection.ResetSession(context.Background())
-	if len(connection.shelf.GetStatements(false)) != 0 {
-		t.Errorf("list of statements should be empty, got [%v]", connection.shelf.GetStatements(false))
+	if len(connection.shelf.GetStatements(false)) != 1 {
+		t.Errorf("ResetSession should leave cursor ownership to IsValid, got [%v]", connection.shelf.GetStatements(false))
 	}
 
 	if v := sessionCtx.GetSessionProperties().GetProperty("pasta"); v != nil {

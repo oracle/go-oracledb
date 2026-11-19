@@ -72,6 +72,7 @@ const (
 	authPassword        = "AUTH_PASSWORD"
 	authAlterSession    = "AUTH_ALTER_SESSION"
 	authProxyClientName = "PROXY_CLIENT_NAME"
+	authResetState      = "AUTH_RESET_STATE"
 
 	authServerResponse = "AUTH_SVR_RESPONSE"
 

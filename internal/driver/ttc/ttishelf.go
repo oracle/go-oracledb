@@ -75,6 +75,7 @@ type ttiShelf[T any] struct {
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
 	_validatorRegistry       internalCommon.Registry[stateValidator]
+	_cursorCache             *cursorCache
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
