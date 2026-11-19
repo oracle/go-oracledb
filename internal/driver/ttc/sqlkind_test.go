@@ -50,12 +50,42 @@ type kindExpect struct {
 	expect sqlKind
 }
 
+func TestSkipLeadingComments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "no comments", in: "SELECT 1", want: "SELECT 1"},
+		{name: "leading whitespace", in: " \tSELECT 1", want: "SELECT 1"},
+		{name: "line comment with LF", in: "-- comment\nSELECT 1", want: "SELECT 1"},
+		{name: "line comment with CRLF", in: "-- comment\r\nSELECT 1", want: "SELECT 1"},
+		{name: "block comment", in: " /* comment */ \nSELECT 1", want: "SELECT 1"},
+		{name: "multiple leading comments", in: "-- first\n /* second */ -- third\nSELECT 1", want: "SELECT 1"},
+		{name: "line comment through EOF", in: "-- comment", want: ""},
+		{name: "unterminated block comment", in: "/* comment", want: ""},
+		{name: "inline comments remain", in: "SELECT 1 /* inline */ -- trailing\n", want: "SELECT 1 /* inline */ -- trailing\n"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := skipLeadingComments(test.in); got != test.want {
+				t.Fatalf("skipLeadingComments(%q) = %q, want %q", test.in, got, test.want)
+			}
+		})
+	}
+}
+
 // TestClassifySQL_AllKinds verifies classification across representative SQL samples.
 // Expectation: classifySQL returns the expected sqlKind for each input and handles case/whitespace correctly.
 func TestClassifySQL_AllKinds(t *testing.T) {
 	t.Parallel()
 	cases := []kindExpect{
 		{in: "select * from dual", expect: select_},
+		{in: "-- leading comment\nselect * from dual", expect: select_},
+		{in: "/* leading comment */ INSERT INTO t VALUES(1)", expect: dml},
 		{in: "INSERT INTO t VALUES(1)", expect: dml},
 		{in: "update t set a=1", expect: dml},
 		{in: "DELETE from t where 1=1", expect: dml},

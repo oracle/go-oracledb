@@ -106,11 +106,36 @@ func newQualifiedSQLStatement(query string) (*qualifiedSQLStatement, error) {
 	return &qualifiedSQLStatement{query: driverCommon.StringToB1Array(query), kind: k, binds: b}, nil
 }
 
+// skipLeadingComments removes leading SQL line and block comments, along with
+// the whitespace before the next statement token. If a leading block comment
+// is unterminated, it returns an empty string.
+func skipLeadingComments(sql string) string {
+	for {
+		sql = strings.TrimLeft(sql, " \t\r\n")
+		switch {
+		case strings.HasPrefix(sql, "--"):
+			end := strings.IndexAny(sql, "\n")
+			if end == -1 {
+				return ""
+			}
+			sql = sql[end+1:]
+		case strings.HasPrefix(sql, "/*"):
+			end := strings.Index(sql[2:], "*/")
+			if end == -1 {
+				return ""
+			}
+			sql = sql[end+4:]
+		default:
+			return sql
+		}
+	}
+}
+
 /*
 classifySQL inspects the leading token(s) of q and returns its coarse sqlKind.
 
 Input:
-- q: Raw SQL text. Leading ASCII whitespace is ignored. Case-insensitive.
+- q: Raw SQL text. Leading ASCII whitespace and comments are ignored. Case-insensitive.
 
 Output:
 - (sqlKind, nil) for recognized kinds:
@@ -129,8 +154,8 @@ Notes:
 - It is not a full SQL parser and does not validate statement correctness.
 */
 func _classifySQL(q string) (sqlKind, error) {
-	// Fast-path: trim leading ASCII whitespace without allocating a whole-lowercased copy
-	s := strings.TrimLeft(q, " \t\r\n")
+	// Skip leading SQL comments and whitespace before inspecting the first token.
+	s := skipLeadingComments(q)
 	if s == "" {
 		common.Odl.Error("classifySQL: empty SQL", "error", "empty sql")
 		return 0, common.NewOracleError(oracleErrors.StatementExecutionFailed, nil, "query", "empty SQL")
