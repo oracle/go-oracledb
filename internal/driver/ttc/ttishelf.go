@@ -137,7 +137,10 @@ func (s *ttiShelf[T]) getProviderRegistry() internalCommon.Registry[providers.Pr
 	return s._providerRegistry
 }
 
-// isInTransaction returns true if a transaction is in progress, otherwise false
+// isInTransaction reports whether a transaction is in progress.
+//
+// Returns:
+//   - bool: True if a transaction is registered; otherwise false.
 func (s *ttiShelf[T]) isInTransaction() bool {
 	if s.getTransaction() == nil {
 		return false
