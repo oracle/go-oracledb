@@ -234,6 +234,8 @@ const (
 	InvalidRefCursorOutParameter ErrorCode = "OGD-00171"
 	// InvalidRefCursorArgument indicates an internal REF CURSOR executor received an invalid argument.
 	InvalidRefCursorArgument ErrorCode = "OGD-00172"
+	// SessionlessTransactionTimeoutOutOfRange indicates a sessionless transaction timeout is negative or exceeds 65535 seconds.
+	SessionlessTransactionTimeoutOutOfRange ErrorCode = "OGD-00173"
 
 	// Driver Internal Error
 	InternalError ErrorCode = "OGD-00062"

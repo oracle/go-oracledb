@@ -210,6 +210,7 @@ func initMessagesPt() {
 		{oracleErrors.ProviderNotFound, "nenhum provedor do tipo solicitado foi encontrado"},
 		{oracleErrors.InvalidGlobalTransactionIDValue, "valor inválido do identificador global de transação"},
 		{oracleErrors.InvalidSessionlessTransactionTimeout, "o tempo limite para iniciar a transação sem sessão deve ser maior que zero"},
+		{oracleErrors.SessionlessTransactionTimeoutOutOfRange, "o tempo limite da transação sem sessão deve estar entre 0 e 65535 segundos"},
 	}
 
 	for _, translation := range translations {

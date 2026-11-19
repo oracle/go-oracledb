@@ -48,6 +48,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -149,9 +150,9 @@ func TestConnectionBeginTxStartsOrResumesSessionlessTransaction(t *testing.T) {
 			var preparedTx internalCommon.SessionlessTransaction
 			var err error
 			if test.resume {
-				preparedTx, err = conn.PrepareForSessionlessResumeOperation(ctx, test.globalID, 45)
+				preparedTx, err = conn.PrepareForSessionlessResumeOperation(ctx, test.globalID, 45*time.Second)
 			} else {
-				preparedTx, err = conn.PrepareForSessionlessStartOperation(ctx, 45)
+				preparedTx, err = conn.PrepareForSessionlessStartOperation(ctx, 45*time.Second)
 			}
 			if err != nil {
 				t.Fatalf("prepare sessionless transaction: %v", err)
@@ -203,7 +204,7 @@ func TestConnectionBeginTxRejectsSerializableSessionlessIsolation(t *testing.T) 
 	t.Parallel()
 
 	conn, streamer := newSessionlessTransactionTestConnection()
-	preparedTx, err := conn.PrepareForSessionlessStartOperation(context.Background(), 30)
+	preparedTx, err := conn.PrepareForSessionlessStartOperation(context.Background(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("prepare sessionless transaction: %v", err)
 	}
@@ -247,9 +248,9 @@ func TestConnectionBeginTxPushFailureClearsSessionlessPreparation(t *testing.T) 
 			var preparedTx internalCommon.SessionlessTransaction
 			var err error
 			if resume {
-				preparedTx, err = conn.PrepareForSessionlessResumeOperation(ctx, []byte("resume-id"), 30)
+				preparedTx, err = conn.PrepareForSessionlessResumeOperation(ctx, []byte("resume-id"), 30*time.Second)
 			} else {
-				preparedTx, err = conn.PrepareForSessionlessStartOperation(ctx, 30)
+				preparedTx, err = conn.PrepareForSessionlessStartOperation(ctx, 30*time.Second)
 			}
 			if err != nil {
 				t.Fatalf("prepare sessionless transaction: %v", err)
@@ -499,9 +500,9 @@ func TestSessionlessTransactionPrepareValidation(t *testing.T) {
 
 			var err error
 			if test.resume {
-				_, err = conn.PrepareForSessionlessResumeOperation(context.Background(), test.globalID, 30)
+				_, err = conn.PrepareForSessionlessResumeOperation(context.Background(), test.globalID, 30*time.Second)
 			} else {
-				_, err = conn.PrepareForSessionlessStartOperation(context.Background(), 30)
+				_, err = conn.PrepareForSessionlessStartOperation(context.Background(), 30*time.Second)
 			}
 			if got := transactionErrorCode(t, err); got != test.want {
 				t.Fatalf("error code = %s, want %s", got, test.want)
@@ -522,7 +523,7 @@ func TestPrepareForSessionlessStartOperationRandomFailure(t *testing.T) {
 	defer func() { cryptoRand.Reader = originalReader }()
 
 	conn, streamer := newSessionlessTransactionTestConnection()
-	tx, err := conn.PrepareForSessionlessStartOperation(context.Background(), 30)
+	tx, err := conn.PrepareForSessionlessStartOperation(context.Background(), 30*time.Second)
 	if err == nil {
 		t.Fatal("PrepareForSessionlessStartOperation returned nil error for entropy failure")
 	}
@@ -544,7 +545,7 @@ func TestSessionlessTransactionPrepareCleanup(t *testing.T) {
 	t.Parallel()
 
 	conn, _ := newSessionlessTransactionTestConnection()
-	_, err := conn.PrepareForSessionlessStartOperation(context.Background(), 30)
+	_, err := conn.PrepareForSessionlessStartOperation(context.Background(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("prepare start: %v", err)
 	}
@@ -553,7 +554,7 @@ func TestSessionlessTransactionPrepareCleanup(t *testing.T) {
 		t.Fatal("clearing a prepared start left a transaction registered")
 	}
 
-	resumeTx, err := conn.PrepareForSessionlessResumeOperation(context.Background(), []byte("resume-id"), 30)
+	resumeTx, err := conn.PrepareForSessionlessResumeOperation(context.Background(), []byte("resume-id"), 30*time.Second)
 	if err != nil {
 		t.Fatalf("prepare resume: %v", err)
 	}
@@ -562,7 +563,7 @@ func TestSessionlessTransactionPrepareCleanup(t *testing.T) {
 		t.Fatal("failed resume preparation left a transaction registered")
 	}
 
-	resumeTx, err = conn.PrepareForSessionlessResumeOperation(context.Background(), []byte("resume-id"), 30)
+	resumeTx, err = conn.PrepareForSessionlessResumeOperation(context.Background(), []byte("resume-id"), 30*time.Second)
 	if err != nil {
 		t.Fatalf("prepare second resume: %v", err)
 	}

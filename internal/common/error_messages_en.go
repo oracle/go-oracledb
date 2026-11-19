@@ -688,5 +688,10 @@ func initMessagesEn() {
 	// Action:   Provide a timeout greater than zero.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidSessionlessTransactionTimeout), "sessionless transaction timeout must be greater than zero")
+	// Document: No
+	// Cause:    The sessionless transaction timeout is not between 0 and 65535 seconds.
+	// Action:   Provide a timeout between 0 and 65535 seconds.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.SessionlessTransactionTimeoutOutOfRange), "sessionless transaction timeout must be between 0 and 65535 seconds")
 
 }

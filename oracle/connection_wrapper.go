@@ -42,6 +42,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
@@ -60,12 +61,12 @@ type connectionWrapper struct {
 type canBeWrapped interface {
 	// PrepareForSessionlessStartOperation registers a sessionless transaction
 	// that will be started by the following database/sql BeginTx call.
-	PrepareForSessionlessStartOperation(ctx context.Context, timeout uint16) (common.SessionlessTransaction, error)
+	PrepareForSessionlessStartOperation(ctx context.Context, timeout time.Duration) (common.SessionlessTransaction, error)
 	// ClearPrepareForSessionlessStartOperation removes a failed prepared start.
 	ClearPrepareForSessionlessStartOperation()
 	// PrepareForSessionlessResumeOperation registers a sessionless transaction
 	// that will be resumed by the following database/sql BeginTx call.
-	PrepareForSessionlessResumeOperation(ctx context.Context, globalTransactionID []byte, timeout uint16) (common.SessionlessTransaction, error)
+	PrepareForSessionlessResumeOperation(ctx context.Context, globalTransactionID []byte, timeout time.Duration) (common.SessionlessTransaction, error)
 	// ClearPrepareForSessionlessResumeOperation completes or removes a prepared
 	// resume after database/sql returns from BeginTx.
 	ClearPrepareForSessionlessResumeOperation(common.SessionlessTransaction, error)
@@ -101,13 +102,14 @@ func NewConnectionWrapper(connection *sql.Conn) (*connectionWrapper, error) {
 //   - ctx: Context used for the transaction start operation.
 //   - opts: Standard transaction options.
 //   - timeout: Maximum number of seconds the server retains a suspended
-//     transaction before rolling it back to release database resources. Must
-//     be greater than zero.
+//     transaction before rolling it back to release database resources. Pass
+//     a time.Duration, such as 5*time.Minute. Must be greater than zero and no
+//     more than 65535 seconds.
 //
 // Returns:
 //   - *sessionlessTx: Started sessionless transaction.
 //   - error: Error if the transaction cannot be started.
-func (wrapper *connectionWrapper) BeginSessionlessTx(ctx context.Context, opts *sql.TxOptions, timeout uint16) (*sessionlessTx, error) {
+func (wrapper *connectionWrapper) BeginSessionlessTx(ctx context.Context, opts *sql.TxOptions, timeout time.Duration) (*sessionlessTx, error) {
 	var publicSessionlessTransaction *sessionlessTx
 	var internalTx common.SessionlessTransaction
 	var err error
@@ -140,13 +142,14 @@ func (wrapper *connectionWrapper) BeginSessionlessTx(ctx context.Context, opts *
 //   - timeout: Maximum number of seconds this connection waits for another
 //     session on the same instance to suspend the transaction so it can be
 //     resumed. If no other session has the transaction active, it resumes
-//     immediately. A timeout of zero fails immediately when another session
-//     still has it active.
+//     immediately. Pass a time.Duration, such as 5*time.Minute. A timeout of
+//     zero fails immediately when another session still has it active. Values
+//     must not exceed 65535 seconds.
 //
 // Returns:
 //   - *sessionlessTx: Resumed sessionless transaction.
 //   - error: Error if the transaction cannot be resumed.
-func (wrapper *connectionWrapper) ResumeSessionlessTx(ctx context.Context, globalTransactionID GlobalTransactionID, timeout uint16) (*sessionlessTx, error) {
+func (wrapper *connectionWrapper) ResumeSessionlessTx(ctx context.Context, globalTransactionID GlobalTransactionID, timeout time.Duration) (*sessionlessTx, error) {
 	var publicSessionlessTransaction *sessionlessTx
 	var internalTx common.SessionlessTransaction
 	var err error

@@ -215,6 +215,7 @@ func initMessagesFr() {
 		{oracleErrors.InvalidRefCursorOutParameter, "les liaisons OUT REF CURSOR nécessitent *datatype.Cursor"},
 		{oracleErrors.InvalidRefCursorArgument, "argument REF CURSOR non valide"},
 		{oracleErrors.MissingReadPrivilege, "privilège READ manquant"},
+		{oracleErrors.SessionlessTransactionTimeoutOutOfRange, "le délai de la transaction sans session doit être compris entre 0 et 65535 secondes"},
 	}
 
 	for _, translation := range translations {

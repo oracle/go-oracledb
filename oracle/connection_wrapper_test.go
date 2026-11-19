@@ -44,6 +44,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -85,7 +86,7 @@ type sessionlessTransactionTestConn struct {
 
 // PrepareForSessionlessStartOperation implements the wrapper interface.
 func (c *sessionlessTransactionTestConn) PrepareForSessionlessStartOperation(
-	context.Context, uint16,
+	context.Context, time.Duration,
 ) (common.SessionlessTransaction, error) {
 	return nil, nil
 }
@@ -95,7 +96,7 @@ func (*sessionlessTransactionTestConn) ClearPrepareForSessionlessStartOperation(
 
 // PrepareForSessionlessResumeOperation returns the configured preparation error.
 func (c *sessionlessTransactionTestConn) PrepareForSessionlessResumeOperation(
-	context.Context, []byte, uint16,
+	context.Context, []byte, time.Duration,
 ) (common.SessionlessTransaction, error) {
 	return nil, c.resumeErr
 }
@@ -183,7 +184,7 @@ func TestResumeSessionlessTxPropagatesError(t *testing.T) {
 	connectionWrapper := openSessionlessTransactionTestConnectionWrapper(t, driverConn)
 
 	gotTx, err := connectionWrapper.ResumeSessionlessTx(
-		context.Background(), GlobalTransactionID("resume-global-transaction-id"), 300)
+		context.Background(), GlobalTransactionID("resume-global-transaction-id"), 300*time.Second)
 	if gotTx != nil {
 		t.Fatalf("ResumeSessionlessTx returned transaction %p on error", gotTx)
 	}

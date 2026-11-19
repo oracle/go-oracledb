@@ -17,8 +17,11 @@ Sessionless transactions require:
 - a connection wrapper created with `oracle.NewConnectionWrapper`.
 
 The transaction can use the standard `sql.TxOptions` values supported by the
-driver. Timeout arguments are in seconds. For `BeginSessionlessTx`, the timeout
-controls how long the server keeps a suspended transaction available before
+driver. Timeout arguments use `time.Duration`; express seconds with
+`time.Second`, such as `300*time.Second`. Values above 65535 seconds or below
+zero return an error, and fractional seconds are truncated to whole seconds.
+For `BeginSessionlessTx`, the timeout controls how long the server keeps a
+suspended transaction available before
 rolling it back. The begin timeout must be greater than zero; zero is invalid.
 For `ResumeSessionlessTx`, the timeout controls how long this connection waits
 for another session on the same instance to suspend the transaction if that
@@ -41,6 +44,7 @@ import (
 	"database/sql"
 	"log"
 	"os"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/oracle"
 )
@@ -73,7 +77,7 @@ func run() error {
 	tx, err := connection.BeginSessionlessTx(
 		ctx,
 		&sql.TxOptions{Isolation: sql.LevelReadCommitted},
-		300,
+		300*time.Second,
 	)
 	if err != nil {
 		return err
@@ -122,7 +126,7 @@ if err != nil {
 	return err
 }
 
-tx, err := connection1.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300)
+tx, err := connection1.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 if err != nil {
 	return err
 }
@@ -154,7 +158,7 @@ if err != nil {
 	return err
 }
 
-resumedTx, err := connection2.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+resumedTx, err := connection2.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 if err != nil {
 	return err
 }

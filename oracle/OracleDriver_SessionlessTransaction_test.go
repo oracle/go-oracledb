@@ -152,7 +152,7 @@ func TestSessionlessTransactionCommit(t *testing.T) {
 	var globalTransactionID GlobalTransactionID
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300)
+		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction on initial connection: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestSessionlessTransactionCommit(t *testing.T) {
 	}
 	defer resumeConn.Close()
 	resumeConnectionWrapper, err := NewConnectionWrapper(resumeConn)
-	tx2, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	tx2, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err != nil {
 		t.Fatalf("resume sessionless transaction on resume connection: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestSessionlessTransactionRollback(t *testing.T) {
 
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300)
+		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction on initial connection: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestSessionlessTransactionRollback(t *testing.T) {
 	defer conn2.Close()
 
 	resumeConnectionWrapper, err := NewConnectionWrapper(conn2)
-	tx2, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	tx2, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err != nil {
 		t.Fatalf("resume sessionless transaction with global transaction ID %s on resume connection: %v", globalTransactionID, err)
 	}
@@ -389,7 +389,7 @@ func TestSessionlessTransactionContextCancellationRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wrap connection for context cancellation test: %v", err)
 	}
-	tx, err := connectionWrapper.BeginSessionlessTx(txCtx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+	tx, err := connectionWrapper.BeginSessionlessTx(txCtx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction with cancellable context: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestTransactionOperationsRejectStaleTransactions(t *testing.T) {
 			if err != nil {
 				t.Fatalf("wrap connection after %s: %v", endingOperation.name, err)
 			}
-			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300)
+			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 			if err != nil {
 				t.Fatalf("begin transaction before %s: %v", endingOperation.name, err)
 			}
@@ -491,7 +491,7 @@ func TestTransactionOperationsRejectStaleTransactions(t *testing.T) {
 				if !suspendedTransaction {
 					return
 				}
-				resumedTx, err := connectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+				resumedTx, err := connectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 				if err != nil {
 					t.Errorf("resume suspended transaction during cleanup: %v", err)
 					return
@@ -502,7 +502,7 @@ func TestTransactionOperationsRejectStaleTransactions(t *testing.T) {
 				}
 			}()
 
-			currentTx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300)
+			currentTx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 			if err != nil {
 				t.Fatalf("begin current transaction after %s: %v", endingOperation.name, err)
 			}
@@ -643,7 +643,7 @@ func TestSessionlessTransactionOperationContextCancellation(t *testing.T) {
 			if err != nil {
 				t.Fatalf("wrap connection: %v", err)
 			}
-			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300)
+			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 			if err != nil {
 				t.Fatalf("begin sessionless transaction: %v", err)
 			}
@@ -684,7 +684,7 @@ func TestSessionlessTransactionPreparedStatement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wrap connection for prepared statement test: %v", err)
 	}
-	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction for prepared statement test: %v", err)
 	}
@@ -744,7 +744,7 @@ func TestSessionlessTransactionPreparedStatementClosedAfterEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("wrap connection: %v", err)
 			}
-			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300)
+			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 			if err != nil {
 				t.Fatalf("begin sessionless transaction: %v", err)
 			}
@@ -797,7 +797,7 @@ func TestSessionlessTransactionStartTwice(t *testing.T) {
 	var globalTransactionID GlobalTransactionID
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300)
+		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin first sessionless transaction: %v", err)
 	}
@@ -807,7 +807,7 @@ func TestSessionlessTransactionStartTwice(t *testing.T) {
 	}
 
 	_, err = connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300)
+		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err == nil {
 		tx.Rollback()
 		t.Fatal("second BeginSessionlessTx succeeded; expected AlreadyInTransaction")
@@ -852,7 +852,7 @@ func TestSessionlessTransactionStartAfterSuspendSameConnection(t *testing.T) {
 	}
 	firstTx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
 		Isolation: sql.LevelReadCommitted, ReadOnly: false,
-	}, 300)
+	}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin first sessionless transaction: %v", err)
 	}
@@ -880,7 +880,7 @@ func TestSessionlessTransactionStartAfterSuspendSameConnection(t *testing.T) {
 
 	secondTx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
 		Isolation: sql.LevelReadCommitted, ReadOnly: false,
-	}, 300)
+	}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin second sessionless transaction after suspend: %v", err)
 	}
@@ -901,7 +901,7 @@ func TestSessionlessTransactionStartAfterSuspendSameConnection(t *testing.T) {
 		t.Fatalf("rollback second sessionless transaction: %v", err)
 	}
 
-	resumedTx, err := connectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	resumedTx, err := connectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err != nil {
 		t.Fatalf("resume first sessionless transaction after rolling back second: %v", err)
 	}
@@ -948,7 +948,7 @@ func TestSessionlessTransactionResumeTwice(t *testing.T) {
 	var globalTransactionID GlobalTransactionID
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300)
+		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction on initial connection: %v", err)
 	}
@@ -973,12 +973,12 @@ func TestSessionlessTransactionResumeTwice(t *testing.T) {
 	}
 	defer resumeConn.Close()
 	resumeConnectionWrapper, err := NewConnectionWrapper(resumeConn)
-	tx2, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	tx2, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err != nil {
 		t.Fatalf("first resume on resume connection: %v", err)
 	}
 
-	_, err = resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	_, err = resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err == nil {
 		tx2.Rollback()
 		t.Fatal("second resume on the same connection succeeded; expected AlreadyInTransaction")
@@ -1026,7 +1026,7 @@ func TestSessionlessTransactionResumeTwiceDifferentConnection(t *testing.T) {
 	var globalTransactionID GlobalTransactionID
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300)
+		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction on initial connection: %v", err)
 	}
@@ -1051,7 +1051,7 @@ func TestSessionlessTransactionResumeTwiceDifferentConnection(t *testing.T) {
 	}
 	defer resumeConn.Close()
 	resumeConnectionWrapper, err := NewConnectionWrapper(resumeConn)
-	tx2, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 5)
+	tx2, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 5*time.Second)
 	if err != nil {
 		t.Fatalf("resume sessionless transaction on first resume connection: %v", err)
 	}
@@ -1066,7 +1066,7 @@ func TestSessionlessTransactionResumeTwiceDifferentConnection(t *testing.T) {
 	}
 	defer resumeConn2.Close()
 	resumeConnectionWrapper2, err := NewConnectionWrapper(resumeConn2)
-	tx3, err := resumeConnectionWrapper2.ResumeSessionlessTx(ctx, globalTransactionID, 5)
+	tx3, err := resumeConnectionWrapper2.ResumeSessionlessTx(ctx, globalTransactionID, 5*time.Second)
 	if err != nil {
 		tx2.Rollback()
 		t.Fatalf("queue resume on second connection before round trip: %v", err)
@@ -1253,7 +1253,7 @@ func TestSessionlessTransactionAPIBeginPLSQLSuspendThenAPISuspend(t *testing.T) 
 	defer conn.Close()
 
 	connectionWrapper, err := NewConnectionWrapper(conn)
-	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction through API: %v", err)
 	}
@@ -1288,7 +1288,7 @@ func TestSessionlessTransactionAPIBeginPLSQLSuspendThenAPISuspend(t *testing.T) 
 	defer resumeConn.Close()
 
 	resumeConnectionWrapper, err := NewConnectionWrapper(resumeConn)
-	resumedTx, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	resumedTx, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err != nil {
 		t.Fatalf("resume sessionless transaction after repeated suspend: %v", err)
 	}
@@ -1478,7 +1478,7 @@ func TestSessionlessTransactionRejectsSerializableIsolation(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := connectionWrapper.BeginSessionlessTx(ctx, &test.opts, 300)
+			_, err := connectionWrapper.BeginSessionlessTx(ctx, &test.opts, 300*time.Second)
 			requireSessionlessSQLError(t, "begin sessionless transaction", err, oracleErrors.IsolationLevelNotSupported)
 		})
 	}
@@ -1509,12 +1509,12 @@ func TestSessionlessTransactionResumeValidation(t *testing.T) {
 		{name: "too long", globalTransactionID: slices.Repeat([]byte{70}, 65)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := connectionWrapper.ResumeSessionlessTx(ctx, test.globalTransactionID, 300)
+			_, err := connectionWrapper.ResumeSessionlessTx(ctx, test.globalTransactionID, 300*time.Second)
 			requireSessionlessSQLError(t, "resume with "+test.name+" global transaction ID", err, oracleErrors.InvalidGlobalTransactionIDValue)
 		})
 	}
 
-	tx, err := connectionWrapper.ResumeSessionlessTx(ctx, GlobalTransactionID("sessionless-global-transaction-id-that-does-not-exist"), 300)
+	tx, err := connectionWrapper.ResumeSessionlessTx(ctx, GlobalTransactionID("sessionless-global-transaction-id-that-does-not-exist"), 300*time.Second)
 	if err != nil {
 		t.Fatalf("queue resume with unknown global transaction ID: %v", err)
 	}
@@ -1563,7 +1563,7 @@ func TestSessionlessTransactionSQLCommitOrRollbackThenSuspend(t *testing.T) {
 			defer conn.Close()
 
 			connectionWrapper, err := NewConnectionWrapper(conn)
-			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 			if err != nil {
 				t.Fatalf("begin sessionless transaction before SQL %s: %v", test.endStatement, err)
 			}
@@ -1630,7 +1630,7 @@ func testSessionlessTransactionPLSQLEndThenSuspend(t *testing.T, endStatement st
 	defer conn.Close()
 
 	connectionWrapper, err := NewConnectionWrapper(conn)
-	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction before PL/SQL %s: %v", endStatement, err)
 	}
@@ -1696,7 +1696,7 @@ func testSessionlessTransactionPLSQLEndThenAPIEnd(t *testing.T, plsqlStatement, 
 	defer conn.Close()
 
 	connectionWrapper, err := NewConnectionWrapper(conn)
-	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction before PL/SQL %s: %v", plsqlStatement, err)
 	}
@@ -1775,7 +1775,7 @@ func TestSessionlessTransactionAPIOperationResults(t *testing.T) {
 			defer conn.Close()
 
 			connectionWrapper, err := NewConnectionWrapper(conn)
-			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 			if err != nil {
 				t.Fatalf("begin sessionless transaction for API %s: %v", test.name, err)
 			}
@@ -1824,7 +1824,7 @@ func TestSessionlessTransactionResumeSameConnection(t *testing.T) {
 	defer conn.Close()
 
 	connectionWrapper, err := NewConnectionWrapper(conn)
-	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin sessionless transaction before same-connection resume: %v", err)
 	}
@@ -1837,7 +1837,7 @@ func TestSessionlessTransactionResumeSameConnection(t *testing.T) {
 		t.Fatalf("suspend before same-connection resume: %v", err)
 	}
 
-	resumedTx, err := connectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	resumedTx, err := connectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err != nil {
 		t.Fatalf("resume on same dedicated connection: %v", err)
 	}
@@ -1880,7 +1880,7 @@ func TestSessionlessTransactionResumeAfterConnectionClose(t *testing.T) {
 		t.Fatalf("acquire original dedicated connection: %v", err)
 	}
 	connectionWrapper, err := NewConnectionWrapper(conn)
-	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
 		conn.Close()
 		t.Fatalf("begin sessionless transaction before closing original connection: %v", err)
@@ -1905,7 +1905,7 @@ func TestSessionlessTransactionResumeAfterConnectionClose(t *testing.T) {
 	}
 	defer resumeConn.Close()
 	resumeConnectionWrapper, err := NewConnectionWrapper(resumeConn)
-	resumedTx, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	resumedTx, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err != nil {
 		t.Fatalf("resume after closing original connection: %v", err)
 	}
@@ -1943,7 +1943,7 @@ func TestSessionlessTransactionRegularTransactionConflict(t *testing.T) {
 	defer regularTx.Rollback()
 
 	connectionWrapper, err := NewConnectionWrapper(conn)
-	_, err = connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+	_, err = connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	requireSessionlessSQLError(t, "begin sessionless transaction while regular transaction is active", err, oracleErrors.AlreadyInTransaction)
 }
 
@@ -1966,12 +1966,12 @@ func TestSessionlessTransactionGlobalTransactionIDUniqueness(t *testing.T) {
 	defer conn2.Close()
 
 	connectionWrapper1, err := NewConnectionWrapper(conn1)
-	tx1, err := connectionWrapper1.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300)
+	tx1, err := connectionWrapper1.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 	if err != nil {
 		t.Fatalf("begin first sessionless transaction on connection 1: %v", err)
 	}
 	connectionWrapper2, err := NewConnectionWrapper(conn2)
-	tx2, err := connectionWrapper2.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300)
+	tx2, err := connectionWrapper2.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 	if err != nil {
 		_ = tx1.Rollback()
 		t.Fatalf("begin second sessionless transaction on connection 2: %v", err)
@@ -2015,7 +2015,7 @@ func TestSessionlessTransactionTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wrap initial connection for timeout test: %v", err)
 	}
-	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 1)
+	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 1*time.Second)
 	if err != nil {
 		t.Fatalf("begin one-second sessionless transaction: %v", err)
 	}
@@ -2041,7 +2041,7 @@ func TestSessionlessTransactionTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wrap resume connection after timeout: %v", err)
 	}
-	resumedTx, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	resumedTx, err := resumeConnectionWrapper.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err != nil {
 		t.Fatalf("queue resume after timeout: %v", err)
 	}

@@ -43,7 +43,9 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"io"
+	"math"
 	"sync"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -170,8 +172,12 @@ func (t *sessionlessTransaction) buildSessionlessXID() (driverCommon.B1Array, dr
 
 // PrepareForSessionlessStartOperation validates the connection and registers a
 // prepared sessionless transaction for the following database/sql BeginTx.
-func (c *connection) PrepareForSessionlessStartOperation(ctx context.Context, timeout uint16) (common.SessionlessTransaction, error) {
-	if timeout == 0 {
+func (c *connection) PrepareForSessionlessStartOperation(ctx context.Context, timeout time.Duration) (common.SessionlessTransaction, error) {
+	seconds, valid := sessionlessTimeoutSeconds(timeout)
+	if !valid {
+		return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.SessionlessTransactionTimeoutOutOfRange, nil))
+	}
+	if seconds == 0 {
 		return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.InvalidSessionlessTransactionTimeout, nil))
 	}
 
@@ -194,7 +200,7 @@ func (c *connection) PrepareForSessionlessStartOperation(ctx context.Context, ti
 
 	common.Odl.With("GTRID", globalTransactionID).Fine("Prepare start sessionless transaction")
 	// create and register the sessionless transaction object
-	tx := newSessionlessTransaction(ctx, c, globalTransactionID, timeout)
+	tx := newSessionlessTransaction(ctx, c, globalTransactionID, seconds)
 	tx.startOperation = SessionlessStart
 	c.shelf.registerTransaction(tx)
 	return tx, nil
@@ -212,7 +218,11 @@ func (c *connection) ClearPrepareForSessionlessStartOperation() {
 
 // PrepareForSessionlessResumeOperation validates the identifier and registers
 // a prepared resume for the following database/sql BeginTx.
-func (c *connection) PrepareForSessionlessResumeOperation(ctx context.Context, globalTransactionID []byte, timeout uint16) (common.SessionlessTransaction, error) {
+func (c *connection) PrepareForSessionlessResumeOperation(ctx context.Context, globalTransactionID []byte, timeout time.Duration) (common.SessionlessTransaction, error) {
+	seconds, valid := sessionlessTimeoutSeconds(timeout)
+	if !valid {
+		return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.SessionlessTransactionTimeoutOutOfRange, nil))
+	}
 	// check that the global transaction ID is valid
 	if err := validateSessionlessGlobalTransactionID(globalTransactionID); err != nil {
 		return nil, c.shelf.LocalizeError(err)
@@ -231,10 +241,19 @@ func (c *connection) PrepareForSessionlessResumeOperation(ctx context.Context, g
 
 	common.Odl.With("GTRID", globalTransactionID).Fine("Prepare resume sessionless transaction")
 	// create and register the sessionless transaction object
-	tx := newSessionlessTransaction(ctx, c, globalTransactionID, timeout)
+	tx := newSessionlessTransaction(ctx, c, globalTransactionID, seconds)
 	tx.startOperation = SessionlessResume
 	c.shelf.registerTransaction(tx)
 	return tx, nil
+}
+
+// sessionlessTimeoutSeconds converts a timeout to the protocol's whole-second
+// uint16 value. Fractional seconds are truncated.
+func sessionlessTimeoutSeconds(timeout time.Duration) (uint16, bool) {
+	if timeout < 0 || timeout > time.Duration(math.MaxUint16)*time.Second {
+		return 0, false
+	}
+	return uint16(timeout / time.Second), true
 }
 
 // ClearPrepareForSessionlessResumeOperation removes the prepared resume if

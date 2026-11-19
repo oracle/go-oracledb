@@ -98,7 +98,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("wrap first connection: %w", err)
 	}
-	tx, err := oracleConnection.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300)
+	tx, err := oracleConnection.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
 		return fmt.Errorf("begin sessionless transaction: %w", err)
 	}
@@ -154,7 +154,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("wrap second connection: %w", err)
 	}
-	resumedTx, err := resumeOracleConnection.ResumeSessionlessTx(ctx, globalTransactionID, 300)
+	resumedTx, err := resumeOracleConnection.ResumeSessionlessTx(ctx, globalTransactionID, 300*time.Second)
 	if err != nil {
 		return fmt.Errorf("resume sessionless transaction: %w", err)
 	}
