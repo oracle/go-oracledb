@@ -59,6 +59,22 @@ func TestMain(m *testing.M) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
+	// UROWID fixtures are opt-in until their pipeline resources are configured.
+	{Name: "TestDriver_UROWID_001_BasicFetch", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_001_BasicFetch},
+	{Name: "TestDriver_UROWID_002_NativeExtended", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_002_NativeExtended},
+	{Name: "TestDriver_UROWID_003_NativeLegacy", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_003_NativeLegacy},
+	{Name: "TestDriver_UROWID_004_PositionalAndLiteral", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_004_PositionalAndLiteral},
+	{Name: "TestDriver_UROWID_005_NamedBind", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_005_NamedBind},
+	{Name: "TestDriver_UROWID_006_PreparedReuse", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_006_PreparedReuse},
+	{Name: "TestDriver_UROWID_007_SavedColumnRoundTrip", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_007_SavedColumnRoundTrip},
+	{Name: "TestDriver_UROWID_008_PLSQLOut", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_008_PLSQLOut},
+	{Name: "TestDriver_UROWID_009_PLSQLInOut", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_009_PLSQLInOut},
+	{Name: "TestDriver_UROWID_010_RetainedValueSameSession", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_010_RetainedValueSameSession},
+	{Name: "TestDriver_UROWID_011_RetainedValueFreshSession", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_011_RetainedValueFreshSession},
+	{Name: "TestDriver_UROWID_012_MultipleInputBinds", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_012_MultipleInputBinds},
+	{Name: "TestDriver_UROWID_013_VariableLengthAndBoundary", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_013_VariableLengthAndBoundary},
+	{Name: "TestDriver_UROWID_014_MalformedAndNull", Categories: "urowid", Exclusive: true, Fn: TestDriver_UROWID_014_MalformedAndNull},
+	{Name: "TestUROWIDCompatibleVersion", Categories: "unitary", Exclusive: false, Fn: TestUROWIDCompatibleVersion},
 	{Name: "TestDriver_ConfigurationWithConnectorBasic", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorBasic},
 	{Name: "TestDriver_ConfigurationWithConnectorWithEnvOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithEnvOverwrite},
 	{Name: "TestDriver_ConfigurationWithConnectorWithFlagOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithFlagOverwrite},
