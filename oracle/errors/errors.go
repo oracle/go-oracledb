@@ -271,6 +271,15 @@ const (
 	JSONRenderingError ErrorCode = "OGD-00306"
 	// JSONObjectKeyNotFoundError indicates an object lookup requested an absent key.
 	JSONObjectKeyNotFoundError ErrorCode = "OGD-00307"
+	// Sharding key construction and connection-routing errors.
+	ShardingKeyEmpty        ErrorCode = "OGD-00400"
+	ShardingSubkeyInvalid   ErrorCode = "OGD-00401"
+	ShardingSubkeyEncoding  ErrorCode = "OGD-00402"
+	ShardingKeyTooLong      ErrorCode = "OGD-00403"
+	ShardingContextRequired ErrorCode = "OGD-00404"
+	ShardingEncodingInvalid ErrorCode = "OGD-00405"
+	ShardingKeyConflict     ErrorCode = "OGD-00406"
+	ConnectionDataTooLong   ErrorCode = "OGD-00407"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error

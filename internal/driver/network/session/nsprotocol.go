@@ -579,10 +579,19 @@ func ConnectToOptionWithConnectionID(ctx context.Context, option *naming.Connect
 		root.Children = append(root.Children, naming.Node{Name: "CONNECT_DATA"})
 		connectData = &root.Children[len(root.Children)-1]
 	}
+	// Append routing fields to this attempt's already parsed tree, alongside
+	// CID/CONNECTION_ID. The shared option and connector config stay unchanged.
+	if err := appendShardingKeys(ctx, connectData); err != nil {
+		return nil, err
+	}
 	connectData.Children = append(connectData.Children, cachedCIDNode)
 	connIDNode := naming.Node{Name: "CONNECTION_ID", Value: ns.sAtts.nt.Connectionid}
 	connectData.Children = append(connectData.Children, connIDNode)
 	newConnectStr := root.ToString()
+	if len(newConnectStr) > 65535 {
+		common.Odl.Debug("ConnectToOptionWithConnectionID: connection data exceeds protocol limit", "length", len(newConnectStr), "limit", 65535)
+		return nil, common.NewOracleError(oracleErrors.ConnectionDataTooLong, nil, len(newConnectStr), 65535)
+	}
 	ns.cData = []byte(newConnectStr)
 
 	hostToBeUsed := addressOption.Host

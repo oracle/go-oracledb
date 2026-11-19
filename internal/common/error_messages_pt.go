@@ -50,6 +50,14 @@ func initMessagesPt() {
 		code    oracleErrors.ErrorCode
 		message string
 	}{
+		{oracleErrors.ShardingKeyEmpty, "a chave de fragmentação requer pelo menos um componente"},
+		{oracleErrors.ShardingSubkeyInvalid, "tipo ou valor não suportado para o componente de chave do tipo %d"},
+		{oracleErrors.ShardingSubkeyEncoding, "falha ao codificar o componente %d do tipo %d da chave de fragmentação"},
+		{oracleErrors.ShardingKeyTooLong, "o comprimento %d da chave codificada excede o limite %d"},
+		{oracleErrors.ShardingContextRequired, "a solicitação de fragmentação requer um contexto não nulo"},
+		{oracleErrors.ShardingEncodingInvalid, "chave de fragmentação codificada inválida: %s; construa chaves com sharding.NewKey"},
+		{oracleErrors.ShardingKeyConflict, "o parâmetro de fragmentação %s foi especificado no contexto e no descritor de conexão"},
+		{oracleErrors.ConnectionDataTooLong, "o comprimento %d dos dados de conexão excede o limite do protocolo %d"},
 		{oracleErrors.InvalidCredential, "credencial inválida ou usuário não autorizado: %s"},
 		{oracleErrors.InvalidDateYear, "o ano completo deve estar entre -4713 e +9999 e não pode ser 0"},
 		{oracleErrors.ConnectionLost, "conexão com o banco de dados encerrada pelo peer"},
