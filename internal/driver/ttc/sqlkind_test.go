@@ -96,6 +96,7 @@ func TestClassifySQL_AllKinds(t *testing.T) {
 		{in: datatype.RefCursorQuery, expect: refcursor},
 		{in: "alter session set nls_language='AMERICAN'", expect: other},
 		{in: "truncate table t", expect: other},
+		{in: "WITH values_cte AS (SELECT 1 AS value FROM dual) SELECT value FROM values_cte", expect: select_},
 	}
 
 	for i, tc := range cases {
