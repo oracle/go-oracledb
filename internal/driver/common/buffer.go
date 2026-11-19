@@ -367,7 +367,8 @@ func (b *writeBuffer) WriteBytes(value B1Array) {
 // Reserve writes length zero-filled bytes and returns their initial offset.
 func (b *writeBuffer) Reserve(length uint) uint {
 	start := b.Position()
-	b.prepareWrite(length)
+	dest := b.prepareWrite(length)
+	clear(dest)
 	return start
 }
 
