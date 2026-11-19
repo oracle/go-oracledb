@@ -122,7 +122,7 @@ func TestDefaultCapabilityAdvertisesLoginResetState(t *testing.T) {
 	t.Parallel()
 
 	cap := newDefaultCapability()
-	resetState := cap.knownUsedCompileTimeCapabilities[kpccapCtResetStateLogin]
+	resetState := cap.knownUsedCompileTimeCapabilities[kpccapCtResetLogin]
 	if got := cap.compileTimeCapabilities[resetState.index] & resetState.value; got != resetState.value {
 		t.Errorf("LOGIN reset-state capability = %#x, want %#x", got, resetState.value)
 	}

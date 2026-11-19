@@ -145,7 +145,7 @@ const (
 	kpccapCtRaft                   = "KPCCAP_CT_RAFT"
 	kpccapCtVectorFeatureBinary    = "KPCCAP_CT_VECTOR_FEATURE_BINARY"
 	kpccapCtVectorFeatureSparse    = "KPCCAP_CT_VECTOR_FEATURE_SPARSE"
-	kpccapCtResetStateLogin        = "KPCCAP_CT_RESET_STATE_LOGIN"
+	kpccapCtResetLogin             = "KPCCAP_CT_RESET_LOGIN"
 	// Runtime capabilities
 	kpccapRtCompat                 = "KPCCAP_RT_COMPAT"
 	kpccapRtTzEx                   = "KPCCAP_RT_TZ_EX"
@@ -289,7 +289,7 @@ func newCapabilityMetadata() *capability {
 			kpccapCtRaft:                   {index: 51, value: 0x00, isFlag: true, isDefault: true},
 			kpccapCtVectorFeatureBinary:    {index: 52, value: 0x01, isFlag: true, isDefault: true}, // BINARY dimension type for VECTOR is supported
 			kpccapCtVectorFeatureSparse:    {index: 52, value: 0x02, isFlag: true, isDefault: true}, // Sparse encoding format for VECTOR is supported
-			kpccapCtResetStateLogin:        {index: 53, value: 0x02, isFlag: true, isDefault: true}, // supports LOGIN-level reset state
+			kpccapCtResetLogin:             {index: 53, value: 0x02, isFlag: true, isDefault: true}, // supports LOGIN-level reset state
 		},
 		// Runtime capabilities
 		knownUsedRuntimeCapabilities: map[string]capabilityMetadata{
