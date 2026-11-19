@@ -1,0 +1,15 @@
+name: List Go packages
+description: Lists Go packages excluding CI-skipped directories
+
+outputs:
+  packages:
+    description: Filtered Go packages
+    value: ${{ steps.list.outputs.packages }}
+
+runs:
+  using: composite
+  steps:
+    - id: list
+      shell: bash
+      run: |
+        echo "packages=$(go list "${{ github.workspace }}/..." |  grep -v /examples/ | grep -v /internal/tests | xargs )" >> $GITHUB_OUTPUT

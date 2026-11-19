@@ -232,12 +232,17 @@ func TestConfiguration_AssignFromEnvClientLanguageTag(t *testing.T) {
 //
 //	no failure
 func TestConfiguration_AssignFromEmptyFlags(t *testing.T) {
-	t.Parallel()
+
 	conf := NewOracleDriverConfig()
 
 	flag.Set("oracle.go.Locale.Territory", "FOO")
 
 	flag.Set("oracle.go.Credentials.User", "myuser")
+
+	defer func() {
+		flag.Set("oracle.go.Credentials.User", "")
+		flag.Set("oracle.go.Locale.Territory", "")
+	}()
 
 	conf.AssignFromFlags()
 
@@ -303,6 +308,9 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 	conf.ConnectionProperties.Failover = false
 	conf.ConnectionProperties.HttpsProxyPort = 9000
 	conf.ConnectionProperties.RetryDelay = 7
+	conf.ConnectionProperties.Compression = true
+	conf.Credentials.TokenAuth = "OCI_TOKEN"
+	conf.Credentials.TokenLocation = "/token/location"
 
 	params := conf.ToNSConnectionParameters()
 	if len(params) == 0 {
@@ -312,6 +320,8 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 		"ssl_server_cert_dn=\"CN=test\"": false,
 		"ssl_server_dn_match=false":      false,
 		"ssl_allow_weak_dn_match=false":  false,
+		"token_auth=OCI_TOKEN":           false,
+		"token_location=/token/location": false,
 		"https_proxy_port=9000":          false,
 		"connect_timeout=0":              false,
 		"expire_time=0":                  false,
@@ -320,6 +330,7 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 		"recv_buf_size=0":                false,
 		"send_buf_size=0":                false,
 		"sdu=0":                          false,
+		"compression=true":               false,
 		"source_route=false":             false,
 		"retry_count=0":                  false,
 		"retry_delay=7":                  false,

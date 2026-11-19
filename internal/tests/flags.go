@@ -35,63 +35,63 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
-
-package driver
+package tests
 
 import (
 	"flag"
-	"os"
+	"fmt"
 	"strings"
-	"testing"
 )
 
-// TestCategory category of tests to be un
-var TestCategory string
+// Test configuration flag. This flag gives configuration file path
+//
+//	is mandatory to run the test
+var ConfigFileName string
 
-func TestMain(m *testing.M) {
-	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
-	os.Exit(m.Run())
+// Test configuration flag. This flag will specify which
+// configuration to use.
+var ConfigName string
+
+type TestCategoryList []string
+
+func (s *TestCategoryList) String() string {
+	return strings.Join(*s, ",")
 }
 
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{}
+func (s *TestCategoryList) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
 
-func TestCategoryExecutor(t *testing.T) {
-	var regularCases, exclusiveCases []struct {
-		name       string
-		categories string
-		exclusive  bool
-		f          func(t *testing.T)
+// TestCategories category of tests to be un
+var TestCategories TestCategoryList
+
+func init() {
+
+	flag.StringVar(&ConfigFileName, "driver.config.filename", "", "tests config name")
+	flag.StringVar(&ConfigName, "driver.config.name", "", "tests config name")
+	flag.Var(&TestCategories, "test.category", "tests category to be enabled, can be unitary,functional,robustness,... May be specified multiple times")
+}
+
+// InitConfig init the environment configuration
+// Main task is to parse dirver config flags and populate the
+// default configuration
+func InitConfig() error {
+	if !flag.Parsed() {
+		flag.Parse()
 	}
+	if len(ConfigFileName) != 0 {
+		env, err := NewTestingEnvironment(ConfigFileName)
+		if err != nil {
+			return fmt.Errorf("cannot get test environment : %w", err)
+		}
+		TestEnvironement = env
 
-	for _, c := range testCases {
-		cats := strings.Split(c.categories, ",")
-		for _, p := range cats {
-			if strings.Compare(strings.TrimSpace(p), TestCategory) == 0 {
-				if c.exclusive {
-					exclusiveCases = append(exclusiveCases, c)
-				} else {
-					regularCases = append(regularCases, c)
-				}
-				break
-			}
+		if len(ConfigName) != 0 {
+			TestingConfig, _ = TestEnvironement.GetConfig(ConfigName)
+			// Keep DefaultTestConfig in sync for legacy driver API
+			DefaultTestConfig = TestingConfig
 		}
 	}
-
-	if len(regularCases) > 0 {
-		t.Run("parallel", func(t *testing.T) {
-			t.Parallel()
-			for _, c := range regularCases {
-				t.Run(c.name, c.f)
-			}
-		})
-	}
-
-	for _, c := range exclusiveCases {
-		t.Run(c.name, c.f)
-	}
+	return nil
 }

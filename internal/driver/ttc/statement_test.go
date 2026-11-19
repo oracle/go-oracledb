@@ -46,7 +46,7 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
-	drvierCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
 )
@@ -78,7 +78,7 @@ func TestConnection_cancelCurrentExecution(t *testing.T) {
 		returnMsg: NewOall18(),
 	}
 	mockStr := &mockStreamer{}
-	shelf := newShelf[drvierCommon.MessageType]()
+	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageStreamer(mockStr)
 	shelf.RegisterMessageFactory(mockFac)
 
@@ -105,12 +105,11 @@ func TestConnection_cancelCurrentExecution(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ns := &mockNetworkSession{
-				disconnectCalls: 0,
-				disconnectErr:   nil,
-				sleepDuration:   0,
-				cancelErr:       tt.cancelErr,
+				disconnectErr: nil,
+				sleepDuration: 0,
+				cancelErr:     tt.cancelErr,
 			}
-
+			ns.disconnectCalls.Store(0)
 			conn := newTestConnection(shelf, nil, ns)
 
 			// Clean error message so that connection close succeeds
@@ -118,8 +117,8 @@ func TestConnection_cancelCurrentExecution(t *testing.T) {
 			ctx := context.Background()
 			err := conn.cancelCurrentExecution(ctx)
 
-			if ns.cancelCalls != 1 {
-				t.Errorf("Wrong number of calls to CancelOperations expected 1 but was %d", ns.cancelCalls)
+			if ns.cancelCalls.Load() != 1 {
+				t.Errorf("Wrong number of calls to CancelOperations expected 1 but was %d", ns.cancelCalls.Load())
 			}
 			if (err != nil) != tt.wantErr {
 				t.Errorf("cancelCurrentExecution() error = %v, wantErr %v", err, tt.wantErr)
@@ -151,7 +150,7 @@ func TestConnection_cancelCurrentExecution(t *testing.T) {
 // releases a fired cancellation callback when execution exits early.
 func TestStatementCancellationCleanupReleasesStartedAfterFunc(t *testing.T) {
 	t.Parallel()
-	shelf := newShelf[drvierCommon.MessageType]()
+	shelf := newShelf[driverCommon.MessageType]()
 	cancelCalled := make(chan struct{}, 1)
 	shelf.registerCancelExecution(func(context.Context) error {
 		cancelCalled <- struct{}{}
@@ -188,7 +187,7 @@ func TestStatementCancellationCleanupReleasesStartedAfterFunc(t *testing.T) {
 func TestStatementHandleContextCancelledRunsBreakReset(t *testing.T) {
 	t.Parallel()
 	mockStr := &mockStreamer{pullMsg: &mockOer{}}
-	shelf := newShelf[drvierCommon.MessageType]()
+	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageStreamer(mockStr)
 	cancelCalled := make(chan struct{}, 1)
 	shelf.registerCancelExecution(func(context.Context) error {
@@ -223,7 +222,7 @@ func TestStatementHandleContextCancelledRunsBreakReset(t *testing.T) {
 // transaction cancellation cannot race an uninitialized statement cancel func.
 func TestStatementExecContextTransactionCancellationBeforeSetup(t *testing.T) {
 	t.Parallel()
-	shelf := newShelf[drvierCommon.MessageType]()
+	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageStreamer(&mockStreamer{})
 	txCtx, cancelTx := context.WithCancel(context.Background())
 	cancelTx()
@@ -260,7 +259,7 @@ func TestStatementQueryContextLocalization(t *testing.T) {
 
 	mockStr := &mockStreamer{}
 
-	shelf := newShelf[drvierCommon.MessageType]()
+	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterLocalizationService(common.NewLocalizationService(language.French))
 	shelf.RegisterMessageStreamer(mockStr)
 
@@ -280,7 +279,7 @@ func TestStatementQueryContextLocalization(t *testing.T) {
 	} else if sqle.ErrorCode() != string(oracleErrors.InternalError) {
 		t.Fatalf("expected error code %s, got %s", oracleErrors.InternalError, sqle.ErrorCode())
 	}
-	if got, want := err.Error(), "OGD-00062 - erreur interne factice."; got != want {
+	if got, want := err.Error(), "OGD-00062 - une erreur interne s'est produite."; got != want {
 		t.Fatalf("unexpected localized error %q, want %q", got, want)
 	}
 }
@@ -308,7 +307,7 @@ func runSeededStatementQuery(t *testing.T, query string, args []driver.NamedValu
 	registerTestCodecs(shelf, 20)
 	seedPreparedSelectResponse(t, ctx, dbuf)
 
-	stmt, err := newStatement(shelf, drvierCommon.NewSessionContext(), query)
+	stmt, err := newStatement(shelf, driverCommon.NewSessionContext(), query)
 	if err != nil {
 		t.Fatalf("newStatement failed: %v", err)
 	}

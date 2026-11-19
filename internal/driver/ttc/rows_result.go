@@ -39,6 +39,7 @@
 package ttc
 
 import (
+	"context"
 	"database/sql/driver"
 	"io"
 	"reflect"
@@ -117,13 +118,12 @@ type columnContext struct {
 //   - RowsColumnTypeScanType
 type ttcRows struct {
 	// row buffer
-	rowData       [][]driverCommon.B1Array
+	rowData       [][]columnPayload
 	currentRowIdx int
 	numOfRows     int
 
 	// metadata caches for ColumnType* interfaces
 	columnContexts []columnContext
-	lobColContext  [][]*lobColumnContext
 	shelf          *ttiShelf[driverCommon.MessageType]
 
 	strictNullHandlingValue bool
@@ -152,7 +152,7 @@ func (r *ttcRows) Columns() []string {
 }
 
 // Next implements driver.Rows.Next. It advances the cursorId and assigns each
-// column's raw []common.B1Array value as a type provided in dest. Row count is
+// column's payload as a value in dest. Row count is
 // computed once and cached to avoid repeated len() calls.
 func (r *ttcRows) Next(dest []driver.Value) error {
 	if r.currentRowIdx >= r.numOfRows {
@@ -173,7 +173,8 @@ func (r *ttcRows) Next(dest []driver.Value) error {
 // decodeColumnValue returns the decoded driver.Value for the current row's column i.
 //
 // Behaviour:
-//   - Oracle NULLs are detected via zero-length payloads.
+//   - Handlers normalize Oracle NULL payloads to nil.
+//   - Constructed values pass through without byte decoding.
 //   - When a decoder is available for the column's TTC datatype, it is invoked; otherwise
 //     the raw protocol bytes are surfaced unchanged.
 //
@@ -184,12 +185,17 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	colCtx := r.columnContexts[i]
 	dtype := colCtx.DataType
 	scale := colCtx.Scale
-	data := r.rowData[r.currentRowIdx][i]
-	colCtx.LobContext = r.lobColContext[r.currentRowIdx][i]
+	payload := r.rowData[r.currentRowIdx][i]
+	colCtx.LobContext = payload.lob
 	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
 	// Handle Oracle SQL NULL (typically raw length zero is NULL).
-	if len(data) == 0 {
+	if payload.data == nil {
 		return r.handleNull(i, dtype, scale), nil
+	}
+
+	data, raw := payload.data.(driverCommon.B1Array)
+	if !raw {
+		return payload.data, nil
 	}
 
 	decoder, err := r.shelf.GetCodecFactory().getDecoder(dtype)
@@ -200,7 +206,7 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 
 	val, err := decoder.decodeToType(colCtx, data)
 	if err != nil {
-		// Preserve unknown types as raw bytes
+		// Preserve the decoder error for localization.
 		return nil, r.shelf.LocalizeError(err)
 	}
 
@@ -338,7 +344,7 @@ func defaultNumericValue(scale int8) (driver.Value, bool) {
 // Close implements driver.Rows.Close. No network/protocol resources are owned
 // by this object currently, so this is a no-op.
 func (r *ttcRows) Close() error {
-	common.Odl.Debug("closing rows")
+	common.Odl.Fine("closing rows")
 	return nil
 }
 
@@ -356,7 +362,6 @@ func newTTCRows(columnContexts []columnContext) *ttcRows {
 	for i := 0; i < n; i++ {
 		rows.columnContexts[i] = columnContexts[i]
 	}
-	rows.lobColContext = make([][]*lobColumnContext, 0)
 
 	return rows
 }
@@ -474,6 +479,185 @@ func (r *ttcRows) ColumnTypeScanType(index int) reflect.Type {
 		r.columnContexts[index].ScanType = new(decoder.getScanType(r.columnContexts[index]))
 	}
 	return *r.columnContexts[index].ScanType
+}
+
+// ttcRowsRefCursor owns state specific to an already-open server REF CURSOR.
+type ttcRowsRefCursor struct {
+	*ttcRows
+	cursorID driverCommon.SB4
+	executor *refCursorExecutor
+	fetched  bool
+	closed   bool
+	closeErr error
+}
+
+// ttcRowsRefCursorImplicitFetch exposes ordered implicit cursors as result sets.
+type ttcRowsRefCursorImplicitFetch struct {
+	*ttcRowsRefCursor
+	implicitRows     []*ttcRowsRefCursor
+	currentResultSet int
+}
+
+// newRefCursorResultRows adds REF CURSOR ownership and cleanup to base rows.
+func newRefCursorResultRows(rows *ttcRows, cursorID driverCommon.SB4) *ttcRowsRefCursor {
+	return &ttcRowsRefCursor{ttcRows: rows, cursorID: cursorID}
+}
+
+// newRefCursorRows creates a REF CURSOR rows object and associates its fetch
+// executor. The rows object owns the executor so a cursor has one fetch path.
+func newRefCursorRows(cursorID driverCommon.SB4, columns []columnContext) *ttcRowsRefCursor {
+	rows := newRefCursorResultRows(newTTCRows(columns), cursorID)
+	rows.executor = newRefCursorExecutor(cursorID, columns)
+	return rows
+}
+
+// attachShelf supplies the shelf for row decoding, cursor cleanup, and fetching.
+func (r *ttcRowsRefCursor) attachShelf(shelf *ttiShelf[driverCommon.MessageType]) {
+	r.ttcRows.SetShelf(shelf)
+	r.executor.SetShelf(shelf)
+}
+
+// attachSessionContext forwards the session context to the cursor's fetch executor.
+func (r *ttcRowsRefCursor) attachSessionContext(sessCtx *driverCommon.SessionContext) {
+	r.executor.SetSessionContext(sessCtx)
+}
+
+// Next delegates row decoding to the common rows implementation.
+func (r *ttcRowsRefCursor) Next(dest []driver.Value) error {
+	if r.closed {
+		return io.EOF
+	}
+	return r.ttcRows.Next(dest)
+}
+
+// Close queues server cleanup after closing nested cursor values.
+func (r *ttcRowsRefCursor) Close() error {
+	if r.closed {
+		return r.closeErr
+	}
+	r.closed = true
+	for _, row := range r.rowData {
+		for _, payload := range row {
+			if child, ok := payload.data.(*ttcRowsRefCursor); ok && child != nil {
+				if err := child.Close(); err != nil && r.closeErr == nil {
+					r.closeErr = err
+				}
+			}
+		}
+	}
+	if r.cursorID != 0 && r.shelf != nil {
+		if err := r.closeServerCursor(); err != nil && r.closeErr == nil {
+			r.closeErr = err
+		}
+	}
+	return r.closeErr
+}
+
+// closeServerCursor queues the OCCA for the next round trip.
+func (r *ttcRowsRefCursor) closeServerCursor() error {
+	msg, err := r.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
+	if err != nil {
+		return err
+	}
+	msg.(*tTIOcca).setCursorIDs([]driverCommon.UB4{driverCommon.UB4(r.cursorID)})
+	if err = r.shelf.GetMessageStreamer().Push(context.Background(), msg); err != nil {
+		return err
+	}
+	r.shelf.removeRefCursor(r)
+	r.cursorID = 0
+	return nil
+}
+
+// Fetch obtains data for an opened REF CURSOR exactly once.
+func (r *ttcRowsRefCursor) Fetch(ctx context.Context) error {
+	if r.fetched {
+		return nil
+	}
+	if !r.shelf.hasRefCursor(r) {
+		return common.NewOracleError(oracleErrors.RefCursorConnectionMismatch, nil)
+	}
+	if err := r.executor.Fetch(ctx, r); err != nil {
+		return err
+	}
+	r.fetched = true
+	return nil
+}
+
+// newImplicitResultRows fetches any implicit cursors not prefetched by the
+// server and build the instance for ttcRowsRefCursorImplicitFetch.
+func newImplicitResultRows(ctx context.Context, resultSets []*ttcRowsRefCursor) (*ttcRowsRefCursorImplicitFetch, error) {
+	for _, resultSet := range resultSets {
+		if resultSet != nil && !resultSet.fetched {
+			if err := resultSet.Fetch(ctx); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return &ttcRowsRefCursorImplicitFetch{ttcRowsRefCursor: newRefCursorResultRows(newTTCRows(nil), 0), implicitRows: resultSets}, nil
+}
+
+// getActive returns the implicit result set selected by currentResultSet. It
+// returns nil after the final result set has been consumed.
+func (r *ttcRowsRefCursorImplicitFetch) getActive() *ttcRowsRefCursor {
+	if r.currentResultSet < len(r.implicitRows) {
+		return r.implicitRows[r.currentResultSet]
+	}
+	return nil
+}
+
+// Columns returns the column names of the active implicit result set. It
+// returns nil when there is no active result set.
+func (r *ttcRowsRefCursorImplicitFetch) Columns() []string {
+	if rows := r.getActive(); rows != nil {
+		return rows.Columns()
+	}
+	return nil
+}
+
+// Next reads the next row from the active implicit result set. It returns
+// io.EOF when this wrapper is closed, there is no active result set, or the
+// active result set has no more rows.
+func (r *ttcRowsRefCursorImplicitFetch) Next(dest []driver.Value) error {
+	if r.closed {
+		return io.EOF
+	}
+	if rows := r.getActive(); rows != nil {
+		return rows.Next(dest)
+	}
+	return io.EOF
+}
+
+// HasNextResultSet reports whether another implicit result set follows the
+// currently active result set.
+func (r *ttcRowsRefCursorImplicitFetch) HasNextResultSet() bool {
+	return r.currentResultSet+1 < len(r.implicitRows)
+}
+
+// NextResultSet advances to the next implicit result set. It returns io.EOF
+// when the active result set is already the last one.
+func (r *ttcRowsRefCursorImplicitFetch) NextResultSet() error {
+	if !r.HasNextResultSet() {
+		return io.EOF
+	}
+	r.currentResultSet++
+	return nil
+}
+
+// Close closes every implicit result set, retaining the first close error for
+// later calls. Closing this wrapper more than once is idempotent.
+func (r *ttcRowsRefCursorImplicitFetch) Close() error {
+	if r.closed {
+		return r.closeErr
+	}
+	r.closed = true
+	for _, rows := range r.implicitRows {
+		if rows != nil {
+			if err := rows.Close(); err != nil && r.closeErr == nil {
+				r.closeErr = err
+			}
+		}
+	}
+	return r.closeErr
 }
 
 // ttcResult implements database/sql/driver.Result, used for DML or exec results.

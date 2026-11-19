@@ -42,7 +42,11 @@ import (
 	"context"
 	"database/sql"
 	"flag"
+	"log/slog"
+	"path/filepath"
 	"testing"
+
+	"github.com/oracle/go-oracledb/v26/internal/common"
 )
 
 // TestDriver_ConfigurationWithConnectorBasic verifies that a connector can be
@@ -154,7 +158,7 @@ func TestDriver_ConfigurationWithConnectorWithFlagOverwrite(t *testing.T) {
 // verifies that dsn have precedence over configuration
 // when credentials are specified in dsn, they cannot be present in configuration
 func TestDriver_ConfigurationWithCredentialsWithDsnNegative(t *testing.T) {
-
+	t.Parallel()
 	c := NewOracleDriverConfig()
 	c.Credentials.User = "foo"
 	c.Credentials.Password = "bar"
@@ -164,13 +168,12 @@ func TestDriver_ConfigurationWithCredentialsWithDsnNegative(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Should have receive an error")
 	}
-	t.Log("received an error", err.Error())
-
+	t.Log("received expected  error", err.Error())
 }
 
 // TestDriver_ConfigurationLogging dummy test to activate logging.
 func TestDriver_ConfigurationLogging(t *testing.T) {
-	t.Parallel()
+	// this must be exclusive as this is change the global reference to logger
 	loggingConfig := NewOracleLoggingConfig()
 	loggingConfig.Destination = "STDOUT"
 	loggingConfig.Level = "DEBUG"
@@ -179,6 +182,35 @@ func TestDriver_ConfigurationLogging(t *testing.T) {
 	defer func() {
 		GetDefaultDriver().ApplyDriverLoggingConfig(NewOracleLoggingConfig())
 	}()
+}
+
+// TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector verifies that
+// opening a connector does not replace logging configured by the application.
+func TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector(t *testing.T) {
+	driver := NewDriver()
+	loggingConfig := NewOracleLoggingConfig()
+	loggingConfig.Destination = filepath.Join(t.TempDir(), "driver.log")
+	loggingConfig.Level = "DEBUG"
+	driver.ApplyDriverLoggingConfig(loggingConfig)
+	t.Cleanup(func() {
+		driver.ApplyDriverLoggingConfig(NewOracleLoggingConfig())
+	})
+
+	configuredLogger := common.Odl
+	if !configuredLogger.Enabled(context.Background(), slog.LevelDebug) {
+		t.Fatal("expected debug logging to be enabled after applying the configuration")
+	}
+
+	if _, err := driver.OpenConnector("localhost:1521/freepdb1"); err != nil {
+		t.Fatalf("openConnector failed: %v", err)
+	}
+
+	if common.Odl != configuredLogger {
+		t.Fatal("openConnector replaced the logging configuration")
+	}
+	if !common.Odl.Enabled(context.Background(), slog.LevelDebug) {
+		t.Fatal("expected debug logging configuration to remain enabled after openConnector")
+	}
 }
 
 type testingConnector struct {
@@ -192,7 +224,7 @@ func TestDriver_OpenConnectorUsesFallbackConnectDescriptor(t *testing.T) {
 	config := NewOracleDriverConfig()
 	config.ConnectDescriptor = "localhost:1521/freepdb1?oracle.go.ConnectionProperties.ConnectTimeout=12"
 
-	connector, err := NewDriverWithConfig(config).openConnector("")
+	connector, err := NewDriverWithConfig(config).OpenConnector("")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -212,7 +244,7 @@ func TestDriver_OpenConnectorUsesFallbackConnectDescriptor(t *testing.T) {
 // TestDriver_OpenConnectorStoresConnectDescriptorFromDSN verifies that
 // credentials and the connect descriptor are stored from the DSN.
 func TestDriver_OpenConnectorStoresConnectDescriptorFromDSN(t *testing.T) {
-	connector, err := NewDriver().openConnector("user/pass@localhost:1521/freepdb1")
+	connector, err := NewDriver().OpenConnector("user/pass@localhost:1521/freepdb1")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -310,7 +342,7 @@ func TestDriver_OpenConnectorUsesParam(t *testing.T) {
 	t.Parallel()
 	const walletLocation = "/tmp/foo"
 
-	connector, err := GetDefaultDriver().openConnector("tcps://127.0.0.1:2484/freepdb1?oracle.go.ConnectionProperties.WalletLocation=/tmp/foo")
+	connector, err := GetDefaultDriver().OpenConnector("tcps://127.0.0.1:2484/freepdb1?oracle.go.ConnectionProperties.WalletLocation=/tmp/foo")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -337,7 +369,7 @@ func TestDriver_OpenConnectorUsesNSParam(t *testing.T) {
 	const walletLocation = "/tmp/foo"
 	const logonMode = "SYSOPER"
 
-	connector, err := GetDefaultDriver().openConnector("tcps://127.0.0.1:2484/freepdb1?wallet_location=" + walletLocation + "&logon_mode=" + logonMode)
+	connector, err := GetDefaultDriver().OpenConnector("tcps://127.0.0.1:2484/freepdb1?wallet_location=" + walletLocation + "&logon_mode=" + logonMode)
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -362,11 +394,39 @@ func TestDriver_OpenConnectorUsesNSParam(t *testing.T) {
 	}
 }
 
+// TestDriver_OpenConnectorPreservesQuotedInParameters verifies that a
+// quoted configuration value with space retains its spaces
+// expectations : quoting remain correct
+func TestDriver_OpenConnectorPreservesQuotedInParameters(t *testing.T) {
+	t.Parallel()
+	const expected = "CN=My Server, OU=Org"
+	const dsn = `tcps://127.0.0.1:1521/service?ssl_server_cert_dn="CN=My Server, OU=Org"`
+
+	connector, err := NewDriver().OpenConnector(dsn)
+	if err != nil {
+		t.Fatalf("openConnector failed: %v", err)
+	}
+
+	oracleConnector := connector.(*oracleConnector)
+	iterator := oracleConnector.config.NewConnectionAttemptIterator(context.Background())
+	if !iterator.HasNext() {
+		t.Fatal("expected a connection attempt")
+	}
+
+	option := iterator.Next()
+	if option.Description == nil {
+		t.Fatal("expected parsed description")
+	}
+	if got := option.Description.Security.SSLServerCertDN; got != expected {
+		t.Fatalf("expected SSL server certificate DN %q, got %q", expected, got)
+	}
+}
+
 // TestDriver_OpenConnectorReturnsInvalidDSNParameterError verifies that invalid
 // DSN query parameters fail connector creation.
 func TestDriver_OpenConnectorReturnsInvalidDSNParameterError(t *testing.T) {
 	t.Parallel()
-	_, err := NewDriver().openConnector("user/pass@localhost:1521/freepdb1?oracle.go.ConnectionProperties.ConnectTimeout=-1")
+	_, err := NewDriver().OpenConnector("user/pass@localhost:1521/freepdb1?oracle.go.ConnectionProperties.ConnectTimeout=-1")
 	if err == nil {
 		t.Fatal("expected invalid DSN parameter error")
 	}

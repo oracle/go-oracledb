@@ -40,10 +40,6 @@ package ttc
 
 import (
 	"container/list"
-	"fmt"
-	"os"
-	"os/user"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"time"
@@ -51,9 +47,13 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 const MinTTCProtocolVersion = 12 // 19.1
+
+// refCursorBindMaxLength is the TTC wire size of a REF CURSOR bind value.
+const refCursorBindMaxLength = 4
 
 var currentDriverName driverCommon.B1Array
 var currentDriverACLValue = driverCommon.StringToB1Array(defaultACLValue)
@@ -84,38 +84,21 @@ func _initEnvironmentStaticInformation() {
 	// To be consistent with other drivers like JDBC-thin that add their version:
 	currentDriverName = driverCommon.StringToB1Array(driverNameDefault + " : " + common.DriverVersion)
 
-	if u, err := user.Current(); err == nil {
-		currentUserName = driverCommon.StringToB1Array(u.Username)
-	} else {
-		common.Odl.Info(fmt.Sprintf("using default as user name"))
-		currentUserName = driverCommon.StringToB1Array("unknown")
-	}
-
-	if e, err := os.Executable(); err == nil {
-		currentProcessPath = driverCommon.StringToB1Array(filepath.Base(e))
-	} else {
-		common.Odl.Info(fmt.Sprintf("using default as process path"))
-		currentProcessPath = driverCommon.StringToB1Array("unknown")
-	}
-	var currentProcessId driverCommon.B1Array
-	currentProcessId = driverCommon.StringToB1Array(strconv.Itoa(os.Getpid()))
-	var currentMachineName driverCommon.B1Array
-	if h, err := os.Hostname(); err == nil {
-		currentMachineName = driverCommon.StringToB1Array(h)
-	} else {
-		common.Odl.Info(fmt.Sprintf("using default as machine name"))
-		currentMachineName = driverCommon.StringToB1Array("oraclegoclient")
-	}
+	// Reuse the process metadata captured once by common to avoid repeated OS calls.
+	currentUserName = driverCommon.StringToB1Array(common.UserName)
+	currentProcessPath = driverCommon.StringToB1Array(common.ProgramName)
+	currentProcessID := driverCommon.StringToB1Array(common.ProcessID)
+	currentMachineName := driverCommon.StringToB1Array(common.HostName)
 	currentDriverInternalName = driverCommon.StringToB1Array(driverInternalName)
 
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authTerminal), Value: currentTerminal})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authProgramNm), Value: currentProcessPath})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authMachine), Value: currentMachineName})
-	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authPid), Value: currentProcessId})
+	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authPid), Value: currentProcessID})
 	_keyValStaticInfoForOsesskey.PushBack(&driverCommon.KeyValue{Key: driverCommon.StringToB1Array(authSid), Value: currentUserName})
 
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authMachineKey, Value: currentMachineName})
-	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authPidKey, Value: currentProcessId})
+	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authPidKey, Value: currentProcessID})
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authACLKey, Value: currentDriverACLValue})
 	_keyValStaticInfoForOAuth2.PushBack(&driverCommon.KeyValue{Key: _authClientCapabilitiesKey, Value: _authClientCapabilitiesVal})
 
@@ -143,16 +126,49 @@ func init() {
 		common.Odl.Warn("Failed to register message tTIdty", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIOER, 14, newTTIoer14)
+	err = MessageRegistry.RegisterWithCondition(TTIOER, 14, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoer14)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIOER version 2", "error", err)
 	}
 
-	err = MessageRegistry.Register(TTIOER, MinTTCProtocolVersion, newTTIoer)
+	err = MessageRegistry.RegisterWithCondition(TTIOER, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoer)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIOER version 1", "error", err)
 	}
 
+	err = MessageRegistry.RegisterWithCondition(TTIOER, 14, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoer14WithEndOfCallStatusSupport)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIOER version 2", "error", err)
+	}
+
+	err = MessageRegistry.RegisterWithCondition(TTIOER, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTIoerWithEndOfCallStatusSupport)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIOER version 1", "error", err)
+	}
+
+	err = MessageRegistry.Register(TTIIMPLOER, 14, newTTIimplresOer14)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIIMPLOER version 2", "error", err)
+	}
+
+	err = MessageRegistry.Register(TTIIMPLOER, MinTTCProtocolVersion, newTTIimplresOer)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIIMPLOER version 1", "error", err)
+	}
+
+	/**
+	  If a new DCB Version is added, add the new unwrapper version to column_unwrap.go,
+	  to unwrap the Ref-cursor column with the new DCB.
+	  E.g.: unwrapRefCursorColumnXX (where XX is the new DCB Version)
+	*/
 	err = MessageRegistry.Register(TTIDCB, 24, newTTIdcb24)
 	if err != nil {
 		common.Odl.Warn("Failed to register message TTIDCB version 4", "error", err)
@@ -189,7 +205,17 @@ func init() {
 	}
 
 	// Register status functions
-	err = MessageRegistry.Register(TTISTA, -1, newTTISTA)
+	err = MessageRegistry.RegisterWithCondition(TTISTA, -1, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTISTA)
+	if err != nil {
+		common.Odl.Warn("Failed to register STA function", "error", err)
+	}
+
+	// Register status functions
+	err = MessageRegistry.RegisterWithCondition(TTISTA, -1, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbTtc1Eocs].IsSet
+	}, newTTISTAWithEndOfCallStatusSupport)
 	if err != nil {
 		common.Odl.Warn("Failed to register STA function", "error", err)
 	}
@@ -202,6 +228,20 @@ func init() {
 	err = MessageRegistry.Register(TTIIOV, MinTTCProtocolVersion, newTTIiov)
 	if err != nil {
 		common.Odl.Warn("Failed to register TTIIOV", "error", err)
+	}
+
+	err = MessageRegistry.RegisterWithCondition(TTIIMPLRES, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities == nil || !capabilities[kpccapCtbImplresPrefetch].IsSet
+	}, newTTIimplres)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIIMPLRES", "error", err)
+	}
+
+	err = MessageRegistry.RegisterWithCondition(TTIIMPLRES, MinTTCProtocolVersion, func(capabilities map[string]driverCommon.Capability) bool {
+		return capabilities != nil && capabilities[kpccapCtbImplresPrefetch].IsSet
+	}, newTTIimplresWithPrefetchSupport)
+	if err != nil {
+		common.Odl.Warn("Failed to register message TTIIMPLRES with prefetch support", "error", err)
 	}
 
 	err = MessageRegistry.Register(TTIWRN, MinTTCProtocolVersion, newTTIwrn)
@@ -295,7 +335,7 @@ func init() {
 		common.Odl.Warn("Failed to register ping function", "error", err)
 	}
 
-	// Register OCCA cursorId close/cancel function
+	// Register the OCCA cursor ID close/cancel function
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: occa}, 18, newOcca18)
 	if err != nil {
 		common.Odl.Warn("Failed to register function occa", "error", err)
@@ -303,6 +343,16 @@ func init() {
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: occa}, MinTTCProtocolVersion, newOcca)
 	if err != nil {
 		common.Odl.Warn("Failed to register function occa", "error", err)
+	}
+
+	// Register the OSESSSTATE request-boundary piggyback function
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oSessState}, 18, newOSessStatePfn18)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oSessState", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oSessState}, MinTTCProtocolVersion, newOSessStatePfn)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oSessState", "error", err)
 	}
 
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, MinTTCProtocolVersion, newTTIOallRPA)
@@ -677,6 +727,7 @@ func init() {
 	typeRepresentationTable.addTypeRepToTable(DtyImplRes, DtyImplRes, int16(RepRUnv))
 	typeRepresentationTable.addTypeRepToTable(DtyOer, DtyOer, int16(RepRUnv))
 	typeRepresentationTable.addTypeRepToTable(DtyKpdxft, DtyKpdxft, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(DtyKve, DtyKve, int16(RepRUnv))
 
 	// 20c
 	typeRepresentationTable.addTypeRepToTable(DtyShrdKeySync, DtyShrdKeySync, int16(RepRUnv))
@@ -727,191 +778,204 @@ func init() {
 
 	// ========================= TYPE CODEC Registry =========================
 	// Register default encoders.
-	if err := EncoderRegistry.Register(reflect.TypeOf(""), MinTTCProtocolVersion, converters.EncodeVarchar); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf("")}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeVarchar)); err != nil {
 		common.Odl.Warn("Failed to register string encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int16(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int16(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int16 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int32(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int32(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int64(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int64(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int64 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int8(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int8(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int8 encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint8(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint8(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint8 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint16(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint16(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint16 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint32(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint32(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint64(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint64(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint64 encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf(float32(0)), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(float32(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeFloat)); err != nil {
 		common.Odl.Warn("Failed to register float32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(float64(0)), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(float64(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeFloat)); err != nil {
 		common.Odl.Warn("Failed to register float64 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(driverCommon.VectorFloat64(nil)), MinTTCProtocolVersion, converters.EncodeVectorFloat64); err != nil {
-		common.Odl.Warn("Failed to register VectorFloat64 encoder", "error", err)
-	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(driverCommon.VectorFloat32(nil)), MinTTCProtocolVersion, converters.EncodeVectorFloat32); err != nil {
-		common.Odl.Warn("Failed to register VectorFloat32 encoder", "error", err)
-	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(driverCommon.VectorInt8(nil)), MinTTCProtocolVersion, converters.EncodeVectorInt8); err != nil {
-		common.Odl.Warn("Failed to register VectorInt8 encoder", "error", err)
-	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(driverCommon.VectorBinary(nil)), MinTTCProtocolVersion, converters.EncodeVectorBinary); err != nil {
-		common.Odl.Warn("Failed to register VectorBinary encoder", "error", err)
-	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, converters.EncodeTimestampWithTimeZone); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestampWithTimeZone)); err != nil {
 		common.Odl.Warn("Failed to register time.Time encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, converters.EncodeBinary); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf([]byte(nil))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeBinary)); err != nil {
 		common.Odl.Warn("Failed to register []byte encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(nil)}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeNull)); err != nil {
 		common.Odl.Warn("Failed to register nil encoder", "error", err)
 	}
-
 	// bool is version dependent
-	err = EncoderRegistry.Register(reflect.TypeOf(true), MinTTCProtocolVersion, converters.EncodeBooleanAsNumber)
+	err = EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(true)}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeBooleanAsNumber))
 	if err != nil {
 		common.Odl.Warn("Failed to register string bool (v<=17) encoder", "error", err)
 	}
-	err = EncoderRegistry.Register(reflect.TypeOf(true), 18, converters.EncodeBoolean)
+	err = EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(true)}, 18, newCLRBindEncoder(converters.EncodeBoolean))
 	if err != nil {
 		common.Odl.Warn("Failed to register string bool (v>=18) encoder", "error", err)
 	}
 
-	// Register default decoders.
+	// Register default decoders with explicit wire readers. Scalar types use CLR;
+	// CLOB, JSON, and BLOB supply their specialized framing readers.
 	if err := DecoderRegistry.Register(DtyNum, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeNumberColumn,
-			GetScanTypeForNumberColumn)); err != nil {
+			GetScanTypeForNumberColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register number decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyVnu, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeNumberColumn,
-			GetScanTypeForNumberColumn)); err != nil {
+			GetScanTypeForNumberColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register VNU decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyChr, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeVarcharColumn,
-		GetScanTypeForVarcharColumn)); err != nil {
+		GetScanTypeForVarcharColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register varchar decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyAfc, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeCharColumn,
-		GetScanTypeForCharColumn)); err != nil {
+		GetScanTypeForCharColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register char decoder", "error", err)
 	}
 	// Note: bool decoder is NOT version-dependent; only encoding/OAC are.
 	if err := DecoderRegistry.Register(DtyBol, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeBooleanColumn,
-		GetScanTypeForBooleanColumn)); err != nil {
+		GetScanTypeForBooleanColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register boolean decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyIbFloat, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeBinaryFloatColumn,
-		GetScanTypeForBinaryFloatColumn)); err != nil {
+		GetScanTypeForBinaryFloatColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary float decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyIbDouble, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeBinaryDoubleColumn,
-			GetScanTypeForDoubleColumn)); err != nil {
+			GetScanTypeForDoubleColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary double decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyIym, MinTTCProtocolVersion, newTypeDecoder(
 		DecodeIntervalYearToMonthColumn,
-		GetScanTypeForIntervalYearToMonthColumn)); err != nil {
+		GetScanTypeForIntervalYearToMonthColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval year-to-month decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEiym, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalYearToMonthColumn,
-		GetScanTypeForIntervalYearToMonthColumn)); err != nil {
+		GetScanTypeForIntervalYearToMonthColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval year-to-month (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyIds, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalDayToSecondColumn,
-		GetScanTypeForIntervalDayToSecondColumn)); err != nil {
+		GetScanTypeForIntervalDayToSecondColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval day-to-second decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEids, MinTTCProtocolVersion, newTypeDecoder(DecodeIntervalDayToSecondColumn,
-		GetScanTypeForIntervalDayToSecondColumn)); err != nil {
+		GetScanTypeForIntervalDayToSecondColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register interval day-to-second (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyDat, MinTTCProtocolVersion, newTypeDecoder(DecodeDateColumn,
-		GetScanTypeForDateColumn)); err != nil {
+		GetScanTypeForDateColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register date decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEdate, MinTTCProtocolVersion, newTypeDecoder(DecodeDateColumn,
-		GetScanTypeForDateColumn)); err != nil {
+		GetScanTypeForDateColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register date (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyStamp, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampColumn,
-		GetScanTypeForTimestampColumn)); err != nil {
+		GetScanTypeForTimestampColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEstamp, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampColumn,
-		GetScanTypeForTimestampColumn)); err != nil {
+		GetScanTypeForTimestampColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyStz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithTimeZoneColumn,
-		GetScanTypeForTimestampWithTimeZoneColumn)); err != nil {
+		GetScanTypeForTimestampWithTimeZoneColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with time zone decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEstz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithTimeZoneColumn,
-		GetScanTypeForTimestampWithTimeZoneColumn)); err != nil {
+		GetScanTypeForTimestampWithTimeZoneColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with time zone (extended) decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtySitz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithLocalTimeZoneColumn,
-		GetScanTypeForTimestampWithLocalTimeZonColumn)); err != nil {
+		GetScanTypeForTimestampWithLocalTimeZonColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with local time zone decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyEsitz, MinTTCProtocolVersion, newTypeDecoder(DecodeTimestampWithLocalTimeZoneColumn,
-		GetScanTypeForTimestampWithLocalTimeZonColumn)); err != nil {
+		GetScanTypeForTimestampWithLocalTimeZonColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register timestamp with local time zone (extended) decoder", "error", err)
 	}
 
 	if err := DecoderRegistry.Register(DtyBin, MinTTCProtocolVersion, newTypeDecoder(DecodeBinaryColumn,
-		GetScanTypeForBinaryColumn)); err != nil {
+		GetScanTypeForBinaryColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary decoder", "error", err)
-	}
-	if err := DecoderRegistry.Register(DtyVec, MinTTCProtocolVersion, newTypeDecoder(DecodeVectorColumn, nil)); err != nil {
-		common.Odl.Warn("Failed to register VECTOR decoder", "error", err)
 	}
 
 	if err := DecoderRegistry.Register(DtyClob, MinTTCProtocolVersion,
-		newTypeDecoder(DecodeClob, GetScanTypeForCLOBColumn)); err != nil {
+		newTypeDecoder(DecodeClob, GetScanTypeForCLOBColumn, unwrapClobColumn)); err != nil {
 		common.Odl.Warn("Failed to register CLOB decoder", "error", err)
 	}
 
 	if err := DecoderRegistry.Register(DtyJSON, MinTTCProtocolVersion,
-		newTypeDecoder(DecodeJson, GetScanTypeForJsonColumn)); err != nil {
+		newTypeDecoder(DecodeJSON, GetScanTypeForJsonColumn, unwrapJSONColumn)); err != nil {
 		common.Odl.Warn("Failed to register JSON decoder", "error", err)
 	}
 
-	if err := DecoderRegistry.Register(DtyBlob, MinTTCProtocolVersion, newTypeDecoder(DecodeBlob, GetScanTypeForBLOBColumn)); err != nil {
+	if err := DecoderRegistry.Register(DtyBlob, MinTTCProtocolVersion, newTypeDecoder(DecodeBlob, GetScanTypeForBLOBColumn, unwrapBlobColumn)); err != nil {
 		common.Odl.Warn("Failed to register BLOB decoder", "error", err)
+	}
+	if err := DecoderRegistry.Register(DtyCur, 24, newTypeDecoder(
+		DecodeRefCursorColumn,
+		GetScanTypeForRefCursorColumn,
+		unwrapRefCursorColumn24,
+	)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR decoder version 24", "error", err)
+	}
+	if err := DecoderRegistry.Register(DtyCur, 20, newTypeDecoder(
+		DecodeRefCursorColumn,
+		GetScanTypeForRefCursorColumn,
+		unwrapRefCursorColumn20,
+	)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR decoder version 20", "error", err)
+	}
+	if err := DecoderRegistry.Register(DtyCur, 17, newTypeDecoder(
+		DecodeRefCursorColumn,
+		GetScanTypeForRefCursorColumn,
+		unwrapRefCursorColumn17,
+	)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR decoder version 17", "error", err)
+	}
+	if err := DecoderRegistry.Register(DtyCur, MinTTCProtocolVersion, newTypeDecoder(
+		DecodeRefCursorColumn,
+		GetScanTypeForRefCursorColumn,
+		unwrapRefCursorColumn12,
+	)); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR decoder version 12", "error", err)
 	}
 
 	// Register default bind OACs.
@@ -955,25 +1019,15 @@ func init() {
 	if err := BindOacRegistry.Register(reflect.TypeOf(float64(0)), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNumber() }, maxLength: converters.MaxNumberLength, scale: driverCommon.SB1(NumberScaleFloatSentinel)}); err != nil {
 		common.Odl.Warn("Failed to register float64 bind OAC", "error", err)
 	}
-	for _, vectorType := range []reflect.Type{
-		reflect.TypeOf(driverCommon.VectorFloat64(nil)),
-		reflect.TypeOf(driverCommon.VectorFloat32(nil)),
-		reflect.TypeOf(driverCommon.VectorInt8(nil)),
-		reflect.TypeOf(driverCommon.VectorBinary(nil)),
-	} {
-		if err := BindOacRegistry.Register(vectorType, MinTTCProtocolVersion, bindOacType{
-			bindOacFunc: func(maxLength driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(DtyVec, maxLength) },
-			maxLength:   converters.MaxVarcharLength,
-		}); err != nil {
-			common.Odl.Warn("Failed to register VECTOR bind OAC", "type", vectorType, "error", err)
-		}
-	}
 	if err := BindOacRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBytes, maxLength: 32767}); err != nil {
 		common.Odl.Warn("Failed to register []byte bind OAC", "error", err)
 	}
 
 	if err := BindOacRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNull() }, maxLength: converters.MaxNullLength}); err != nil {
 		common.Odl.Warn("Failed to register nil bind OAC", "error", err)
+	}
+	if err := BindOacRegistry.Register(reflect.TypeFor[datatype.Cursor](), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacRefCursor, maxLength: refCursorBindMaxLength}); err != nil {
+		common.Odl.Warn("Failed to register REF CURSOR rows bind OAC", "error", err)
 	}
 	if err := BindOacRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacTime() }, maxLength: converters.MaxTimeStampLength}); err != nil {
 		common.Odl.Warn("Failed to register time.Time bind OAC", "error", err)
@@ -989,12 +1043,8 @@ func init() {
 	}
 
 	// Register default define OAC makers.
-	// JSON currently uses a BLOB-based define OAC with max length 4000.
 	if err := DefineOacRegistry.Register(DtyJSON, MinTTCProtocolVersion, newTTIOacJSONDefine); err != nil {
 		common.Odl.Warn("Failed to register JSON define OAC", "error", err)
-	}
-	if err := DefineOacRegistry.Register(DtyVec, MinTTCProtocolVersion, newTTIOacVectorDefine); err != nil {
-		common.Odl.Warn("Failed to register VECTOR define OAC", "error", err)
 	}
 
 	if err := DefineOacRegistry.Register(DtyClob, MinTTCProtocolVersion, newTTIOacClobDefine); err != nil {
@@ -1036,5 +1086,6 @@ func init() {
 	_sqlKindMap["set"] = other
 	_sqlKindMap["explain"] = other
 	_sqlKindMap["flashback"] = other
+	_sqlKindMap[datatype.RefCursorQuery] = refcursor
 
 }

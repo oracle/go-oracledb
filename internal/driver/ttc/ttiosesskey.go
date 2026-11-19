@@ -155,49 +155,49 @@ func (sess *oSessionKey) MarshalTo(ctx context.Context, engine driverCommon.Mars
 		err = engine.MarshalPTR(ctx) // authusr*
 		if err != nil {
 			common.Odl.Warn("Error marshalling Osesskey authusr", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 		}
 		err := engine.MarshalSB4(ctx, driverCommon.SB4(len(sess.user))) // authusrl
 		if err != nil {
 			common.Odl.Warn("Error marshalling Osesskey authusrl", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 		}
 	} else {
 		err = engine.MarshalNullPTR(ctx) // authusr*
 		if err != nil {
 			common.Odl.Warn("Error marshalling Osesskey authusr", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 		}
 		err := engine.MarshalSB4(ctx, 0)
 		if err != nil {
 			common.Odl.Warn("Error marshalling Osesskey authusrl", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 		}
 	}
 	err = engine.MarshalUB4(ctx, driverCommon.UB4(sess.logonMode)) // authflg
 	if err != nil {
 		common.Odl.Warn("Error marshalling Osesskey authflg", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 	}
 	err = engine.MarshalPTR(ctx) // authivl
 	if err != nil {
 		common.Odl.Warn("Error marshalling Osesskey authivl", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 	}
 	err = engine.MarshalUB4(ctx, driverCommon.UB4(sess.keyValList.Len())) // authivln
 	if err != nil {
 		common.Odl.Warn("Error marshalling Osesskey authivln", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 	}
 	err = engine.MarshalPTR(ctx) // authovl
 	if err != nil {
 		common.Odl.Warn("Error marshalling Osesskey authovl", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 	}
 	err = engine.MarshalPTR(ctx) // authovln
 	if err != nil {
 		common.Odl.Warn("Error marshalling Osesskey authovln", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 	}
 
 	// --------pisdef finished. Now send data
@@ -206,14 +206,14 @@ func (sess *oSessionKey) MarshalTo(ctx context.Context, engine driverCommon.Mars
 		err = engine.MarshalChar(ctx, sess.user)
 		if err != nil {
 			common.Odl.Warn("Error marshalling Osesskey", "error", err)
-			return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+			return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 		}
 	}
 
 	err = sess.keyValList.MarshalTo(ctx, engine)
 	if err != nil {
 		common.Odl.Warn("Error marshalling Osesskey", "error", err)
-		return common.NewOracleError(oracleErrors.FailMarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailMarshal, err, "session Key")
 	}
 	return nil
 }
@@ -252,25 +252,25 @@ func (rpa *oSesskeyRPA) GetMsgCode() driverCommon.MessageType {
 	return TTIRPA
 }
 
-// UnMarshalFrom deserializes the oSesskeyRPA message from the provided marshaller engine.
-// It implements the common.UnMarshallable interface and reads the TTC protocol
+// UnmarshalFrom deserializes the oSesskeyRPA message from the provided marshaller engine.
+// It implements the common.Unmarshallable interface and reads the TTC protocol
 // data for the session key establishment reply, extracting authentication parameters.
-func (rpa *oSesskeyRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (rpa *oSesskeyRPA) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 
 	outNbPairs, err := engine.UnmarshalUB2(ctx)
 	if err != nil {
 		common.Odl.Debug("Error Unmarshalling Osesskey RPA nbParis", "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "session RPA")
 	}
 	if err = validateAuthKeyValueLength("pairs", driverCommon.SB4(outNbPairs), maxAuthKeyValuePairs); err != nil {
 		return err
 	}
 	keyValueList := newPreallocatedKeyValueList(int(outNbPairs))
 
-	err = keyValueList.UnMarshalFrom(ctx, engine)
+	err = keyValueList.UnmarshalFrom(ctx, engine)
 	if err != nil {
 		common.Odl.Debug("error unmarshalling Osesskey RPA key value list", "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "session RPA")
 	}
 
 	rpa.connectionValues = driverCommon.NewProperties[string]()
@@ -283,23 +283,23 @@ func (rpa *oSesskeyRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.M
 	// TODO change to variables
 	if !rpa.connectionValues.ContainsKey(authSesskey) {
 		common.Odl.Warn("Missing key from OSession Keys", "key", authSesskey)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "session RPA")
 	}
 	if !rpa.connectionValues.ContainsKey(authVFRData) {
 		common.Odl.Warn("Missing key from OSession Keys", "key", authVFRData)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "session RPA")
 	}
 	if !rpa.connectionValues.ContainsKey(authPDKDF2CSKSalt) {
 		common.Odl.Warn("Missing key from OSession Keys", "key", authPDKDF2CSKSalt)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "session RPA")
 	}
 	if !rpa.connectionValues.ContainsKey(authPbkdf2VgenCount) {
 		common.Odl.Warn("Missing key from OSession Keys", "key", authPbkdf2VgenCount)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "session RPA")
 	}
 	if !rpa.connectionValues.ContainsKey(authPbkdf2SderCount) {
 		common.Odl.Warn("Missing key from OSession Keys", "key", authPbkdf2SderCount)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, nil, "session RPA")
 	}
 
 	PBKDF2Vgen, _ := rpa.connectionValues.GetProperty(authPbkdf2VgenCount).(*driverCommon.KeyValue)
@@ -309,7 +309,7 @@ func (rpa *oSesskeyRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.M
 	}
 	if !isValidPBKDF2VgenCount(PBKDF2VgenCount) {
 		// minimumPBKDF2VgenCount is the minimum agreed count.
-		// If its less then most likely its a dirty server.
+		// If it's less than the minimum, it's most likely a dirty server.
 		common.Odl.Warn(fmt.Sprintf("PBKDF2VgenCount outside allowed range [%d, %d] received: [%d]",
 			minimumPBKDF2VgenCount,
 			maximumPBKDF2VgenCount,
@@ -321,7 +321,7 @@ func (rpa *oSesskeyRPA) UnMarshalFrom(ctx context.Context, engine driverCommon.M
 	PBKDF2SderCount, err := strconv.Atoi(driverCommon.B1ArrayToString(PBKDF2Sder.Value))
 	if err != nil {
 		common.Odl.Warn("Error unmarshalling Osesskey RPA, wrong value for authPbkdf2SderCount", "error", err)
-		return common.NewOracleError(oracleErrors.FailUnmarshal, err, nil)
+		return common.NewOracleError(oracleErrors.FailUnmarshal, err, "session RPA")
 	}
 
 	if !isValidPBKDF2SderCount(PBKDF2SderCount) {

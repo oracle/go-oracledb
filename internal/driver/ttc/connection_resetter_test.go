@@ -55,12 +55,11 @@ func TestConnectionResetter_Reset(t *testing.T) {
 	}
 
 	mockNs := &mockNetworkSession{
-		disconnectCalls: 0,
-		disconnectErr:   nil,
-		sleepDuration:   0,
-		cancelErr:       nil,
+		disconnectErr: nil,
+		sleepDuration: 0,
+		cancelErr:     nil,
 	}
-
+	mockNs.disconnectCalls.Store(0)
 	shelf := newShelf[common.MessageType]()
 	shelf.RegisterMessageFactory(mockFac)
 	shelf.RegisterMessageStreamer(mockStr)
@@ -83,7 +82,7 @@ func TestConnectionResetter_Reset(t *testing.T) {
 	}
 
 	if v := sessionCtx.GetSessionProperties().GetProperty("pasta"); v != nil {
-		t.Errorf("session porperties should have been resetted")
+		t.Errorf("session properties should have been reset")
 	}
 
 }

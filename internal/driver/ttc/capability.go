@@ -46,24 +46,6 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// assumedSrvRtCaps is Server's Run time capability for 23.4 which clients should assume.
-var assumedSrvRtCaps = []byte{
-	0x02, 0x01, 0x00, 0x01, 0x18, 0x00,
-	0x7f, 0x01, 0x00, 0x00, 0x00, 0x00,
-}
-
-// assumedSrvCtCaps is Server's Compile time capability for 23.4 which clients should assume
-var assumedSrvCtCaps = []byte{
-	0x06, 0x01, 0x01, 0x01, 0xef, 0x0f, 0x01,
-	ttcFldVsn231, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-	0x01, 0x7f, 0xff, 0x03, 0x10, 0x03, 0x03,
-	0x01, 0x01, 0xff, 0x01, 0xff, 0xff, 0x01,
-	0x0c, 0x01, 0x01, 0xff, 0x01, 0x06, 0x0c,
-	0xf6, 0x01, 0x7f, 0x05, 0x0f, 0xff, 0x0d,
-	0x0b, 0x00, 0x27, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00,
-}
-
 type capabilityMetadata struct {
 	index     uint8
 	value     byte
@@ -87,6 +69,8 @@ const (
 	kpccapCtbPrefetchRows          = "KPCCAP_CTB_PREFETCH_ROWS"
 	kpccapCtbImplicitPool          = "KPCCAP_CTB_IMPLICIT_POOL"
 	kpccapCtbOauthmsgOnerr         = "KPCCAP_CTB_OAUTHMSG_ONERR"
+	// kpccapCtbImplresPrefetch enables TTIIMPLRES row prefetch in the execute response.
+	kpccapCtbImplresPrefetch       = "KPCCAP_CTB_IMPLRES_PREFETCH"
 	kpccapCtScrollableCursor       = "KPCCAP_CT_SCROLLABLE_CURSOR"
 	kpccapCtTtcFldVsn              = "KPCCAP_CT_TTC_FLD_VSN"
 	kpccapCt82pisal8               = "KPCCAP_CT_82PISAL8"
@@ -210,9 +194,6 @@ type capability struct {
 	knownUsedRuntimeCapabilities     map[string]capabilityMetadata
 }
 
-var clientRuntimeCapabilites []byte
-var clientCompileTimeCapabilities []byte
-
 // newCapabilityMetadata Creates capabilities metadata
 func newCapabilityMetadata() *capability {
 	return &capability{
@@ -232,6 +213,7 @@ func newCapabilityMetadata() *capability {
 			kpccapCtbPrefetchRows:          {index: 5, value: 0x04, isFlag: true, isDefault: true},          // capability to support server directive row prefetch
 			kpccapCtbImplicitPool:          {index: 5, value: 0x08, isFlag: true, isDefault: true},          // capability to support DRCP implicit pooling
 			kpccapCtbOauthmsgOnerr:         {index: 5, value: 0x10, isFlag: true, isDefault: true},          // return message for OAUTH RPC even on error
+			kpccapCtbImplresPrefetch:       {index: 5, value: 0x20, isFlag: true, isDefault: true},          // receive implicit result set rows in the execution response
 			kpccapCtScrollableCursor:       {index: 6, value: 1, isFlag: false, isDefault: true},            // Not used default value
 			kpccapCtTtcFldVsn:              {index: 7, value: ttcFldVsnMax, isFlag: false, isDefault: true}, // Can the client and server understand the same anonymous fields: Latest supported version
 			kpccapCt82pisal8:               {index: 8, value: 1, isFlag: false, isDefault: true},            // Not used default value
@@ -342,8 +324,20 @@ func newCapabilityMetadata() *capability {
 // newCapability creates and initializes a new capability instance with default client capabilities.
 func newCapability() *capability {
 	capability := newCapabilityMetadata()
-	capability.runTimeCapabilities = assumedSrvRtCaps
-	capability.compileTimeCapabilities = assumedSrvCtCaps
+	capability.runTimeCapabilities = []byte{
+		0x02, 0x01, 0x00, 0x01, 0x18, 0x00,
+		0x7f, 0x01, 0x00, 0x00, 0x00, 0x00,
+	}
+	capability.compileTimeCapabilities = []byte{
+		0x06, 0x01, 0x01, 0x01, 0xef, 0x0f, 0x01,
+		ttcFldVsn231, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+		0x01, 0x7f, 0xff, 0x03, 0x10, 0x03, 0x03,
+		0x01, 0x01, 0xff, 0x01, 0xff, 0xff, 0x01,
+		0x0c, 0x01, 0x01, 0xff, 0x01, 0x06, 0x0c,
+		0xf6, 0x01, 0x7f, 0x05, 0x0f, 0xff, 0x0d,
+		0x0b, 0x00, 0x27, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00,
+	}
 	return capability
 }
 
@@ -367,8 +361,8 @@ func newDefaultCapability() *capability {
 	return capability
 }
 
-// UnMarshalFrom reads server capabilities from the marshal engine.
-func (cap *capability) UnMarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
+// UnmarshalFrom reads server capabilities from the marshal engine.
+func (cap *capability) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
 	// Read server's compile time capabilities
 	length, err := mar.UnmarshalUB1(ctx)
 	if err != nil {

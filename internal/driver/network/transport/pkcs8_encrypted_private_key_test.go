@@ -64,6 +64,8 @@ import (
 	"encoding/pem"
 	"strings"
 	"testing"
+
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 const testKey = "samplekey"
@@ -364,37 +366,42 @@ func TestParsePKCS8EncryptedPrivateKey_UnsupportedEncryptionAlgorithmOID(t *test
 func TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name string
-		edit func(*pbkdf2Params)
-		want string
+		name      string
+		edit      func(*pbkdf2Params)
+		wantCode  oracleErrors.ErrorCode
+		wantToken string
 	}{
 		{
 			name: "iteration count too high",
 			edit: func(kdf *pbkdf2Params) {
 				kdf.Iterations = maxPBKDF2Iterations + 1
 			},
-			want: "invalid PBKDF2 iteration count",
+			wantCode:  oracleErrors.InvalidNetworkValue,
+			wantToken: "PBKDF2 iteration count",
 		},
 		{
 			name: "salt too large",
 			edit: func(kdf *pbkdf2Params) {
 				kdf.Salt = make([]byte, maxPBKDF2SaltLength+1)
 			},
-			want: "PBKDF2 salt length",
+			wantCode:  oracleErrors.InvalidNetworkExpectedLength,
+			wantToken: "PBKDF2 salt",
 		},
 		{
 			name: "explicit key length does not match cipher",
 			edit: func(kdf *pbkdf2Params) {
 				kdf.KeyLength = 64
 			},
-			want: "does not match cipher key length",
+			wantCode:  oracleErrors.InvalidNetworkExpectedLength,
+			wantToken: "PBKDF2 key",
 		},
 		{
 			name: "explicit key length negative",
 			edit: func(kdf *pbkdf2Params) {
 				kdf.KeyLength = -1
 			},
-			want: "invalid PBKDF2 key length",
+			wantCode:  oracleErrors.InvalidNetworkLength,
+			wantToken: "PBKDF2 key",
 		},
 	}
 
@@ -405,8 +412,15 @@ func TestParsePKCS8EncryptedPrivateKey_RejectsUnsafePBKDF2Params(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			sqlErr, ok := err.(oracleErrors.SQLError)
+			if !ok {
+				t.Fatalf("expected Oracle error, got %T (%v)", err, err)
+			}
+			if got := sqlErr.ErrorCode(); got != string(tc.wantCode) {
+				t.Fatalf("got error code %s, want %s", got, tc.wantCode)
+			}
+			if !strings.Contains(err.Error(), tc.wantToken) {
+				t.Fatalf("expected error to identify %q, got %v", tc.wantToken, err)
 			}
 		})
 	}

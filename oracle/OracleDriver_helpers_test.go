@@ -42,6 +42,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"math/big"
@@ -73,6 +74,26 @@ func createObjectName(logicalName string) string {
 		logicalName,
 		randomNumber.Int64()+testObjectRandomMin,
 	)
+}
+
+// openTestConnectorWithConfig opens a test database connector using the provided test configuration
+func openTestConnectorWithConfig(cfg *TestConfig) (driver.Connector, error) {
+	if cfg == nil {
+		return nil, sql.ErrConnDone
+	}
+	dsn := cfg.GetConnectionString()
+	if v := strings.TrimSpace(cfg.ConnectionProperties.StrictNullValueHandling); v != "" {
+		separator := "?"
+		if strings.Contains(dsn, "?") {
+			separator = "&"
+		}
+		dsn = fmt.Sprintf("%s%voracle.go.DriverProperties.StrictNullValueHandling=%s", dsn, separator, v)
+	}
+	oc := NewOracleDriverConfig()
+	oc.ConnectDescriptor = dsn
+
+	return NewOracleConnector(oc)
+
 }
 
 // openTestDBWithConfig opens a test database connection using the provided test configuration

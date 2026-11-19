@@ -49,6 +49,8 @@ import (
 )
 
 const (
+	_minOracleDateYear         = -4712
+	_maxOracleDateYear         = 9999
 	_centuryBias               = 100
 	_yearBias                  = 100
 	_yearsPerCentury           = 100
@@ -73,10 +75,19 @@ const (
 // Oracle DATE is a 7-byte encoding:
 // [century+100, yearWithinCentury+100, month(1-12), day(1-31), hour+1, minute+1, second+1]
 
-// encodeDate encodes a time.Time as an Oracle 7-byte DATE payload.
+// EncodeDate encodes a time.Time as an Oracle 7-byte DATE payload and returns
+// ORA-01841 when its year is zero or outside Oracle's supported range.
 func EncodeDate(v driver.Value) (driverCommon.B1Array, error) {
 	t := v.(time.Time)
 	y := t.Year()
+	if y == 0 || y < _minOracleDateYear || y > _maxOracleDateYear {
+		common.Odl.Debug("EncodeDate: failed",
+			"reason", "Oracle DATE year is invalid",
+			"year", y,
+			"minYear", _minOracleDateYear,
+			"maxYear", _maxOracleDateYear)
+		return nil, common.NewOracleError(oracleErrors.InvalidDateYear, nil)
+	}
 	cent := byte(y/_yearsPerCentury + _centuryBias)
 	yr := byte(y%_yearsPerCentury + _yearBias)
 	mon := byte(t.Month())               // 1..12
@@ -100,9 +111,6 @@ func DecodeDate(b driverCommon.B1Array) (time.Time, error) {
 	hour := int(b[4]) - _hourBias
 	minute := int(b[5]) - _minuteBias
 	second := int(b[6]) - _secondBias
-	if year <= 0 {
-		return time.Time{}, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, "DATE", "Decode", driverCommon.ReasonInvalidValue, year)
-	}
 	// Build time in local zone; adjust as needed by callers.
 	return time.Date(year, month, day, hour, minute, second, 0, time.Local), nil
 }
@@ -114,7 +122,10 @@ func DecodeDate(b driverCommon.B1Array) (time.Time, error) {
 func EncodeTimestamp(v driver.Value) (driverCommon.B1Array, error) {
 	// First 7 same as DATE
 	t := v.(time.Time)
-	date, _ := EncodeDate(t)
+	date, err := EncodeDate(t)
+	if err != nil {
+		return nil, err
+	}
 	ns := uint32(t.Nanosecond())
 	// Fractional seconds: 4 bytes big-endian
 	fs := []byte{
@@ -178,7 +189,10 @@ func DecodeTimestamp(b driverCommon.B1Array) (time.Time, error) {
 func EncodeTimestampWithTimeZone(v driver.Value) (driverCommon.B1Array, error) {
 	// Base timestamp (DATE + fractional seconds)
 	t := v.(time.Time)
-	base, _ := EncodeTimestamp(t) // expected 11 bytes
+	base, err := EncodeTimestamp(t) // expected 11 bytes
+	if err != nil {
+		return nil, err
+	}
 	if len(base) != _timestampLength {
 		// Normalize any non-canonical lengths (e.g., future protocol variants) by right-aligning
 		// fractional seconds within the 4-byte field.

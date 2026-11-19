@@ -415,7 +415,7 @@ func TestParseEzConnect_EmptyURL(t *testing.T) {
 // TestParseEzConnect_SecurityParams tests TCPS with security parameters
 func TestParseEzConnect_SecurityParams(t *testing.T) {
 	t.Parallel()
-	convResult, err := parseEzConnect("tcps://host:2484/mydb?ssl_server_dn_match=yes&wallet_location=/wallet")
+	convResult, err := parseEzConnect("tcps://host:2484/mydb?ssl_server_dn_match=yes&wallet_location=/wallet&token_auth=OAUTH&token_location=/token/location")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -429,6 +429,24 @@ func TestParseEzConnect_SecurityParams(t *testing.T) {
 	}
 	if !strings.Contains(result, "(SSL_SERVER_DN_MATCH=yes)") {
 		t.Errorf("expected SSL_SERVER_DN_MATCH in SECURITY, got %s", result)
+	}
+	if !strings.Contains(result, "(TOKEN_AUTH=OAUTH)") {
+		t.Errorf("expected TOKEN_AUTH in SECURITY, got %s", result)
+	}
+	if !strings.Contains(result, "(TOKEN_LOCATION=/token/location)") {
+		t.Errorf("expected TOKEN_LOCATION in SECURITY, got %s", result)
+	}
+
+	root, err := Parse(result)
+	if err != nil {
+		t.Fatalf("could not parse generated descriptor: %v", err)
+	}
+	context, err := ExtractConnectionContext(root)
+	if err != nil {
+		t.Fatalf("could not extract generated descriptor: %v", err)
+	}
+	if context.Description.Security.TokenAuth != "OAUTH" || context.Description.Security.TokenLocation != "/token/location" {
+		t.Errorf("unexpected token security values: %+v", context.Description.Security)
 	}
 }
 
@@ -860,6 +878,41 @@ func TestParseEzConnect_HTTPSProxyWithoutPort(t *testing.T) {
 	}
 	if strings.Contains(convResult.tns, "(HTTPS_PROXY_PORT=") {
 		t.Errorf("did not expect HTTPS_PROXY_PORT, got %s", convResult.tns)
+	}
+}
+
+// TestParseEzConnect_HTTPSProxyPortBounds verifies that proxy port zero is
+// accepted as unspecified/default, while values above the TCP port limit fail
+// during parsing.
+func TestParseEzConnect_HTTPSProxyPortBounds(t *testing.T) {
+	t.Parallel()
+
+	for _, port := range []string{"0", "65535"} {
+		convResult, err := parseEzConnect("host:1521/mydb?https_proxy=proxy.example.com&https_proxy_port=" + port)
+		if err == nil {
+			var root *Node
+			root, err = Parse(convResult.tns)
+			if err == nil {
+				_, err = ExtractConnectionContext(root)
+			}
+		}
+		if err != nil {
+			t.Errorf("expected proxy port %s to be accepted, got %v", port, err)
+		}
+	}
+
+	for _, port := range []string{"-1", "65536"} {
+		convResult, err := parseEzConnect("host:1521/mydb?https_proxy=proxy.example.com&https_proxy_port=" + port)
+		if err == nil {
+			var root *Node
+			root, err = Parse(convResult.tns)
+			if err == nil {
+				_, err = ExtractConnectionContext(root)
+			}
+		}
+		if err == nil {
+			t.Errorf("expected proxy port %s to be rejected", port)
+		}
 	}
 }
 

@@ -36,23 +36,45 @@
 ** SOFTWARE.
  */
 
-package session
+package json
 
-import "errors"
+import drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 
-var (
-	ErrConnectionIncomplete  = errors.New("connection incomplete")
-	ErrBufferEmpty           = errors.New("provided buffer is empty")
-	ErrBufferOverflow        = errors.New("receive buffer exceeds maximum size")
-	ErrProxyNotImplemented   = errors.New("HTTPS proxy support is not implemented")
-	ErrPacketTooShort        = errors.New("packet too short")
-	ErrInvalidPacket         = errors.New("invalid packet")          // Added
-	ErrConnectionInband      = errors.New("inband connection error") // Added
-	ErrUnsupportedPacketType = errors.New("unsupported packet type")
-	ErrConnectionClosed      = errors.New("connection closed")
-	ErrNoActiveConnection    = errors.New("cannot flush: no active connection")
-	ErrFlushFailed           = errors.New("flush failed")
-	ErrUnmarshalFailed       = errors.New("failed to unmarshal packet")
-	ErrTLSInitFailure        = errors.New("TLS initialization failure") // Moved from ntTcp.go
-	// ErrBreakpacket             = errors.New("Break-packet received")
+// NumberMode selects the Go representation of materialized JSON numbers.
+type NumberMode = drvCommon.JSONNumberMode
+
+const (
+	// NumberDefault returns int32 or int64 for signed integer values, json.Number
+	// for generic Oracle NUMBER and decimal values, and float64 for binary floats.
+	NumberDefault = drvCommon.JSONNumberDefault
+	// NumberAsJSONNumber returns finite JSON numbers as encoding/json.Number.
+	// Special binary floating-point values (NaN and ±Inf) remain float64.
+	NumberAsJSONNumber = drvCommon.JSONNumberAsJSONNumber
+	// NumberAsFloat64 converts JSON numbers to float64.
+	NumberAsFloat64 = drvCommon.JSONNumberAsFloat64
 )
+
+// TimeEncoding selects the OSON scalar used to encode time.Time values.
+type TimeEncoding = drvCommon.JSONTimeEncoding
+
+const (
+	// TimeAsTimestamp preserves calendar fields and nanoseconds without a time zone.
+	TimeAsTimestamp = drvCommon.JSONTimeAsTimestamp
+	// TimeAsTimestampTZ preserves calendar fields, nanoseconds, and the numeric UTC offset.
+	TimeAsTimestampTZ = drvCommon.JSONTimeAsTimestampTZ
+	// TimeAsDate preserves calendar fields through whole seconds without a time zone.
+	TimeAsDate = drvCommon.JSONTimeAsDate
+)
+
+// Options configures JSON construction and materialization. The zero value
+// selects [NumberDefault] and [TimeAsTimestamp].
+//
+// A [JSON] retains its options through [JSON.Scan] and propagates them to lazy
+// views returned by [JSON.AsJSONObject], [JSON.AsJSONArray], and
+// [JSON.AsJSONScalar].
+type Options struct {
+	// NumberMode selects the Go representation of materialized JSON numbers.
+	NumberMode NumberMode
+	// TimeEncoding selects the OSON scalar used to encode time.Time values.
+	TimeEncoding TimeEncoding
+}

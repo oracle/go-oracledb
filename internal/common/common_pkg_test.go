@@ -39,77 +39,74 @@
 package common
 
 import (
-	"flag"
+	"fmt"
 	"os"
-	"strings"
 	"testing"
+
+	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
-// TestCategory category of tests to be un
-var TestCategory string
-
 func TestMain(m *testing.M) {
-	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
+	err := oracleTest.InitConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
+		os.Exit(1)
+	}
+	TestEnvironement = oracleTest.TestEnvironement
+	TestingConfig = oracleTest.TestingConfig
+	DefaultTestConfig = oracleTest.DefaultTestConfig
 	os.Exit(m.Run())
 }
 
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{
-	{"TestError3113default", "unitary", false, TestError3113default},
-	{"TestErrorUnknownCode", "unitary", false, TestErrorUnknownCode},
-	{"TestErrorBasic3113", "unitary", false, TestErrorBasic3113},
-	{"TestErrorBasic3113Fr", "unitary", false, TestErrorBasic3113Fr},
-	{"TestError3113", "unitary", false, TestError3113},
-	{"TestError3113Fr", "unitary", false, TestError3113Fr},
-	{"TestError3113pt", "unitary", false, TestError3113pt},
-	{"TestError3113NoLanguage", "unitary", false, TestError3113NoLanguage},
-	{"TestErrorUnwrap", "unitary", false, TestErrorUnwrap},
-	{"TestError3113InvalidLanguage", "unitary", false, TestError3113InvalidLanguage},
-	{"TestNewOERMessageError", "unitary", false, TestNewOERMessageError},
-	{"TestConstants_GetLogonModeFromString", "unitary", false, TestConstants_GetLogonModeFromString},
-	{"TestConstants_LogonModeEnabled", "unitary", false, TestConstants_LogonModeEnabled},
-	{"TestConstants_LogonModeString", "unitary", false, TestConstants_LogonModeString},
-	{"TestProviderRegistryGetProviderReturnsFirstMatch", "unitary", false, TestProviderRegistryGetProviderReturnsFirstMatch},
-	{"TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded", "unitary", false, TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded},
-	{"TestProviderRegistryGetProviderReturnsRequestedInterface", "unitary", false, TestProviderRegistryGetProviderReturnsRequestedInterface},
-	{"TestProviderRegistryGetProviderReturnsErrorWhenUninitialized", "unitary", false, TestProviderRegistryGetProviderReturnsErrorWhenUninitialized},
+func TestCategoryExecutor(t *testing.T) {
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
-func TestCategoryExecutor(t *testing.T) {
-	var regularCases, exclusiveCases []struct {
-		name       string
-		categories string
-		exclusive  bool
-		f          func(t *testing.T)
-	}
+type Version = oracleTest.Version
+type TestConfig = oracleTest.TestConfig
+type TestingEnvironment = oracleTest.TestingEnvironment
 
-	for _, c := range testCases {
-		cats := strings.Split(c.categories, ",")
-		for _, p := range cats {
-			if strings.Compare(strings.TrimSpace(p), TestCategory) == 0 {
-				if c.exclusive {
-					exclusiveCases = append(exclusiveCases, c)
-				} else {
-					regularCases = append(regularCases, c)
-				}
-				break
-			}
-		}
-	}
+var DefaultTestConfig *TestConfig
+var TestEnvironement TestingEnvironment
+var TestingConfig *TestConfig
 
-	if len(regularCases) > 0 {
-		t.Run("parallel", func(t *testing.T) {
-			t.Parallel()
-			for _, c := range regularCases {
-				t.Run(c.name, c.f)
-			}
-		})
-	}
-	for _, c := range exclusiveCases {
-		t.Run(c.name, c.f)
-	}
+var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestError3113default", Categories: "unitary", Exclusive: false, Fn: TestError3113default},
+	{Name: "TestErrorUnknownCode", Categories: "unitary", Exclusive: false, Fn: TestErrorUnknownCode},
+	{Name: "TestErrorBasic3113", Categories: "unitary", Exclusive: false, Fn: TestErrorBasic3113},
+	{Name: "TestErrorBasic3113Fr", Categories: "unitary", Exclusive: false, Fn: TestErrorBasic3113Fr},
+	{Name: "TestError3113", Categories: "unitary", Exclusive: false, Fn: TestError3113},
+	{Name: "TestError3113Fr", Categories: "unitary", Exclusive: false, Fn: TestError3113Fr},
+	{Name: "TestError3113NoLanguage", Categories: "unitary", Exclusive: false, Fn: TestError3113NoLanguage},
+	{Name: "TestErrorUnwrap", Categories: "unitary", Exclusive: false, Fn: TestErrorUnwrap},
+	{Name: "TestError3113InvalidLanguage", Categories: "unitary", Exclusive: false, Fn: TestError3113InvalidLanguage},
+	{Name: "TestNewOERMessageError", Categories: "unitary", Exclusive: false, Fn: TestNewOERMessageError},
+	{Name: "TestConstants_GetLogonModeFromString", Categories: "unitary", Exclusive: false, Fn: TestConstants_GetLogonModeFromString},
+	{Name: "TestConstants_LogonModeEnabled", Categories: "unitary", Exclusive: false, Fn: TestConstants_LogonModeEnabled},
+	{Name: "TestConstants_LogonModeString", Categories: "unitary", Exclusive: false, Fn: TestConstants_LogonModeString},
+	{Name: "TestProviderRegistryGetProviderReturnsFirstMatch", Categories: "unitary", Exclusive: false, Fn: TestProviderRegistryGetProviderReturnsFirstMatch},
+	{Name: "TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded", Categories: "unitary", Exclusive: false, Fn: TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded},
+	{Name: "TestProviderRegistryGetProviderReturnsRequestedInterface", Categories: "unitary", Exclusive: false, Fn: TestProviderRegistryGetProviderReturnsRequestedInterface},
+	{Name: "TestProviderRegistryGetProviderReturnsErrorWhenUninitialized", Categories: "unitary", Exclusive: false, Fn: TestProviderRegistryGetProviderReturnsErrorWhenUninitialized},
+	{Name: "TestTTLCacheStoresStringPointerValue", Categories: "unitary", Exclusive: false, Fn: TestTTLCacheStoresStringPointerValue},
+	{Name: "TestTTLCacheStoresNilValue", Categories: "unitary", Exclusive: false, Fn: TestTTLCacheStoresNilValue},
+	{Name: "TestTTLCacheNotFoundEntry", Categories: "unitary", Exclusive: false, Fn: TestTTLCacheNotFoundEntry},
+	{Name: "TestTTLCacheClearEntries", Categories: "unitary", Exclusive: false, Fn: TestTTLCacheClearEntries},
+	{Name: "TestTTLCacheOverwriteEntry", Categories: "unitary", Exclusive: false, Fn: TestTTLCacheOverwriteEntry},
+	{Name: "TestTTLCacheOverMaxSize", Categories: "unitary", Exclusive: false, Fn: TestTTLCacheOverMaxSize},
+	{Name: "TestLRUCacheStoresStringPointerValue", Categories: "unitary", Exclusive: false, Fn: TestLRUCacheStoresStringPointerValue},
+	{Name: "TestLRUCacheStoresNilValue", Categories: "unitary", Exclusive: false, Fn: TestLRUCacheStoresNilValue},
+	{Name: "TestLRUCacheOverMaxSize", Categories: "unitary", Exclusive: false, Fn: TestLRUCacheOverMaxSize},
+	{Name: "TestLRUCacheGetUpdatesRecency", Categories: "unitary", Exclusive: false, Fn: TestLRUCacheGetUpdatesRecency},
+	{Name: "TestTTLCacheExpiresEntriesIndependently", Categories: "unitary", Exclusive: false, Fn: TestTTLCacheExpiresEntriesIndependently},
+	{Name: "TestTTLCacheRemovesAllExpiredEntries", Categories: "unitary", Exclusive: false, Fn: TestTTLCacheRemovesAllExpiredEntries},
+	{Name: "TestProviderRegistrySupportsConcreteGenericType", Categories: "unitary", Exclusive: false, Fn: TestProviderRegistrySupportsConcreteGenericType},
+	{Name: "TestRegistryGetAllReturnsSnapshotInRegistrationOrder", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetAllReturnsSnapshotInRegistrationOrder},
+	{Name: "TestRegistryGetAllReturnsEmptySnapshotWhenUninitialized", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetAllReturnsEmptySnapshotWhenUninitialized},
+	{Name: "TestRegistryGetSkipsNilItems", Categories: "unitary", Exclusive: false, Fn: TestRegistryGetSkipsNilItems},
+	{Name: "TestPacketDumpHandlerFormatsPacket", Categories: "unitary", Exclusive: false, Fn: TestPacketDumpHandlerFormatsPacket},
+	{Name: "TestOracleLoggerWithReturnsLoggerWithAttrs", Categories: "unitary", Exclusive: false, Fn: TestOracleLoggerWithReturnsLoggerWithAttrs},
+	{Name: "TestOdlTReturnsTaggedLogger", Categories: "unitary", Exclusive: false, Fn: TestOdlTReturnsTaggedLogger},
+	{Name: "TestOracleLoggerFineAndFinestLogCustomLevels", Categories: "unitary", Exclusive: false, Fn: TestOracleLoggerFineAndFinestLogCustomLevels},
+	{Name: "TestParseOracleLogLevel", Categories: "unitary", Exclusive: false, Fn: TestParseOracleLogLevel},
 }

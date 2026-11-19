@@ -293,7 +293,7 @@ func TestProperties_Snapshot(t *testing.T) {
 }
 
 // TestProperties_SetProperty checks SetProperty API
-// Expectation: the value passed to SetProperty overwrite the value set at properties initialization
+// Expectation: the value passed to SetProperty overwrites the value set during property initialization.
 func TestProperties_SetProperty(t *testing.T) {
 	t.Parallel()
 	var tmplMap map[string]any
@@ -311,7 +311,7 @@ func TestProperties_SetProperty(t *testing.T) {
 }
 
 // TestProperties_String checks String() implementations
-// Expectation: returned string match expected format
+// Expectation: the returned string matches the expected format.
 func TestProperties_String(t *testing.T) {
 	t.Parallel()
 	type fields struct {
@@ -371,8 +371,8 @@ func TestProperties_String(t *testing.T) {
 
 // TestNewPropertiesWithSource verifies new Properties creation with template.
 // Expectation:
-//   - Successfully create the properties
-//   - can get back a value by key form template
+//   - the properties are created successfully
+//   - a value can be retrieved from the template by key
 func TestNewPropertiesWithSource(t *testing.T) {
 	t.Parallel()
 	var tmplMap map[string]any

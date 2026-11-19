@@ -46,6 +46,7 @@ import (
 	"sync"
 	"testing"
 
+	oracleCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/session"
 )
@@ -62,6 +63,34 @@ func TestNewOAuth_Success(t *testing.T) {
 	}
 	if oAuth.GetFuncCode() != oauth {
 		t.Errorf("Expected function code oauth, got %v", oAuth.GetFuncCode())
+	}
+}
+
+// TestOAuth_prepareForTokenOAUTH verifies that token-based OAuth sets the
+// token logon mode and adds the required session initialization values.
+func TestOAuth_prepareForTokenOAUTH(t *testing.T) {
+	t.Parallel()
+	oauth := NewOAuth().(*oAuth)
+	oauth.setLogonMode(oracleCommon.KpzLogonToken.Value())
+	oauth.prepareForTokenOAUTH(common.StringToB1Array("token-user"))
+
+	if oauth.logonMode != KpzLogon|oracleCommon.KpzLogonToken.Value() {
+		t.Fatalf("logonMode = %d, want %d", oauth.logonMode, KpzLogon|oracleCommon.KpzLogonToken.Value())
+	}
+	if oauth.keyValList == nil || oauth.keyValList.Len() < 3 {
+		t.Fatalf("token OAUTH should include session, alter-session, and driver identity values")
+	}
+	for _, key := range []string{authConnectString, authAlterSession, authSessionClientDrvnm} {
+		found := false
+		for e := oauth.keyValList.Front(); e != nil; e = e.Next() {
+			if common.B1ArrayToString(e.Value.(*common.KeyValue).Key) == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("token OAUTH missing %s key", key)
+		}
 	}
 }
 
@@ -207,9 +236,9 @@ func TestOAuth_MarshalTo_WithOSESSKEYRPA_Success(t *testing.T) {
 	rpaBuf := NewArrayDataBuffer(8192)
 	_ = rpaBuf.WriteBytesWithContext(context.Background(), payload)
 	rpaEngine := NewMarshalEngine(rpaBuf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
-	unmarshallable, _ := rpa.(common.UnMarshallable)
-	if err := unmarshallable.UnMarshalFrom(context.Background(), rpaEngine); err != nil {
-		t.Fatalf("UnMarshalFrom oSesskeyRPA failed: %v", err)
+	unmarshallable, _ := rpa.(common.Unmarshallable)
+	if err := unmarshallable.UnmarshalFrom(context.Background(), rpaEngine); err != nil {
+		t.Fatalf("UnmarshalFrom oSesskeyRPA failed: %v", err)
 	}
 
 	// 2) Build oAuth and set fields as in _doOAuth (o5logon_authenticator._doOAuth)
@@ -740,7 +769,7 @@ func TestOAuthRPA_NewOAuthRPA(t *testing.T) {
 	}
 }
 
-func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
+func TestOAuthRPA_UnmarshalFrom_Golden(t *testing.T) {
 	t.Parallel()
 	payload := makeOauthRPAPayload()
 	if len(payload) == 0 {
@@ -752,13 +781,13 @@ func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
 	_ = buf.WriteBytesWithContext(context.Background(), payload)
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	unmarshallable, _ := rpa.(common.UnMarshallable)
-	if err := unmarshallable.UnMarshalFrom(context.Background(), engine); err != nil {
-		t.Fatalf("UnMarshalFrom failed: %v", err)
+	unmarshallable, _ := rpa.(common.Unmarshallable)
+	if err := unmarshallable.UnmarshalFrom(context.Background(), engine); err != nil {
+		t.Fatalf("UnmarshalFrom failed: %v", err)
 	}
 
 	cv := rpa.(*OAuthRPA).connectionValues
-	// Required by UnMarshalFrom; presence indicates success parsing
+	// Required by UnmarshalFrom; presence indicates success parsing
 	if !cv.ContainsKey(authDbMountID) {
 		t.Errorf("missing key %s", authDbMountID)
 	}
@@ -777,7 +806,7 @@ func TestOAuthRPA_UnMarshalFrom_Golden(t *testing.T) {
 	}
 }
 
-func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
+func TestOAuthRPAUnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name         string
@@ -790,8 +819,8 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 		{"Error Reading Number of Pairs (ReadByte)", []byte{0x00}, 1, 0, "simulated read error"},
 		{"Error Reading Key Value List (ReadBytes)", makeOauthRPAPayload(), 0, 2, "simulated read error"},
 		// Logical failures based on content
-		{"Missing AUTH_DB_MOUNT_ID", []byte{0x00}, 0, 0, "Failed to unmarshal message"},
-		{"Invalid AUTH_DB_MOUNT_ID (parse error)", nil, 0, 0, "Failed to unmarshal message"},
+		{"Missing AUTH_DB_MOUNT_ID", []byte{0x00}, 0, 0, "failed to unmarshal message"},
+		{"Invalid AUTH_DB_MOUNT_ID (parse error)", nil, 0, 0, "failed to unmarshal message"},
 		{"NOMOUNT AUTH_DB_MOUNT_ID == 0", nil, 0, 0, "NOMOUNT"},
 	}
 
@@ -836,8 +865,8 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 			}
 			session.PrintPacket(payload, 0, len(payload))
 			rpa := NewOAuthRPA()
-			unmarshallable, _ := rpa.(common.UnMarshallable)
-			err := unmarshallable.UnMarshalFrom(context.Background(), engine)
+			unmarshallable, _ := rpa.(common.Unmarshallable)
+			err := unmarshallable.UnmarshalFrom(context.Background(), engine)
 
 			if err == nil {
 				t.Fatalf("expected error, got nil")
@@ -849,8 +878,8 @@ func TestOAuthRPAUnMarshalFrom_Fail(t *testing.T) {
 	}
 }
 
-// TestOAuthRPA_UnMarshalFrom_Fail tests failed unmarshaling.
-func TestOAuthRPA_UnMarshalFrom_Fail(t *testing.T) {
+// TestOAuthRPA_UnmarshalFrom_Fail tests failed unmarshaling.
+func TestOAuthRPA_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	rpa := NewOAuthRPA().(*OAuthRPA)
 	buf := NewArrayDataBuffer(1024)
@@ -861,14 +890,14 @@ func TestOAuthRPA_UnMarshalFrom_Fail(t *testing.T) {
 
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	err := rpa.UnMarshalFrom(context.Background(), engine)
+	err := rpa.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
 		t.Error("Expected Error")
 	}
 }
 
-// TestOAuthRPA_UnMarshalFrom_Failure tests unmarshaling failure.
-func TestOAuthRPA_UnMarshalFrom_Failure(t *testing.T) {
+// TestOAuthRPA_UnmarshalFrom_Failure tests unmarshaling failure.
+func TestOAuthRPA_UnmarshalFrom_Failure(t *testing.T) {
 	t.Parallel()
 	rpa := NewOAuthRPA().(*OAuthRPA)
 	buf := NewArrayDataBuffer(10)
@@ -879,7 +908,7 @@ func TestOAuthRPA_UnMarshalFrom_Failure(t *testing.T) {
 
 	engine := NewMarshalEngine(buf, common.BIG_ENDIAN, [5]byte{Native, Universal, Universal, Universal, Universal})
 
-	err := rpa.UnMarshalFrom(context.Background(), engine)
+	err := rpa.UnmarshalFrom(context.Background(), engine)
 	if err == nil {
 		t.Error("Expected error for invalid data")
 	}

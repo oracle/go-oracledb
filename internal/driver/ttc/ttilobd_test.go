@@ -50,9 +50,9 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestTTILobd_UnMarshalFrom_Fail exercises the defensive paths of UnMarshalFrom
+// TestTTILobd_UnmarshalFrom_Fail exercises the defensive paths of UnmarshalFrom
 // to ensure malformed or inconsistent payloads are rejected with an error.
-func TestTTILobd_UnMarshalFrom_Fail(t *testing.T) {
+func TestTTILobd_UnmarshalFrom_Fail(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
 		name           string
@@ -103,7 +103,7 @@ func TestTTILobd_UnMarshalFrom_Fail(t *testing.T) {
 				t.Fatalf("setupFunc returned error: %v", err)
 			}
 
-			err = msg.UnMarshalFrom(tc.ctx, mar)
+			err = msg.UnmarshalFrom(tc.ctx, mar)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}
@@ -117,9 +117,9 @@ func TestTTILobd_UnMarshalFrom_Fail(t *testing.T) {
 	}
 }
 
-// TestTTILobd_UnMarshalFrom_Success validates that a TTILOBD message can be
+// TestTTILobd_UnmarshalFrom_Success validates that a TTILOBD message can be
 // unmarshalled into the output buffer producing the expected UTF-16 text.
-func TestTTILobd_UnMarshalFrom_Success(t *testing.T) {
+func TestTTILobd_UnmarshalFrom_Success(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	buf, err := ExtractBytesFromDump(lobdUnmarshalSuccessPayload)
@@ -132,8 +132,8 @@ func TestTTILobd_UnMarshalFrom_Success(t *testing.T) {
 	output := make(common.B1Array, 9000000)
 	msg.setBuffer(output)
 
-	if err := msg.UnMarshalFrom(ctx, mar); err != nil {
-		t.Fatalf("UnMarshalFrom returned error: %v", err)
+	if err := msg.UnmarshalFrom(ctx, mar); err != nil {
+		t.Fatalf("UnmarshalFrom returned error: %v", err)
 	}
 
 	expectedText := "is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. This is a large text example. "

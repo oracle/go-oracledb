@@ -47,6 +47,34 @@ can be accepted.
 1. We will assign the pull request to 2-3 people for review before it is merged.
 
 ## Coding style
+
+### Documentation
+
+All methods must be documented. THe documentation block should contain information about inputs and outputs
+including error case. 
+
+ex 
+```go
+// Foo multiplies a positive number given as parameter.
+// Parameters:
+//
+//	number : the number to be computed
+//
+// Returns:
+//
+//	. the multiplied number
+//	. En error if givne number is equal or less than zero
+func Foo(number int) (int, error) {
+  if (number <= 0) {
+    return 0, return NewOracleError(...)
+  }
+	return number * 2, nil
+}
+```
+
+All testing methods should be documented with information about test purpose and expectations. 
+
+
 ### Code format
 
 The code must be formatted the same way. Code format is one of the validation steps of pipelines run beside merge-request
@@ -78,6 +106,54 @@ or:
  ```
  return NewOracleError(ConnectionLost, err, nil)
  ```
+
+### Logging.
+
+A common logger _Odl_ is available in common package.
+
+```go
+import "github.com/oracle/go-oracledb/v26/internal/common"
+
+common.Odl.Info("Hello Go world")
+```
+This logger is customize by the use of logging configuration.
+
+
+Custime level are defined.
+
+```go
+	OlFinest
+	OlFine
+	OlDebug
+	OlInfo
+	OlWarning
+	OlError
+```
+
+
+In order to trace more easily connections'behavior you should use the OdlT method.
+This method returns a logger based on the default one that host an ID attribute
+
+```go
+import "github.com/oracle/go-oracledb/v26/internal/common"
+
+common.OdlT("1234").Info("Hello Go world")
+// outpout will be msg="Hello Go world" ID="1234"
+```
+
+Each time it make sens to add a namespace to a given activity within logging, It is recommended
+to use attributes like 
+
+```go
+import "github.com/oracle/go-oracledb/v26/internal/common"
+
+common.OdlT("1234").With("request","SELECT").Info("Hello Go world")
+// when connection ID is not available 
+common.Odl.With("request","SELECT").Info("Hello Go world")
+```
+For long live objects, it is recommended to keep a reference to the logger object.
+
+
 ## Testing
 
 ### Configuration
@@ -95,7 +171,7 @@ The JSON file has the following format:
   {
     "config_name": "configuration_name",
     "enabled": true, // if false linked tests will be skipped
-    "database_version": 26, // database version
+    "database_version": 26.0.0, // database version
     "driver": {
       "name": "oracledb"
     },
@@ -128,14 +204,16 @@ Categories are free-form strings like unitary, functional, performance, and robu
 Test suites are defined in these files as follows:
 
 ```go
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{
+import oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
+
+// populates test categories
+var testCases = []oracleTest.CategorizedTestCase{ 
 	{"test foo", "functional", false, TestFoo},
 	{"test bar", "unitary", false, TestBar},
+}
+// define a test suite executor as shown below
+func TestCategoryExecutor(t *testing.T) {
+   oracleTest.RunCategoryExecutor(t, oracleTest.TestCategory, testCases)
 }
 ```
 In the example above, two tests are registered: one unitary test named "test bar" that executes the TestBar test method
@@ -143,46 +221,6 @@ and one functional test named "test foo" that executes TestFoo. The exclusive fi
 under the parallel category executor. Tests that can be run within parallel execution (most of them should) must call
 t.Parallel() at the beginning of their execution.
 
-All <package name>_pkg_test.go files must also define a test suite executor as shown below:
-
-```go
-func TestCategoryExecutor(t *testing.T) {
-  var regularCases, exclusiveCases []struct {
-    name       string
-    categories string
-    exclusive  bool
-    f          func(t *testing.T)
-  }
-
-  for _, c := range testCases {
-   cats := strings.Split(c.categories, ",")
-   for _, p := range cats {
-     if strings.Compare(strings.TrimSpace(p), TestCategory) == 0 {
-      if c.exclusive {
-        exclusiveCases = append(exclusiveCases, c)
-      } else {
-        regularCases = append(regularCases, c)
-      }
-      break
-     }
-   }
- }
-
-  if len(regularCases) > 0 {
-    t.Run("parallel", func(t *testing.T) {
-      t.Parallel()
-      for _, c := range regularCases {
-        t.Run(c.name, c.f)
-      }
-    })
-  }
-
-  for _, c := range exclusiveCases {
-    t.Run(c.name, c.f)
-  }
-}
-
-```
 #### Tests coding rules
 - Tests should remain as simple as possible and should test only one thing.
 - Tests must include a documentation block that describes the test logic and expected results.

@@ -39,101 +39,78 @@
 package common
 
 import (
-	"flag"
+	"fmt"
 	"os"
-	"strings"
 	"testing"
+
+	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
 
-// TestCategory category of tests to be un
-var TestCategory string
-
 func TestMain(m *testing.M) {
-	flag.StringVar(&TestCategory, "test.category", "", "testing category, can be unitary, functional, performance, robustness")
+	err := oracleTest.InitConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "InitConfig failed: %v\n", err)
+		os.Exit(1)
+	}
+	TestEnvironement = oracleTest.TestEnvironement
+	TestingConfig = oracleTest.TestingConfig
+	DefaultTestConfig = oracleTest.DefaultTestConfig
 	os.Exit(m.Run())
 }
 
-var testCases = []struct {
-	name       string
-	categories string
-	exclusive  bool
-	f          func(t *testing.T)
-}{
-	{"TestNewBitSet_SizeAlignment", "unitary", false, TestNewBitSet_SizeAlignment},
-	{"TestGet", "unitary", false, TestGet},
-	{"TestSetBytes", "unitary", false, TestSetBytes},
-	{"TestCardinality", "unitary", false, TestCardinality},
-	{"TestClearAllAndLength", "unitary", false, TestClearAllAndLength},
-	{"TestStringFormat", "unitary", false, TestStringFormat},
-	{"TestSetBytes_OutOfBounds", "unitary", false, TestSetBytes_OutOfBounds},
-	{"TestShelf_NewShelfTest", "unitary", false, TestShelf_NewShelfTest},
-	{"TestShelf_GetMarshaller", "unitary", false, TestShelf_GetMarshaller},
-	{"TestShelf_GetMessageFactory", "unitary", false, TestShelf_GetMessageFactory},
-	{"TestShelf_GetStreamer", "unitary", false, TestShelf_GetStreamer},
-	{"TestShelf_GetCapabilities", "unitary", false, TestShelf_GetCapabilities},
-	{"TestB1Array_String", "unitary", false, TestB1Array_String},
-	{"TestB1Array_Equals", "unitary", false, TestB1Array_Equals},
-	{"TestKeyValue_String", "unitary", false, TestKeyValue_String},
-	{"TestKeyValue_Equals", "unitary", false, TestKeyValue_Equals},
-	{"TestNewSessionContext", "unitary", false, TestNewSessionContext},
-	{"TestSessionContext_SetTimeZoneVersionNumber", "unitary", false, TestSessionContext_SetTimeZoneVersionNumber},
-	{"TestSessionContext_SetSessionCharacterSets", "unitary", false, TestSessionContext_SetSessionCharacterSets},
-	{"TestSessionContext_UpdateSessionProperties", "unitary", false, TestSessionContext_UpdateSessionProperties},
-	{"TestUtility_SimpleStringToB1Array", "unitary", false, TestUtility_SimpleStringToB1Array},
-	{"TestUtility_EmptyStringToB1Array", "unitary", false, TestUtility_EmptyStringToB1Array},
-	{"TestUtility_NonBMPStringToB1Array", "unitary", false, TestUtility_NonBMPStringToB1Array},
-	{"TestUtility_GetTimeZoneBytes", "unitary", false, TestUtility_GetTimeZoneBytes},
-	{"TestNibbleToHex", "unitary", false, TestNibbleToHex},
-	{"TestBArray2Nibbles", "unitary", false, TestBArray2Nibbles},
-	{"TestToBinArray", "unitary", false, TestToBinArray},
-	{"TestNewProperties", "unitary", false, TestNewProperties},
-	{"TestNewPropertiesWithSource", "unitary", false, TestNewPropertiesWithSource},
-	{"TestProperties_ContainsKey", "unitary", false, TestProperties_ContainsKey},
-	{"TestProperties_GetProperty", "unitary", false, TestProperties_GetProperty},
-	{"TestProperties_GetTrimmedString", "unitary", false, TestProperties_GetTrimmedString},
-	{"TestProperties_PutAll", "unitary", false, TestProperties_PutAll},
-	{"TestProperties_Reset", "unitary", false, TestProperties_Reset},
-	{"TestProperties_SetProperty", "unitary", false, TestProperties_SetProperty},
-	{"TestProperties_Snapshot", "unitary", false, TestProperties_Snapshot},
-	{"TestProperties_String", "unitary", false, TestProperties_String},
-	{"TestShelf_GetLocalizationService", "unitary", false, TestShelf_GetLocalizationService},
-	{"TestShelf_LocalizeError", "unitary", false, TestShelf_LocalizeError},
-	{"TestStripSpacesOutsideQuotes", "unitary", false, TestStripSpacesOutsideQuotes},
-	{"TestConstants_Protocol", "unitary", false, TestConstants_Protocol},
-	{"TestConstants_ProtocolString", "unitary", false, TestConstants_ProtocolString},
+func TestCategoryExecutor(t *testing.T) {
+	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
-func TestCategoryExecutor(t *testing.T) {
-	var regularCases, exclusiveCases []struct {
-		name       string
-		categories string
-		exclusive  bool
-		f          func(t *testing.T)
-	}
+type Version = oracleTest.Version
+type TestConfig = oracleTest.TestConfig
+type TestingEnvironment = oracleTest.TestingEnvironment
 
-	for _, c := range testCases {
-		cats := strings.Split(c.categories, ",")
-		for _, p := range cats {
-			if strings.Compare(strings.TrimSpace(p), TestCategory) == 0 {
-				if c.exclusive {
-					exclusiveCases = append(exclusiveCases, c)
-				} else {
-					regularCases = append(regularCases, c)
-				}
-				break
-			}
-		}
-	}
+var DefaultTestConfig *TestConfig
+var TestEnvironement TestingEnvironment
+var TestingConfig *TestConfig
 
-	if len(regularCases) > 0 {
-		t.Run("parallel", func(t *testing.T) {
-			t.Parallel()
-			for _, c := range regularCases {
-				t.Run(c.name, c.f)
-			}
-		})
-	}
-	for _, c := range exclusiveCases {
-		t.Run(c.name, c.f)
-	}
+var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestNewBitSet_SizeAlignment", Categories: "unitary", Exclusive: false, Fn: TestNewBitSet_SizeAlignment},
+	{Name: "TestGet", Categories: "unitary", Exclusive: false, Fn: TestGet},
+	{Name: "TestSetBytes", Categories: "unitary", Exclusive: false, Fn: TestSetBytes},
+	{Name: "TestCardinality", Categories: "unitary", Exclusive: false, Fn: TestCardinality},
+	{Name: "TestClearAllAndLength", Categories: "unitary", Exclusive: false, Fn: TestClearAllAndLength},
+	{Name: "TestStringFormat", Categories: "unitary", Exclusive: false, Fn: TestStringFormat},
+	{Name: "TestSetBytes_OutOfBounds", Categories: "unitary", Exclusive: false, Fn: TestSetBytes_OutOfBounds},
+	{Name: "TestShelf_NewShelfTest", Categories: "unitary", Exclusive: false, Fn: TestShelf_NewShelfTest},
+	{Name: "TestShelf_GetMarshaller", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetMarshaller},
+	{Name: "TestShelf_GetMessageFactory", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetMessageFactory},
+	{Name: "TestShelf_GetStreamer", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetStreamer},
+	{Name: "TestShelf_GetCapabilities", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetCapabilities},
+	{Name: "TestB1Array_String", Categories: "unitary", Exclusive: false, Fn: TestB1Array_String},
+	{Name: "TestB1Array_Equals", Categories: "unitary", Exclusive: false, Fn: TestB1Array_Equals},
+	{Name: "TestKeyValue_String", Categories: "unitary", Exclusive: false, Fn: TestKeyValue_String},
+	{Name: "TestKeyValue_Equals", Categories: "unitary", Exclusive: false, Fn: TestKeyValue_Equals},
+	{Name: "TestNewSessionContext", Categories: "unitary", Exclusive: false, Fn: TestNewSessionContext},
+	{Name: "TestSessionContext_SetTimeZoneVersionNumber", Categories: "unitary", Exclusive: false, Fn: TestSessionContext_SetTimeZoneVersionNumber},
+	{Name: "TestSessionContext_SetSessionCharacterSets", Categories: "unitary", Exclusive: false, Fn: TestSessionContext_SetSessionCharacterSets},
+	{Name: "TestSessionContext_UpdateSessionProperties", Categories: "unitary", Exclusive: false, Fn: TestSessionContext_UpdateSessionProperties},
+	{Name: "TestUtility_SimpleStringToB1Array", Categories: "unitary", Exclusive: false, Fn: TestUtility_SimpleStringToB1Array},
+	{Name: "TestUtility_EmptyStringToB1Array", Categories: "unitary", Exclusive: false, Fn: TestUtility_EmptyStringToB1Array},
+	{Name: "TestUtility_NonBMPStringToB1Array", Categories: "unitary", Exclusive: false, Fn: TestUtility_NonBMPStringToB1Array},
+	{Name: "TestUtility_GetTimeZoneBytes", Categories: "unitary", Exclusive: false, Fn: TestUtility_GetTimeZoneBytes},
+	{Name: "TestNibbleToHex", Categories: "unitary", Exclusive: false, Fn: TestNibbleToHex},
+	{Name: "TestBArray2Nibbles", Categories: "unitary", Exclusive: false, Fn: TestBArray2Nibbles},
+	{Name: "TestToBinArray", Categories: "unitary", Exclusive: false, Fn: TestToBinArray},
+	{Name: "TestNewProperties", Categories: "unitary", Exclusive: false, Fn: TestNewProperties},
+	{Name: "TestNewPropertiesWithSource", Categories: "unitary", Exclusive: false, Fn: TestNewPropertiesWithSource},
+	{Name: "TestProperties_ContainsKey", Categories: "unitary", Exclusive: false, Fn: TestProperties_ContainsKey},
+	{Name: "TestProperties_GetProperty", Categories: "unitary", Exclusive: false, Fn: TestProperties_GetProperty},
+	{Name: "TestProperties_GetTrimmedString", Categories: "unitary", Exclusive: false, Fn: TestProperties_GetTrimmedString},
+	{Name: "TestProperties_PutAll", Categories: "unitary", Exclusive: false, Fn: TestProperties_PutAll},
+	{Name: "TestProperties_Reset", Categories: "unitary", Exclusive: false, Fn: TestProperties_Reset},
+	{Name: "TestProperties_SetProperty", Categories: "unitary", Exclusive: false, Fn: TestProperties_SetProperty},
+	{Name: "TestProperties_Snapshot", Categories: "unitary", Exclusive: false, Fn: TestProperties_Snapshot},
+	{Name: "TestProperties_String", Categories: "unitary", Exclusive: false, Fn: TestProperties_String},
+	{Name: "TestShelf_GetLocalizationService", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetLocalizationService},
+	{Name: "TestShelf_LocalizeError", Categories: "unitary", Exclusive: false, Fn: TestShelf_LocalizeError},
+	{Name: "TestStripSpacesOutsideQuotes", Categories: "unitary", Exclusive: false, Fn: TestStripSpacesOutsideQuotes},
+	{Name: "TestConstants_Protocol", Categories: "unitary", Exclusive: false, Fn: TestConstants_Protocol},
+	{Name: "TestConstants_ProtocolString", Categories: "unitary", Exclusive: false, Fn: TestConstants_ProtocolString},
 }

@@ -42,7 +42,6 @@ import (
 	"context"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
-	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -72,7 +71,7 @@ func (t *transaction) getTransactionContext() context.Context {
 
 // Commit commits the transaction
 func (t *transaction) Commit() error {
-	common.Odl.Debug("Transaction commit")
+	common.Odl.Fine("Transaction commit")
 	if !t._underlyingConnection.shelf.isInTransaction() {
 		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
 	}
@@ -80,14 +79,8 @@ func (t *transaction) Commit() error {
 	ctx := t._underlyingConnection.shelf.getTransaction().getTransactionContext()
 	readFuncError := t._underlyingConnection.runFunctionWithFunHeader(ctx, commit)
 
-	msgIn, _ := t._underlyingConnection.shelf.GetMessageStreamer().Drain(ctx, driverCommon.IN)
-	// no message should be left at this point
-	if msgIn != 0 {
-		// should drop connection.
-		common.Odl.Error("unexpected messages remained after query; invalidating connection",
-			"remaining messageCount", msgIn)
-		t._underlyingConnection.shelf.getEventService().post(streamerStaleEvent)
-		return t._underlyingConnection.shelf.LocalizeError(common.NewOracleError(oracleErrors.InternalError, nil))
+	if err := t._underlyingConnection.shelf.checkCurrentState(ctx); err != nil {
+		return err
 	}
 
 	if readFuncError != nil {
@@ -100,21 +93,15 @@ func (t *transaction) Commit() error {
 
 // Rollback rolls back the transaction
 func (t *transaction) Rollback() error {
-	common.Odl.Debug("Transaction rollback")
+	common.Odl.Fine("Transaction rollback")
 	if !t._underlyingConnection.shelf.isInTransaction() {
 		return t._underlyingConnection.shelf.LocalizeError(newNotInTransactionError())
 	}
 
 	runFuncErr := t._underlyingConnection.runFunctionWithFunHeader(common.BackgroundContext, rollback)
 
-	msgIn, _ := t._underlyingConnection.shelf.GetMessageStreamer().Drain(common.BackgroundContext, driverCommon.IN)
-	// no message should be left at this point
-	if msgIn != 0 {
-		// should drop connection.
-		common.Odl.Error("unexpected messages remained after query; invalidating connection",
-			"remaining messageCount", msgIn)
-		t._underlyingConnection.shelf.getEventService().post(streamerStaleEvent)
-		return t._underlyingConnection.shelf.LocalizeError(common.NewOracleError(oracleErrors.InternalError, nil))
+	if err := t._underlyingConnection.shelf.checkCurrentState(common.BackgroundContext); err != nil {
+		return err
 	}
 
 	if runFuncErr != nil {

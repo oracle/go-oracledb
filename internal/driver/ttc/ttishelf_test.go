@@ -41,11 +41,13 @@ package ttc
 import (
 	"context"
 	"database/sql/driver"
+	"reflect"
 	"testing"
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 	"golang.org/x/text/language"
 )
 
@@ -72,6 +74,120 @@ func TestTTIShelf_NewShelf(t *testing.T) {
 
 	if shelf.getEventService() != shelf.getEventService() {
 		t.Fatal("event service should be kept on the shelf")
+	}
+}
+
+// TestTTIShelf_RefCursors verifies that a shelf tracks currently open REF
+// CURSOR instances by object identity rather than session-scoped cursor ID.
+func TestTTIShelf_RefCursors(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[driverCommon.MessageType]()
+	cursor := newRefCursorResultRows(newTTCRows(nil), 42)
+	if shelf.hasRefCursor(cursor) {
+		t.Fatal("new shelf unexpectedly owns REF CURSOR")
+	}
+	shelf.addRefCursor(cursor)
+	if !shelf.hasRefCursor(cursor) {
+		t.Fatal("shelf did not record REF CURSOR")
+	}
+	otherCursorWithSameID := newRefCursorResultRows(newTTCRows(nil), 42)
+	if shelf.hasRefCursor(otherCursorWithSameID) {
+		t.Fatal("shelf accepted another cursor instance with the same cursor ID")
+	}
+	shelf.removeRefCursor(cursor)
+	if shelf.hasRefCursor(cursor) {
+		t.Fatal("shelf retained closed REF CURSOR")
+	}
+}
+
+// TestNewMessageStreamerRegistersConnectionValidator verifies that a newly
+// created message streamer participates in shelf connection validation.
+func TestNewMessageStreamerRegistersConnectionValidator(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[driverCommon.MessageType]()
+	streamer := NewMessageStreamer(shelf)
+	validators := shelf._validatorRegistry.GetAll()
+
+	if len(validators) != 1 {
+		t.Fatalf("validator count = %d, want 1", len(validators))
+	}
+	if validators[0] != streamer {
+		t.Fatalf("registered validator = %p, want streamer %p", validators[0], streamer)
+	}
+}
+
+type shelfConnectionValidator struct {
+	valid bool
+}
+
+func (s *shelfConnectionValidator) isValid(context.Context) bool {
+	return s.valid
+}
+
+type recordingConnectionValidator struct {
+	name   string
+	valid  bool
+	called *[]string
+}
+
+func (v *recordingConnectionValidator) isValid(context.Context) bool {
+	*v.called = append(*v.called, v.name)
+	return v.valid
+}
+
+// TestTTIShelf_ValidateConnection verifies that the shelf reports invalid
+// connections and accepts shelves with no invalid validators.
+func TestTTIShelf_ValidateConnection(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		validator stateValidator
+		wantError bool
+	}{
+		{name: "no validators", wantError: false},
+		{name: "valid connection", validator: &shelfConnectionValidator{valid: true}, wantError: false},
+		{name: "invalid connection", validator: &shelfConnectionValidator{valid: false}, wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shelf := newShelf[driverCommon.MessageType]()
+			if tt.validator != nil {
+				shelf.registerStateValidator(tt.validator)
+			}
+
+			err := shelf.checkCurrentState(context.Background())
+			if (err != nil) != tt.wantError {
+				t.Fatalf("error presence = %t, want %t; error = %v", err != nil, tt.wantError, err)
+			}
+			if tt.wantError {
+				sqlErr, ok := err.(oracleErrors.SQLError)
+				if !ok || sqlErr.ErrorCode() != string(oracleErrors.InternalError) {
+					t.Fatalf("error = %T %v, want InternalError", err, err)
+				}
+			}
+		})
+	}
+}
+
+// TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator verifies that
+// validation preserves registration order and short-circuits on failure.
+func TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[driverCommon.MessageType]()
+	called := []string{}
+	shelf.registerStateValidator(&recordingConnectionValidator{name: "first", valid: true, called: &called})
+	shelf.registerStateValidator(&recordingConnectionValidator{name: "second", valid: false, called: &called})
+	shelf.registerStateValidator(&recordingConnectionValidator{name: "third", valid: true, called: &called})
+
+	err := shelf.checkCurrentState(context.Background())
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if got, want := called, []string{"first", "second"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("validators called = %v, want %v", got, want)
 	}
 }
 
@@ -140,7 +256,7 @@ func TestTTIShelf_LocalizedStatementExecError(t *testing.T) {
 	} else if sqle.ErrorCode() != string(oracleErrors.InternalError) {
 		t.Fatalf("expected error code %s, got %s", oracleErrors.InternalError, sqle.ErrorCode())
 	}
-	if got, want := err.Error(), "OGD-00062 - erreur interne factice."; got != want {
+	if got, want := err.Error(), "OGD-00062 - une erreur interne s'est produite."; got != want {
 		t.Fatalf("unexpected localized error %q, want %q", got, want)
 	}
 }
@@ -151,7 +267,7 @@ func TestTTIShelf_RegisterProviderRegistry(t *testing.T) {
 	t.Parallel()
 
 	shelf := newShelf[int]()
-	registry := internalCommon.NewProviderRegistry()
+	registry := internalCommon.NewSafeRegistry[oracleProviders.Provider]()
 
 	shelf.registerProviderRegistry(registry)
 
@@ -166,8 +282,8 @@ func TestTTIShelf_RegisterProviderRegistry_ReplacesExistingRegistry(t *testing.T
 	t.Parallel()
 
 	shelf := newShelf[int]()
-	firstRegistry := internalCommon.NewProviderRegistry()
-	secondRegistry := internalCommon.NewProviderRegistry()
+	firstRegistry := internalCommon.NewSafeRegistry[oracleProviders.Provider]()
+	secondRegistry := internalCommon.NewSafeRegistry[oracleProviders.Provider]()
 
 	shelf.registerProviderRegistry(firstRegistry)
 	shelf.registerProviderRegistry(secondRegistry)
@@ -184,16 +300,18 @@ type testCodecFactory struct {
 	defineOac driverCommon.Marshallable
 }
 
-func (t *testCodecFactory) getEncoder(_ normalizedBindValue) (encoderFunc, error) {
-	return func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }, nil
+func (t *testCodecFactory) getEncoderForGoType(_ bindValueMetadata) (*typeEncoder, error) {
+	return newCLRBindEncoder(func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }), nil
+}
+func (t *testCodecFactory) getEncoderForDtyType(_ DtyType, _ bindValueMetadata) (*typeEncoder, error) {
+	return newCLRBindEncoder(func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }), nil
 }
 func (t *testCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
-	return newTypeDecoder(func(columnContext, driverCommon.B1Array) (driver.Value, error) {
+	return newTypeDecoder(func(columnContext, any) (driver.Value, error) {
 		return t.decode, nil
-	}, nil), nil
+	}, nil, unwrapCLRColumn), nil
 }
-
-func (t *testCodecFactory) getBindOac(_ normalizedBindValue, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+func (t *testCodecFactory) getBindOac(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
 	return t.bindOac, nil
 }
 func (t *testCodecFactory) getDefineOac(_ DtyType, _ columnContext, _ driverCommon.DriverProperties) driverCommon.Marshallable {
