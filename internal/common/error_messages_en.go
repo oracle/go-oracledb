@@ -523,7 +523,7 @@ func initMessagesEn() {
 	// Document: No
 	// Cause:    A call was made to commit or rollback and there is not active
 	//           transaction.
-	// Action:   Start a transaction befor calling commit or rollback.
+	// Action:   Start a transaction before calling commit or rollback.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.NotInTransaction), "not in transaction")
 	// Document: No
@@ -538,7 +538,7 @@ func initMessagesEn() {
 	// Action:   Commit or rollback the current transaction before starting a new
 	//           one.
 	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.AlreadyInTransaction), "isolation level not supported")
+	message.SetString(language.English, string(oracleErrors.AlreadyInTransaction), "a transaction is currently active in this connection")
 	// Document: No
 	// Cause:    An error occurred while committing or rolling back the transaction.
 	// Action:   Try again.
@@ -550,6 +550,11 @@ func initMessagesEn() {
 	// Action:   Verify the cause of the error, and try again.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.ConfigureTransactionError), "failed to configure transaction")
+	// Document: No
+	// Cause:    An error occurred while starting or resuming a transaction.
+	// Action:   Verify the cause of the error, and try again.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.StartResumeTransactionFailure), "failed to start or resume transaction")
 	// Document: No
 	// Cause:    An error occurred while authenticating.
 	// Action:   Check the credentials and try again.
@@ -673,5 +678,20 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.ExpiredToken), "access token has expired")
 
 	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider of the requested type was found")
+	// Document: No
+	// Cause:    The provided global transaction ID is empty or exceeds the maximum size accepted by the server.
+	// Action:   Provide a non-empty global transaction ID up to 64 bytes.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidGlobalTransactionIDValue), "invalid global transaction ID value")
+	// Document: No
+	// Cause:    The sessionless transaction start timeout is zero.
+	// Action:   Provide a timeout greater than zero.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidSessionlessTransactionTimeout), "sessionless transaction timeout must be greater than zero")
+	// Document: No
+	// Cause:    The sessionless transaction timeout is not between 0 and 65535 seconds.
+	// Action:   Provide a timeout between 0 and 65535 seconds.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.SessionlessTransactionTimeoutOutOfRange), "sessionless transaction timeout must be between 0 and 65535 seconds")
 
 }
