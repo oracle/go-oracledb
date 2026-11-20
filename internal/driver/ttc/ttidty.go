@@ -87,7 +87,7 @@ func (p *tTIdty) SetNegotiatedCapabilities(caps *capability) {
 	// TODO : it seems that we enter twice here
 	p.negotiatedCaps = caps
 	p.negotiatedCapsMap = caps.toMap()
-	common.Odl.Debug("tTIdty.SetCapabilities: Capabilities set in dty message", "capabilities", p.negotiatedCapsMap)
+	common.Odl.Finest("tTIdty.SetCapabilities: Capabilities set in dty message", "capabilities", p.negotiatedCapsMap)
 }
 
 // GetMsgCode gets message code
