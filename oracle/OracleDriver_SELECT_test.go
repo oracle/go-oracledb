@@ -44,6 +44,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -1744,4 +1745,54 @@ func TestDriver_Select_NullFromComputedExpression(t *testing.T) {
 			t.Fatalf("scan failed: %v", err)
 		}
 	}
+}
+
+// TestDriver_Select_EmptySlice
+// Checks that we can insert empty byte array and fetch it back.
+func TestDriver_Select_EmptySlice(t *testing.T) {
+	t.Parallel()
+
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open DB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("t_empty_slice")
+
+	cols := map[string]string{
+		"id":      "NUMBER PRIMARY KEY",
+		"payload": "RAW(30)",
+	}
+
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer dropTable(ctx, db, table)
+
+	payload := []byte{}
+
+	ins := "INSERT INTO " + table + "  (id, payload) VALUES (1, :payload)"
+	insStmt, err := db.PrepareContext(ctx, ins)
+	if _, err := insStmt.ExecContext(ctx,
+		sql.Named("payload", payload),
+	); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	var ppayload []byte
+	err = db.QueryRow("SELECT payload FROM " + table + " WHERE id = 1").Scan(&ppayload)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	if !bytes.Equal(payload, ppayload) {
+		t.Fatalf("payload mismatch")
+	}
+	t.Logf("payload type: %v, size: %v", reflect.TypeOf(ppayload), len(ppayload))
+
 }
