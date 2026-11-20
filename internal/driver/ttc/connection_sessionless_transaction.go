@@ -186,6 +186,11 @@ func (c *connection) PrepareForSessionlessStartOperation(ctx context.Context, ti
 		return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.AlreadyInTransaction, nil, nil))
 	}
 
+	// if no context was provided, set context to Background
+	if ctx == nil {
+		ctx = common.BackgroundContext
+	}
+
 	// check that the server supports sessionless transactions
 	capabilities := c.shelf.GetCapabilities()
 	if cap, ok := capabilities[kpccapCtbTtc5SessionlessTxn]; !ok || !cap.IsSet {
@@ -237,6 +242,11 @@ func (c *connection) PrepareForSessionlessResumeOperation(ctx context.Context, g
 	capabilities := c.shelf.GetCapabilities()
 	if cap, ok := capabilities[kpccapCtbTtc5SessionlessTxn]; !ok || !cap.IsSet {
 		return nil, c.shelf.LocalizeError(common.NewOracleError(oracleErrors.UnsupportedFeature, nil, "Sessionless Transactions"))
+	}
+
+	// if no context was provided, set context to Background
+	if ctx == nil {
+		ctx = common.BackgroundContext
 	}
 
 	common.Odl.With("GTRID", globalTransactionID).Fine("Prepare resume sessionless transaction")
