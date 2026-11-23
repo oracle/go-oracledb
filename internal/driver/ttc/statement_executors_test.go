@@ -48,6 +48,7 @@ import (
 
 	common2 "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -96,6 +97,8 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	}
+	factory.logger = &common2.Odl
+
 	shelf.RegisterMessageFactory(factory)
 
 	streamer := NewMessageStreamer(shelf)
@@ -848,8 +851,9 @@ func TestStatementExecutor_Select_Callback_GetMessage_BVC_Error_Integration(t *t
 		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
+		logger:       &common2.Odl,
 	})
-
+	shelf.UpdateDriverConfig(config.NewOracleDriverConfig())
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())

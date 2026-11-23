@@ -48,6 +48,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/config"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
@@ -131,6 +132,7 @@ func TestNewConnectionReturnsServerTimezoneError(t *testing.T) {
 		pullMsg: &mockOer{err: common.NewOERMessageError("ORA-12345", "timezone query failed")},
 	})
 	shelf.RegisterLocalizationService(common.NewLocalizationService(language.English))
+	shelf.UpdateDriverConfig(config.NewOracleDriverConfig())
 
 	conn, err := newConnection(context.Background(), shelf, driverCommon.NewSessionContext(), &mockNetworkSession{})
 	if err == nil {

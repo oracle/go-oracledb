@@ -46,6 +46,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
@@ -447,7 +448,7 @@ func TestColumnUnwrapExecutors(t *testing.T) {
 			t.Fatal("RXD did not retain its injected codec factory")
 		}
 	}
-	shelf.RegisterMessageFactory(&SimpleFactory{msgregistry: NewRegistry[driverCommon.MessageType]()})
+	shelf.RegisterMessageFactory(&SimpleFactory{msgregistry: NewRegistry[driverCommon.MessageType](),logger: &common.Odl})
 	for _, makeRXD := range create {
 		if _, err := makeRXD(nil); err == nil {
 			t.Fatal("expected message factory error")
