@@ -88,6 +88,7 @@ func TestGetConnection(t *testing.T) {
 	}
 	mockFac := &mockFactory{
 		returnMsg: newOall18(),
+		logger:    &common.Odl,
 	}
 	mockStr := &mockStreamer{
 		pullMsg: &mockOer{err: nil},

@@ -46,6 +46,7 @@ import (
 	"strings"
 	"testing"
 
+	common2 "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -149,6 +150,7 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
+		logger:       &common2.Odl,
 	}
 	shelf.RegisterMessageFactory(factory)
 
@@ -789,6 +791,7 @@ func TestStatementExecutor_Select_Callback_GetMessage_RXD_Error_Integration(t *t
 		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
+		logger:       &common2.Odl,
 	})
 
 	exec := &statementExecutorSelect{}

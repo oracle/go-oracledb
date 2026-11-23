@@ -43,6 +43,7 @@ import (
 	"errors"
 	"testing"
 
+	common2 "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -85,7 +86,7 @@ func TestRegisterServerToClientPiggybacks(t *testing.T) {
 	messageRegistry.Register(TTIPRO, -1, NewMockTTIpro)
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTISPF, functionType: common.FunctionType(ocssync)}, -1, newttiSPFOCSSync)
-	messageFactory := &SimpleFactory{msgregistry: messageRegistry, funcregistry: functionRegistry, ttcVersion: 25}
+	messageFactory := &SimpleFactory{msgregistry: messageRegistry, funcregistry: functionRegistry, ttcVersion: 25, logger: &common2.Odl}
 
 	shelf := newShelf[common.MessageType]()
 	sessionCtx := common.NewSessionContext()

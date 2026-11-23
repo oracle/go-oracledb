@@ -43,6 +43,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -126,6 +127,7 @@ func newAuthTestShelf(bufSize int) (*ttiShelf[driverCommon.MessageType], *Messag
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	}
+	factory.logger = &common.Odl
 	shelf.RegisterMessageFactory(factory)
 
 	// Streamer bound to this shelf.

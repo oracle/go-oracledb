@@ -92,7 +92,10 @@ const (
 //   - msg message to be written
 //   - args attributes
 func (l *OracleLogger) Fine(msg string, args ...any) {
-	if !l.Enabled(context.Background(), OlFine) {
+	if l == nil {
+		return
+	} // may happen with testing Mocked objects
+	if !l.Enabled(BackgroundContext, OlFine) {
 		return
 	}
 	// not goign back in the stack will alwasy display Fine() as source
@@ -101,7 +104,7 @@ func (l *OracleLogger) Fine(msg string, args ...any) {
 	record := slog.NewRecord(time.Now(), OlFine, msg, pcs[0])
 	record.Add(args...)
 
-	_ = l.Handler().Handle(context.Background(), record)
+	_ = l.Handler().Handle(BackgroundContext, record)
 }
 
 // Finest logs a message with OlFinest level
@@ -109,7 +112,10 @@ func (l *OracleLogger) Fine(msg string, args ...any) {
 //   - msg message to be written
 //   - args attributes
 func (l *OracleLogger) Finest(msg string, args ...any) {
-	if !l.Enabled(context.Background(), OlFinest) {
+	if l == nil {
+		return
+	} // may happen with testing Mocked objects
+	if !l.Enabled(BackgroundContext, OlFinest) {
 		return
 	}
 	// not goign back in the stack will alwasy display Finest() as source
@@ -118,14 +124,17 @@ func (l *OracleLogger) Finest(msg string, args ...any) {
 	record := slog.NewRecord(time.Now(), OlFinest, msg, pcs[0])
 	record.Add(args...)
 
-	_ = l.Handler().Handle(context.Background(), record)
+	_ = l.Handler().Handle(BackgroundContext, record)
 }
 
 // PacketDump dumps a packet to the logging handler
 // parameters:
 //   - packetBytes : the byte of the network packet
 func (l *OracleLogger) PacketDump(packetBytes []byte) {
-	l.LogAttrs(context.Background(),
+	if l == nil {
+		return
+	} // may happen with testing Mocked objects
+	l.LogAttrs(BackgroundContext,
 		OlPacketDump, "PacketDump", slog.Any(packetDumpAttrKey, packetBytes))
 }
 

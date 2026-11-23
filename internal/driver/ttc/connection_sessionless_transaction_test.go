@@ -75,6 +75,7 @@ func newSessionlessTransactionTestConnection() (*connection, *mockStreamer) {
 		msgregistry:  messageRegistry,
 		funcregistry: functionRegistry,
 	}
+	messageFactory.logger = &internalCommon.Odl
 	streamer := &mockStreamer{}
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageFactory(messageFactory).
