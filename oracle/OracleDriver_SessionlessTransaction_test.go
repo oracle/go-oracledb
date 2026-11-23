@@ -154,6 +154,10 @@ func TestSessionlessTransactionCommit(t *testing.T) {
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
 		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin sessionless transaction on initial connection: %v", err)
 	}
 	defer tx.Rollback()
@@ -276,6 +280,10 @@ func TestSessionlessTransactionRollback(t *testing.T) {
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
 		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin sessionless transaction on initial connection: %v", err)
 	}
 
@@ -391,6 +399,11 @@ func TestSessionlessTransactionContextCancellationRollsBack(t *testing.T) {
 	}
 	tx, err := connectionWrapper.BeginSessionlessTx(txCtx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
+
 		t.Fatalf("begin sessionless transaction with cancellable context: %v", err)
 	}
 
@@ -476,6 +489,10 @@ func TestTransactionOperationsRejectStaleTransactions(t *testing.T) {
 			}
 			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 			if err != nil {
+				sqlError, ok := err.(oracleErrors.SQLError)
+				if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+					t.Skipf("Skipped: %v", err)
+				}
 				t.Fatalf("begin transaction before %s: %v", endingOperation.name, err)
 			}
 			defer tx.Rollback()
@@ -645,6 +662,10 @@ func TestSessionlessTransactionOperationContextCancellation(t *testing.T) {
 			}
 			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 			if err != nil {
+				sqlError, ok := err.(oracleErrors.SQLError)
+				if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+					t.Skipf("Skipped: %v", err)
+				}
 				t.Fatalf("begin sessionless transaction: %v", err)
 			}
 
@@ -686,6 +707,10 @@ func TestSessionlessTransactionPreparedStatement(t *testing.T) {
 	}
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin sessionless transaction for prepared statement test: %v", err)
 	}
 
@@ -746,6 +771,10 @@ func TestSessionlessTransactionPreparedStatementClosedAfterEnd(t *testing.T) {
 			}
 			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 			if err != nil {
+				sqlError, ok := err.(oracleErrors.SQLError)
+				if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+					t.Skipf("Skipped: %v", err)
+				}
 				t.Fatalf("begin sessionless transaction: %v", err)
 			}
 
@@ -799,6 +828,10 @@ func TestSessionlessTransactionStartTwice(t *testing.T) {
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
 		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin first sessionless transaction: %v", err)
 	}
 	globalTransactionID = tx.GlobalTransactionID()
@@ -854,6 +887,10 @@ func TestSessionlessTransactionStartAfterSuspendSameConnection(t *testing.T) {
 		Isolation: sql.LevelReadCommitted, ReadOnly: false,
 	}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin first sessionless transaction: %v", err)
 	}
 	defer func() { _ = firstTx.Rollback() }()
@@ -950,6 +987,10 @@ func TestSessionlessTransactionResumeTwice(t *testing.T) {
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
 		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin sessionless transaction on initial connection: %v", err)
 	}
 	globalTransactionID = tx.GlobalTransactionID()
@@ -1028,6 +1069,10 @@ func TestSessionlessTransactionResumeTwiceDifferentConnection(t *testing.T) {
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{
 		Isolation: sql.LevelReadCommitted, ReadOnly: false}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin sessionless transaction on initial connection: %v", err)
 	}
 	globalTransactionID = tx.GlobalTransactionID()
@@ -1124,6 +1169,10 @@ func TestSessionlessTransactionCommitPLSQL(t *testing.T) {
 				timeout          => 300,
 				flag             => DBMS_TRANSACTION.TRANSACTION_NEW);
 		END;`, sql.Named("global_transaction_id", sql.Out{Dest: &globalTransactionID})); err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == "ORA-06550" {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("start sessionless transaction through PL/SQL on initial connection: %v", err)
 	}
 	if globalTransactionID == "" {
@@ -1255,6 +1304,10 @@ func TestSessionlessTransactionAPIBeginPLSQLSuspendThenAPISuspend(t *testing.T) 
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin sessionless transaction through API: %v", err)
 	}
 	globalTransactionID := tx.GlobalTransactionID()
@@ -1374,7 +1427,7 @@ func TestSessionlessTransactionCommitPLSQLRunQueryBeforeSessionless(t *testing.T
 			}
 
 			if sqlError, ok := err.(oracleErrors.SQLError); ok {
-				if sqlError.ErrorCode() != "ORA-24776" {
+				if sqlError.ErrorCode() != "ORA-24776" && sqlError.ErrorCode() != "ORA-06550" /* Feature not supported */ {
 					t.Fatalf("PL/SQL sessionless start after prior %s error code = %s, want ORA-24776", test.name, sqlError.ErrorCode())
 				}
 				t.Logf("Got expected sqlError %v", err)
@@ -1423,6 +1476,10 @@ func TestSessionlessTransactionCommitPLSQLConn(t *testing.T) {
 				timeout          => 300,
 				flag             => DBMS_TRANSACTION.TRANSACTION_NEW);
 		END;`, sql.Named("global_transaction_id", sql.Out{Dest: &globalTransactionID})); err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == "ORA-06550" {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("start sessionless transaction through PL/SQL on dedicated connection: %v", err)
 	}
 	if globalTransactionID == "" {
@@ -1479,6 +1536,10 @@ func TestSessionlessTransactionRejectsSerializableIsolation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := connectionWrapper.BeginSessionlessTx(ctx, &test.opts, 300*time.Second)
+			sqlError, ok := err.(oracleErrors.SQLError)
+			if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+				t.Skipf("Skipped: %v", err)
+			}
 			requireSessionlessSQLError(t, "begin sessionless transaction", err, oracleErrors.IsolationLevelNotSupported)
 		})
 	}
@@ -1516,6 +1577,10 @@ func TestSessionlessTransactionResumeValidation(t *testing.T) {
 
 	tx, err := connectionWrapper.ResumeSessionlessTx(ctx, GlobalTransactionID("sessionless-global-transaction-id-that-does-not-exist"), 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("queue resume with unknown global transaction ID: %v", err)
 	}
 	if tx == nil {
@@ -1565,6 +1630,10 @@ func TestSessionlessTransactionSQLCommitOrRollbackThenSuspend(t *testing.T) {
 			connectionWrapper, err := NewConnectionWrapper(conn)
 			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 			if err != nil {
+				sqlError, ok := err.(oracleErrors.SQLError)
+				if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+					t.Skipf("Skipped: %v", err)
+				}
 				t.Fatalf("begin sessionless transaction before SQL %s: %v", test.endStatement, err)
 			}
 			for _, value := range []string{"sql-end-one", "sql-end-two"} {
@@ -1632,6 +1701,10 @@ func testSessionlessTransactionPLSQLEndThenSuspend(t *testing.T, endStatement st
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin sessionless transaction before PL/SQL %s: %v", endStatement, err)
 	}
 	defer func() { _ = tx.Rollback() }()
@@ -1698,6 +1771,10 @@ func testSessionlessTransactionPLSQLEndThenAPIEnd(t *testing.T, plsqlStatement, 
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin sessionless transaction before PL/SQL %s: %v", plsqlStatement, err)
 	}
 	defer func() { _ = tx.Rollback() }()
@@ -1777,6 +1854,10 @@ func TestSessionlessTransactionAPIOperationResults(t *testing.T) {
 			connectionWrapper, err := NewConnectionWrapper(conn)
 			tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 			if err != nil {
+				sqlError, ok := err.(oracleErrors.SQLError)
+				if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+					t.Skipf("Skipped: %v", err)
+				}
 				t.Fatalf("begin sessionless transaction for API %s: %v", test.name, err)
 			}
 			if _, err := tx.ExecContext(ctx,
@@ -1826,6 +1907,10 @@ func TestSessionlessTransactionResumeSameConnection(t *testing.T) {
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin sessionless transaction before same-connection resume: %v", err)
 	}
 	globalTransactionID := tx.GlobalTransactionID()
@@ -1882,6 +1967,10 @@ func TestSessionlessTransactionResumeAfterConnectionClose(t *testing.T) {
 	connectionWrapper, err := NewConnectionWrapper(conn)
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		conn.Close()
 		t.Fatalf("begin sessionless transaction before closing original connection: %v", err)
 	}
@@ -1968,6 +2057,10 @@ func TestSessionlessTransactionGlobalTransactionIDUniqueness(t *testing.T) {
 	connectionWrapper1, err := NewConnectionWrapper(conn1)
 	tx1, err := connectionWrapper1.BeginSessionlessTx(ctx, &sql.TxOptions{}, 300*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin first sessionless transaction on connection 1: %v", err)
 	}
 	connectionWrapper2, err := NewConnectionWrapper(conn2)
@@ -2017,6 +2110,10 @@ func TestSessionlessTransactionTimeout(t *testing.T) {
 	}
 	tx, err := connectionWrapper.BeginSessionlessTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, 1*time.Second)
 	if err != nil {
+		sqlError, ok := err.(oracleErrors.SQLError)
+		if ok && sqlError.ErrorCode() == string(oracleErrors.UnsupportedFeature) {
+			t.Skipf("Skipped: %v", err)
+		}
 		t.Fatalf("begin one-second sessionless transaction: %v", err)
 	}
 	defer tx.Rollback()
