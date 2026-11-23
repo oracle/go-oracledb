@@ -44,6 +44,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -174,6 +175,51 @@ func TestDriver_Table_EmptyStringSelect(t *testing.T) {
 		t.Fatalf("rows err: %v", err)
 	}
 
+}
+
+// TestDriver_Select_LeadingCommentsAndWithClause verifies SELECT statements
+// with leading comments and a WITH clause execute and return their results.
+func TestDriver_Select_LeadingCommentsAndWithClause(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	tests := []struct {
+		name string
+		stmt string
+	}{
+		{
+			name: "line comment",
+			stmt: "-- leading comment\nSELECT 1 FROM dual",
+		},
+		{
+			name: "block comment",
+			stmt: "/* leading comment */ SELECT 1 FROM dual",
+		},
+		{
+			name: "with clause",
+			stmt: "WITH values_cte AS (SELECT 1 AS value FROM dual) SELECT value FROM values_cte",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var value int64
+			if err := db.QueryRowContext(context.Background(), test.stmt).Scan(&value); err != nil {
+				t.Fatalf("query failed: %v", err)
+			}
+			if value != 1 {
+				t.Fatalf("got %d, want 1", value)
+			}
+		})
+	}
 }
 
 // TestDriver_Select_5000Rows_NumberColumn verifies that the driver can fetch
@@ -1772,4 +1818,54 @@ func TestDriver_Select_NullFromComputedExpression(t *testing.T) {
 			t.Fatalf("scan failed: %v", err)
 		}
 	}
+}
+
+// TestDriver_Select_EmptySlice
+// Checks that we can insert empty byte array and fetch it back.
+func TestDriver_Select_EmptySlice(t *testing.T) {
+	t.Parallel()
+
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open DB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("t_empty_slice")
+
+	cols := map[string]string{
+		"id":      "NUMBER PRIMARY KEY",
+		"payload": "RAW(30)",
+	}
+
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer dropTable(ctx, db, table)
+
+	payload := []byte{}
+
+	ins := "INSERT INTO " + table + "  (id, payload) VALUES (1, :payload)"
+	insStmt, err := db.PrepareContext(ctx, ins)
+	if _, err := insStmt.ExecContext(ctx,
+		sql.Named("payload", payload),
+	); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	var ppayload []byte
+	err = db.QueryRow("SELECT payload FROM " + table + " WHERE id = 1").Scan(&ppayload)
+	if err != nil {
+		t.Fatalf("select failed: %v", err)
+	}
+	if !bytes.Equal(payload, ppayload) {
+		t.Fatalf("payload mismatch")
+	}
+	t.Logf("payload type: %v, size: %v", reflect.TypeOf(ppayload), len(ppayload))
+
 }

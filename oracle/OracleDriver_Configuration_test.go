@@ -44,7 +44,9 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -212,6 +214,48 @@ func TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector(t *testing.T) {
 	}
 	if !common.Odl.Enabled(context.Background(), slog.LevelDebug) {
 		t.Fatal("expected debug logging configuration to remain enabled after openConnector")
+	}
+}
+
+// TestDriver_ApplyDriverLoggingConfigCanBeUpdated verifies that a second
+// application logging configuration replaces the first one.
+func TestDriver_ApplyDriverLoggingConfigCanBeUpdated(t *testing.T) {
+	driver := NewDriver()
+	t.Cleanup(func() {
+		driver.ApplyDriverLoggingConfig(NewOracleLoggingConfig())
+	})
+
+	firstPath := filepath.Join(t.TempDir(), "first.log")
+	firstConfig := NewOracleLoggingConfig()
+	firstConfig.Destination = firstPath
+	firstConfig.Level = "INFO"
+	driver.ApplyDriverLoggingConfig(firstConfig)
+
+	const firstMessage = "written with first logging config"
+	common.Odl.InfoContext(context.Background(), firstMessage)
+	firstData, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatalf("expected first logging destination to be created before updating config: %v", err)
+	}
+	if !strings.Contains(string(firstData), firstMessage) {
+		t.Fatalf("expected first logging destination to contain %q, got %q", firstMessage, string(firstData))
+	}
+
+	secondPath := filepath.Join(t.TempDir(), "second.log")
+	secondConfig := NewOracleLoggingConfig()
+	secondConfig.Destination = secondPath
+	secondConfig.Level = "INFO"
+	driver.ApplyDriverLoggingConfig(secondConfig)
+
+	const message = "written with updated logging config"
+	common.Odl.InfoContext(context.Background(), message)
+
+	data, err := os.ReadFile(secondPath)
+	if err != nil {
+		t.Fatalf("expected second logging destination to be created: %v", err)
+	}
+	if !strings.Contains(string(data), message) {
+		t.Fatalf("expected second logging destination to contain %q, got %q", message, string(data))
 	}
 }
 

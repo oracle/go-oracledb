@@ -266,7 +266,7 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 		// we do not keep a faulty message
 		if ms.incomingMessages.Len() >= incomingMessagesListMaxLength {
 			ms.logger.Error("MessageStreamer: incoming message queue overflow")
-			ms.shelf.getEventService().post(streamerOverFlowEvent)
+			ms.shelf.getEventService().post(streamerOverFlowEvent, nil)
 			return nil, common.NewOracleError(oracleErrors.InternalError, nil, nil)
 		}
 		ms.incomingMessages.PushBack(&incomingElement{message: msg, err: processingError})
@@ -403,6 +403,6 @@ func (ms *MessageStreamer) isValid(ctx context.Context) bool {
 
 	ms.logger.Error("unexpected messages remained; invalidating connection",
 		"remaining messageCount", msgIn)
-	ms.shelf.getEventService().post(streamerStaleEvent)
+	ms.shelf.getEventService().post(streamerStaleEvent, nil)
 	return false
 }

@@ -43,6 +43,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"strings"
 	"testing"
@@ -521,4 +522,44 @@ func runPreparedInsertNclob(t *testing.T, table string, rows []clobRowData) {
 				rr.id, len(gotNclob), len(rr.c))
 		}
 	}
+}
+
+// TestDriver_Select_BLOB_Type  checks that BLOB are
+// . scanned as byte[] as defined in our spec.
+func TestDriver_Select_BLOB_Type(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	query := "SELECT HEXTORAW('00ABFF'), TO_BLOB(HEXTORAW('00ABFF')) FROM DUAL"
+
+	var raw, blob any
+	e := db.QueryRowContext(context.Background(), query).Scan(&raw, &blob)
+	if e != nil {
+		t.Fatalf("failed to execute query : %v", e)
+	}
+	_, rawOK := raw.([]byte)
+	if !rawOK {
+		t.Errorf("failed to cast raw bytes: %v", raw)
+	}
+	t.Logf("RAW type=%T isByteSlice=%v driver.IsValue=%v value=%v\n", raw, rawOK, driver.IsValue(raw), raw)
+
+	_, blobOK := blob.([]byte)
+	if !blobOK {
+		t.Errorf("failed to cast raw bytes: %v", blob)
+	}
+
+	t.Logf("BLOB type=%T isByteSlice=%v driver.IsValue=%v value=%v\n", blob, blobOK, driver.IsValue(blob), blob)
+
+	var r, b []byte
+	e = db.QueryRowContext(context.Background(), query).Scan(&r, &b)
+	t.Logf("Scan into []byte RAW=%X BLOB=%X bytesMatch=%v error=%v\n", r, b, bytes.Equal(r, b), e)
+
 }

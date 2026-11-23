@@ -69,8 +69,10 @@ const (
 	maxLength = 2147483647
 	// plsqlMaxLength is the maximum length when marshalling PL/SQL.
 	plsqlMaxLength = 32760
-	// maxValue is a sentinel UB4 used for prefetch size to indicate "use server maximum".
-	maxValue = 0xFFFFFFFF
+	// maxValueClientBuffer is the maximum client buffer size
+	maxValueClientBuffer = 0xFFFFFFFF
+	// maxRowsToFetch is the maximum number of rows to fetch
+	maxRowsToFetch = 0x7FFFFFFF
 	// implicitResultPrefetchRowCount bounds rows returned for each implicit
 	// cursor in the execution response. The OALL8 max-value sentinel is not valid
 	// for the implicit-result prefetch protocol on all server versions.
@@ -138,8 +140,8 @@ func (m *tTIOall) setMaxLength(n driverCommon.UB4) { m.maxLength = n }
 
 // setRowsToFetch sets the number of rows to prefetch to maxValue for select.
 func (m *tTIOall) setRowsToFetch() {
-	m.maxClientBuffer = maxValue
-	m.rowsToFetch = maxValue
+	m.maxClientBuffer = maxValueClientBuffer
+	m.rowsToFetch = maxRowsToFetch
 
 }
 

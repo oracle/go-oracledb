@@ -102,6 +102,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConnectionCloser_Close", Categories: "unitary", Exclusive: false, Fn: TestConnectionCloser_Close},
 	{Name: "TestConnectionCloser_CloseWithTimeout", Categories: "unitary", Exclusive: false, Fn: TestConnectionCloser_CloseWithTimeout},
 	{Name: "TestEventServiceRegisterAndPost", Categories: "unitary", Exclusive: false, Fn: TestEventServiceRegisterAndPost},
+	{Name: "TestEventServicePostPreservesData", Categories: "unitary", Exclusive: false, Fn: TestEventServicePostPreservesData},
 	{Name: "TestAuthenticationFactoryWithNilParameters", Categories: "unitary", Exclusive: false, Fn: TestAuthenticationFactoryWithNilParameters},
 	{Name: "TestAuthenticationFactoryBasic", Categories: "unitary", Exclusive: false, Fn: TestAuthenticationFactoryBasic},
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken},
@@ -227,6 +228,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestPlSqlNamedValues_LaterNamedBindWithoutEarlierBind", Categories: "unitary", Exclusive: false, Fn: TestPlSqlNamedValues_LaterNamedBindWithoutEarlierBind},
 	{Name: "TestParsePlaceholders_Uint16IndexesDoNotWrapAfter255", Categories: "unitary", Exclusive: false, Fn: TestParsePlaceholders_Uint16IndexesDoNotWrapAfter255},
 	{Name: "TestClassifySQL_AllKinds", Categories: "unitary", Exclusive: false, Fn: TestClassifySQL_AllKinds},
+	{Name: "TestSkipLeadingComments", Categories: "unitary", Exclusive: false, Fn: TestSkipLeadingComments},
 	{Name: "TestSqlKind_InvalidValues", Categories: "unitary", Exclusive: false, Fn: TestSqlKind_InvalidValues},
 	{Name: "TestSqlKind_String_All", Categories: "unitary", Exclusive: false, Fn: TestSqlKind_String_All},
 	{Name: "TestGetQueryStatementExecutor_ReturnsSelect", Categories: "unitary", Exclusive: false, Fn: TestGetQueryStatementExecutor_ReturnsSelect},
@@ -281,6 +283,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTokenAuthenticatorAuthenticateStreamerErrors", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorAuthenticateStreamerErrors},
 	{Name: "TestOAuth_prepareForTokenOAUTH", Categories: "unitary", Exclusive: false, Fn: TestOAuth_prepareForTokenOAUTH},
 	{Name: "TestConnectionNegotiator_Negotiate_Fail", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_Fail},
+	{Name: "TestConnectionNegotiatorConfiguredLobPrefetchSize", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiatorConfiguredLobPrefetchSize},
 	{Name: "TestConnectionNegotiator_Negotiate_Success", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_Success},
 	{Name: "TestConnectionNegotiator_Negotiate_SelectsEOCSMessages", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_SelectsEOCSMessages},
 	{Name: "TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey", Categories: "unitary", Exclusive: false, Fn: TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey},
@@ -504,6 +507,23 @@ var testCases = []oracleTest.CategorizedTestCase{
 
 	{Name: "TestLobExecutor_GetChunkSize", Categories: "unitary", Exclusive: false, Fn: TestLobExecutor_GetChunkSize},
 	{Name: "TestLobDefinitionConstructors", Categories: "unitary", Exclusive: false, Fn: TestLobDefinitionConstructors},
+	{Name: "TestBlobExecutor_CreateTemporaryLob", Categories: "unitary", Exclusive: false, Fn: TestBlobExecutor_CreateTemporaryLob},
+	{Name: "TestBlobExecutor_TemporaryOpenCloseIsOpen", Categories: "unitary", Exclusive: false, Fn: TestBlobExecutor_TemporaryOpenCloseIsOpen},
+	{Name: "TestBlobExecutor_ReadRejectsAmountOutsideGoBufferRange", Categories: "unitary", Exclusive: false, Fn: TestBlobExecutor_ReadRejectsAmountOutsideGoBufferRange},
+	{Name: "TestBlobExecutor_Write", Categories: "unitary", Exclusive: false, Fn: TestBlobExecutor_Write},
+	{Name: "TestBlobExecutor_Read", Categories: "unitary", Exclusive: false, Fn: TestBlobExecutor_Read},
+	{Name: "TestBlobExecutor_ReadRejectsOversizedServerResponse", Categories: "unitary", Exclusive: false, Fn: TestBlobExecutor_ReadRejectsOversizedServerResponse},
+	{Name: "TestBlobExecutor_Errors", Categories: "unitary", Exclusive: false, Fn: TestBlobExecutor_Errors},
+	{Name: "TestClobExecutor_CLOBAndNCLOBAmountsUseUCS2Units", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_CLOBAndNCLOBAmountsUseUCS2Units},
+	{Name: "TestClobExecutor_SupplementaryWriteMarshalsUCS2AmountAndNextOffset", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_SupplementaryWriteMarshalsUCS2AmountAndNextOffset},
+	{Name: "TestClobExecutor_ReadRejectsResponseBeyondRequest", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_ReadRejectsResponseBeyondRequest},
+	{Name: "TestClobExecutor_DecodeReadPayloadRejectsIncompleteCharacter", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_DecodeReadPayloadRejectsIncompleteCharacter},
+	{Name: "TestClobExecutor_DecodeReadPayloadJoinsPrefetchSurrogate", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_DecodeReadPayloadJoinsPrefetchSurrogate},
+	{Name: "TestClobExecutor_CharacterConversionHelpers", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_CharacterConversionHelpers},
+	{Name: "TestClobExecutor_OpenRejectsBFileMode", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_OpenRejectsBFileMode},
+	{Name: "TestClobExecutor_ReadRejectsLogicalAmountMismatch", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_ReadRejectsLogicalAmountMismatch},
+	{Name: "TestClobExecutor_Open", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_Open},
+	{Name: "TestClobExecutor_Close", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_Close},
 	{Name: "TestClobExecutor_GetChunkSizeErrors", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_GetChunkSizeErrors},
 	{Name: "TestClobExecutor_CreateTemporaryLob", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_CreateTemporaryLob},
 	{Name: "TestClobExecutor_CreateTemporaryLobErrors", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_CreateTemporaryLobErrors},
@@ -526,14 +546,55 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestClobExecutor_WriteNCLOB", Categories: "unitary", Exclusive: false, Fn: TestClobExecutor_WriteNCLOB},
 
 	{Name: "TestConnection_InvalidateOnOEROrSTA", Categories: "unitary", Exclusive: false, Fn: TestConnection_InvalidateOnOEROrSTA},
+	{Name: "TestConnection_EndOfCallStatusUpdatesTransactionState", Categories: "unitary", Exclusive: false, Fn: TestConnection_EndOfCallStatusUpdatesTransactionState},
 	{Name: "TestTransactionCommitSuccess", Categories: "unitary", Exclusive: false, Fn: TestTransactionCommitSuccess},
 	{Name: "TestTransactionRollbackSuccess", Categories: "unitary", Exclusive: false, Fn: TestTransactionRollbackSuccess},
 	{Name: "TestCallBeginTxTwice", Categories: "unitary", Exclusive: false, Fn: TestCallBeginTxTwice},
 	{Name: "TestConnectionBeginUsesDefaultIsolationLevel", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginUsesDefaultIsolationLevel},
 	{Name: "TestConnectionBeginTxRejectsUnsupportedIsolationLevel", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxRejectsUnsupportedIsolationLevel},
-	{Name: "TestConnectionBeginTxUnregistersAfterSetupErrors", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxUnregistersAfterSetupErrors},
+	{Name: "TestConnectionBeginTxReturnsPushError", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxReturnsPushError},
+	{Name: "TestTransactionEndConsumesOTxEnRPA", Categories: "unitary", Exclusive: false, Fn: TestTransactionEndConsumesOTxEnRPA},
 	{Name: "TestTransactionOperationErrors", Categories: "unitary", Exclusive: false, Fn: TestTransactionOperationErrors},
-	{Name: "TestTransactionOperationRejectsStaleMessages", Categories: "unitary", Exclusive: false, Fn: TestTransactionOperationRejectsStaleMessages},
+	{Name: "TestRunTransactionEndingOperationSetupAndTransportFailures", Categories: "unitary", Exclusive: false, Fn: TestRunTransactionEndingOperationSetupAndTransportFailures},
+	{Name: "TestRunTransactionEndingOperationAdditionalResponsePaths", Categories: "unitary", Exclusive: false, Fn: TestRunTransactionEndingOperationAdditionalResponsePaths},
+	{Name: "TestConnectionBeginTxStartsOrResumesSessionlessTransaction", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxStartsOrResumesSessionlessTransaction},
+	{Name: "TestConnectionBeginTxRejectsSerializableSessionlessIsolation", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxRejectsSerializableSessionlessIsolation},
+	{Name: "TestConnectionBeginTxPushFailureClearsSessionlessPreparation", Categories: "unitary", Exclusive: false, Fn: TestConnectionBeginTxPushFailureClearsSessionlessPreparation},
+	{Name: "TestSessionlessTransactionSuspendGTRIDSyncEndsTransaction", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionSuspendGTRIDSyncEndsTransaction},
+	{Name: "TestSessionlessTransactionSuspendFailureRestoresStartedState", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionSuspendFailureRestoresStartedState},
+	{Name: "TestSessionlessTransactionEndOperations", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionEndOperations},
+	{Name: "TestSessionlessTransactionPrepareValidation", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionPrepareValidation},
+	{Name: "TestPrepareForSessionlessStartOperationRandomFailure", Categories: "unitary", Exclusive: false, Fn: TestPrepareForSessionlessStartOperationRandomFailure},
+	{Name: "TestSessionlessTransactionPrepareCleanup", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionPrepareCleanup},
+	{Name: "TestSessionlessTransactionBuildsBoundedXID", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionBuildsBoundedXID},
+	{Name: "TestSessionlessTransactionClientSyncLifecycle", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionClientSyncLifecycle},
+	{Name: "TestSessionlessServerSyncDoesNotEndClientTransaction", Categories: "unitary", Exclusive: false, Fn: TestSessionlessServerSyncDoesNotEndClientTransaction},
+	{Name: "TestSessionlessGlobalTransactionIDSyncRejectsShortPayloads", Categories: "unitary", Exclusive: false, Fn: TestSessionlessGlobalTransactionIDSyncRejectsShortPayloads},
+	{Name: "TestSessionlessGlobalTransactionIDSyncRejectsUnsupportedPayloadValues", Categories: "unitary", Exclusive: false, Fn: TestSessionlessGlobalTransactionIDSyncRejectsUnsupportedPayloadValues},
+	{Name: "TestSessionlessTransactionDetachResponsePaths", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionDetachResponsePaths},
+	{Name: "TestSessionlessTransactionDetachSetupFailures", Categories: "unitary", Exclusive: false, Fn: TestSessionlessTransactionDetachSetupFailures},
+
+	{Name: "TestOTxEnFactoryRegistration", Categories: "unitary", Exclusive: false, Fn: TestOTxEnFactoryRegistration},
+	{Name: "TestOTxEnMarshalTo", Categories: "unitary", Exclusive: false, Fn: TestOTxEnMarshalTo},
+	{Name: "TestOTxEnMarshalToEmptyVariableData", Categories: "unitary", Exclusive: false, Fn: TestOTxEnMarshalToEmptyVariableData},
+	{Name: "TestOTxEnMarshalToErrors", Categories: "unitary", Exclusive: false, Fn: TestOTxEnMarshalToErrors},
+	{Name: "TestOTxEnConfigureOperations", Categories: "unitary", Exclusive: false, Fn: TestOTxEnConfigureOperations},
+	{Name: "TestOTxEnRPAFactoryRegistration", Categories: "unitary", Exclusive: false, Fn: TestOTxEnRPAFactoryRegistration},
+	{Name: "TestOTxEnRPAUnmarshalFrom", Categories: "unitary", Exclusive: false, Fn: TestOTxEnRPAUnmarshalFrom},
+	{Name: "TestOTxEnRPAUnmarshalFromFailure", Categories: "unitary", Exclusive: false, Fn: TestOTxEnRPAUnmarshalFromFailure},
+
+	{Name: "TestOTxSe_FactoryRegistration_MessageCodes", Categories: "unitary", Exclusive: false, Fn: TestOTxSe_FactoryRegistration_MessageCodes},
+	{Name: "TestOTxSe_MarshalTo_StartSessionless", Categories: "unitary", Exclusive: false, Fn: TestOTxSe_MarshalTo_StartSessionless},
+	{Name: "TestOTxSe_MarshalTo_Suspend", Categories: "unitary", Exclusive: false, Fn: TestOTxSe_MarshalTo_Suspend},
+	{Name: "TestOTxSeMarshalToErrors", Categories: "unitary", Exclusive: false, Fn: TestOTxSeMarshalToErrors},
+	{Name: "TestGenerateSessionlessGlobalTransactionID", Categories: "unitary", Exclusive: false, Fn: TestGenerateSessionlessGlobalTransactionID},
+	{Name: "TestValidateSessionlessGlobalTransactionID", Categories: "unitary", Exclusive: false, Fn: TestValidateSessionlessGlobalTransactionID},
+	{Name: "TestNewSessionlessGlobalTransactionIDSync", Categories: "unitary", Exclusive: false, Fn: TestNewSessionlessGlobalTransactionIDSync},
+	{Name: "TestOTxSeRPA_UnmarshalFrom_Success", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPA_UnmarshalFrom_Success},
+	{Name: "TestOTxSeRPA_UnmarshalFrom_EmptyContext", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPA_UnmarshalFrom_EmptyContext},
+	{Name: "TestOTxSeRPA_UnmarshalFrom_Failure", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPA_UnmarshalFrom_Failure},
+	{Name: "TestOTxSeRPA_UnmarshalFrom_FieldFailures", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPA_UnmarshalFrom_FieldFailures},
+	{Name: "TestOTxSeRPAFactoryRegistration", Categories: "unitary", Exclusive: false, Fn: TestOTxSeRPAFactoryRegistration},
 
 	{Name: "TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination},
 	{Name: "TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError", Categories: "unitary", Exclusive: false, Fn: TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError},
@@ -549,7 +610,9 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestAddRequestBoundariesRegistersAndRunsCallbacks", Categories: "unitary", Exclusive: false, Fn: TestAddRequestBoundariesRegistersAndRunsCallbacks},
 	{Name: "TestAddRequestBoundariesReturnsBadConnOnPushFailure", Categories: "unitary", Exclusive: false, Fn: TestAddRequestBoundariesReturnsBadConnOnPushFailure},
 	{Name: "TestConnectionInitializeRequestBoundaryCallbacksQueuesInitialBegin", Categories: "unitary", Exclusive: false, Fn: TestConnectionInitializeRequestBoundaryCallbacksQueuesInitialBegin},
-	{Name: "TestConnectionResetter_Reset", Categories: "unitary", Exclusive: false, Fn: TestConnectionResetter_Reset},
+	{Name: "TestConnectionValidator_RollsBackActiveTransaction", Categories: "unitary", Exclusive: false, Fn: TestConnectionValidator_RollsBackActiveTransaction},
+	{Name: "TestConnectionValidator_RollbackFailureInvalidatesConnection", Categories: "unitary", Exclusive: false, Fn: TestConnectionValidator_RollbackFailureInvalidatesConnection},
+	{Name: "TestConnectionResetter_ResetPreservesStatements", Categories: "unitary", Exclusive: false, Fn: TestConnectionResetter_ResetPreservesStatements},
 	{Name: "TestConnectionResetSessionPushesRequestBegin", Categories: "unitary", Exclusive: false, Fn: TestConnectionResetSessionPushesRequestBegin},
 	{Name: "TestNewRequestBoundaryCallbacksCreatesEmptyLists", Categories: "unitary", Exclusive: false, Fn: TestNewRequestBoundaryCallbacksCreatesEmptyLists},
 	{Name: "TestRequestCallbacksAppend", Categories: "unitary", Exclusive: false, Fn: TestRequestCallbacksAppend},
@@ -601,7 +664,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTILobd_UnmarshalFrom_Fail", Categories: "unitary", Exclusive: false, Fn: TestTTILobd_UnmarshalFrom_Fail},
 	{Name: "TestTTILobd_UnmarshalFrom_Success", Categories: "unitary", Exclusive: false, Fn: TestTTILobd_UnmarshalFrom_Success},
 	{Name: "TestTTIShelf_LocalizedStatementExecError", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_LocalizedStatementExecError},
-	{Name: "TestTTIShelf_StatementDrain", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_StatementDrain},
 	{Name: "TestTTIShelf_ValidateConnection", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_ValidateConnection},
 	{Name: "TestNewMessageStreamerRegistersConnectionValidator", Categories: "unitary", Exclusive: false, Fn: TestNewMessageStreamerRegistersConnectionValidator},
 	{Name: "TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator", Categories: "unitary", Exclusive: false, Fn: TestTTIShelf_ValidateConnectionStopsAtFirstInvalidValidator},
@@ -993,16 +1055,18 @@ func (t *TestDataBuffer) ReadBytesWithContext(ctx context.Context, n int32) (*[]
 
 // mockStreamer implements common.Streamer[common.MessageType] for testing
 type mockStreamer struct {
-	pushCalled bool
-	pushedMsg  list.List
-	pushErr    error
-	flushErr   error
-	pullCalled bool
-	pullTypes  []common.MessageType
-	pullMsg    common.Message[common.MessageType]
-	pullMsgs   []common.Message[common.MessageType]
-	pullErr    error
-	drainIn    int
+	pushCalled  bool
+	pushedMsg   list.List
+	pushErr     error
+	flushErr    error
+	flushCalled bool
+	pullCalled  bool
+	pullTypes   []common.MessageType
+	pullMsg     common.Message[common.MessageType]
+	pullMsgs    []common.Message[common.MessageType]
+	pullErr     error
+	pullHook    func(common.Message[common.MessageType])
+	drainIn     int
 }
 
 // wrapped mock stream combines both a pre-filled message incoming queue
@@ -1052,7 +1116,7 @@ func (m *wrappedMockStreamer) isValid(ctx context.Context) bool {
 	if msgIn == 0 {
 		return true
 	}
-	m.streamer.shelf.getEventService().post(streamerStaleEvent)
+	m.streamer.shelf.getEventService().post(streamerStaleEvent, nil)
 	return false
 }
 
@@ -1081,15 +1145,22 @@ func (m *mockStreamer) Push(_ context.Context, msg common.Message[common.Message
 func (m *mockStreamer) Pull(_ context.Context, types ...common.MessageType) (common.Message[common.MessageType], error) {
 	m.pullCalled = true
 	m.pullTypes = types
+	var msg common.Message[common.MessageType]
+	var err error
 	if len(m.pullMsgs) > 0 {
-		msg := m.pullMsgs[0]
+		msg = m.pullMsgs[0]
 		m.pullMsgs = m.pullMsgs[1:]
-		return msg, nil
+	} else {
+		msg, err = m.pullMsg, m.pullErr
 	}
-	return m.pullMsg, m.pullErr
+	if err == nil && msg != nil && m.pullHook != nil {
+		m.pullHook(msg)
+	}
+	return msg, err
 }
 
 func (m *mockStreamer) Flush(_ context.Context) error {
+	m.flushCalled = true
 	return m.flushErr
 }
 
@@ -1149,7 +1220,7 @@ func newTestConnection(
 		_isClosed: false,
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
-	conn._registerHandleConnectionShouldBeDropped()
+	conn._registerHandleEndOfCallStatus()
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	return conn
 }

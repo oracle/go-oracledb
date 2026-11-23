@@ -178,8 +178,6 @@ const (
 	// MaxTtcverSupported is the maximum supported TTC version.
 	MaxTtcverSupported common.UB2 = 6
 
-	located
-
 	// TTCLXMULTI indicates Flags for multibyte conversions
 	TTCLXMULTI = 0x01
 	// TTCLXMCONV indicates conversion may affect length.
@@ -198,10 +196,7 @@ const (
 	/* back to what it was for the logon call */
 	owewnivc = 0x04 // null values not used in an
 	oerwcper = 0x20 // Pkg/proc created with - /* Where; set by parse */
-	// TtiEocEct : elapsed call time follows
-	TtiEocEct = 0x08
-	// TtiEocfDropWhenReturned indicates this connection is affected by a planned-down
-	TtiEocfDropWhenReturned common.UB4 = 0x00000800
+
 	// TtiEocRel clean-up cusror ID with implicit pooling on
 	TtiEocRel common.UB4 = 0x00008000
 

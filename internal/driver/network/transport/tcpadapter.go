@@ -277,9 +277,10 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 		httpsProxyPort = httpsProxyPortOrDefault(httpsProxyPort)
 		dialAddress = net.JoinHostPort(httpsProxy, strconv.Itoa(httpsProxyPort))
 	}
-	common.OdlT(nt.atts.Connectionid).Debug("dialing remote host")
+	common.OdlT(nt.atts.Connectionid).Debug("dialing remote host", "ip", dialAddress)
 	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", dialAddress)
 	if err != nil {
+		common.OdlT(nt.atts.Connectionid).Debug("error while dialing", "error", err)
 		if httpsProxy == "" {
 			return normalizeDialError(dialCtxToBeUsed, err, address, nt.atts.Connectionid)
 		}

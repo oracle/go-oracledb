@@ -8,10 +8,12 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
 ## Features
   - Native Go implementation of Go's [sql/driver](https://pkg.go.dev/database/sql/driver) package
   - Supports Oracle Database versions: 19c and higher
-  - Authentication: supports username and password authentication
+  - Authentication: 
+    - username and password authentication
+    - token authentication
   - Data source: supports Connect Descriptor and EZConnect
   - Protocols: TCP and TCPS
-  - Transactions
+  - Transactions: standard and [sessionless](documentation/sessionless_transactions.md)
   - Statements with in parameters and out parameters (using `sql.Out`)
   - PL/SQL In/Out parameters (using `sql.Out`)
   - Inband notifications
@@ -19,6 +21,7 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
   - BLOB support using prefetch and returning `[]byte`
   - CLOB support using prefetch and returning `string`
   - [DRCP](documentation/drcp.md)
+
 
 ## Installation
 Run:
@@ -244,11 +247,9 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 | `NCHAR`      | `string`             |
 | `VARCHAR2`   | `string`             |
 | `NVARCHAR2`  | `string`             |
-| `LONG`       | `string` or `[]byte` |
 | `CLOB`       | `string` or `[]byte` |
 | `NCLOB`      | `string`             |
 | `XMLTYPE`    | `string`             |
-
 
 ### Numeric Types
 
@@ -285,9 +286,17 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 | Oracle Type | Driver returns |
 |-------------|----------------|
 | `RAW`       | `[]byte`       |
-| `LONG RAW`  | `[]byte`       |
 | `BLOB`      | `[]byte`       |
 | `BFILE`     | `[]byte`       |
+
+### Unsupported Legacy Column Types
+
+| Oracle type | Query result support | Recommended replacement |
+|-------------|----------------------|--------------------------|
+| `LONG`      | Not supported        | `CLOB`                   |
+| `LONG RAW`  | Not supported        | `BLOB`                   |
+
+Support for Oracle `LONG` and `LONG RAW` columns will be added in a later release.
 
 ---
 

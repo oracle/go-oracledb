@@ -44,12 +44,14 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	driverConf "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // connectionNegotiator implements the Negotiator interface for TTC connections.
 type connectionNegotiator struct {
-	_dataBuffer driverCommon.DataBuffer
+	_dataBuffer           driverCommon.DataBuffer
+	_connectionProperties *driverConf.OracleDriverConfig
 }
 
 // newConnectionNegotiator creates a new instance of connectionNegotiator.
@@ -63,8 +65,9 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 	var dty *tTIdty
 
 	common.Odl.Fine("connectionNegotiator: Negotiation start")
-	// 1. Create Shelf & Session Context
+	// 1. Create Shelf & Session Context and install connection properties
 	shelf, sessCtx := _createShelfAndSessionContext()
+	shelf.UpdateDriverConfig(cn._connectionProperties)
 
 	// 2. Fetch new Marshaller & TTC Msg Streamer
 	_createAndRegisterMarshaller(cn._dataBuffer, shelf, true)
@@ -125,6 +128,11 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 // SetDataBuffer Sets the data buffer used to create the marshaler within the negotiator
 func (cn *connectionNegotiator) SetDataBuffer(buf driverCommon.DataBuffer) {
 	cn._dataBuffer = buf
+}
+
+// SetConnectionProperties sets the connection properties used during negotiation.
+func (cn *connectionNegotiator) SetConnectionProperties(properties *driverConf.OracleDriverConfig) {
+	cn._connectionProperties = properties
 }
 
 // _negotiateDatatype negotiates the datatype (TTIDTY) and returns the negotiated *ttc.tTIdty.

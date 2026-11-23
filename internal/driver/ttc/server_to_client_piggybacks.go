@@ -46,6 +46,10 @@ import (
 
 // registerServerToClientPiggybacks registers server to client piggyback messages
 // callback functions
+//
+// Parameters:
+//   - shelf: TTC shelf whose message streamer receives the callback.
+//   - sessionContext: Session context updated by the callback.
 func registerServerToClientPiggybacks(shelf *ttiShelf[driverCommon.MessageType], sessionContext *driverCommon.SessionContext) {
 	messageStreamer := shelf.GetMessageStreamer().(MessageStreamerInterface)
 	sessionUpdater := &serverToClientPiggybackUpdater{
@@ -65,7 +69,15 @@ type serverToClientPiggybackUpdater struct {
 	logger     *common.OracleLogger
 }
 
-// handleServerToClientPiggyback handles server to client piggyback messages.
+// handleServerToClientPiggyback handles server-to-client piggyback messages.
+//
+// Parameters:
+//   - msg: Piggyback message to process.
+//   - e: Error returned while unmarshalling the message.
+//
+// Returns:
+//   - bool: Whether the message should remain in the queue.
+//   - error: Error if the message is not a supported server-to-client function.
 func (sessionUpdater serverToClientPiggybackUpdater) handleServerToClientPiggyback(msg driverCommon.Message[driverCommon.MessageType], e error) (bool, error) {
 	function, ok := msg.(driverCommon.Function)
 	if !ok {
@@ -77,7 +89,7 @@ func (sessionUpdater serverToClientPiggybackUpdater) handleServerToClientPiggyba
 	functionCode := function.GetFuncCode()
 	switch functionCode {
 	case ocssync:
-		return sessionUpdater.updateSessionSyncProperties(msg)
+		return sessionUpdater.updateSessionProperties(msg, e)
 	case ocsessret:
 		return sessionUpdater.updateSessionRetProperties(msg)
 	case ocospid:
@@ -87,21 +99,32 @@ func (sessionUpdater serverToClientPiggybackUpdater) handleServerToClientPiggyba
 	}
 
 }
-
 func (sessionUpdater serverToClientPiggybackUpdater) updateOsPID(msg driverCommon.Message[driverCommon.MessageType]) (bool, error) {
 	sessionUpdater.logger.Debug("got updateOsPID")
 	//ttiSPFOSPID, _ := msg.(*ttiSPFOCOspid)
 	return false, nil
 }
 
-// updateSessionSyncProperties handles OCSSYNC message. Updates session properties.
-func (sessionUpdater serverToClientPiggybackUpdater) updateSessionSyncProperties(msg driverCommon.Message[driverCommon.MessageType]) (bool, error) {
-
-	sessionUpdater.logger.Debug("Update session sync properties")
+// updateSessionProperties handles an OCSSYNC message, updates
+// session properties and raises session properties update event.
+//
+// Parameters:
+//   - msg: OCSSYNC message containing session properties.
+//   - e: Error returned while unmarshalling the message.
+//
+// Returns:
+//   - bool: False because the message should not remain in the queue.
+//   - error: The unmarshalling error, if any.
+func (sessionUpdater serverToClientPiggybackUpdater) updateSessionProperties(msg driverCommon.Message[driverCommon.MessageType], e error) (bool, error) {
+	if e != nil {
+		return false, e
+	}
 
 	ttiSPFOCSSync, _ := msg.(*ttiSPFOCSSync)
 
-	sessionUpdater.sessionCtx.UpdateSessionProperties(ttiSPFOCSSync.getKeyValueArr())
+	properties := ttiSPFOCSSync.getKeyValueArr()
+	sessionUpdater.sessionCtx.UpdateSessionProperties(properties)
+	sessionUpdater.shelf.getEventService().post(sessionPropertiesUpdateEvent, propertiesEventData{properties: properties})
 
 	return false, nil
 }
