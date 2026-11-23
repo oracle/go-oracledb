@@ -63,8 +63,11 @@ const (
 	vectorMagic           = 0xDB
 	vectorVersionV0       = 0
 	vectorBaseHeaderBytes = 9
-	vectorNormBytes       = 8
+	vectorFloat64Bytes    = 8
+	vectorFloat32Bytes    = 4
+	vectorNormBytes       = vectorFloat64Bytes
 	vectorHeaderBytes     = vectorBaseHeaderBytes + vectorNormBytes
+	vectorBitsPerByte     = 8
 
 	// VECTOR envelope flags.
 	vectorFlagOptional   = 0x8000
@@ -81,7 +84,16 @@ const (
 	vectorTypeBinary  = 0x05
 )
 
-// EncodeVectorFloat64 encodes datatype.VectorFloat64 into Oracle VECTOR(FLOAT64) wire layout.
+/*
+EncodeVectorFloat64 encodes datatype.VectorFloat64 as a dense Oracle VECTOR(FLOAT64).
+
+Input:
+  - v: A datatype.VectorFloat64. A typed nil value represents SQL NULL.
+
+Output:
+  - The complete VECTOR envelope and dimensions in Oracle's ordered binary format.
+  - An error when v has a different type or exceeds the dense VECTOR dimension limit.
+*/
 func EncodeVectorFloat64(v driver.Value) (driverCommon.B1Array, error) {
 	values, ok := v.(datatype.VectorFloat64)
 	if !ok {
@@ -90,10 +102,28 @@ func EncodeVectorFloat64(v driver.Value) (driverCommon.B1Array, error) {
 	if values == nil {
 		return nil, nil
 	}
-	return encodeVectorFloat64([]float64(values))
+	if len(values) > maxVectorDimensions {
+		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
+	}
+	out := make(driverCommon.B1Array, vectorHeaderBytes+len(values)*vectorFloat64Bytes)
+	writeVectorHeader(out, vectorVersionV0, vectorFlagNorm|vectorFlagNormSource, vectorTypeFloat64, uint32(len(values)))
+	for i, value := range values {
+		start := vectorHeaderBytes + i*vectorFloat64Bytes
+		putOracleBinaryDouble(out[start:start+vectorFloat64Bytes], value)
+	}
+	return out, nil
 }
 
-// EncodeVectorFloat32 encodes datatype.VectorFloat32 into Oracle VECTOR(FLOAT32) wire layout.
+/*
+EncodeVectorFloat32 encodes datatype.VectorFloat32 as a dense Oracle VECTOR(FLOAT32).
+
+Input:
+  - v: A datatype.VectorFloat32. A typed nil value represents SQL NULL.
+
+Output:
+  - The complete VECTOR envelope and dimensions in Oracle's ordered binary format.
+  - An error when v has a different type or exceeds the dense VECTOR dimension limit.
+*/
 func EncodeVectorFloat32(v driver.Value) (driverCommon.B1Array, error) {
 	values, ok := v.(datatype.VectorFloat32)
 	if !ok {
@@ -102,10 +132,28 @@ func EncodeVectorFloat32(v driver.Value) (driverCommon.B1Array, error) {
 	if values == nil {
 		return nil, nil
 	}
-	return encodeVectorFloat32([]float32(values))
+	if len(values) > maxVectorDimensions {
+		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
+	}
+	out := make(driverCommon.B1Array, vectorHeaderBytes+len(values)*vectorFloat32Bytes)
+	writeVectorHeader(out, vectorVersionV0, vectorFlagNorm|vectorFlagNormSource, vectorTypeFloat32, uint32(len(values)))
+	for i, value := range values {
+		start := vectorHeaderBytes + i*vectorFloat32Bytes
+		putOracleBinaryFloat(out[start:start+vectorFloat32Bytes], value)
+	}
+	return out, nil
 }
 
-// EncodeVectorInt8 encodes datatype.VectorInt8 into Oracle VECTOR(INT8) wire layout.
+/*
+EncodeVectorInt8 encodes datatype.VectorInt8 as a dense Oracle VECTOR(INT8).
+
+Input:
+  - v: A datatype.VectorInt8. A typed nil value represents SQL NULL.
+
+Output:
+  - The complete VECTOR envelope and one signed byte per dimension.
+  - An error when v has a different type or exceeds the dense VECTOR dimension limit.
+*/
 func EncodeVectorInt8(v driver.Value) (driverCommon.B1Array, error) {
 	values, ok := v.(datatype.VectorInt8)
 	if !ok {
@@ -114,10 +162,28 @@ func EncodeVectorInt8(v driver.Value) (driverCommon.B1Array, error) {
 	if values == nil {
 		return nil, nil
 	}
-	return encodeVectorInt8([]int8(values))
+	if len(values) > maxVectorDimensions {
+		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
+	}
+	out := make(driverCommon.B1Array, vectorHeaderBytes+len(values))
+	writeVectorHeader(out, vectorVersionV0, vectorFlagNorm|vectorFlagNormSource, vectorTypeInt8, uint32(len(values)))
+	for i, value := range values {
+		out[vectorHeaderBytes+i] = byte(value)
+	}
+	return out, nil
 }
 
-// EncodeVectorBinary encodes packed bits into Oracle VECTOR(BINARY) wire layout.
+/*
+EncodeVectorBinary encodes datatype.VectorBinary as a dense Oracle VECTOR(BINARY).
+
+Input:
+  - v: Packed dimensions in datatype.VectorBinary, with eight dimensions per byte.
+    A typed nil value represents SQL NULL.
+
+Output:
+  - The complete VECTOR envelope and packed dimension bytes.
+  - An error when v has a different type or exceeds the dense VECTOR dimension limit.
+*/
 func EncodeVectorBinary(v driver.Value) (driverCommon.B1Array, error) {
 	values, ok := v.(datatype.VectorBinary)
 	if !ok {
@@ -126,75 +192,25 @@ func EncodeVectorBinary(v driver.Value) (driverCommon.B1Array, error) {
 	if values == nil {
 		return nil, nil
 	}
-	return encodeVectorBinary(values)
-}
-
-// DecodeVector decodes Oracle VECTOR data into the matching Go slice type:
-// []float64, []float32, []int8, or []byte (packed bits for BINARY vectors).
-func DecodeVector(data driverCommon.B1Array) (driver.Value, error) {
-	if len(data) == 0 {
-		return nil, nil
-	}
-	return decodeVector(data)
-}
-
-// encodeVectorFloat64 encodes dense FLOAT64 dimensions into a VECTOR envelope.
-func encodeVectorFloat64(values []float64) (driverCommon.B1Array, error) {
-	if len(values) > maxVectorDimensions {
-		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
-	}
-	payloadBytes := len(values) * 8
-	out := make([]byte, vectorHeaderBytes+payloadBytes)
-	writeVectorHeader(out, vectorVersionV0, vectorFlagNorm|vectorFlagNormSource, vectorTypeFloat64, uint32(len(values)))
-	offset := vectorHeaderBytes
-	for _, value := range values {
-		putOracleBinaryDouble(out[offset:offset+8], value)
-		offset += 8
-	}
-	return out, nil
-}
-
-// encodeVectorFloat32 encodes dense FLOAT32 dimensions into a VECTOR envelope.
-func encodeVectorFloat32(values []float32) (driverCommon.B1Array, error) {
-	if len(values) > maxVectorDimensions {
-		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
-	}
-	payloadBytes := len(values) * 4
-	out := make([]byte, vectorHeaderBytes+payloadBytes)
-	writeVectorHeader(out, vectorVersionV0, vectorFlagNorm|vectorFlagNormSource, vectorTypeFloat32, uint32(len(values)))
-	offset := vectorHeaderBytes
-	for _, value := range values {
-		putOracleBinaryFloat(out[offset:offset+4], value)
-		offset += 4
-	}
-	return out, nil
-}
-
-// encodeVectorInt8 encodes dense INT8 dimensions into a VECTOR envelope.
-func encodeVectorInt8(values []int8) (driverCommon.B1Array, error) {
-	if len(values) > maxVectorDimensions {
-		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
-	}
-	out := make([]byte, vectorHeaderBytes+len(values))
-	writeVectorHeader(out, vectorVersionV0, vectorFlagNorm|vectorFlagNormSource, vectorTypeInt8, uint32(len(values)))
-	for i := range values {
-		out[vectorHeaderBytes+i] = byte(values[i])
-	}
-	return out, nil
-}
-
-// encodeVectorBinary encodes packed BINARY dimensions into a VECTOR envelope.
-func encodeVectorBinary(values datatype.VectorBinary) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorBinaryDimensions/8 {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65528")
 	}
-	out := make([]byte, vectorHeaderBytes+len(values))
-	writeVectorHeader(out, vectorVersionV0, vectorFlagNormSource, vectorTypeBinary, uint32(len(values))*8)
+	out := make(driverCommon.B1Array, vectorHeaderBytes+len(values))
+	writeVectorHeader(out, vectorVersionV0, vectorFlagNormSource, vectorTypeBinary, uint32(len(values))*vectorBitsPerByte)
 	copy(out[vectorHeaderBytes:], values)
 	return out, nil
 }
 
-// writeVectorHeader writes the fixed VECTOR envelope header and reserved norm field.
+/*
+writeVectorHeader writes the fixed VECTOR envelope header and reserved norm field.
+
+Input:
+  - out: Storage for the complete header.
+  - version, flags, typeCode, dimensions: The VECTOR envelope fields.
+
+Output:
+  - The header bytes are written into out. The reserved norm field is zeroed.
+*/
 func writeVectorHeader(out []byte, version byte, flags uint16, typeCode byte, dimensions uint32) {
 	out[0] = vectorMagic
 	out[1] = version
@@ -208,8 +224,21 @@ func writeVectorHeader(out []byte, version byte, flags uint16, typeCode byte, di
 	clear(out[vectorBaseHeaderBytes:vectorHeaderBytes])
 }
 
-// decodeVector validates and decodes a complete VECTOR envelope.
-func decodeVector(data []byte) (driver.Value, error) {
+/*
+DecodeVector validates and decodes one complete Oracle VECTOR envelope.
+
+Input:
+  - data: The raw VECTOR bytes. A nil slice represents SQL NULL. An empty,
+    non-nil slice is invalid because an empty vector still has its header.
+
+Output:
+  - []float64, []float32, []int8, or packed []byte according to the type code.
+  - An error when the envelope, flags, dimensions, or payload are unsupported.
+*/
+func DecodeVector(data driverCommon.B1Array) (driver.Value, error) {
+	if data == nil {
+		return nil, nil
+	}
 	if len(data) < vectorBaseHeaderBytes {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, ">="+strconv.Itoa(vectorBaseHeaderBytes))
 	}
@@ -250,74 +279,133 @@ func decodeVector(data []byte) (driver.Value, error) {
 	payload := data[payloadOffset:]
 	switch typeCode {
 	case vectorTypeFloat64:
-		out := make([]float64, dimensionCount)
-		for i := range out {
-			start := i * 8
-			value, err := decodeFloat64Dimension(payload[start:start+8], flags)
-			if err != nil {
-				return nil, err
-			}
-			out[i] = value
-		}
-		return out, nil
+		return decodeVectorFloat64(payload, dimensionCount, flags)
 	case vectorTypeFloat32:
-		out := make([]float32, dimensionCount)
-		for i := range out {
-			start := i * 4
-			value, err := decodeFloat32Dimension(payload[start:start+4], flags)
-			if err != nil {
-				return nil, err
-			}
-			out[i] = value
-		}
-		return out, nil
+		return decodeVectorFloat32(payload, dimensionCount, flags)
 	case vectorTypeInt8:
-		out := make([]int8, dimensionCount)
-		for i := range out {
-			out[i] = int8(payload[i])
-		}
-		return out, nil
+		return decodeVectorInt8(payload, dimensionCount), nil
 	case vectorTypeBinary:
-		out := make([]byte, len(payload))
-		copy(out, payload)
-		return out, nil
-	default:
-		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidFormat, "type=2|3|4|5")
+		return append([]byte(nil), payload...), nil
 	}
+	return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidFormat, "type=2|3|4|5")
 }
 
-// vectorValueByteLength returns the payload length implied by a VECTOR type and dimension count.
+/*
+vectorValueByteLength returns the payload length implied by a VECTOR type and dimension count.
+
+Input:
+  - typeCode: The VECTOR element type code.
+  - dimensions: The declared dense dimension count.
+
+Output:
+  - The payload size in bytes, or an error for an unsupported type or invalid count.
+*/
 func vectorValueByteLength(typeCode byte, dimensions uint32) (int, error) {
+	maxDimensions := uint32(maxVectorDimensions)
 	switch typeCode {
 	case vectorTypeFloat64:
-		if dimensions > maxVectorDimensions {
-			return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonOutOfRange, "dimension-count")
+		if dimensions <= maxDimensions {
+			return int(dimensions) * vectorFloat64Bytes, nil
 		}
-		return int(dimensions) * 8, nil
 	case vectorTypeFloat32:
-		if dimensions > maxVectorDimensions {
-			return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonOutOfRange, "dimension-count")
+		if dimensions <= maxDimensions {
+			return int(dimensions) * vectorFloat32Bytes, nil
 		}
-		return int(dimensions) * 4, nil
 	case vectorTypeInt8:
-		if dimensions > maxVectorDimensions {
-			return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonOutOfRange, "dimension-count")
+		if dimensions <= maxDimensions {
+			return int(dimensions), nil
 		}
-		return int(dimensions), nil
 	case vectorTypeBinary:
-		if dimensions > maxVectorBinaryDimensions {
-			return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonOutOfRange, "dimension-count")
+		maxDimensions = maxVectorBinaryDimensions
+		if dimensions > maxDimensions {
+			break
 		}
-		if dimensions%8 != 0 {
+		if dimensions%vectorBitsPerByte != 0 {
 			return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidValue, "binary-dimension-count-multiple-of-8")
 		}
-		return int(dimensions / 8), nil
+		return int(dimensions / vectorBitsPerByte), nil
 	default:
 		return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidFormat, "unknown-type")
 	}
+	return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonOutOfRange, "dimension-count")
 }
 
-// decodeFloat64Dimension decodes one FLOAT64 dimension using the envelope flags.
+/*
+decodeVectorFloat64 decodes a FLOAT64 payload.
+
+Input:
+  - payload: Exactly dimensions * vectorFloat64Bytes encoded bytes.
+  - dimensions: Number of FLOAT64 values in payload.
+  - flags: VECTOR byte-order and IEEE representation flags.
+
+Output:
+  - The decoded values or an error when an individual dimension is malformed.
+*/
+func decodeVectorFloat64(payload []byte, dimensions uint32, flags uint16) ([]float64, error) {
+	out := make([]float64, dimensions)
+	for i := range out {
+		start := i * vectorFloat64Bytes
+		value, err := decodeFloat64Dimension(payload[start:start+vectorFloat64Bytes], flags)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = value
+	}
+	return out, nil
+}
+
+/*
+decodeVectorFloat32 decodes a FLOAT32 payload.
+
+Input:
+  - payload: Exactly dimensions * vectorFloat32Bytes encoded bytes.
+  - dimensions: Number of FLOAT32 values in payload.
+  - flags: VECTOR byte-order and IEEE representation flags.
+
+Output:
+  - The decoded values or an error when an individual dimension is malformed.
+*/
+func decodeVectorFloat32(payload []byte, dimensions uint32, flags uint16) ([]float32, error) {
+	out := make([]float32, dimensions)
+	for i := range out {
+		start := i * vectorFloat32Bytes
+		value, err := decodeFloat32Dimension(payload[start:start+vectorFloat32Bytes], flags)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = value
+	}
+	return out, nil
+}
+
+/*
+decodeVectorInt8 decodes an INT8 payload.
+
+Input:
+  - payload: One signed byte per declared dimension.
+  - dimensions: Number of INT8 values in payload.
+
+Output:
+  - The decoded values.
+*/
+func decodeVectorInt8(payload []byte, dimensions uint32) []int8 {
+	out := make([]int8, dimensions)
+	for i := range out {
+		out[i] = int8(payload[i])
+	}
+	return out
+}
+
+/*
+decodeFloat64Dimension decodes one FLOAT64 dimension.
+
+Input:
+  - raw: Exactly vectorFloat64Bytes bytes.
+  - flags: VECTOR byte-order and IEEE representation flags.
+
+Output:
+  - The decoded value or an error when raw has an invalid width.
+*/
 func decodeFloat64Dimension(raw []byte, flags uint16) (float64, error) {
 	if len(raw) != 8 {
 		return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, 8)
@@ -329,7 +417,16 @@ func decodeFloat64Dimension(raw []byte, flags uint16) (float64, error) {
 	return DecodeBinaryDouble(ordered)
 }
 
-// decodeFloat32Dimension decodes one FLOAT32 dimension using the envelope flags.
+/*
+decodeFloat32Dimension decodes one FLOAT32 dimension.
+
+Input:
+  - raw: Exactly vectorFloat32Bytes bytes.
+  - flags: VECTOR byte-order and IEEE representation flags.
+
+Output:
+  - The decoded value or an error when raw has an invalid width.
+*/
 func decodeFloat32Dimension(raw []byte, flags uint16) (float32, error) {
 	if len(raw) != 4 {
 		return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, 4)
@@ -341,7 +438,16 @@ func decodeFloat32Dimension(raw []byte, flags uint16) (float32, error) {
 	return DecodeBinaryFloat(ordered)
 }
 
-// orderVectorBytes returns raw in big-endian order when the VECTOR marks it little-endian.
+/*
+orderVectorBytes normalizes one VECTOR dimension to big-endian byte order.
+
+Input:
+  - raw: Encoded bytes for one numeric dimension.
+  - flags: VECTOR byte-order flags.
+
+Output:
+  - raw unchanged for big-endian vectors, or a reversed copy for little-endian vectors.
+*/
 func orderVectorBytes(raw []byte, flags uint16) []byte {
 	ordered := raw
 	if (flags & vectorFlagLittle) != 0 {
@@ -353,7 +459,13 @@ func orderVectorBytes(raw []byte, flags uint16) []byte {
 	return ordered
 }
 
-// putOracleBinaryDouble writes FLOAT64 in Oracle's ordered binary representation.
+/*
+putOracleBinaryDouble writes FLOAT64 in Oracle's ordered binary representation.
+
+Input:
+  - dst: Storage for vectorFloat64Bytes bytes.
+  - value: Go FLOAT64 value to encode.
+*/
 func putOracleBinaryDouble(dst []byte, value float64) {
 	bits := math.Float64bits(value)
 	var stored uint64
@@ -365,7 +477,13 @@ func putOracleBinaryDouble(dst []byte, value float64) {
 	binary.BigEndian.PutUint64(dst, stored)
 }
 
-// putOracleBinaryFloat writes FLOAT32 in Oracle's ordered binary representation.
+/*
+putOracleBinaryFloat writes FLOAT32 in Oracle's ordered binary representation.
+
+Input:
+  - dst: Storage for vectorFloat32Bytes bytes.
+  - value: Go FLOAT32 value to encode.
+*/
 func putOracleBinaryFloat(dst []byte, value float32) {
 	bits := math.Float32bits(value)
 	var stored uint32

@@ -98,6 +98,20 @@ func TestVectorPublicEncodersValidateTypeAndNil(t *testing.T) {
 	if got, err := DecodeVector(nil); err != nil || got != nil {
 		t.Fatalf("nil vector decode: got %v, err=%v", got, err)
 	}
+	emptyWire, err := EncodeVectorFloat32(datatype.VectorFloat32{})
+	if err != nil {
+		t.Fatalf("encode empty vector: %v", err)
+	}
+	empty, err := DecodeVector(emptyWire)
+	if err != nil {
+		t.Fatalf("decode empty vector: %v", err)
+	}
+	if values, ok := empty.([]float32); !ok || values == nil || len(values) != 0 {
+		t.Fatalf("empty vector decode: got %#v", empty)
+	}
+	if _, err := DecodeVector(driverCommon.B1Array{}); err == nil {
+		t.Fatal("empty payload must not be treated as an empty vector")
+	}
 }
 
 // TestVectorDecodeWireVariantsAndBounds verifies unsupported flags, versions,
@@ -133,16 +147,16 @@ func TestVectorDecodeWireVariantsAndBounds(t *testing.T) {
 	if _, err := vectorValueByteLength(0xFF, 1); err == nil {
 		t.Fatal("expected unknown type error")
 	}
-	if _, err := encodeVectorFloat64(make([]float64, maxVectorDimensions+1)); err == nil {
+	if _, err := EncodeVectorFloat64(make(datatype.VectorFloat64, maxVectorDimensions+1)); err == nil {
 		t.Fatal("expected FLOAT64 encode bound error")
 	}
-	if _, err := encodeVectorFloat32(make([]float32, maxVectorDimensions+1)); err == nil {
+	if _, err := EncodeVectorFloat32(make(datatype.VectorFloat32, maxVectorDimensions+1)); err == nil {
 		t.Fatal("expected FLOAT32 encode bound error")
 	}
-	if _, err := encodeVectorInt8(make([]int8, maxVectorDimensions+1)); err == nil {
+	if _, err := EncodeVectorInt8(make(datatype.VectorInt8, maxVectorDimensions+1)); err == nil {
 		t.Fatal("expected INT8 encode bound error")
 	}
-	if _, err := encodeVectorBinary(make(datatype.VectorBinary, maxVectorBinaryDimensions/8+1)); err == nil {
+	if _, err := EncodeVectorBinary(make(datatype.VectorBinary, maxVectorBinaryDimensions/vectorBitsPerByte+1)); err == nil {
 		t.Fatal("expected BINARY encode bound error")
 	}
 }
