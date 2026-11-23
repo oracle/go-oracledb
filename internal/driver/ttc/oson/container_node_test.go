@@ -39,6 +39,7 @@
 package oson
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"math"
@@ -49,6 +50,114 @@ import (
 	drvCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
+
+// TestDecodeUnsupportedScalarAccess retains the #132 capability boundary and
+// verifies lazy access to supported siblings after unsupported scalar errors.
+// The synthetic scalar payloads are deliberately uninterpreted for these opcodes.
+func TestDecodeUnsupportedScalarAccess(t *testing.T) {
+	for _, fixture := range []struct {
+		name   string
+		opcode byte
+	}{{"native_integer", 0x79}, {"extended_binary", 0x7b}} {
+		t.Run(fixture.name, func(t *testing.T) {
+			const marker = "UNSUPPORTED_SCALAR_MARKER"
+			root := osonWithUnsupportedScalar(t, map[string]any{"bad": marker, "good": "survives"}, marker, fixture.opcode)
+			object, ok := root.(drvCommon.JSONObjectNode)
+			if !ok {
+				t.Fatalf("root type = %T, want JSONObjectNode", root)
+			}
+			bad, err := object.Get("bad")
+			if err != nil {
+				t.Fatalf("construct lazy scalar: %v", err)
+			}
+			if got := bad.Kind(); got != drvCommon.KindScalar {
+				t.Fatalf("unsupported scalar Kind() = %v, want scalar", got)
+			}
+			scalar, ok := bad.(drvCommon.JSONScalarNode)
+			if !ok {
+				t.Fatalf("child type = %T, want JSONScalarNode", bad)
+			}
+			for _, mode := range []drvCommon.JSONNumberMode{drvCommon.JSONNumberDefault, drvCommon.JSONNumberAsJSONNumber, drvCommon.JSONNumberAsFloat64} {
+				opts := drvCommon.JSONConversionOptions{NumberMode: mode}
+				_, err := bad.GetValue(opts)
+				assertOracleErrorCode(t, err, oracleErrors.OsonUnsupportedScalarError)
+				_, err = scalar.Value(opts)
+				assertOracleErrorCode(t, err, oracleErrors.OsonUnsupportedScalarError)
+				_, err = root.GetValue(opts)
+				assertOracleErrorCode(t, err, oracleErrors.OsonUnsupportedScalarError)
+				_, err = object.Value(opts)
+				assertOracleErrorCode(t, err, oracleErrors.OsonUnsupportedScalarError)
+			}
+			for _, node := range []drvCommon.JSONNode{root, object, bad, scalar} {
+				_, err := json.Marshal(node)
+				assertOracleErrorCode(t, err, oracleErrors.OsonUnsupportedScalarError)
+				_, err = node.String()
+				assertOracleErrorCode(t, err, oracleErrors.JSONRenderingError)
+			}
+			good, err := object.Get("good")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value, err := good.GetValue(drvCommon.JSONConversionOptions{}); err != nil || value != "survives" {
+				t.Fatalf("supported object sibling after errors = (%v, %v)", value, err)
+			}
+
+			arrayRoot := osonWithUnsupportedScalar(t, []any{marker, "survives"}, marker, fixture.opcode)
+			array, ok := arrayRoot.(drvCommon.JSONArrayNode)
+			if !ok {
+				t.Fatalf("root type = %T, want JSONArrayNode", arrayRoot)
+			}
+			if got := array.Len(); got != 2 {
+				t.Fatalf("array Len() = %d, want 2", got)
+			}
+			bad, err = array.Get(0)
+			if err != nil {
+				t.Fatalf("construct lazy array scalar: %v", err)
+			}
+			for _, mode := range []drvCommon.JSONNumberMode{drvCommon.JSONNumberDefault, drvCommon.JSONNumberAsJSONNumber, drvCommon.JSONNumberAsFloat64} {
+				opts := drvCommon.JSONConversionOptions{NumberMode: mode}
+				_, err := bad.GetValue(opts)
+				assertOracleErrorCode(t, err, oracleErrors.OsonUnsupportedScalarError)
+				_, err = array.Value(opts)
+				assertOracleErrorCode(t, err, oracleErrors.OsonUnsupportedScalarError)
+			}
+			for _, node := range []drvCommon.JSONNode{arrayRoot, array, bad} {
+				_, err := json.Marshal(node)
+				assertOracleErrorCode(t, err, oracleErrors.OsonUnsupportedScalarError)
+				_, err = node.String()
+				assertOracleErrorCode(t, err, oracleErrors.JSONRenderingError)
+			}
+			good, err = array.Get(1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value, err := good.GetValue(drvCommon.JSONConversionOptions{}); err != nil || value != "survives" {
+				t.Fatalf("supported array sibling after errors = (%v, %v)", value, err)
+			}
+			if text, err := json.Marshal(good); err != nil || string(text) != "\"survives\"" {
+				t.Fatalf("supported array sibling rendering = (%s, %v)", text, err)
+			}
+		})
+	}
+}
+
+func osonWithUnsupportedScalar(t *testing.T, input any, marker string, opcode byte) drvCommon.JSONNode {
+	t.Helper()
+	data, err := Encode(input)
+	if err != nil {
+		t.Fatalf("Encode(fixture): %v", err)
+	}
+	at := bytes.Index(data, []byte(marker))
+	if at < 1 || bytes.Count(data, []byte(marker)) != 1 || data[at-1] != byte(len(marker)) {
+		t.Fatal("unexpected compact-string fixture layout")
+	}
+	data[at-1] = opcode
+	root, err := Parse(data)
+	if err != nil {
+		t.Fatalf("Parse must preserve lazy access to supported sibling: %v", err)
+	}
+	return root
+}
 
 // TestDecodeObjectAPI verifies object node access API, including lookup and full
 // materialization.

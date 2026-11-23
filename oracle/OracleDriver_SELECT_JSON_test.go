@@ -43,9 +43,9 @@ import (
 	"database/sql"
 	stdjson "encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	ojson "github.com/oracle/go-oracledb/v26/oracle/datatype/json"
 )
@@ -55,44 +55,30 @@ import (
 // then selects them back.
 // Expectation: Selecting the JSON column and scanning into JSON returns the same JSON document inserted.
 // Notes:
-//   - JSON data type is supported in Oracle 21c+ (and enhanced in 23c). If unsupported in the test DB,
-//     CREATE TABLE will fail and this test will Skip.
+//   - JSON data type is supported in Oracle 21c+ (and enhanced in 23c). Only an established older
+//     database release is skipped; setup failures on eligible databases fail.
 //   - Includes coverage for small JSON, 0MB JSON, 20MB JSON, and 30MB JSON.
 func TestDriver_Table_Select_JSON(t *testing.T) {
 	t.Parallel()
-	if TestingConfig == nil {
-		t.Skip("No configuration available")
-	}
-	if TestingConfig.DatabaseVersion.Major < 21 {
-		t.Skip("JSON Type is not supported for DB < 21")
-	}
-	db, err := openTestDBWithConfig(TestingConfig)
-	if err != nil {
-		t.Fatalf("failed to open test DB: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	ctx := context.Background()
+	db := openOSONTestDB(t)
+	ctx := osonTestContext(t, 5*time.Minute)
 	table := createObjectName("t_select_json")
 
-	// JSON is a native type on 21c+ (and 23c). On older DBs, this should error and we'll Skip.
 	cols := map[string]string{
 		"id":   "NUMBER PRIMARY KEY",
 		"jdoc": "JSON",
 	}
 
-	// Drop if exists (ignore error) to make reruns stable in dev environments.
-	_ = dropTable(ctx, db, table)
-
 	if err := createTable(ctx, db, table, cols); err != nil {
-		t.Skipf("Skipping JSON select test (create failed): %v", err)
-		return
+		t.Fatalf("create native JSON table failed: %v", err)
 	}
-	defer func() {
-		if err := dropTable(ctx, db, table); err != nil {
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := dropTable(cleanupCtx, db, table); err != nil {
 			t.Errorf("cleanup drop table %s failed: %v", table, err)
 		}
-	}()
+	})
 
 	buildSizedJSON := func(sizeBytes int, ch string) string {
 		if sizeBytes <= 0 {
@@ -167,23 +153,12 @@ func TestDriver_Table_Select_JSON(t *testing.T) {
 // directly into JSON returns an error. This differs from a JSON null document,
 // which is a valid JSON scalar that materializes as nil.
 // Notes:
-//   - JSON data type is supported in Oracle 21c+ (and enhanced in 23c). If unsupported in the test DB,
-//     CREATE TABLE will fail and this test will Skip.
+//   - JSON data type is supported in Oracle 21c+ (and enhanced in 23c). Only an established older
+//     database release is skipped; setup failures on eligible databases fail.
 func TestDriver_Table_Select_NullJSON(t *testing.T) {
 	t.Parallel()
-	if TestingConfig == nil {
-		t.Skip("No configuration available")
-	}
-	if TestingConfig.DatabaseVersion.Major < 21 {
-		t.Skip("Boolean Type is not supported for DB < 23")
-	}
-	db, err := openTestDBWithConfig(TestingConfig)
-	if err != nil {
-		t.Fatalf("failed to open test DB: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	ctx := context.Background()
+	db := openOSONTestDB(t)
+	ctx := osonTestContext(t, time.Minute)
 	table := createObjectName("t_select_json_null")
 
 	cols := map[string]string{
@@ -191,17 +166,16 @@ func TestDriver_Table_Select_NullJSON(t *testing.T) {
 		"jdoc": "JSON",
 	}
 
-	_ = dropTable(ctx, db, table)
-
 	if err := createTable(ctx, db, table, cols); err != nil {
-		t.Skipf("Skipping NULL JSON select test (create failed): %v", err)
-		return
+		t.Fatalf("create native JSON table failed: %v", err)
 	}
-	defer func() {
-		if err := dropTable(ctx, db, table); err != nil {
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := dropTable(cleanupCtx, db, table); err != nil {
 			t.Errorf("cleanup drop table %s failed: %v", table, err)
 		}
-	}()
+	})
 
 	insSQL := "INSERT INTO " + table + " (id, jdoc) VALUES (:id, NULL)"
 	if _, err := db.ExecContext(ctx, insSQL, sql.Named("id", int64(1))); err != nil {
@@ -234,32 +208,24 @@ func TestDriver_Table_Select_NullJSON(t *testing.T) {
 //   - Query uses `SELECT * FROM <table>`.
 func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 	t.Parallel()
-	if TestingConfig == nil {
-		t.Skip("No configuration available")
-	}
-	if TestingConfig.DatabaseVersion.Major < 21 {
-		t.Skip("JSON Type is not supported for DB < 21")
-	}
-
-	db, err := openTestDBWithConfig(TestingConfig)
-	if err != nil {
-		t.Fatalf("failed to open test DB: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	ctx := context.Background()
+	db := openOSONTestDB(t)
+	ctx := osonTestContext(t, time.Minute)
 	table := createObjectName("t_ins_sel_json_15")
 	cols := map[string]string{
 		"id":   "NUMBER PRIMARY KEY",
 		"jdoc": "JSON",
 	}
 
-	_ = dropTable(ctx, db, table)
 	if err := createTable(ctx, db, table, cols); err != nil {
-		t.Skipf("Skipping JSON multi-row insert/select test (create failed): %v", err)
-		return
+		t.Fatalf("create native JSON table failed: %v", err)
 	}
-	t.Cleanup(func() { _ = dropTable(ctx, db, table) })
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := dropTable(cleanupCtx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	})
 
 	// Insert 15 rows of JSON data and store expected values by ID.
 	expected := make(map[int64]string, 15)
@@ -355,11 +321,11 @@ func assertSameJSONDocument(t *testing.T, got ojson.JSON, wantText string) {
 	decoder := stdjson.NewDecoder(strings.NewReader(wantText))
 	decoder.UseNumber()
 	if err := decoder.Decode(&wantValue); err != nil {
-		t.Fatalf("expected JSON decode failed: %v\njson: %s", err, wantText)
+		t.Fatalf("expected JSON decode failed: %v\njson: %s", err, osonBoundedText(wantText))
 	}
 
-	if !reflect.DeepEqual(gotValue, wantValue) {
+	if !osonSemanticEqual(gotValue, wantValue) {
 		gotText := got.String()
-		t.Fatalf("JSON mismatch:\n got:  %s\nwant: %s", gotText, wantText)
+		t.Fatalf("JSON mismatch:\n got:  %s\nwant: %s", osonBoundedText(gotText), osonBoundedText(wantText))
 	}
 }

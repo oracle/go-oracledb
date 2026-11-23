@@ -70,6 +70,11 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestJSONArrayAccessors", Categories: "unitary", Exclusive: false, Fn: TestJSONArrayAccessors},
 	{Name: "TestJSONScalarAccessors", Categories: "unitary", Exclusive: false, Fn: TestJSONScalarAccessors},
 	{Name: "TestJSONScanCopiesSourceBytes", Categories: "unitary", Exclusive: false, Fn: TestJSONScanCopiesSourceBytes},
+	{Name: "TestJSONTemporal_LocalZoneSubprocess", Categories: "unitary", Exclusive: true, Fn: TestJSONTemporal_LocalZoneSubprocess},
+	{Name: "TestJSONTemporal_YearValidation", Categories: "unitary", Exclusive: true, Fn: TestJSONTemporal_YearValidation},
+	{Name: "TestJSONTemporal_SecondsOffsetCharacterization", Categories: "unitary", Exclusive: true, Fn: TestJSONTemporal_SecondsOffsetCharacterization},
+	{Name: "TestJSONViewsPropagateNodeErrors", Categories: "unitary", Exclusive: false, Fn: TestJSONViewsPropagateNodeErrors},
+	{Name: "TestJSONUnsupportedGoInputMatrix", Categories: "unitary", Exclusive: false, Fn: TestJSONUnsupportedGoInputMatrix},
 }
 
 func TestCategoryExecutor(t *testing.T) {

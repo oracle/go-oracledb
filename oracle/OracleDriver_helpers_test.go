@@ -99,6 +99,12 @@ func openTestConnectorWithConfig(cfg *TestConfig) (driver.Connector, error) {
 // openTestDBWithConfig opens a test database connection using the provided test configuration
 // and performs a ping. The caller owns the returned *sql.DB and must close it.
 func openTestDBWithConfig(cfg *TestConfig) (*sql.DB, error) {
+	return openTestDBWithConfigContext(context.Background(), cfg)
+}
+
+// openTestDBWithConfigContext preserves the selected connection settings while
+// bounding connection establishment by ctx. The caller owns the returned DB.
+func openTestDBWithConfigContext(ctx context.Context, cfg *TestConfig) (*sql.DB, error) {
 	if cfg == nil {
 		return nil, sql.ErrConnDone
 	}
@@ -115,7 +121,7 @@ func openTestDBWithConfig(cfg *TestConfig) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
