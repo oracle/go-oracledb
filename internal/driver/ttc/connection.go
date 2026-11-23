@@ -61,6 +61,12 @@ type connection struct {
 	shelf   *ttiShelf[driverCommon.MessageType]
 	sessCtx *driverCommon.SessionContext
 	ns      driverCommon.NetworkSession
+	// _requestStartCallbacks contains callbacks run when the connection is
+	// borrowed from the pool (ResetSession).
+	_requestStartCallbacks []*requestBoundaryCallback
+	// _requestEndCallbacks contains callbacks run when the connection is
+	// returned to the pool (IsValid).
+	_requestEndCallbacks []*requestBoundaryCallback
 	// _isClosed is used to know if the connection has been closed. If _isClosed
 	// is set to true the connection cannot be used.
 	_isClosed bool
@@ -88,12 +94,20 @@ func newConnection(
 		_isValid:  true,
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
-	_registerHandleConnectionShouldBeDropped(shelf, conn)
-	shelf.registerCancelExecution(conn.cancelCurrentExecution)
+	conn._registerHandleConnectionShouldBeDropped()
+	conn.shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
 		return nil, err
 	}
+
 	return conn, nil
+}
+
+// initializeRequestBoundaryCallbacks installs request-boundary callbacks on
+// the connection.
+func (c *connection) initializeRequestBoundaryCallbacks(requestStartCallbacks []*requestBoundaryCallback, requestEndCallbacks []*requestBoundaryCallback) {
+	c._requestStartCallbacks = requestStartCallbacks
+	c._requestEndCallbacks = requestEndCallbacks
 }
 
 /*
@@ -215,12 +229,12 @@ type connectionStatusProvider interface {
 	isBeingDrainned() bool
 }
 
-// _registerHandleConnectionShouldBeDropped registers post unmarshal callbacks
-// that invalidates connections that should be dropped due to a planned-down
-func _registerHandleConnectionShouldBeDropped(shelf *ttiShelf[driverCommon.MessageType], connection *connection) {
-	messageStreamer := shelf.GetMessageStreamer().(MessageStreamerInterface)
-	messageStreamer.RegisterPostUnmarshallCallback(TTIOER, connection._handleConnectionShouldBeDropped)
-	messageStreamer.RegisterPostUnmarshallCallback(TTISTA, connection._handleConnectionShouldBeDropped)
+// _registerHandleConnectionShouldBeDropped registers post-unmarshal callbacks
+// that invalidate the connection when the server marks it for a planned shutdown.
+func (c *connection) _registerHandleConnectionShouldBeDropped() {
+	messageStreamer := c.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	messageStreamer.RegisterPostUnmarshallCallback(TTIOER, c._handleConnectionShouldBeDropped)
+	messageStreamer.RegisterPostUnmarshallCallback(TTISTA, c._handleConnectionShouldBeDropped)
 }
 
 // _handleConnectionShouldBeDropped post unmarshal callback that invalidates

@@ -45,7 +45,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-func TestConnectionResetter_Reset(t *testing.T) {
+func TestConnectionResetter_ResetPreservesStatements(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
 		returnMsg: NewOall18(),
@@ -68,21 +68,24 @@ func TestConnectionResetter_Reset(t *testing.T) {
 
 	connection := newTestConnection(shelf, sessionCtx, mockNs)
 
-	connection.PrepareContext(context.Background(), "SELECT * FROM DUAL")
-
-	if len(connection.shelf.GetStatements(false)) != 1 {
-		t.Errorf("list of statements should not be empty, got [%v]", connection.shelf.GetStatements(false))
+	prepared, err := connection.PrepareContext(context.Background(), "SELECT * FROM DUAL")
+	if err != nil {
+		t.Fatalf("PrepareContext() error = %v", err)
 	}
+	statement := prepared.(*Statement)
+	statement.qualifiedQuery.cursorID = 1
 
 	sessionCtx.GetSessionProperties().SetProperty("pasta", "carbonara")
 
-	connection.ResetSession(context.Background())
-	if len(connection.shelf.GetStatements(false)) != 0 {
-		t.Errorf("list of statements should be empty, got [%v]", connection.shelf.GetStatements(false))
+	if err := connection.ResetSession(context.Background()); err != nil {
+		t.Fatalf("ResetSession() error = %v", err)
+	}
+	if statement.qualifiedQuery.cursorID != 1 {
+		t.Errorf("prepared statement cursor = %d, want 1", statement.qualifiedQuery.cursorID)
 	}
 
 	if v := sessionCtx.GetSessionProperties().GetProperty("pasta"); v != nil {
-		t.Errorf("session porperties should have been resetted")
+		t.Errorf("session properties should have been reset")
 	}
 
 }

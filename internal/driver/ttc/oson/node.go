@@ -68,7 +68,7 @@ func Parse(data drvCommon.B1Array) (drvCommon.JSONNode, error) {
 		return nil, err
 	}
 
-	node, err := newNodeAt(buf, header, header.treeSegmentStartOffset)
+	node, err := newNodeAt(buf, header, header.treeSegmentStartOffset, nil)
 	if err != nil {
 		common.Odl.Debug("oson.Parse: failed",
 			"error", err,
@@ -137,6 +137,8 @@ type nodeBase struct {
 	header *osonHeader
 	// offset is the absolute document offset of this node's effective opcode.
 	offset int
+	// parent tracks the container path used to reach this node.
+	parent *nodeBase
 }
 
 // IsOson reports whether data starts with the OSON magic/version prefix.
@@ -165,6 +167,7 @@ func IsOson(data drvCommon.B1Array) bool {
 //   - buf: OSON document reader.
 //   - header: parsed OSON header metadata.
 //   - offset: absolute document offset of the node.
+//   - parent: containing node, or nil for the document root.
 //
 // Returns:
 //   - JSONNode for the resolved node.
@@ -172,7 +175,7 @@ func IsOson(data drvCommon.B1Array) bool {
 // Errors:
 //   - buffer-read failure.
 //   - malformed redirect or unsupported node layout.
-func newNodeAt(buf *osonBuffer, header *osonHeader, offset int) (drvCommon.JSONNode, error) {
+func newNodeAt(buf *osonBuffer, header *osonHeader, offset int, parent *nodeBase) (drvCommon.JSONNode, error) {
 	resolvedOffset := offset
 	seen := make(map[int]struct{})
 	var opcode drvCommon.UB1
@@ -221,14 +224,19 @@ func newNodeAt(buf *osonBuffer, header *osonHeader, offset int) (drvCommon.JSONN
 			"redirects", len(seen)-1,
 			"opcode", opcode)
 	}
-	switch {
-	case isObjectOpcode(opcode):
-		return newObjectNodeAt(buf, header, resolvedOffset, opcode)
-	case isArrayOpcode(opcode):
-		return newArrayNodeAt(buf, header, resolvedOffset, opcode)
-	default:
+	if !isObjectOpcode(opcode) && !isArrayOpcode(opcode) {
 		return newScalarNodeAt(buf, header, resolvedOffset, opcode), nil
 	}
+	for ancestor := parent; ancestor != nil; ancestor = ancestor.parent {
+		if resolvedOffset == ancestor.offset {
+			common.Odl.Debug("newNodeAt: container cycle", "offset", resolvedOffset)
+			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
+		}
+	}
+	if isObjectOpcode(opcode) {
+		return newObjectNodeAt(buf, header, resolvedOffset, opcode, parent)
+	}
+	return newArrayNodeAt(buf, header, resolvedOffset, opcode, parent)
 }
 
 // redirectedNodeOffset resolves one redirect opcode to the target node offset.

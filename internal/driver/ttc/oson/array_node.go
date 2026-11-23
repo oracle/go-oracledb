@@ -73,10 +73,11 @@ type arrayNode struct {
 //   - header: parsed OSON header metadata.
 //   - arrayNodeOffset: absolute document offset of the array opcode.
 //   - opcode: array opcode already read and classified by newNodeAt.
+//   - parent: containing node, or nil for the document root.
 //
 // Errors:
 //   - malformed child-count or child-offset layout.
-func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, opcode drvCommon.UB1) (*arrayNode, error) {
+func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, opcode drvCommon.UB1, parent *nodeBase) (*arrayNode, error) {
 	// The low opcode bits 0x04 (unsorted FIDs), 0x02 (shared FIDs), and
 	// 0x01 (overflow body) only describe object field-ID storage, so an
 	// array opcode carrying any of them marks the document as malformed.
@@ -111,6 +112,7 @@ func newArrayNodeAt(buf *osonBuffer, header *osonHeader, arrayNodeOffset int, op
 			buf:    buf,
 			header: header,
 			offset: arrayNodeOffset,
+			parent: parent,
 		},
 		childOffsets: childOffsets,
 	}, nil
@@ -170,7 +172,7 @@ func (array *arrayNode) String() (string, error) {
 func (array *arrayNode) MarshalJSON() ([]byte, error) {
 	values := make([]json.RawMessage, len(array.childOffsets))
 	for index, offset := range array.childOffsets {
-		child, err := newNodeAt(array.buf, array.header, offset)
+		child, err := newNodeAt(array.buf, array.header, offset, &array.nodeBase)
 		if err != nil {
 			return nil, err
 		}
@@ -205,7 +207,7 @@ func (array *arrayNode) Get(index int) (drvCommon.JSONNode, error) {
 		return nil, common.NewOracleError(oracleErrors.JSONArrayIndexOutOfRangeError, nil, index)
 	}
 
-	childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[index])
+	childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[index], &array.nodeBase)
 	if err != nil {
 		common.Odl.Debug("arrayNode.Get: failed", "error", err, "offset", array.offset, "index", index, "childOffset", array.childOffsets[index])
 		return nil, err
@@ -247,7 +249,7 @@ func (array *arrayNode) Len() int {
 func (array *arrayNode) Value(opts drvCommon.JSONConversionOptions) ([]any, error) {
 	elementValues := make([]any, len(array.childOffsets))
 	for elementIndex := range array.childOffsets {
-		childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[elementIndex])
+		childNode, err := newNodeAt(array.buf, array.header, array.childOffsets[elementIndex], &array.nodeBase)
 		if err != nil {
 			common.Odl.Debug("arrayNode.Value: failed", "error", err, "offset", array.offset, "index", elementIndex, "childOffset", array.childOffsets[elementIndex])
 			return nil, err

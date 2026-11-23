@@ -257,7 +257,7 @@ func TestParseRejectsDelegateWithoutReferredBit(t *testing.T) {
 		treeSegmentByteLength: 10,
 		fieldDictionary:       dictionary{fieldNames: []string{"a"}},
 	}
-	_, err := newNodeAt(buf, header, 0)
+	_, err := newNodeAt(buf, header, 0, nil)
 	if err == nil {
 		t.Fatal("newNodeAt() error = nil, want delegate-ownership error")
 	}
@@ -278,7 +278,7 @@ func TestParseRejectsDuplicateFieldID(t *testing.T) {
 		treeSegmentByteLength: 10,
 		fieldDictionary:       dictionary{fieldNames: []string{"a"}},
 	}
-	_, err := newNodeAt(buf, header, 0)
+	_, err := newNodeAt(buf, header, 0, nil)
 	if err == nil {
 		t.Fatal("newNodeAt() error = nil, want duplicate-field-ID error")
 	}
@@ -286,7 +286,7 @@ func TestParseRejectsDuplicateFieldID(t *testing.T) {
 }
 
 // TestParseRejectsInvalidChildOffset verifies child offsets pointing outside
-// the tree segment fail cleanly.
+// the tree segment and container cycles fail cleanly.
 func TestParseRejectsInvalidChildOffset(t *testing.T) {
 	doc := sampleSimpleObject.cloneOSON()
 	root, err := Parse(doc)
@@ -301,5 +301,46 @@ func TestParseRejectsInvalidChildOffset(t *testing.T) {
 	assertOracleErrorCode(t, err, oracleErrors.InternalError)
 	if _, err := obj.Value(drvCommon.JSONConversionOptions{}); err == nil {
 		t.Fatal("Value() error = nil, want failure when an object child redirect is invalid")
+	}
+	for name, raw := range map[string][]byte{
+		// Root array points to itself.
+		"self": {0xff, 0x4a, 0x5a, 1, 0, 6, 0, 0, 0, 0, 8, 0, 0, 0xe0, 1, 0, 0, 0, 0, 1, 'x'},
+		// The root forwards to an extended-tree array whose child points back to the root record.
+		"forwarded_self": {0xff, 0x4a, 0x5a, 2, 0, 6, 0, 0, 0, 0, 3, 0, 0,
+			0x76, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6,
+			0xe0, 1, 0, 0, 0, 0},
+		// A nested array points past its parent to the root.
+		"deep_ancestor": {0xff, 0x4a, 0x5a, 1, 0, 6, 0, 0, 0, 0, 20, 0, 0, 0xe0, 1, 0, 0, 0, 6, 0xe0, 1, 0, 0, 0, 12, 0xe0, 1, 0, 0, 0, 0, 1, 'x'},
+		// Array -> object -> array.
+		"array_object": {0xff, 0x4a, 0x5a, 1, 1, 6, 1, 0, 2, 0, 15, 0, 0, 0x2c, 0, 0, 1, 'a', 0xe0, 1, 0, 0, 0, 6, 0xa0, 1, 1, 0, 0, 0, 0, 1, 'x'},
+		// Object -> array -> object.
+		"object_array": {0xff, 0x4a, 0x5a, 1, 1, 6, 1, 0, 2, 0, 15, 0, 0, 0x2c, 0, 0, 1, 'a', 0xa0, 1, 1, 0, 0, 0, 7, 0xe0, 1, 0, 0, 0, 0, 1, 'x'},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root, err := Parse(raw)
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			child := root
+			for depth := 0; depth < 3 && err == nil; depth++ {
+				switch node := child.(type) {
+				case drvCommon.JSONArrayNode:
+					child, err = node.Get(0)
+				case drvCommon.JSONObjectNode:
+					child, err = node.Get("a")
+				}
+			}
+			if err == nil {
+				t.Fatal("Get() accepted a container cycle")
+			}
+			assertOracleErrorCode(t, err, oracleErrors.InternalError)
+			if _, err := root.GetValue(drvCommon.JSONConversionOptions{}); err == nil {
+				t.Error("GetValue() accepted a container cycle")
+			}
+			if _, err := root.MarshalJSON(); err == nil {
+				t.Error("Marshal() accepted a container cycle")
+			}
+		})
 	}
 }

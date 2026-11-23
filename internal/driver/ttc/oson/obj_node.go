@@ -73,13 +73,14 @@ type objectNode struct {
 //   - header: parsed OSON header metadata.
 //   - offset: absolute document offset of the object node.
 //   - opcode: object opcode already read and classified by newNodeAt.
+//   - parent: containing node, or nil for the document root.
 //
 // Returns:
 //   - *objectNode: OSON object node.
 //
 // Errors:
 //   - malformed object layout, field IDs, or child offsets.
-func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drvCommon.UB1) (*objectNode, error) {
+func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drvCommon.UB1, parent *nodeBase) (*objectNode, error) {
 	memberCount, fieldIDArrayStart, childOffsetArrayStart, err := readObjectLayout(buf, header, offset, opcode)
 	if err != nil {
 		common.Odl.Debug("newObjectNodeAt: failed", "error", err, "offset", offset, "opcode", opcode)
@@ -129,6 +130,7 @@ func newObjectNodeAt(buf *osonBuffer, header *osonHeader, offset int, opcode drv
 			buf:    buf,
 			header: header,
 			offset: offset,
+			parent: parent,
 		},
 		childrenOffsets: members,
 	}, nil
@@ -355,7 +357,7 @@ func (obj *objectNode) String() (string, error) {
 func (obj *objectNode) MarshalJSON() ([]byte, error) {
 	values := make(map[string]json.RawMessage, len(obj.childrenOffsets))
 	for name, offset := range obj.childrenOffsets {
-		child, err := newNodeAt(obj.buf, obj.header, offset)
+		child, err := newNodeAt(obj.buf, obj.header, offset, &obj.nodeBase)
 		if err != nil {
 			return nil, err
 		}
@@ -391,7 +393,7 @@ func (obj *objectNode) Get(key string) (drvCommon.JSONNode, error) {
 		common.Odl.Debug("objectNode.Get: failed", "reason", "key not found", "offset", obj.offset)
 		return nil, common.NewOracleError(oracleErrors.JSONObjectKeyNotFoundError, nil)
 	}
-	child, err := newNodeAt(obj.buf, obj.header, childOffset)
+	child, err := newNodeAt(obj.buf, obj.header, childOffset, &obj.nodeBase)
 	if err != nil {
 		common.Odl.Debug("objectNode.Get: failed", "error", err, "offset", obj.offset, "childOffset", childOffset)
 		return nil, err
@@ -450,7 +452,7 @@ func (obj *objectNode) Keys() []string {
 func (obj *objectNode) Value(opts drvCommon.JSONConversionOptions) (map[string]any, error) {
 	values := make(map[string]any, len(obj.childrenOffsets))
 	for fieldName, offset := range obj.childrenOffsets {
-		child, err := newNodeAt(obj.buf, obj.header, offset)
+		child, err := newNodeAt(obj.buf, obj.header, offset, &obj.nodeBase)
 		if err != nil {
 			common.Odl.Debug("objectNode.Value: failed", "error", err, "offset", obj.offset, "childOffset", offset)
 			return nil, err
