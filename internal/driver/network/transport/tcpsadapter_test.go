@@ -350,7 +350,7 @@ func TestNTTCPDisconnectClosesStreamWhenConnectedFlagFalse(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer serverConn.Close()
 
-	nt := &nttcp{stream: clientConn, connected:true}
+	nt := &nttcp{stream: clientConn, connected: true}
 
 	if err := nt.Disconnect(); err != nil {
 		t.Fatalf("disconnect failed: %v", err)
