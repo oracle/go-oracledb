@@ -21,6 +21,9 @@ func retentionConfigForTest() ResourceRetentionConfig {
 	return ResourceRetentionConfig{Workers: 4, TotalOperations: 1024, MaxOpenConnections: 4, Timeout: "10m", MemoryLimitMiB: &limit}
 }
 
+// TestResourceRetentionExpandedConfig checks workload and fixture settings,
+// duration and timeout rules, and defaults. It also checks that expanded settings
+// survive cloning, merging, and a JSON round trip.
 func TestResourceRetentionExpandedConfig(t *testing.T) {
 	base := retentionConfigForTest()
 	base.Workload = "mixed"
@@ -92,6 +95,9 @@ func TestResourceRetentionExpandedConfig(t *testing.T) {
 	}
 }
 
+// TestResourceRetentionConfigValidation checks accepted values and invalid
+// boundaries for worker, operation, and connection counts, timeouts, and the
+// optional memory target.
 func TestResourceRetentionConfigValidation(t *testing.T) {
 	cases := []struct {
 		name string
@@ -134,6 +140,9 @@ func TestResourceRetentionConfigValidation(t *testing.T) {
 	}
 }
 
+// TestResourceRetentionJSONCompatibility verifies that legacy JSON still loads,
+// incomplete retention profiles fail with a contextual error, and an omitted or
+// null memory target stays unset.
 func TestResourceRetentionJSONCompatibility(t *testing.T) {
 	valid, err := json.Marshal(retentionConfigForTest())
 	if err != nil {
@@ -207,6 +216,8 @@ func TestResourceRetentionJSONCompatibility(t *testing.T) {
 	}
 }
 
+// TestResourceRetentionConfigCloneAndMerge verifies that cloning and merging copy
+// the profile and its memory target independently and preserve optional settings.
 func TestResourceRetentionConfigCloneAndMerge(t *testing.T) {
 	profile := retentionConfigForTest()
 	source := &TestConfig{Stress: &StressConfig{ResourceRetention: &profile}}
@@ -254,6 +265,9 @@ func TestResourceRetentionConfigCloneAndMerge(t *testing.T) {
 	}
 }
 
+// TestConnectionLifecycleDefaultsAndDurationJSON checks defaults and duration JSON,
+// including explicitly disabled profiles. It asserts cloning and merging do not
+// alias profile options or discard the retention profile.
 func TestConnectionLifecycleDefaultsAndDurationJSON(t *testing.T) {
 	base := ConnectionLifecycleConfig{Workers: 16, Duration: "48h", Timeout: "50h"}
 	normal := base.Normalized()
@@ -293,6 +307,9 @@ func TestConnectionLifecycleDefaultsAndDurationJSON(t *testing.T) {
 	}
 }
 
+// TestConnectionLifecycleConfigValidation checks valid count and duration profiles.
+// It asserts invalid counts, overflow, durations, timeouts, sample intervals, and
+// blank output paths produce the expected validation errors.
 func TestConnectionLifecycleConfigValidation(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -329,6 +346,9 @@ func TestConnectionLifecycleConfigValidation(t *testing.T) {
 	}
 }
 
+// TestConnectionLifecycleConfigJSONAndMerge checks JSON loading and independent
+// cloning and merging while preserving both stress profiles. It also asserts
+// invalid lifecycle JSON produces a contextual validation error.
 func TestConnectionLifecycleConfigJSONAndMerge(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	data := []byte(`[{"config_name":"test","enabled":true,"stress":{"connection_lifecycle":{"workers":4,"cycles_per_worker":64,"timeout":"10m"}}}]`)

@@ -85,6 +85,10 @@ type resourceRetentionResult struct {
 	FinalCheckpointComplete    bool
 }
 
+// TestDriver_ResourceRetentionMemoryLeakStress validates repeated query results
+// and cleanup under concurrent load through a shared database/sql pool over TCPS.
+// It checks for outstanding checkouts at drained checkpoints and records post-GC
+// heap measurements for review.
 func TestDriver_ResourceRetentionMemoryLeakStress(t *testing.T) {
 	// Direct Go test discovery bypasses the category executor.
 	if !resourceRetentionStressEnabled() {
@@ -661,8 +665,8 @@ func (c retentionTaggedConnector) Connect(ctx context.Context) (conn driver.Conn
 	return
 }
 
-// Functional baseline deliberately consumes the same provisioned fixtures as
-// stress. Missing fixtures are an actionable failure, not a silent skip.
+// TestDriver_ResourceRetentionLargeDataBaseline validates the provisioned fixtures
+// and runs one cycle per selected workload variant to check results and cleanup.
 func TestDriver_ResourceRetentionLargeDataBaseline(t *testing.T) {
 	if TestingConfig == nil || TestingConfig.Stress == nil || TestingConfig.Stress.ResourceRetention == nil {
 		t.Skip("requires provisioned retention profile")

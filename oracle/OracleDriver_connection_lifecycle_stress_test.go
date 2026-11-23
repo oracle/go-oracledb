@@ -127,8 +127,11 @@ type connectionLifecycleRunResult struct {
 	Elapsed, Active, Drain time.Duration
 }
 
-// This is deliberately not a Go-discoverable Test function. Only the manually
-// selected exclusive stress category can launch the potentially multi-day run.
+// runDriverConnectionLifecycleStress checks concurrent cycles that open a fresh
+// TCPS connection through the driver connector, validate SELECT 1 FROM DUAL, and
+// close rows and connections, requiring matching completion counts and no errors.
+// Only the manually selected exclusive stress category launches this potentially
+// multi-day run; ordinary Go test discovery cannot start it.
 func runDriverConnectionLifecycleStress(t *testing.T) {
 	if TestingConfig == nil || TestingConfig.Stress == nil || TestingConfig.Stress.ConnectionLifecycle == nil {
 		t.Skip("no stress.connection_lifecycle profile; stress workload did not run")
@@ -753,6 +756,9 @@ func (c lifecycleSessionConnector) Connect(context.Context) (driver.Conn, error)
 }
 func (lifecycleSessionConnector) Driver() driver.Driver { return retentionFakeDriver{} }
 
+// TestDirectConnectionCycleUnit checks SELECT validation and resource cleanup on
+// success, operation failures, and partial-resource returns. It asserts cleanup
+// is attempted and operation and cleanup errors are preserved.
 func TestDirectConnectionCycleUnit(t *testing.T) {
 	primary, cleanup := errors.New("operation failed"), errors.New("cleanup failed")
 	cases := []struct {
@@ -860,6 +866,9 @@ type lifecycleUnitQueryError struct{ message string }
 
 func (e *lifecycleUnitQueryError) Error() string { return e.message }
 
+// TestConnectionLifecycleWorkersUnit checks fresh connections, cycle counts,
+// duration draining, deadlines, and peer cancellation. It asserts all workers join
+// and independent failures survive bounded collection without redundant causes.
 func TestConnectionLifecycleWorkersUnit(t *testing.T) {
 	t.Run("fresh connector and same connection query", func(t *testing.T) {
 		var mu sync.Mutex
@@ -1094,6 +1103,9 @@ func TestConnectionLifecycleWorkersUnit(t *testing.T) {
 	})
 }
 
+// TestConnectionLifecycleSessionUnit checks TCPS verification and session tagging.
+// It asserts failed initialization prevents the query, attempts connection cleanup,
+// and preserves initialization and cleanup errors.
 func TestConnectionLifecycleSessionUnit(t *testing.T) {
 	for _, kind := range []string{"success", "tcp", "empty", "extra", "protocol query", "protocol close", "tag"} {
 		t.Run(kind, func(t *testing.T) {
@@ -1135,6 +1147,9 @@ type lifecycleFailWriter struct{}
 
 func (lifecycleFailWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
+// TestConnectionLifecycleMeasurementsUnit checks samples, profiles, provenance,
+// timing, and failure diagnostics. It asserts evidence is consistent and redacted
+// and observation or reporting failures remain errors after completed work.
 func TestConnectionLifecycleMeasurementsUnit(t *testing.T) {
 
 	t.Run("embedded build provenance only", func(t *testing.T) {

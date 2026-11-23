@@ -170,7 +170,8 @@ func retentionFixtureFake(kind string, count int) *retentionFakeConnector {
 	return c
 }
 
-// Check provisioning safeguards without creating database objects.
+// TestResourceRetentionFixtureSetupUnit uses a fake driver to verify fixture
+// provisioning checks, population validation, and commit or rollback behavior.
 func TestResourceRetentionFixtureSetupUnit(t *testing.T) {
 	cause := errors.New("injected setup failure")
 	cases := []struct {
@@ -329,6 +330,8 @@ func TestResourceRetentionFixtureSetupUnit(t *testing.T) {
 	}
 }
 
+// TestResourceRetentionLargeResults checks fixture metadata and change detection,
+// then verifies scalar, LOB, and JSON results and row cleanup with a fake driver.
 func TestResourceRetentionLargeResults(t *testing.T) {
 	t.Run("complex SQL starts with supported SELECT keyword", func(t *testing.T) {
 		config := oracleTest.ResourceRetentionConfig{FixtureSchema: "SCOTT", RowsPerQuery: 300}
@@ -520,6 +523,9 @@ func TestResourceRetentionLargeResults(t *testing.T) {
 	}
 }
 
+// TestResourceRetentionLifecycles checks statement closure, transaction commit
+// and rollback, and the return of checked-out connections. It verifies that
+// failures surface and leave no connections checked out.
 func TestResourceRetentionLifecycles(t *testing.T) {
 	for _, kind := range []string{"prepared_select", "transaction_commit", "transaction_rollback", "connection_checkout"} {
 		t.Run(kind, func(t *testing.T) {
@@ -582,6 +588,9 @@ func TestResourceRetentionLifecycles(t *testing.T) {
 	}
 }
 
+// TestResourceRetentionEpochsAndArtifacts checks workload accounting across
+// checkpoints, deadline and panic handling, and the recorded diagnostic samples,
+// build metadata, and pool closure.
 func TestResourceRetentionEpochsAndArtifacts(t *testing.T) {
 	config := oracleTest.ResourceRetentionConfig{Workers: 4, MaxOpenConnections: 4, TotalOperations: 12, Timeout: "2s", OperationTimeout: "1s"}.Normalized()
 	t.Run("allowlisted executable metadata", func(t *testing.T) {
@@ -833,6 +842,9 @@ func TestResourceRetentionEpochsAndArtifacts(t *testing.T) {
 
 type retentionBrokenWriter struct{}
 
+// TestResourceRetentionSetupDiagnostics checks stage and cleanup reporting on
+// setup failures, including deadline and artifact errors, and verifies that the
+// sampler runs during setup and exits before the pool closes.
 func TestResourceRetentionSetupDiagnostics(t *testing.T) {
 	t.Run("setup and pool closure result semantics", func(t *testing.T) {
 		for _, scenario := range []string{"initialize error", "priming error", "pool close error"} {
@@ -1094,6 +1106,9 @@ func (retentionBrokenWriter) Write([]byte) (int, error) {
 	return 0, errors.New("artifact disk failure")
 }
 
+// TestResourceRetentionTLSAndMixedSchedule checks TCPS configuration and cleanup
+// on failed session initialization with a fake driver. It also verifies workload
+// scheduling and that warm-up leaves measured counts and indices untouched.
 func TestResourceRetentionTLSAndMixedSchedule(t *testing.T) {
 	for _, workers := range []int{1, 4, 16} {
 		t.Run(fmt.Sprintf("mixed warm-up workers=%d", workers), func(t *testing.T) {
@@ -1558,6 +1573,9 @@ func (r *retentionFakeRows) Next(values []driver.Value) error {
 	return nil
 }
 
+// TestResourceRetentionSelectHelper verifies that the DUAL query returns exactly
+// one row with the value 1 and that the helper reports query, scan, iteration,
+// and row closure errors.
 func TestResourceRetentionSelectHelper(t *testing.T) {
 	iterationError := errors.New("iteration failed")
 	closeError := errors.New("close failed")
@@ -1614,6 +1632,9 @@ func TestResourceRetentionSelectHelper(t *testing.T) {
 	}
 }
 
+// TestResourceRetentionWorkers checks concurrent execution, operation counts,
+// and cancellation and joining on failure. It verifies that independent worker
+// errors remain available and that deadlines and panics fail the run.
 func TestResourceRetentionWorkers(t *testing.T) {
 	t.Run("bounded independent failures after cancellation", func(t *testing.T) {
 		primary := errors.New("primary SELECT failed")
@@ -1783,9 +1804,11 @@ func TestResourceRetentionWorkers(t *testing.T) {
 	})
 }
 
-// No t.Parallel: SetMemoryLimit is process-wide. The category registration is
-// exclusive too. The target below belongs to fake-driver unit verification,
-// not a default or recommendation for real database executions.
+// TestResourceRetentionMemoryTargetRestoration verifies that an explicit memory
+// target applies through cleanup and that the runner restores the previous
+// setting on success and failure. An omitted target preserves the current setting.
+//
+// The test runs serially because SetMemoryLimit affects the entire process.
 func TestResourceRetentionMemoryTargetRestoration(t *testing.T) {
 	// Start with a non-default setting so baseline checks catch an accidental
 	// reset of a pre-existing limit, not just an unwanted new override.
