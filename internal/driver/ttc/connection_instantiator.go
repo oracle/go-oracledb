@@ -168,6 +168,8 @@ func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Contex
 func buildRequestBoundaryCallbacks(conn *connection) *requestCallbacks {
 	callbacks := newRequestBoundaryCallbacks()
 
+	// Add end-request callback that rolls back active transaction.
+	addRollbackEndRequestCallback(callbacks, conn)
 	// Add begin-request and end-request callbacks.
 	addBeginEndRequestCallbacks(callbacks, conn)
 
