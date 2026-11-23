@@ -78,32 +78,34 @@ func TestReadBuffer(t *testing.T) {
 
 	t.Run("sequential reads and position", func(t *testing.T) {
 		r := NewReadBuffer(B1Array{7, 8, 1, 2}, BIG_ENDIAN)
-		if r.Size() != 4 || r.Position() != 0 {
-			t.Fatalf("Size() = %d, Position() = %d; want 4, 0", r.Size(), r.Position())
+		s := r.(Seekable)
+		if r.Size() != 4 || s.Position() != 0 {
+			t.Fatalf("Size() = %d, Position() = %d; want 4, 0", r.Size(), s.Position())
 		}
 		if got, err := r.ReadUB2(); err != nil || got != 0x0708 {
 			t.Fatalf("ReadUB2() = %#x, %v; want 0x0708", got, err)
 		}
-		if r.Position() != 2 {
-			t.Fatalf("Position() = %d after ReadUB2(); want 2", r.Position())
+		if s.Position() != 2 {
+			t.Fatalf("Position() = %d after ReadUB2(); want 2", s.Position())
 		}
-		if err := r.Seek(-1); err != nil {
+		if err := s.Seek(-1); err != nil {
 			t.Fatal(err)
 		}
 		if got, err := r.ReadUB1(); err != nil || got != 8 {
 			t.Fatalf("ReadUB1() after Seek(1) = %d, %v; want 8", got, err)
 		}
-		if err := r.Seek(2); err != nil {
+		if err := s.Seek(2); err != nil {
 			t.Fatal(err)
 		}
-		if r.Position() != 4 {
-			t.Fatalf("Position() = %d after seeking forward; want 4", r.Position())
+		if s.Position() != 4 {
+			t.Fatalf("Position() = %d after seeking forward; want 4", s.Position())
 		}
 	})
 
 	t.Run("ReadBytes returns a copy and advances", func(t *testing.T) {
 		data := B1Array{1, 2, 3}
 		r := NewReadBuffer(data, BIG_ENDIAN)
+		s := r.(Seekable)
 		view, err := r.ReadBytes(2)
 		if err != nil || !bytes.Equal(view, B1Array{1, 2}) {
 			t.Fatalf("ReadBytes(2) = %v, %v; want [1 2]", view, err)
@@ -116,26 +118,40 @@ func TestReadBuffer(t *testing.T) {
 		if view[1] != 2 {
 			t.Fatal("ReadBytes() result changed when the buffer data changed")
 		}
-		if r.Position() != 2 {
-			t.Fatalf("Position() = %d after ReadBytes(2); want 2", r.Position())
+		if s.Position() != 2 {
+			t.Fatalf("Position() = %d after ReadBytes(2); want 2", s.Position())
 		}
 	})
 
 }
 
-// TestWriteBuffer verifies the WriteBuffer contract: appends in both byte orders, growth,
+// TestWriteBuffer verifies writes in both byte orders, growth,
 // independent copies from Bytes, Reserve, and cursor-based overwrites.
 func TestWriteBuffer(t *testing.T) {
 	t.Run("round trip in both byte orders", func(t *testing.T) {
 		for _, order := range []ByteOrder{BIG_ENDIAN, LITTLE_ENDIAN} {
-			w := NewWriteBuffer(order)
-			w.WriteUB1(0xAB)
-			w.WriteUB2(0x1234)
-			w.WriteUB4(0x12345678)
-			w.WriteUB8(0x0123456789abcdef)
-			w.WriteSB1(-1)
-			w.WriteSB2(-2)
-			w.WriteSB4(-3)
+			w := NewGrowableWriteBuffer(order)
+			if err := w.WriteUB1(0xAB); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.WriteUB2(0x1234); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.WriteUB4(0x12345678); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.WriteUB8(0x0123456789abcdef); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.WriteSB1(-1); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.WriteSB2(-2); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.WriteSB4(-3); err != nil {
+				t.Fatal(err)
+			}
 
 			r := NewReadBuffer(w.Bytes(), order)
 			reads := []struct {
@@ -161,14 +177,20 @@ func TestWriteBuffer(t *testing.T) {
 	})
 
 	t.Run("appends advance position and size", func(t *testing.T) {
-		w := NewWriteBuffer(BIG_ENDIAN)
+		w := NewGrowableWriteBuffer(BIG_ENDIAN)
 		s := w.(Seekable)
 		if s.Position() != 0 || w.Size() != 0 {
 			t.Fatalf("new buffer Position() = %d, Size() = %d; want 0, 0", s.Position(), w.Size())
 		}
-		w.WriteUB1(1)
-		w.WriteUB2(0x0203)
-		w.WriteBytes(B1Array{4})
+		if err := w.WriteUB1(1); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.WriteUB2(0x0203); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.WriteBytes(B1Array{4}); err != nil {
+			t.Fatal(err)
+		}
 		if s.Position() != 4 || w.Size() != 4 {
 			t.Fatalf("Position() = %d, Size() = %d; want 4, 4", s.Position(), w.Size())
 		}
@@ -178,16 +200,20 @@ func TestWriteBuffer(t *testing.T) {
 	})
 
 	t.Run("growth beyond preallocated capacity", func(t *testing.T) {
-		w := NewWriteBufferWithCapacity(BIG_ENDIAN, 1)
-		w.WriteUB4(0x01020304)
+		w := NewGrowableWriteBufferWithCapacity(BIG_ENDIAN, 1)
+		if err := w.WriteUB4(0x01020304); err != nil {
+			t.Fatal(err)
+		}
 		if !bytes.Equal(w.Bytes(), B1Array{1, 2, 3, 4}) {
 			t.Fatalf("Bytes() = %v; want [1 2 3 4]", w.Bytes())
 		}
 	})
 
 	t.Run("Bytes returns an independent copy", func(t *testing.T) {
-		w := NewWriteBuffer(BIG_ENDIAN)
-		w.WriteUB1(5)
+		w := NewGrowableWriteBuffer(BIG_ENDIAN)
+		if err := w.WriteUB1(5); err != nil {
+			t.Fatal(err)
+		}
 		copied := w.Bytes()
 		copied[0] = 9
 		if w.Bytes()[0] != 5 {
@@ -196,50 +222,66 @@ func TestWriteBuffer(t *testing.T) {
 	})
 
 	t.Run("Bytes is non-nil when empty", func(t *testing.T) {
-		if b := NewWriteBuffer(BIG_ENDIAN).Bytes(); b == nil || len(b) != 0 {
+		if b := NewGrowableWriteBuffer(BIG_ENDIAN).Bytes(); b == nil || len(b) != 0 {
 			t.Fatalf("Bytes() = %#v; want non-nil empty slice", b)
 		}
 	})
 
 	t.Run("Reserve", func(t *testing.T) {
-		w := NewWriteBuffer(BIG_ENDIAN)
-		w.WriteUB1(1)
-		if got := w.Reserve(0); got != 1 || w.Size() != 1 {
+		w := NewGrowableWriteBuffer(BIG_ENDIAN)
+		if err := w.WriteUB1(1); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := w.Reserve(0); err != nil || got != 1 || w.Size() != 1 {
 			t.Fatalf("Reserve(0) = %d, Size() = %d; want 1, 1", got, w.Size())
 		}
-		if got := w.Reserve(2); got != 1 {
+		if got, err := w.Reserve(2); err != nil || got != 1 {
 			t.Fatalf("Reserve(2) = %d; want 1", got)
 		}
-		if !bytes.Equal(w.Bytes(), B1Array{1, 0, 0}) {
-			t.Fatalf("Bytes() = %v; want [1 0 0]", w.Bytes())
+		if got := w.Bytes(); len(got) != 3 || got[0] != 1 {
+			t.Fatalf("Bytes() = %v; want length 3 and first byte 1", got)
+		}
+		if _, err := w.Reserve(-1); err == nil {
+			t.Fatal("Reserve(-1) succeeded")
+		} else {
+			assertInvalidBufferOperation(t, err)
+		}
+		if w.Size() != 3 {
+			t.Fatalf("Size() after failed Reserve = %d; want 3", w.Size())
 		}
 	})
 
 	t.Run("seek, overwrite, and extend", func(t *testing.T) {
-		w := NewWriteBuffer(BIG_ENDIAN)
+		w := NewGrowableWriteBuffer(BIG_ENDIAN)
 		s := w.(Seekable)
-		w.WriteBytes(B1Array{1, 2, 3, 4})
+		if err := w.WriteBytes(B1Array{1, 2, 3, 4}); err != nil {
+			t.Fatal(err)
+		}
 		s.Set()
 		if err := s.Seek(-3); err != nil {
 			t.Fatal(err)
 		}
-		w.WriteUB2(0x0908)
+		if err := w.WriteUB2(0x0908); err != nil {
+			t.Fatal(err)
+		}
 		if w.Size() != 4 || s.Position() != 3 {
 			t.Fatalf("size = %d, position = %d", w.Size(), s.Position())
 		}
-		if err := s.Rewind(); err != nil {
+		s.Rewind()
+		if err := w.WriteUB1(5); err != nil {
 			t.Fatal(err)
 		}
-		w.WriteUB1(5)
 		if got := w.Bytes(); !bytes.Equal(got, B1Array{1, 9, 8, 4, 5}) {
 			t.Fatalf("Bytes() = %v", got)
 		}
 		if err := s.Seek(-2); err != nil {
 			t.Fatal(err)
 		}
-		w.Reserve(3)
-		if got := w.Bytes(); !bytes.Equal(got, B1Array{1, 9, 8, 0, 0, 0}) {
-			t.Fatalf("Bytes() after Reserve = %v", got)
+		if _, err := w.Reserve(3); err != nil {
+			t.Fatal(err)
+		}
+		if got := w.Bytes(); len(got) != 6 || !bytes.Equal(got[:5], B1Array{1, 9, 8, 4, 5}) {
+			t.Fatalf("Bytes() after Reserve = %v; want length 6 and existing bytes unchanged", got)
 		}
 	})
 
@@ -250,6 +292,7 @@ func TestWriteBuffer(t *testing.T) {
 func TestInvalidBufferOperation(t *testing.T) {
 	t.Run("reads", func(t *testing.T) {
 		r := NewReadBuffer(B1Array{1, 2}, BIG_ENDIAN)
+		s := r.(Seekable)
 		if _, err := r.ReadUB2(); err != nil {
 			t.Fatal(err)
 		}
@@ -259,10 +302,10 @@ func TestInvalidBufferOperation(t *testing.T) {
 			name string
 			read func() error
 		}{
-			{"Seek past size", func() error { return r.Seek(3) }},
-			{"Seek before zero", func() error { return r.Seek(-3) }},
-			{"Seek with maximum offset", func() error { return r.Seek(maxInt) }},
-			{"Seek with minimum offset", func() error { return r.Seek(minInt) }},
+			{"Seek past size", func() error { return s.Seek(3) }},
+			{"Seek before zero", func() error { return s.Seek(-3) }},
+			{"Seek with maximum offset", func() error { return s.Seek(maxInt) }},
+			{"Seek with minimum offset", func() error { return s.Seek(minInt) }},
 			{"UB1", func() error { _, err := r.ReadUB1(); return err }},
 			{"UB2", func() error { _, err := r.ReadUB2(); return err }},
 			{"UB4", func() error { _, err := r.ReadUB4(); return err }},
@@ -278,20 +321,29 @@ func TestInvalidBufferOperation(t *testing.T) {
 				assertInvalidBufferOperation(t, rd.read())
 			})
 		}
-		if r.Position() != 2 {
-			t.Fatalf("Position() = %d after failed reads; want 2", r.Position())
+		if s.Position() != 2 {
+			t.Fatalf("Position() = %d after failed reads; want 2", s.Position())
 		}
 	})
 
-	t.Run("seek and nested saved positions", func(t *testing.T) {
-		w := NewWriteBuffer(BIG_ENDIAN)
-		w.WriteBytes(B1Array{1, 2})
+	t.Run("seek and saved position replacement", func(t *testing.T) {
+		w := NewGrowableWriteBuffer(BIG_ENDIAN)
+		if err := w.WriteBytes(B1Array{1, 2}); err != nil {
+			t.Fatal(err)
+		}
 		writeCursor := w.(Seekable)
 		if err := writeCursor.Seek(-2); err != nil {
 			t.Fatal(err)
 		}
-		buffers := []Seekable{NewReadBuffer(B1Array{1, 2}, BIG_ENDIAN), writeCursor}
+		buffers := []Seekable{NewReadBuffer(B1Array{1, 2}, BIG_ENDIAN).(Seekable), writeCursor}
 		for _, b := range buffers {
+			if err := b.Seek(1); err != nil {
+				t.Fatal(err)
+			}
+			b.Rewind()
+			if b.Position() != 0 {
+				t.Fatal("rewind before Set did not restore the initial position")
+			}
 			if err := b.Seek(0); err != nil {
 				t.Fatal(err)
 			}
@@ -312,13 +364,17 @@ func TestInvalidBufferOperation(t *testing.T) {
 			if b.Position() != 2 {
 				t.Fatal("failed seek changed position")
 			}
-			if err := b.Rewind(); err != nil || b.Position() != 1 {
-				t.Fatalf("first rewind: %d, %v", b.Position(), err)
+			b.Rewind()
+			if b.Position() != 1 {
+				t.Fatalf("rewind position = %d; want 1", b.Position())
 			}
-			if err := b.Rewind(); err != nil || b.Position() != 0 {
-				t.Fatalf("second rewind: %d, %v", b.Position(), err)
+			if err := b.Seek(1); err != nil {
+				t.Fatal(err)
 			}
-			assertInvalidBufferOperation(t, b.Rewind())
+			b.Rewind()
+			if b.Position() != 1 {
+				t.Fatal("repeated rewind did not restore the saved position")
+			}
 		}
 	})
 }

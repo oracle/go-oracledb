@@ -40,35 +40,35 @@ package common
 
 import (
 	"encoding/binary"
+	"math"
 	"slices"
 
 	common "github.com/oracle/go-oracledb/v26/internal/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// Seekable controls a buffer's cursor and saved positions.
+// Seekable provides access to a buffer's current position. It allows callers to
+// move the cursor, save its position, and later restore that position.
 type Seekable interface {
-	// Position returns the offset of the next read or write.
+	// Position returns the current cursor position, measured in bytes.
 	Position() int
 
-	// Seek moves the cursor by offset bytes relative to its current position. A
-	// negative offset moves backward. If the target is outside the buffer, Seek
-	// returns InvalidBufferOperation and leaves the cursor unchanged.
+	// Seek moves the cursor using an offset measured in bytes. Implementations
+	// define the reference point for the offset and the valid target positions.
+	// If the target position is invalid, Seek returns InvalidBufferOperation.
+	// On any error, the cursor remains unchanged.
 	Seek(offset int) error
 
-	// Set saves the current position. Calls to Set may be nested.
+	// Set saves the current cursor position.
 	Set()
 
-	// Rewind restores and removes the most recently saved position. If no
-	// position is saved, it returns InvalidBufferOperation.
-	Rewind() error
+	// Rewind restores the saved cursor position.
+	Rewind()
 }
 
-// ReadBuffer reads values at its cursor using the byte order selected at
-// construction.
+// ReadBuffer provides operations for reading signed and unsigned integers and
+// byte sequences from a buffer.
 type ReadBuffer interface {
-	Seekable
-
 	// Size returns the number of bytes in the buffer.
 	Size() int
 
@@ -87,63 +87,68 @@ type ReadBuffer interface {
 	// ReadSB4 reads a four-byte signed integer.
 	ReadSB4() (SB4, error)
 
-	// ReadBytes reads length bytes and returns an independent copy. A negative
-	// length or a length greater than the remaining bytes returns
-	// InvalidBufferOperation without advancing the cursor.
+	// ReadBytes reads length bytes.
 	ReadBytes(length int) (B1Array, error)
 }
 
-// WriteBuffer writes values at its cursor using the byte order selected at
-// construction. Each write advances the cursor, overwriting existing bytes and
-// extending the buffer as needed.
+// WriteBuffer provides operations for writing signed and unsigned integers and
+// byte sequences to a buffer.
 type WriteBuffer interface {
-	// Size returns the number of bytes written to the buffer.
+	// Size returns the number of bytes in the buffer.
 	Size() int
 
 	// WriteUB1 writes a one-byte unsigned integer.
-	WriteUB1(value UB1)
+	WriteUB1(value UB1) error
 	// WriteUB2 writes a two-byte unsigned integer.
-	WriteUB2(value UB2)
+	WriteUB2(value UB2) error
 	// WriteUB4 writes a four-byte unsigned integer.
-	WriteUB4(value UB4)
+	WriteUB4(value UB4) error
 	// WriteUB8 writes an eight-byte unsigned integer.
-	WriteUB8(value UB8)
+	WriteUB8(value UB8) error
 	// WriteSB1 writes a one-byte signed integer.
-	WriteSB1(value SB1)
+	WriteSB1(value SB1) error
 	// WriteSB2 writes a two-byte signed integer.
-	WriteSB2(value SB2)
+	WriteSB2(value SB2) error
 	// WriteSB4 writes a four-byte signed integer.
-	WriteSB4(value SB4)
+	WriteSB4(value SB4) error
 
-	// WriteBytes writes value at the cursor.
-	WriteBytes(value B1Array)
+	// WriteBytes writes value.
+	WriteBytes(value B1Array) error
 
-	// Reserve writes length zero bytes at the cursor and returns their starting
-	// offset.
-	Reserve(length int) int
+	// Reserve reserves length bytes and returns their starting offset.
+	Reserve(length int) (int, error)
 
-	// Bytes returns a non-nil copy of all bytes in the buffer.
+	// Bytes returns the bytes in the buffer.
 	Bytes() B1Array
 }
 
-// NewReadBuffer returns a ReadBuffer that reads data in the given byte order.
-// It uses data directly, so changes to data affect subsequent reads.
-// Values other than LITTLE_ENDIAN select big-endian encoding.
+// NewReadBuffer returns an implementation of ReadBuffer that reads data in the
+// given byte order. The implementation also satisfies Seekable. Seek offsets
+// are relative to the current position. The target must be within the buffer
+// or immediately after its last byte.
+// It uses data directly, so changes to data affect subsequent reads. ReadBytes
+// returns an independent copy, and invalid reads leave the cursor unchanged.
+// The saved position is initially zero. Set replaces it with the current
+// position, and Rewind restores it without clearing it.
 func NewReadBuffer(data B1Array, order ByteOrder) ReadBuffer {
 	return &readBuffer{data: data, converter: bufferByteOrder(order)}
 }
 
-// NewWriteBuffer returns an empty WriteBuffer that encodes values in the
-// given byte order.
-func NewWriteBuffer(order ByteOrder) WriteBuffer {
-	return NewWriteBufferWithCapacity(order, 0)
+// NewGrowableWriteBuffer returns an implementation of WriteBuffer that starts
+// empty, encodes values in the given byte order, and grows as needed. It also
+// satisfies Seekable. Seek offsets are relative to the current position. The saved
+// position starts at zero. Set replaces it, and Rewind restores it without
+// clearing it.
+func NewGrowableWriteBuffer(order ByteOrder) WriteBuffer {
+	return NewGrowableWriteBufferWithCapacity(order, 0)
 }
 
-// NewWriteBufferWithCapacity returns a WriteBuffer preallocated for capacity
-// bytes. Capacity must be non-negative and is a performance hint only; the
-// buffer grows automatically as bytes are written.
-func NewWriteBufferWithCapacity(order ByteOrder, capacity int) WriteBuffer {
-	return &writeBuffer{data: make(B1Array, 0, capacity), converter: bufferByteOrder(order)}
+// NewGrowableWriteBufferWithCapacity returns the same WriteBuffer and Seekable
+// implementation as NewGrowableWriteBuffer, preallocated for capacity bytes.
+// Capacity must be non-negative and is a performance hint only. The buffer
+// grows automatically as bytes are written.
+func NewGrowableWriteBufferWithCapacity(order ByteOrder, capacity int) WriteBuffer {
+	return &growableWriteBuffer{data: make(B1Array, 0, capacity), converter: bufferByteOrder(order)}
 }
 
 // bufferByteOrder maps the driver's byte-order marker to its standard library
@@ -155,11 +160,13 @@ func bufferByteOrder(order ByteOrder) binary.ByteOrder {
 	return binary.BigEndian
 }
 
-// readBuffer is the ReadBuffer implementation over a fixed byte slice.
+// readBuffer is the ReadBuffer implementation over a fixed byte slice. It
+// keeps one saved position, initially zero. Set replaces that position, and
+// Rewind moves the cursor back to it without clearing it.
 type readBuffer struct {
 	data      B1Array
 	pos       int
-	marks     []int
+	mark      int
 	converter binary.ByteOrder
 }
 
@@ -186,18 +193,12 @@ func (b *readBuffer) Seek(offset int) error {
 
 // Set saves the current read position.
 func (b *readBuffer) Set() {
-	b.marks = append(b.marks, b.pos)
+	b.mark = b.pos
 }
 
 // Rewind restores the last saved read position.
-func (b *readBuffer) Rewind() error {
-	if len(b.marks) == 0 {
-		common.Odl.Finest("readBuffer.Rewind: failed", "reason", "no saved position")
-		return common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
-	}
-	b.pos = b.marks[len(b.marks)-1]
-	b.marks = b.marks[:len(b.marks)-1]
-	return nil
+func (b *readBuffer) Rewind() {
+	b.pos = b.mark
 }
 
 // ReadUB1 reads one unsigned byte.
@@ -276,30 +277,31 @@ func (b *readBuffer) _read(length int) (B1Array, error) {
 	return b.data[start:b.pos], nil
 }
 
-// writeBuffer is the WriteBuffer implementation over an automatically
-// growing byte slice.
-type writeBuffer struct {
+// growableWriteBuffer is the WriteBuffer implementation over an automatically
+// growing byte slice. It keeps one saved position, initially zero. Set replaces
+// that position, and Rewind moves the cursor back to it without clearing it.
+type growableWriteBuffer struct {
 	data      B1Array
 	pos       int
-	marks     []int
+	mark      int
 	converter binary.ByteOrder
 }
 
 // Position returns the offset of the next write.
-func (b *writeBuffer) Position() int {
+func (b *growableWriteBuffer) Position() int {
 	return b.pos
 }
 
 // Size returns the number of bytes written.
-func (b *writeBuffer) Size() int {
+func (b *growableWriteBuffer) Size() int {
 	return len(b.data)
 }
 
 // Seek moves the write cursor by offset bytes relative to its current position.
-func (b *writeBuffer) Seek(offset int) error {
+func (b *growableWriteBuffer) Seek(offset int) error {
 	position := b.pos + offset
 	if position < 0 || position > b.Size() {
-		common.Odl.Finest("writeBuffer.Seek: failed", "reason", "target outside buffer", "offset", offset, "position", b.pos, "size", b.Size())
+		common.Odl.Finest("growableWriteBuffer.Seek: failed", "reason", "target outside buffer", "offset", offset, "position", b.pos, "size", b.Size())
 		return common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
 	}
 	b.pos = position
@@ -307,81 +309,82 @@ func (b *writeBuffer) Seek(offset int) error {
 }
 
 // Set saves the current write position.
-func (b *writeBuffer) Set() {
-	b.marks = append(b.marks, b.pos)
+func (b *growableWriteBuffer) Set() {
+	b.mark = b.pos
 }
 
 // Rewind restores the last saved write position.
-func (b *writeBuffer) Rewind() error {
-	if len(b.marks) == 0 {
-		common.Odl.Finest("writeBuffer.Rewind: failed", "reason", "no saved position")
-		return common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
-	}
-	b.pos = b.marks[len(b.marks)-1]
-	b.marks = b.marks[:len(b.marks)-1]
-	return nil
+func (b *growableWriteBuffer) Rewind() {
+	b.pos = b.mark
 }
 
 // WriteUB1 writes one unsigned byte.
-func (b *writeBuffer) WriteUB1(value UB1) {
+func (b *growableWriteBuffer) WriteUB1(value UB1) error {
 	dest := b.prepareWrite(1)
 	dest[0] = byte(value)
+	return nil
 }
 
 // WriteUB2 writes a two-byte unsigned value.
-func (b *writeBuffer) WriteUB2(value UB2) {
+func (b *growableWriteBuffer) WriteUB2(value UB2) error {
 	dest := b.prepareWrite(2)
 	b.converter.PutUint16(dest, uint16(value))
+	return nil
 }
 
 // WriteUB4 writes a four-byte unsigned value.
-func (b *writeBuffer) WriteUB4(value UB4) {
+func (b *growableWriteBuffer) WriteUB4(value UB4) error {
 	dest := b.prepareWrite(4)
 	b.converter.PutUint32(dest, uint32(value))
+	return nil
 }
 
 // WriteUB8 writes an eight-byte unsigned value.
-func (b *writeBuffer) WriteUB8(value UB8) {
+func (b *growableWriteBuffer) WriteUB8(value UB8) error {
 	dest := b.prepareWrite(8)
 	b.converter.PutUint64(dest, uint64(value))
+	return nil
 }
 
 // WriteSB1 writes one signed byte.
-func (b *writeBuffer) WriteSB1(value SB1) {
-	b.WriteUB1(UB1(value))
+func (b *growableWriteBuffer) WriteSB1(value SB1) error {
+	return b.WriteUB1(UB1(value))
 }
 
 // WriteSB2 writes a two-byte signed value.
-func (b *writeBuffer) WriteSB2(value SB2) {
-	b.WriteUB2(UB2(value))
+func (b *growableWriteBuffer) WriteSB2(value SB2) error {
+	return b.WriteUB2(UB2(value))
 }
 
 // WriteSB4 writes a four-byte signed value.
-func (b *writeBuffer) WriteSB4(value SB4) {
-	b.WriteUB4(UB4(value))
+func (b *growableWriteBuffer) WriteSB4(value SB4) error {
+	return b.WriteUB4(UB4(value))
 }
 
 // WriteBytes writes the bytes of value.
-func (b *writeBuffer) WriteBytes(value B1Array) {
+func (b *growableWriteBuffer) WriteBytes(value B1Array) error {
 	dest := b.prepareWrite(len(value))
 	copy(dest, value)
+	return nil
 }
 
-// Reserve writes length zero-filled bytes and returns their initial offset.
-func (b *writeBuffer) Reserve(length int) int {
+// Reserve advances the cursor by length bytes and returns their starting offset.
+func (b *growableWriteBuffer) Reserve(length int) (int, error) {
+	if length < 0 || length > math.MaxInt-b.pos {
+		return 0, common.NewOracleError(oracleErrors.InvalidBufferOperation, nil)
+	}
 	start := b.Position()
-	dest := b.prepareWrite(length)
-	clear(dest)
-	return start
+	b.prepareWrite(length)
+	return start, nil
 }
 
 // Bytes returns an independent, non-nil copy of the written bytes.
-func (b *writeBuffer) Bytes() B1Array {
+func (b *growableWriteBuffer) Bytes() B1Array {
 	return append(B1Array{}, b.data...)
 }
 
 // prepareWrite advances the cursor and returns the writable range, extending data if needed.
-func (b *writeBuffer) prepareWrite(length int) B1Array {
+func (b *growableWriteBuffer) prepareWrite(length int) B1Array {
 	start := b.pos
 	end := start + length
 	if end > len(b.data) {
