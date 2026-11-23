@@ -213,9 +213,10 @@ Errors:
   - Returns FailUnmarshal when a VECTOR envelope field is invalid or cannot be read.
 */
 func unwrapVectorColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
+	logger := common.OdlT("unwrapVectorColumn")
 	locatorLength, err := mar.UnmarshalUB4(ctx)
 	if err != nil {
-		common.Odl.Error("unwrapVectorColumn: failed to read locator length", "error", err, "index", env.index)
+		logger.Error("failed to read locator length", "error", err, "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	if locatorLength == 0 {
@@ -224,29 +225,29 @@ func unwrapVectorColumn(ctx context.Context, mar driverCommon.Marshaller, env co
 
 	totalLen, err := mar.UnmarshalUB8(ctx)
 	if err != nil {
-		common.Odl.Error("unwrapVectorColumn: failed to read prefetch length", "error", err, "index", env.index)
+		logger.Error("failed to read prefetch length", "error", err, "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	if _, err = mar.UnmarshalUB4(ctx); err != nil {
-		common.Odl.Error("unwrapVectorColumn: failed to read prefetch chunk size", "error", err, "index", env.index)
+		logger.Error("failed to read prefetch chunk size", "error", err, "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 
 	prefetchedData, _, err := mar.UnmarshalCLRColumnData(ctx)
 	if err != nil {
-		common.Odl.Error("unwrapVectorColumn: failed to read prefetched data", "error", err, "index", env.index)
+		logger.Error("failed to read prefetched data", "error", err, "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	if _, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
-		common.Odl.Error("unwrapVectorColumn: failed to read locator", "error", err, "index", env.index)
+		logger.Error("failed to read locator", "error", err, "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 	if totalLen > driverCommon.UB8(math.MaxInt) || len(prefetchedData) != int(totalLen) {
-		common.Odl.Error("unwrapVectorColumn: incomplete prefetch", "prefetchedBytes", len(prefetchedData), "totalBytes", totalLen, "index", env.index)
+		logger.Error("incomplete prefetch", "prefetchedBytes", len(prefetchedData), "totalBytes", totalLen, "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, nil, TTCMsgTypeDescription[TTIRXD])
 	}
 
-	common.Odl.Debug("VECTOR RXD: fully prefetched payload", "totalBytes", totalLen)
+	logger.Debug("fully prefetched payload", "totalBytes", totalLen)
 	return byteColumnPayload(prefetchedData), nil
 }
 
