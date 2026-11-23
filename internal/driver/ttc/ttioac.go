@@ -244,12 +244,10 @@ func newTTIOacJSONDefine(columnContext columnContext, _ driverCommon.UB4) driver
 	return newTTIOAcDefine(DtyJSON, max_lob_length, columnContext, uacfsald, _jsonPrefetchSize)
 }
 
-const vectorPrefetchSize driverCommon.UB4 = 524308
-
 // newTTIOacVectorDefine creates a define OAC descriptor for VECTOR values with LOB prefetch enabled.
 // The fixed prefetch covers the largest dense FLOAT64 VECTOR envelope.
 func newTTIOacVectorDefine(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
-	return newTTIOAcDefine(DtyVec, max_lob_length, columnContext, uacfsald, vectorPrefetchSize)
+	return newTTIOAcDefine(DtyVec, converters.MaxVectorLength, columnContext, uacfsald, converters.MaxVectorLength)
 }
 
 // newTTIOacClobDefine creates a define OAC descriptor for CLOB values using column metadata and LOB prefetch settings.

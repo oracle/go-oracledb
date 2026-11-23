@@ -853,7 +853,7 @@ func init() {
 	}
 
 	// Register default decoders with explicit wire readers. Scalar types use CLR;
-	// CLOB, JSON, and BLOB supply their specialized framing readers.
+	// CLOB, JSON, BLOB, and VECTOR supply their specialized framing readers.
 	if err := DecoderRegistry.Register(DtyNum, MinTTCProtocolVersion,
 		newTypeDecoder(
 			DecodeNumberColumn,

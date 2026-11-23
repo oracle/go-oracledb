@@ -1,3 +1,41 @@
+/*
+** Copyright (c) 2026 Oracle and/or its affiliates.
+**
+** The Universal Permissive License (UPL), Version 1.0
+**
+** Subject to the condition set forth below, permission is hereby granted to any
+** person obtaining a copy of this software, associated documentation and/or data
+** (collectively the "Software"), free of charge and under any and all copyright
+** rights in the Software, and any and all patent rights owned or freely
+** licensable by each licensor hereunder covering either (i) the unmodified
+** Software as contributed to or provided by such licensor, or (ii) the Larger
+** Works (as defined below), to deal in both
+**
+** (a) the Software, and
+** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
+** one is included with the Software (each a "Larger Work" to which the Software
+** is contributed to or provided by such licensors),
+**
+** without restriction, including without limitation the rights to copy, create
+** derivative works of, display, perform, and distribute the Software and make,
+** use, sell, offer for sale, import, export, have made, and have sold the
+** Software and the Larger Work(s), and to sublicense the foregoing rights on
+** either these or other terms.
+**
+** This license is subject to the following condition:
+** The above copyright notice and either this complete permission notice or at
+** a minimum a reference to the UPL must be included in all copies or
+** substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+** SOFTWARE.
+ */
+
 package converters
 
 import (
@@ -7,6 +45,7 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
+// TestVectorFloat64RoundTrip verifies FLOAT64 values survive VECTOR encoding and decoding.
 func TestVectorFloat64RoundTrip(t *testing.T) {
 	input := driverCommon.VectorFloat64{1.25, -2.5, 0, math.Pi}
 	wire, err := EncodeVectorFloat64(input)
@@ -32,6 +71,8 @@ func TestVectorFloat64RoundTrip(t *testing.T) {
 	}
 }
 
+// TestVectorPublicEncodersValidateTypeAndNil verifies public encoders reject
+// mismatched values and preserve typed nil vectors as SQL NULL.
 func TestVectorPublicEncodersValidateTypeAndNil(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -58,6 +99,8 @@ func TestVectorPublicEncodersValidateTypeAndNil(t *testing.T) {
 	}
 }
 
+// TestVectorDecodeWireVariantsAndBounds verifies unsupported flags, versions,
+// types, and dimension counts are rejected.
 func TestVectorDecodeWireVariantsAndBounds(t *testing.T) {
 	valid, err := EncodeVectorFloat32(driverCommon.VectorFloat32{1})
 	if err != nil {
@@ -103,6 +146,7 @@ func TestVectorDecodeWireVariantsAndBounds(t *testing.T) {
 	}
 }
 
+// TestVectorIEEEAndLittleEndianDimensions verifies IEEE and little-endian flags.
 func TestVectorIEEEAndLittleEndianDimensions(t *testing.T) {
 	if value, err := decodeFloat64Dimension([]byte{0, 0, 0, 0, 0, 0, 0xF0, 0x3F}, vectorFlagIEEE|vectorFlagLittle); err != nil || value != 1 {
 		t.Fatalf("float64 IEEE little-endian: value=%v err=%v", value, err)
@@ -118,6 +162,7 @@ func TestVectorIEEEAndLittleEndianDimensions(t *testing.T) {
 	}
 }
 
+// TestVectorFloat32RoundTrip verifies FLOAT32 values survive VECTOR encoding and decoding.
 func TestVectorFloat32RoundTrip(t *testing.T) {
 	input := driverCommon.VectorFloat32{1.5, -2.25, 0, 3.75}
 	wire, err := EncodeVectorFloat32(input)
@@ -143,6 +188,7 @@ func TestVectorFloat32RoundTrip(t *testing.T) {
 	}
 }
 
+// TestVectorInt8RoundTrip verifies INT8 values survive VECTOR encoding and decoding.
 func TestVectorInt8RoundTrip(t *testing.T) {
 	input := driverCommon.VectorInt8{1, -2, 0, 127, -128}
 	wire, err := EncodeVectorInt8(input)
@@ -168,6 +214,7 @@ func TestVectorInt8RoundTrip(t *testing.T) {
 	}
 }
 
+// TestVectorBinaryRoundTrip verifies packed BINARY bytes survive VECTOR encoding and decoding.
 func TestVectorBinaryRoundTrip(t *testing.T) {
 	input := driverCommon.VectorBinary{0xA5, 0x0F}
 	wire, err := EncodeVectorBinary(input)
@@ -193,6 +240,7 @@ func TestVectorBinaryRoundTrip(t *testing.T) {
 	}
 }
 
+// TestDecodeVectorRejectsMalformedPayload verifies malformed envelopes are rejected.
 func TestDecodeVectorRejectsMalformedPayload(t *testing.T) {
 	valid, err := EncodeVectorFloat32(driverCommon.VectorFloat32{1})
 	if err != nil {

@@ -72,4 +72,8 @@ const (
 	// MaxVarcharLength is the maximum TTC byte length used for VARCHAR2-style
 	// variable-width character payloads, including space for the TTC length prefix.
 	MaxVarcharLength common.UB4 = 32768
+
+	// MaxVectorLength is the maximum dense VECTOR envelope length. It is used as
+	// the fixed VECTOR prefetch size so supported dense values arrive inline.
+	MaxVectorLength common.UB4 = 524308
 )

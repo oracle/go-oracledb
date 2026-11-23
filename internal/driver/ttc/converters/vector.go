@@ -1,3 +1,42 @@
+/*
+** Copyright (c) 2026 Oracle and/or its affiliates.
+**
+** The Universal Permissive License (UPL), Version 1.0
+**
+** Subject to the condition set forth below, permission is hereby granted to any
+** person obtaining a copy of this software, associated documentation and/or data
+** (collectively the "Software"), free of charge and under any and all copyright
+** rights in the Software, and any and all patent rights owned or freely
+** licensable by each licensor hereunder covering either (i) the unmodified
+** Software as contributed to or provided by such licensor, or (ii) the Larger
+** Works (as defined below), to deal in both
+**
+** (a) the Software, and
+** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
+** one is included with the Software (each a "Larger Work" to which the Software
+** is contributed to or provided by such licensors),
+**
+** without restriction, including without limitation the rights to copy, create
+** derivative works of, display, perform, and distribute the Software and make,
+** use, sell, offer for sale, import, export, have made, and have sold the
+** Software and the Larger Work(s), and to sublicense the foregoing rights on
+** either these or other terms.
+**
+** This license is subject to the following condition:
+**
+** The above copyright notice and either this complete permission notice or at
+** a minimum a reference to the UPL must be included in all copies or
+** substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+** SOFTWARE.
+ */
+
 package converters
 
 import (
@@ -12,16 +51,21 @@ import (
 )
 
 const (
-	vectorTypeName            = "VECTOR"
-	maxVectorDimensions       = 65535
+	// vectorTypeName identifies this converter in driver errors.
+	vectorTypeName = "VECTOR"
+	// maxVectorDimensions is Oracle's largest supported dense numeric VECTOR dimension count.
+	maxVectorDimensions = 65535
+	// maxVectorBinaryDimensions is the largest supported dense BINARY VECTOR dimension count.
 	maxVectorBinaryDimensions = 65528
 
+	// VECTOR envelope layout constants.
 	vectorMagic           = 0xDB
 	vectorVersionV0       = 0
 	vectorBaseHeaderBytes = 9
 	vectorNormBytes       = 8
 	vectorHeaderBytes     = vectorBaseHeaderBytes + vectorNormBytes
 
+	// VECTOR envelope flags.
 	vectorFlagOptional   = 0x8000
 	vectorFlagLittle     = 0x0001
 	vectorFlagNorm       = 0x0002
@@ -29,6 +73,7 @@ const (
 	vectorFlagNormSource = 0x0010
 	vectorFlagSparse     = 0x0020
 
+	// VECTOR element type codes.
 	vectorTypeFloat32 = 0x02
 	vectorTypeFloat64 = 0x03
 	vectorTypeInt8    = 0x04
@@ -92,6 +137,7 @@ func DecodeVector(data driverCommon.B1Array) (driver.Value, error) {
 	return decodeVector(data)
 }
 
+// encodeVectorFloat64 encodes dense FLOAT64 dimensions into a VECTOR envelope.
 func encodeVectorFloat64(values []float64) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorDimensions {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
@@ -107,6 +153,7 @@ func encodeVectorFloat64(values []float64) (driverCommon.B1Array, error) {
 	return out, nil
 }
 
+// encodeVectorFloat32 encodes dense FLOAT32 dimensions into a VECTOR envelope.
 func encodeVectorFloat32(values []float32) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorDimensions {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
@@ -122,6 +169,7 @@ func encodeVectorFloat32(values []float32) (driverCommon.B1Array, error) {
 	return out, nil
 }
 
+// encodeVectorInt8 encodes dense INT8 dimensions into a VECTOR envelope.
 func encodeVectorInt8(values []int8) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorDimensions {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
@@ -134,6 +182,7 @@ func encodeVectorInt8(values []int8) (driverCommon.B1Array, error) {
 	return out, nil
 }
 
+// encodeVectorBinary encodes packed BINARY dimensions into a VECTOR envelope.
 func encodeVectorBinary(values driverCommon.VectorBinary) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorBinaryDimensions/8 {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65528")
@@ -144,6 +193,7 @@ func encodeVectorBinary(values driverCommon.VectorBinary) (driverCommon.B1Array,
 	return out, nil
 }
 
+// writeVectorHeader writes the fixed VECTOR envelope header and reserved norm field.
 func writeVectorHeader(out []byte, version byte, flags uint16, typeCode byte, dimensions uint32) {
 	out[0] = vectorMagic
 	out[1] = version
@@ -157,6 +207,7 @@ func writeVectorHeader(out []byte, version byte, flags uint16, typeCode byte, di
 	clear(out[vectorBaseHeaderBytes:vectorHeaderBytes])
 }
 
+// decodeVector validates and decodes a complete VECTOR envelope.
 func decodeVector(data []byte) (driver.Value, error) {
 	if len(data) < vectorBaseHeaderBytes {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, ">="+strconv.Itoa(vectorBaseHeaderBytes))
@@ -234,6 +285,7 @@ func decodeVector(data []byte) (driver.Value, error) {
 	}
 }
 
+// vectorValueByteLength returns the payload length implied by a VECTOR type and dimension count.
 func vectorValueByteLength(typeCode byte, dimensions uint32) (int, error) {
 	switch typeCode {
 	case vectorTypeFloat64:
@@ -264,6 +316,7 @@ func vectorValueByteLength(typeCode byte, dimensions uint32) (int, error) {
 	}
 }
 
+// decodeFloat64Dimension decodes one FLOAT64 dimension using the envelope flags.
 func decodeFloat64Dimension(raw []byte, flags uint16) (float64, error) {
 	if len(raw) != 8 {
 		return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, 8)
@@ -275,6 +328,7 @@ func decodeFloat64Dimension(raw []byte, flags uint16) (float64, error) {
 	return DecodeBinaryDouble(ordered)
 }
 
+// decodeFloat32Dimension decodes one FLOAT32 dimension using the envelope flags.
 func decodeFloat32Dimension(raw []byte, flags uint16) (float32, error) {
 	if len(raw) != 4 {
 		return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, 4)
@@ -286,6 +340,7 @@ func decodeFloat32Dimension(raw []byte, flags uint16) (float32, error) {
 	return DecodeBinaryFloat(ordered)
 }
 
+// orderVectorBytes returns raw in big-endian order when the VECTOR marks it little-endian.
 func orderVectorBytes(raw []byte, flags uint16) []byte {
 	ordered := raw
 	if (flags & vectorFlagLittle) != 0 {
@@ -297,6 +352,7 @@ func orderVectorBytes(raw []byte, flags uint16) []byte {
 	return ordered
 }
 
+// putOracleBinaryDouble writes FLOAT64 in Oracle's ordered binary representation.
 func putOracleBinaryDouble(dst []byte, value float64) {
 	bits := math.Float64bits(value)
 	var stored uint64
@@ -308,6 +364,7 @@ func putOracleBinaryDouble(dst []byte, value float64) {
 	binary.BigEndian.PutUint64(dst, stored)
 }
 
+// putOracleBinaryFloat writes FLOAT32 in Oracle's ordered binary representation.
 func putOracleBinaryFloat(dst []byte, value float32) {
 	bits := math.Float32bits(value)
 	var stored uint32
