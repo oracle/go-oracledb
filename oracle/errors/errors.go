@@ -16,6 +16,7 @@ type ErrorCode string
 const (
 	// ORA-XXXXX errors
 	InvalidCredential      ErrorCode = "ORA-01017"
+	InvalidDateYear        ErrorCode = "ORA-01841"
 	NoDataFound            ErrorCode = "ORA-01403"
 	ConnectionLost         ErrorCode = "ORA-03113"
 	AliasNotFound          ErrorCode = "ORA-12154"
@@ -270,6 +271,10 @@ const (
 	JSONRenderingError ErrorCode = "OGD-00306"
 	// JSONObjectKeyNotFoundError indicates an object lookup requested an absent key.
 	JSONObjectKeyNotFoundError ErrorCode = "OGD-00307"
+
+	// UnsupportedLobOperation indicates the operation is not supported for the selected LOB
+	// family or access mode.
+	UnsupportedLobOperation ErrorCode = "OGD-00308"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error

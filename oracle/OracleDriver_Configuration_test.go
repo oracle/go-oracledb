@@ -43,7 +43,9 @@ import (
 	"database/sql"
 	"flag"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
@@ -201,7 +203,7 @@ func TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector(t *testing.T) {
 		t.Fatal("expected debug logging to be enabled after applying the configuration")
 	}
 
-	if _, err := driver.openConnector("localhost:1521/freepdb1"); err != nil {
+	if _, err := driver.OpenConnector("localhost:1521/freepdb1"); err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
 
@@ -210,6 +212,48 @@ func TestDriver_ApplyDriverLoggingConfigPreservedByOpenConnector(t *testing.T) {
 	}
 	if !common.Odl.Enabled(context.Background(), slog.LevelDebug) {
 		t.Fatal("expected debug logging configuration to remain enabled after openConnector")
+	}
+}
+
+// TestDriver_ApplyDriverLoggingConfigCanBeUpdated verifies that a second
+// application logging configuration replaces the first one.
+func TestDriver_ApplyDriverLoggingConfigCanBeUpdated(t *testing.T) {
+	driver := NewDriver()
+	t.Cleanup(func() {
+		driver.ApplyDriverLoggingConfig(NewOracleLoggingConfig())
+	})
+
+	firstPath := filepath.Join(t.TempDir(), "first.log")
+	firstConfig := NewOracleLoggingConfig()
+	firstConfig.Destination = firstPath
+	firstConfig.Level = "INFO"
+	driver.ApplyDriverLoggingConfig(firstConfig)
+
+	const firstMessage = "written with first logging config"
+	common.Odl.InfoContext(context.Background(), firstMessage)
+	firstData, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatalf("expected first logging destination to be created before updating config: %v", err)
+	}
+	if !strings.Contains(string(firstData), firstMessage) {
+		t.Fatalf("expected first logging destination to contain %q, got %q", firstMessage, string(firstData))
+	}
+
+	secondPath := filepath.Join(t.TempDir(), "second.log")
+	secondConfig := NewOracleLoggingConfig()
+	secondConfig.Destination = secondPath
+	secondConfig.Level = "INFO"
+	driver.ApplyDriverLoggingConfig(secondConfig)
+
+	const message = "written with updated logging config"
+	common.Odl.InfoContext(context.Background(), message)
+
+	data, err := os.ReadFile(secondPath)
+	if err != nil {
+		t.Fatalf("expected second logging destination to be created: %v", err)
+	}
+	if !strings.Contains(string(data), message) {
+		t.Fatalf("expected second logging destination to contain %q, got %q", message, string(data))
 	}
 }
 
@@ -224,7 +268,7 @@ func TestDriver_OpenConnectorUsesFallbackConnectDescriptor(t *testing.T) {
 	config := NewOracleDriverConfig()
 	config.ConnectDescriptor = "localhost:1521/freepdb1?oracle.go.ConnectionProperties.ConnectTimeout=12"
 
-	connector, err := NewDriverWithConfig(config).openConnector("")
+	connector, err := NewDriverWithConfig(config).OpenConnector("")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -244,7 +288,7 @@ func TestDriver_OpenConnectorUsesFallbackConnectDescriptor(t *testing.T) {
 // TestDriver_OpenConnectorStoresConnectDescriptorFromDSN verifies that
 // credentials and the connect descriptor are stored from the DSN.
 func TestDriver_OpenConnectorStoresConnectDescriptorFromDSN(t *testing.T) {
-	connector, err := NewDriver().openConnector("user/pass@localhost:1521/freepdb1")
+	connector, err := NewDriver().OpenConnector("user/pass@localhost:1521/freepdb1")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -342,7 +386,7 @@ func TestDriver_OpenConnectorUsesParam(t *testing.T) {
 	t.Parallel()
 	const walletLocation = "/tmp/foo"
 
-	connector, err := GetDefaultDriver().openConnector("tcps://127.0.0.1:2484/freepdb1?oracle.go.ConnectionProperties.WalletLocation=/tmp/foo")
+	connector, err := GetDefaultDriver().OpenConnector("tcps://127.0.0.1:2484/freepdb1?oracle.go.ConnectionProperties.WalletLocation=/tmp/foo")
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -369,7 +413,7 @@ func TestDriver_OpenConnectorUsesNSParam(t *testing.T) {
 	const walletLocation = "/tmp/foo"
 	const logonMode = "SYSOPER"
 
-	connector, err := GetDefaultDriver().openConnector("tcps://127.0.0.1:2484/freepdb1?wallet_location=" + walletLocation + "&logon_mode=" + logonMode)
+	connector, err := GetDefaultDriver().OpenConnector("tcps://127.0.0.1:2484/freepdb1?wallet_location=" + walletLocation + "&logon_mode=" + logonMode)
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -402,7 +446,7 @@ func TestDriver_OpenConnectorPreservesQuotedInParameters(t *testing.T) {
 	const expected = "CN=My Server, OU=Org"
 	const dsn = `tcps://127.0.0.1:1521/service?ssl_server_cert_dn="CN=My Server, OU=Org"`
 
-	connector, err := NewDriver().openConnector(dsn)
+	connector, err := NewDriver().OpenConnector(dsn)
 	if err != nil {
 		t.Fatalf("openConnector failed: %v", err)
 	}
@@ -426,7 +470,7 @@ func TestDriver_OpenConnectorPreservesQuotedInParameters(t *testing.T) {
 // DSN query parameters fail connector creation.
 func TestDriver_OpenConnectorReturnsInvalidDSNParameterError(t *testing.T) {
 	t.Parallel()
-	_, err := NewDriver().openConnector("user/pass@localhost:1521/freepdb1?oracle.go.ConnectionProperties.ConnectTimeout=-1")
+	_, err := NewDriver().OpenConnector("user/pass@localhost:1521/freepdb1?oracle.go.ConnectionProperties.ConnectTimeout=-1")
 	if err == nil {
 		t.Fatal("expected invalid DSN parameter error")
 	}

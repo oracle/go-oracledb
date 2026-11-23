@@ -243,11 +243,9 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 | `NCHAR`      | `string`             |
 | `VARCHAR2`   | `string`             |
 | `NVARCHAR2`  | `string`             |
-| `LONG`       | `string` or `[]byte` |
 | `CLOB`       | `string` or `[]byte` |
 | `NCLOB`      | `string`             |
 | `XMLTYPE`    | `string`             |
-
 
 ### Numeric Types
 
@@ -284,9 +282,17 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 | Oracle Type | Driver returns |
 |-------------|----------------|
 | `RAW`       | `[]byte`       |
-| `LONG RAW`  | `[]byte`       |
 | `BLOB`      | `[]byte`       |
 | `BFILE`     | `[]byte`       |
+
+### Unsupported Legacy Column Types
+
+| Oracle type | Query result support | Recommended replacement |
+|-------------|----------------------|--------------------------|
+| `LONG`      | Not supported        | `CLOB`                   |
+| `LONG RAW`  | Not supported        | `BLOB`                   |
+
+Support for Oracle `LONG` and `LONG RAW` columns will be added in a later release.
 
 ---
 

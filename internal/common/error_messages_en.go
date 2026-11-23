@@ -52,6 +52,11 @@ func initMessagesEn() {
 	// Action:   N/A
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidCredential), "invalid credential or not authorized: %s")
+	// Document: Yes
+	// Cause:    Illegal year entered.
+	// Action:   Input year in the specified range.
+	// Comment:  The year must not be zero.
+	message.SetString(language.English, string(oracleErrors.InvalidDateYear), "(full) year must be between -4713 and +9999, and not be 0")
 	// Document: No
 	// Cause:    N/A
 	// Action:   N/A
@@ -470,6 +475,12 @@ func initMessagesEn() {
 	// Action:   Pass the decoded REF CURSOR rows to the executor.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidRefCursorArgument), "invalid REF CURSOR argument")
+
+	// Document: No
+	// Cause:    The requested operation is not supported for this LOB locator or access mode.
+	// Action:   Use an operation supported by the selected LOB family.
+	// Comment:  Arg[0]: compact operation and LOB-family detail.
+	message.SetString(language.English, string(oracleErrors.UnsupportedLobOperation), "LOB operation is not supported: %s")
 
 	// Document: No
 	message.SetString(language.English, string(oracleErrors.CancelOperationError), "cancel operation failed")

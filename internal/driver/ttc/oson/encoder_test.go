@@ -41,6 +41,7 @@ package oson
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -371,6 +372,35 @@ func TestEncodeTimeOptions(t *testing.T) {
 				t.Fatalf("root opcode = 0x%02x, want 0x%02x", got, want)
 			}
 		})
+	}
+}
+
+// TestEncodeInvalidTemporalYears verifies invalid temporal years are rejected
+// while preserving their original conversion error as the cause.
+func TestEncodeInvalidTemporalYears(t *testing.T) {
+	encodings := []struct {
+		name  string
+		value drvCommon.JSONTimeEncoding
+	}{
+		{"timestamp", drvCommon.JSONTimeAsTimestamp},
+		{"timestamp with time zone", drvCommon.JSONTimeAsTimestampTZ},
+		{"date", drvCommon.JSONTimeAsDate},
+	}
+	for _, year := range []int{0, -4714, 10000} {
+		for _, encoding := range encodings {
+			t.Run("year_"+strconv.Itoa(year)+"/"+encoding.name, func(t *testing.T) {
+				_, err := EncodeWithOptions(
+					time.Date(year, time.January, 2, 3, 4, 5, 0, time.UTC),
+					drvCommon.JSONConversionOptions{TimeEncoding: encoding.value},
+				)
+				assertOracleErrorCode(t, err, oracleErrors.OsonEncodingError)
+
+				cause, ok := errors.Unwrap(err).(oracleErrors.SQLError)
+				if !ok || cause.ErrorCode() != string(oracleErrors.InvalidDateYear) {
+					t.Fatalf("EncodeWithOptions() cause = %v, want InvalidDateYear", errors.Unwrap(err))
+				}
+			})
+		}
 	}
 }
 

@@ -97,6 +97,74 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 	}
 }
 
+// TestDriver_Functional_SelectDualSmallValues verifies that small values
+// results from DUAL are fetched and returned without changing their values.
+// This allows to verify that maxRowsToFetch does not exceed the maximum
+// value allowed by the server.
+func TestDriver_Functional_SelectDualSmallValues(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	for _, tc := range []struct {
+		query string
+		want  any
+	}{
+		{query: "SELECT DUMMY FROM DUAL", want: "X"},
+		{query: "SELECT 'x' FROM DUAL", want: "x"},
+	} {
+		var got any
+		if err := db.QueryRowContext(context.Background(), tc.query).Scan(&got); err != nil {
+			t.Fatalf("query %q failed: %v", tc.query, err)
+		}
+		if got != tc.want {
+			t.Errorf("query %q returned %q, want %q", tc.query, got, tc.want)
+		}
+
+	}
+}
+
+// TestDriver_Functional_SelectDualBOOLEAN verifies that boolean values
+// results from DUAL are fetched and returned without changing their values.
+// This allows to verify that maxRowsToFetch does not exceed the maximum
+// value allowed by the server.
+func TestDriver_Functional_SelectDualBOOLEAN(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+	if TestingConfig.DatabaseVersion.Major < 23 {
+		t.Skip("Boolean Type is not supported for DB < 23")
+	}
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	for _, tc := range []struct {
+		query string
+		want  any
+	}{
+		{query: "SELECT CAST(1 AS BOOLEAN) FROM DUAL", want: true},
+		{query: "SELECT CAST(0 AS BOOLEAN) FROM DUAL", want: false},
+	} {
+		var got any
+		if err := db.QueryRowContext(context.Background(), tc.query).Scan(&got); err != nil {
+			t.Fatalf("query %q failed: %v", tc.query, err)
+		}
+		if got != tc.want {
+			t.Errorf("query %q returned %q, want %q", tc.query, got, tc.want)
+		}
+	}
+}
+
 // TestDriver_Functional_NetworkCompression verifies Oracle Net compression
 // through the public OracleDriverConfig.ConnectionProperties API.
 //
@@ -542,5 +610,17 @@ func TestDriver_InsertForeignKeyViolation(t *testing.T) {
 	}
 	if insertedChildID != 0 {
 		t.Fatalf("expected returned child id to remain unset on foreign key violation, got %d", insertedChildID)
+	}
+}
+
+// TestDriver_implementDriverContext check that the driver implements both
+// driver.Driver and driver.DriverContext interfaces
+func TestDriver_implementDriverContext(t *testing.T) {
+	var drv any = NewDriver()
+	if _, ok := drv.(driver.Driver); !ok {
+		t.Fatalf("driver does not implement Driver")
+	}
+	if _, ok := drv.(driver.DriverContext); !ok {
+		t.Fatalf("driver does not implement DriverContext")
 	}
 }
