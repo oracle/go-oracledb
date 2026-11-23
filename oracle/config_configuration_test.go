@@ -41,7 +41,6 @@ package oracle
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -233,28 +232,31 @@ func TestConfiguration_AssignFromEnvClientLanguageTag(t *testing.T) {
 //	no failure
 func TestConfiguration_AssignFromEmptyFlags(t *testing.T) {
 
-	conf := NewOracleDriverConfig()
-
-	flag.Set("oracle.go.Locale.Territory", "FOO")
-
-	flag.Set("oracle.go.Credentials.User", "myuser")
-
-	defer func() {
-		flag.Set("oracle.go.Credentials.User", "")
-		flag.Set("oracle.go.Locale.Territory", "")
-	}()
-
-	conf.AssignFromFlags()
-
-	fmt.Printf("%s\n", conf.String())
-
-	if strings.Compare(conf.Credentials.User, "myuser") != 0 {
-		t.Fatalf("user from flag not propagated")
-	}
-
-	if strings.Compare(conf.Locale.Territory, "FOO") != 0 {
-		t.Fatalf("territory from flag not propagated")
-	}
+	withIsolatedOracleFlags(t, func(fs *flag.FlagSet) {
+		conf := NewOracleDriverConfig()
+		conf.Credentials.User = "configured_user"
+		conf.Locale.Territory = "AMERICA"
+		if err := conf.AssignFromFlags(); err != nil {
+			t.Fatalf("assign empty flags: %v", err)
+		}
+		if conf.Credentials.User != "configured_user" || conf.Locale.Territory != "AMERICA" {
+			t.Fatal("unvisited flags changed the supplied configuration")
+		}
+		for name, value := range map[string]string{
+			"oracle.go.Locale.Territory": "FOO",
+			"oracle.go.Credentials.User": "myuser",
+		} {
+			if err := fs.Set(name, value); err != nil {
+				t.Fatalf("set configuration flag %q: %v", name, err)
+			}
+		}
+		if err := conf.AssignFromFlags(); err != nil {
+			t.Fatalf("assign explicit flags: %v", err)
+		}
+		if conf.Credentials.User != "myuser" || conf.Locale.Territory != "FOO" {
+			t.Fatal("explicit flags did not override the supplied configuration")
+		}
+	})
 
 }
 
