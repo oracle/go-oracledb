@@ -357,6 +357,8 @@ err = db.QueryRowContext(ctx,
 | `VECTOR(*, INT8)` | `datatype.VectorInt8` | `[]int8` |
 | `VECTOR(*, BINARY)` | `datatype.VectorBinary` | `[]byte` (packed bits) |
 
+For a runnable example, see [examples/vector](./examples/vector/main.go).
+
 ## Help
 Are you having trouble with Oracle Database Driver for Go? We want to help!
 
