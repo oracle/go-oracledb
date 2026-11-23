@@ -340,8 +340,14 @@ func (c *connection) _handleEndOfCallStatus(msg driverCommon.Message[driverCommo
 // Returns:
 //   - string: Human-readable connection state.
 func (c *connection) String() string {
+	var id = c.sessCtx.GetClientProperties().GetProperty(driverCommon.SessionUuid)
+	if id == nil {
+		id = "N/A"
+	} else {
+		id = id.(string)
+	}
 	return fmt.Sprintf("Connection { id: %v, isOpen: %v, isValid: %v }",
-		c.sessCtx.GetClientProperties().GetProperty(driverCommon.SessionUuid).(string),
+		id,
 		!c._isClosed, c._isValid)
 }
 
