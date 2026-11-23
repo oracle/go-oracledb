@@ -47,8 +47,8 @@ import (
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
-// TestDriver_Vector_Basic verifies INSERT, SELECT, UPDATE, and DELETE for all
-// dense VECTOR element types supported by the driver.
+// TestDriver_Vector_Basic verifies dense VECTOR INSERT, SELECT, and UPDATE for
+// each supported element type, followed by row deletion.
 func TestDriver_Vector_Basic(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")

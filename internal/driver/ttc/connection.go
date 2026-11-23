@@ -292,8 +292,8 @@ func checkNamedValue(nv *driver.NamedValue) error {
 	// Preserve named driver values that require a registered encoder. Add future
 	// native bind types here instead of giving each type its own checker.
 	switch nv.Value.(type) {
-	case driverCommon.VectorFloat64, driverCommon.VectorFloat32,
-		driverCommon.VectorInt8, driverCommon.VectorBinary, driver.Rows:
+	case datatype.VectorFloat64, datatype.VectorFloat32,
+		datatype.VectorInt8, datatype.VectorBinary, driver.Rows:
 		return nil
 	}
 	if out, ok := nv.Value.(sql.Out); ok {

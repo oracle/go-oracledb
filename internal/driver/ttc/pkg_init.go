@@ -819,16 +819,16 @@ func init() {
 	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(float64(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeFloat)); err != nil {
 		common.Odl.Warn("Failed to register float64 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(driverCommon.VectorFloat64(nil))}, MinTTCProtocolVersion, newVectorBindEncoder(converters.EncodeVectorFloat64)); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(datatype.VectorFloat64(nil))}, MinTTCProtocolVersion, newVectorBindEncoder(converters.EncodeVectorFloat64)); err != nil {
 		common.Odl.Warn("Failed to register VectorFloat64 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(driverCommon.VectorFloat32(nil))}, MinTTCProtocolVersion, newVectorBindEncoder(converters.EncodeVectorFloat32)); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(datatype.VectorFloat32(nil))}, MinTTCProtocolVersion, newVectorBindEncoder(converters.EncodeVectorFloat32)); err != nil {
 		common.Odl.Warn("Failed to register VectorFloat32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(driverCommon.VectorInt8(nil))}, MinTTCProtocolVersion, newVectorBindEncoder(converters.EncodeVectorInt8)); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(datatype.VectorInt8(nil))}, MinTTCProtocolVersion, newVectorBindEncoder(converters.EncodeVectorInt8)); err != nil {
 		common.Odl.Warn("Failed to register VectorInt8 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(driverCommon.VectorBinary(nil))}, MinTTCProtocolVersion, newVectorBindEncoder(converters.EncodeVectorBinary)); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(datatype.VectorBinary(nil))}, MinTTCProtocolVersion, newVectorBindEncoder(converters.EncodeVectorBinary)); err != nil {
 		common.Odl.Warn("Failed to register VectorBinary encoder", "error", err)
 	}
 	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestampWithTimeZone)); err != nil {
@@ -1039,10 +1039,10 @@ func init() {
 		common.Odl.Warn("Failed to register []byte bind OAC", "error", err)
 	}
 	for _, vectorType := range []reflect.Type{
-		reflect.TypeOf(driverCommon.VectorFloat64(nil)),
-		reflect.TypeOf(driverCommon.VectorFloat32(nil)),
-		reflect.TypeOf(driverCommon.VectorInt8(nil)),
-		reflect.TypeOf(driverCommon.VectorBinary(nil)),
+		reflect.TypeOf(datatype.VectorFloat64(nil)),
+		reflect.TypeOf(datatype.VectorFloat32(nil)),
+		reflect.TypeOf(datatype.VectorInt8(nil)),
+		reflect.TypeOf(datatype.VectorBinary(nil)),
 	} {
 		if err := BindOacRegistry.Register(vectorType, MinTTCProtocolVersion, bindOacType{
 			bindOacFunc: func(maxLength driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(DtyVec, maxLength) },

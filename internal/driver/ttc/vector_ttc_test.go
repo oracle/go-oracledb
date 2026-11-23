@@ -47,15 +47,16 @@ import (
 
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 // TestPrepareVectorBinds verifies VECTOR values use DtyVec OACs and encode as bind payloads.
 func TestPrepareVectorBinds(t *testing.T) {
 	args := []driver.Value{
-		driverCommon.VectorFloat64{1.25, -2.5},
-		driverCommon.VectorFloat32{3.5, 4.25},
-		driverCommon.VectorInt8{1, -2, 3},
-		driverCommon.VectorBinary{0xAA, 0x0F},
+		datatype.VectorFloat64{1.25, -2.5},
+		datatype.VectorFloat32{3.5, 4.25},
+		datatype.VectorInt8{1, -2, 3},
+		datatype.VectorBinary{0xAA, 0x0F},
 	}
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(20))
@@ -134,7 +135,7 @@ func TestUnwrapVectorColumn(t *testing.T) {
 
 // TestVectorDecoderAndDefine verifies VECTOR decoding and define OAC prefetch configuration.
 func TestVectorDecoderAndDefine(t *testing.T) {
-	payload, err := converters.EncodeVectorFloat32(driverCommon.VectorFloat32{1.5, -2.5})
+	payload, err := converters.EncodeVectorFloat32(datatype.VectorFloat32{1.5, -2.5})
 	if err != nil {
 		t.Fatalf("encode vector: %v", err)
 	}
@@ -153,7 +154,7 @@ func TestVectorDecoderAndDefine(t *testing.T) {
 
 // TestCheckNamedValueAcceptsVector verifies named VECTOR values bypass default conversion.
 func TestCheckNamedValueAcceptsVector(t *testing.T) {
-	if err := checkNamedValue(&driver.NamedValue{Ordinal: 1, Value: driverCommon.VectorFloat64{1}}); err != nil {
+	if err := checkNamedValue(&driver.NamedValue{Ordinal: 1, Value: datatype.VectorFloat64{1}}); err != nil {
 		t.Fatalf("VECTOR bind was rejected: %v", err)
 	}
 	if err := checkNamedValue(&driver.NamedValue{Ordinal: 1, Value: "ordinary"}); err != driver.ErrSkip {

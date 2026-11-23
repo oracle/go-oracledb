@@ -42,7 +42,7 @@ import (
 	"database/sql/driver"
 	"testing"
 
-	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 // TestCheckNamedValueAcceptsVectorTypes verifies each named VECTOR type bypasses
@@ -57,10 +57,10 @@ func TestCheckNamedValueAcceptsVectorTypes(t *testing.T) {
 		value any
 		ok    bool
 	}{
-		{"float64", driverCommon.VectorFloat64{1, 2}, true},
-		{"float32", driverCommon.VectorFloat32{1, 2}, true},
-		{"int8", driverCommon.VectorInt8{1, 2}, true},
-		{"binary", driverCommon.VectorBinary{0xAA}, true},
+		{"float64", datatype.VectorFloat64{1, 2}, true},
+		{"float32", datatype.VectorFloat32{1, 2}, true},
+		{"int8", datatype.VectorInt8{1, 2}, true},
+		{"binary", datatype.VectorBinary{0xAA}, true},
 		{"plain float64", []float64{1, 2}, false},
 		{"raw bytes", []byte{1}, false},
 	}

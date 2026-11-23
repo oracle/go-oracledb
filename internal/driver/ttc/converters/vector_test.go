@@ -43,11 +43,12 @@ import (
 	"testing"
 
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
 // TestVectorFloat64RoundTrip verifies FLOAT64 values survive VECTOR encoding and decoding.
 func TestVectorFloat64RoundTrip(t *testing.T) {
-	input := driverCommon.VectorFloat64{1.25, -2.5, 0, math.Pi}
+	input := datatype.VectorFloat64{1.25, -2.5, 0, math.Pi}
 	wire, err := EncodeVectorFloat64(input)
 	if err != nil {
 		t.Fatalf("EncodeVectorFloat64 failed: %v", err)
@@ -79,10 +80,10 @@ func TestVectorPublicEncodersValidateTypeAndNil(t *testing.T) {
 		encode func(any) (driverCommon.B1Array, error)
 		nil    any
 	}{
-		{"float64", func(v any) (driverCommon.B1Array, error) { return EncodeVectorFloat64(v) }, driverCommon.VectorFloat64(nil)},
-		{"float32", func(v any) (driverCommon.B1Array, error) { return EncodeVectorFloat32(v) }, driverCommon.VectorFloat32(nil)},
-		{"int8", func(v any) (driverCommon.B1Array, error) { return EncodeVectorInt8(v) }, driverCommon.VectorInt8(nil)},
-		{"binary", func(v any) (driverCommon.B1Array, error) { return EncodeVectorBinary(v) }, driverCommon.VectorBinary(nil)},
+		{"float64", func(v any) (driverCommon.B1Array, error) { return EncodeVectorFloat64(v) }, datatype.VectorFloat64(nil)},
+		{"float32", func(v any) (driverCommon.B1Array, error) { return EncodeVectorFloat32(v) }, datatype.VectorFloat32(nil)},
+		{"int8", func(v any) (driverCommon.B1Array, error) { return EncodeVectorInt8(v) }, datatype.VectorInt8(nil)},
+		{"binary", func(v any) (driverCommon.B1Array, error) { return EncodeVectorBinary(v) }, datatype.VectorBinary(nil)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,7 +103,7 @@ func TestVectorPublicEncodersValidateTypeAndNil(t *testing.T) {
 // TestVectorDecodeWireVariantsAndBounds verifies unsupported flags, versions,
 // types, and dimension counts are rejected.
 func TestVectorDecodeWireVariantsAndBounds(t *testing.T) {
-	valid, err := EncodeVectorFloat32(driverCommon.VectorFloat32{1})
+	valid, err := EncodeVectorFloat32(datatype.VectorFloat32{1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +142,7 @@ func TestVectorDecodeWireVariantsAndBounds(t *testing.T) {
 	if _, err := encodeVectorInt8(make([]int8, maxVectorDimensions+1)); err == nil {
 		t.Fatal("expected INT8 encode bound error")
 	}
-	if _, err := encodeVectorBinary(make(driverCommon.VectorBinary, maxVectorBinaryDimensions/8+1)); err == nil {
+	if _, err := encodeVectorBinary(make(datatype.VectorBinary, maxVectorBinaryDimensions/8+1)); err == nil {
 		t.Fatal("expected BINARY encode bound error")
 	}
 }
@@ -164,7 +165,7 @@ func TestVectorIEEEAndLittleEndianDimensions(t *testing.T) {
 
 // TestVectorFloat32RoundTrip verifies FLOAT32 values survive VECTOR encoding and decoding.
 func TestVectorFloat32RoundTrip(t *testing.T) {
-	input := driverCommon.VectorFloat32{1.5, -2.25, 0, 3.75}
+	input := datatype.VectorFloat32{1.5, -2.25, 0, 3.75}
 	wire, err := EncodeVectorFloat32(input)
 	if err != nil {
 		t.Fatalf("EncodeVectorFloat32 failed: %v", err)
@@ -190,7 +191,7 @@ func TestVectorFloat32RoundTrip(t *testing.T) {
 
 // TestVectorInt8RoundTrip verifies INT8 values survive VECTOR encoding and decoding.
 func TestVectorInt8RoundTrip(t *testing.T) {
-	input := driverCommon.VectorInt8{1, -2, 0, 127, -128}
+	input := datatype.VectorInt8{1, -2, 0, 127, -128}
 	wire, err := EncodeVectorInt8(input)
 	if err != nil {
 		t.Fatalf("EncodeVectorInt8 failed: %v", err)
@@ -216,7 +217,7 @@ func TestVectorInt8RoundTrip(t *testing.T) {
 
 // TestVectorBinaryRoundTrip verifies packed BINARY bytes survive VECTOR encoding and decoding.
 func TestVectorBinaryRoundTrip(t *testing.T) {
-	input := driverCommon.VectorBinary{0xA5, 0x0F}
+	input := datatype.VectorBinary{0xA5, 0x0F}
 	wire, err := EncodeVectorBinary(input)
 	if err != nil {
 		t.Fatalf("EncodeVectorBinary failed: %v", err)
@@ -242,7 +243,7 @@ func TestVectorBinaryRoundTrip(t *testing.T) {
 
 // TestDecodeVectorRejectsMalformedPayload verifies malformed envelopes are rejected.
 func TestDecodeVectorRejectsMalformedPayload(t *testing.T) {
-	valid, err := EncodeVectorFloat32(driverCommon.VectorFloat32{1})
+	valid, err := EncodeVectorFloat32(datatype.VectorFloat32{1})
 	if err != nil {
 		t.Fatalf("encode valid vector: %v", err)
 	}

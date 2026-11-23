@@ -47,6 +47,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -80,11 +81,11 @@ const (
 	vectorTypeBinary  = 0x05
 )
 
-// EncodeVectorFloat64 encodes common.VectorFloat64 into Oracle VECTOR(FLOAT64) wire layout.
+// EncodeVectorFloat64 encodes datatype.VectorFloat64 into Oracle VECTOR(FLOAT64) wire layout.
 func EncodeVectorFloat64(v driver.Value) (driverCommon.B1Array, error) {
-	values, ok := v.(driverCommon.VectorFloat64)
+	values, ok := v.(datatype.VectorFloat64)
 	if !ok {
-		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonInvalidValue, "common.VectorFloat64")
+		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonInvalidValue, "datatype.VectorFloat64")
 	}
 	if values == nil {
 		return nil, nil
@@ -92,11 +93,11 @@ func EncodeVectorFloat64(v driver.Value) (driverCommon.B1Array, error) {
 	return encodeVectorFloat64([]float64(values))
 }
 
-// EncodeVectorFloat32 encodes common.VectorFloat32 into Oracle VECTOR(FLOAT32) wire layout.
+// EncodeVectorFloat32 encodes datatype.VectorFloat32 into Oracle VECTOR(FLOAT32) wire layout.
 func EncodeVectorFloat32(v driver.Value) (driverCommon.B1Array, error) {
-	values, ok := v.(driverCommon.VectorFloat32)
+	values, ok := v.(datatype.VectorFloat32)
 	if !ok {
-		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonInvalidValue, "common.VectorFloat32")
+		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonInvalidValue, "datatype.VectorFloat32")
 	}
 	if values == nil {
 		return nil, nil
@@ -104,11 +105,11 @@ func EncodeVectorFloat32(v driver.Value) (driverCommon.B1Array, error) {
 	return encodeVectorFloat32([]float32(values))
 }
 
-// EncodeVectorInt8 encodes common.VectorInt8 into Oracle VECTOR(INT8) wire layout.
+// EncodeVectorInt8 encodes datatype.VectorInt8 into Oracle VECTOR(INT8) wire layout.
 func EncodeVectorInt8(v driver.Value) (driverCommon.B1Array, error) {
-	values, ok := v.(driverCommon.VectorInt8)
+	values, ok := v.(datatype.VectorInt8)
 	if !ok {
-		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonInvalidValue, "common.VectorInt8")
+		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonInvalidValue, "datatype.VectorInt8")
 	}
 	if values == nil {
 		return nil, nil
@@ -118,9 +119,9 @@ func EncodeVectorInt8(v driver.Value) (driverCommon.B1Array, error) {
 
 // EncodeVectorBinary encodes packed bits into Oracle VECTOR(BINARY) wire layout.
 func EncodeVectorBinary(v driver.Value) (driverCommon.B1Array, error) {
-	values, ok := v.(driverCommon.VectorBinary)
+	values, ok := v.(datatype.VectorBinary)
 	if !ok {
-		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonInvalidValue, "common.VectorBinary")
+		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonInvalidValue, "datatype.VectorBinary")
 	}
 	if values == nil {
 		return nil, nil
@@ -183,7 +184,7 @@ func encodeVectorInt8(values []int8) (driverCommon.B1Array, error) {
 }
 
 // encodeVectorBinary encodes packed BINARY dimensions into a VECTOR envelope.
-func encodeVectorBinary(values driverCommon.VectorBinary) (driverCommon.B1Array, error) {
+func encodeVectorBinary(values datatype.VectorBinary) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorBinaryDimensions/8 {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65528")
 	}
