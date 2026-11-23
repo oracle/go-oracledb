@@ -78,7 +78,7 @@ func TestReadBuffer(t *testing.T) {
 
 	t.Run("sequential reads and position", func(t *testing.T) {
 		r := NewReadBuffer(B1Array{7, 8, 1, 2}, BIG_ENDIAN)
-		s := r.(Seekable)
+		var s Seekable = r
 		if r.Size() != 4 || s.Position() != 0 {
 			t.Fatalf("Size() = %d, Position() = %d; want 4, 0", r.Size(), s.Position())
 		}
@@ -105,7 +105,7 @@ func TestReadBuffer(t *testing.T) {
 	t.Run("ReadBytes returns a copy and advances", func(t *testing.T) {
 		data := B1Array{1, 2, 3}
 		r := NewReadBuffer(data, BIG_ENDIAN)
-		s := r.(Seekable)
+		var s Seekable = r
 		view, err := r.ReadBytes(2)
 		if err != nil || !bytes.Equal(view, B1Array{1, 2}) {
 			t.Fatalf("ReadBytes(2) = %v, %v; want [1 2]", view, err)
@@ -178,7 +178,7 @@ func TestWriteBuffer(t *testing.T) {
 
 	t.Run("appends advance position and size", func(t *testing.T) {
 		w := NewGrowableWriteBuffer(BIG_ENDIAN)
-		s := w.(Seekable)
+		var s Seekable = w
 		if s.Position() != 0 || w.Size() != 0 {
 			t.Fatalf("new buffer Position() = %d, Size() = %d; want 0, 0", s.Position(), w.Size())
 		}
@@ -253,7 +253,7 @@ func TestWriteBuffer(t *testing.T) {
 
 	t.Run("seek, overwrite, and extend", func(t *testing.T) {
 		w := NewGrowableWriteBuffer(BIG_ENDIAN)
-		s := w.(Seekable)
+		var s Seekable = w
 		if err := w.WriteBytes(B1Array{1, 2, 3, 4}); err != nil {
 			t.Fatal(err)
 		}
@@ -292,7 +292,7 @@ func TestWriteBuffer(t *testing.T) {
 func TestInvalidBufferOperation(t *testing.T) {
 	t.Run("reads", func(t *testing.T) {
 		r := NewReadBuffer(B1Array{1, 2}, BIG_ENDIAN)
-		s := r.(Seekable)
+		var s Seekable = r
 		if _, err := r.ReadUB2(); err != nil {
 			t.Fatal(err)
 		}
@@ -331,11 +331,11 @@ func TestInvalidBufferOperation(t *testing.T) {
 		if err := w.WriteBytes(B1Array{1, 2}); err != nil {
 			t.Fatal(err)
 		}
-		writeCursor := w.(Seekable)
+		var writeCursor Seekable = w
 		if err := writeCursor.Seek(-2); err != nil {
 			t.Fatal(err)
 		}
-		buffers := []Seekable{NewReadBuffer(B1Array{1, 2}, BIG_ENDIAN).(Seekable), writeCursor}
+		buffers := []Seekable{NewReadBuffer(B1Array{1, 2}, BIG_ENDIAN), writeCursor}
 		for _, b := range buffers {
 			if err := b.Seek(1); err != nil {
 				t.Fatal(err)
