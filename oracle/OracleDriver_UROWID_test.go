@@ -56,7 +56,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/oracle/utils"
 )
 
-// Project 105286: functional coverage of the Go driver's UROWID handling.
+// Functional coverage of the Go driver's UROWID handling.
 // Functional tests are numbered consecutively to match the local specification.
 // All fixtures use ORACLE_LOADER, even when the DIRECTORY is DATA_PUMP_DIR.
 // Fixture CSVs are written through UTL_FILE on the database server; their contents
@@ -72,7 +72,7 @@ import (
 // The suite does not create accounts, DIRECTORY objects, grants or DB settings.
 var urowidDirectory = flag.String("test.urowid.directory", "DATA_PUMP_DIR", "existing Oracle DIRECTORY with READ/WRITE access")
 
-// This supplied server file is required only for the maximum-length subtest.
+// The maximum-length subtest skips unless this server file is supplied.
 // It must contain row 2,beta and produce a genuine 3950-internal-byte locator.
 // The test reads this file but never owns, overwrites or deletes it.
 var urowidBoundaryFile = flag.String("test.urowid.boundary.file", "", "confirmed server CSV filename producing a 3950-internal-byte UROWID; must contain id 2, payload beta")
@@ -80,13 +80,15 @@ var urowidBoundaryFile = flag.String("test.urowid.boundary.file", "", "confirmed
 const urowidMinimumCompatible = "23.27.1.0.0"
 const urowidBaseCSV = "1,alpha\n2,beta\n3,gamma\n4,delta\n"
 const urowidMaxRawLength = 3950
+
+// The stream fixture contains IDs through 257, so allow up to three input digits.
 const urowidAccessParameters = `
     ACCESS PARAMETERS (
       RECORDS DELIMITED BY NEWLINE
       NOLOGFILE NOBADFILE NODISCARDFILE
       FIELDS TERMINATED BY ','
       MISSING FIELD VALUES ARE NULL
-      (id INTEGER EXTERNAL, payload CHAR(40))
+      (id INTEGER EXTERNAL(3), payload CHAR(40))
     )`
 
 var urowidIdentifier = regexp.MustCompile(`^[A-Z][A-Z0-9_$#]{0,127}$`)
@@ -182,8 +184,6 @@ func TestDriver_UROWID_002_NativeExtended(t *testing.T) {
 			urowidRequireNoError(t, "fetch larger result stream", err)
 			urowidRequireNoError(t, "close larger result stream", closeErr)
 			if count != 257 || mismatches != 0 {
-				// TODO @rohit : trying with an SQL console it seems that
-				//.  this table has only 9 rowsm not 257
 				t.Errorf("scan %d: got %d/257 rows and %d identity/text mismatches", pass, count, mismatches)
 			}
 		}
@@ -419,7 +419,7 @@ func TestDriver_UROWID_013_VariableLengthAndBoundary(t *testing.T) {
 	})
 	t.Run("genuine_maximum_boundary", func(t *testing.T) {
 		if *urowidBoundaryFile == "" {
-			t.Fatalf("VALIDATION PREREQUISITE: supply a confirmed server LOADER fixture with -test.urowid.boundary.file that generates %d internal UROWID bytes; CSV size or a long filename alone does not prove the boundary", urowidMaxRawLength)
+			t.Skipf("supply -test.urowid.boundary.file with a server CSV containing row 2,beta and producing a %d-byte type-6 UROWID", urowidMaxRawLength)
 		}
 		if strings.ContainsAny(*urowidBoundaryFile, "/\\") {
 			t.Fatal("PREREQUISITE: boundary file must be a filename in the selected DIRECTORY")
@@ -833,8 +833,9 @@ func (f *urowidFixture) createExternal(t *testing.T, suffix, file string, extend
 	if extended {
 		definition += "\nROWID ACCESS ENABLE"
 	}
+	// Report malformed fixture rows instead of silently dropping them.
 	return f.createTable(t, name, "CREATE TABLE "+name+` (id NUMBER(10), payload VARCHAR2(40))
-        ORGANIZATION EXTERNAL (`+definition+") REJECT LIMIT UNLIMITED")
+        ORGANIZATION EXTERNAL (`+definition+") REJECT LIMIT 0")
 }
 
 // createSavedTable creates an ordinary table with a UROWID column and saves locators for rows 2 and 4.
