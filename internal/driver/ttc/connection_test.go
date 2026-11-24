@@ -48,6 +48,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/config"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
@@ -126,11 +127,12 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 func TestNewConnectionReturnsServerTimezoneError(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
-	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
+	shelf.RegisterMessageFactory(&mockFactory{returnMsg: newOall18()})
 	shelf.RegisterMessageStreamer(&mockStreamer{
 		pullMsg: &mockOer{err: common.NewOERMessageError("ORA-12345", "timezone query failed")},
 	})
 	shelf.RegisterLocalizationService(common.NewLocalizationService(language.English))
+	shelf.UpdateDriverConfig(config.NewOracleDriverConfig())
 
 	conn, err := newConnection(context.Background(), shelf, driverCommon.NewSessionContext(), &mockNetworkSession{})
 	if err == nil {
@@ -153,7 +155,7 @@ func TestNewConnectionReturnsServerTimezoneError(t *testing.T) {
 func TestConnection_ExecContext_LocalizesError(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
-	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
+	shelf.RegisterMessageFactory(&mockFactory{returnMsg: newOall18()})
 	shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{err: nil}})
 	shelf.RegisterLocalizationService(common.NewLocalizationService(language.French))
 	conn := newTestConnection(shelf, nil, &mockNetworkSession{})
@@ -180,7 +182,7 @@ func TestConnection_ExecContext_LocalizesError(t *testing.T) {
 func TestConnection_QueryContext_LocalizesError(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[driverCommon.MessageType]()
-	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
+	shelf.RegisterMessageFactory(&mockFactory{returnMsg: newOall18()})
 	shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{err: nil}})
 	shelf.RegisterLocalizationService(common.NewLocalizationService(language.French))
 	conn := newTestConnection(shelf, nil, &mockNetworkSession{})
@@ -208,7 +210,7 @@ func TestConnection_LocalizationStaysBoundToEachShelf(t *testing.T) {
 	t.Parallel()
 	newConn := func(lang language.Tag) *connection {
 		shelf := newShelf[driverCommon.MessageType]()
-		shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
+		shelf.RegisterMessageFactory(&mockFactory{returnMsg: newOall18()})
 		shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{err: nil}})
 		shelf.RegisterLocalizationService(common.NewLocalizationService(lang))
 		return newTestConnection(shelf, nil, &mockNetworkSession{})
@@ -253,7 +255,7 @@ func TestConnection_InvalidateOnOEROrSTA(t *testing.T) {
 	// Use mockFactoryWithList at startup to bypass server time zone
 	mockFactoryWithList := &mockFactoryWithList{
 		returnMsg: []driverCommon.Message[driverCommon.MessageType]{
-			NewOall18(),
+			newOall18(),
 			&mockOer{err: common.NewOERMessageError("ORA-12345", "dont read server time zone")}},
 	}
 	// Initialize the buffer will the message headers

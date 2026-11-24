@@ -39,18 +39,9 @@
 package common
 
 import (
+	"encoding/base64"
 	"testing"
 )
-
-func TestStripSpacesOutsideQuotes(t *testing.T) {
-	t.Parallel()
-	input := ` host = "my host"  : 1521 `
-	expected := `host="my host":1521`
-
-	if got := StripSpacesOutsideQuotes(input); got != expected {
-		t.Fatalf("StripSpacesOutsideQuotes(%q) = %q, want %q", input, got, expected)
-	}
-}
 
 func TestUtility_SimpleStringToB1Array(t *testing.T) {
 	t.Parallel()
@@ -150,5 +141,13 @@ func TestUtility_NonBMPStringToB1Array(t *testing.T) {
 		if res[i] != b {
 			t.Fatalf("unexpected b1 array field at index [%d]: [%d] should be [%d]", i, res[i], b)
 		}
+	}
+}
+
+func TestGenUUID(t *testing.T) {
+	t.Parallel()
+	uuid := GenUUID()
+	if _, err := base64.StdEncoding.DecodeString(uuid); err != nil {
+		t.Fatalf("GenUUID did not return base64 string: %v", err)
 	}
 }

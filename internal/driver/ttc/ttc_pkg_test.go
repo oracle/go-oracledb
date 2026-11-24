@@ -52,6 +52,7 @@ import (
 	"testing"
 	"time"
 
+	common2 "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleTest "github.com/oracle/go-oracledb/v26/internal/tests"
 )
@@ -955,6 +956,7 @@ type mockFactory struct {
 	funcType            common.FunctionType
 	returnMsg           common.Message[common.MessageType]
 	returnErr           error
+	logger              *common2.OracleLogger
 }
 
 func (m *mockFactory) GetMessage(msgType common.MessageType) (common.Message[common.MessageType], error) {
@@ -1222,6 +1224,7 @@ func newTestConnection(
 	conn.registerEventListeners(conn.shelf.getEventService())
 	conn._registerHandleEndOfCallStatus()
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
+	conn._logger = &common2.Odl
 	return conn
 }
 

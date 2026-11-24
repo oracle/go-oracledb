@@ -63,7 +63,7 @@ func newSessionlessTransactionTestConnection() (*connection, *mockStreamer) {
 	_ = messageRegistry.Register(TTISTA, 1, newTTISTA)
 
 	functionRegistry := NewRegistry[functionRegistryKey]()
-	_ = functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
+	_ = functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, newOall18)
 	_ = functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxSe}, 18, newOTxSe18)
 	_ = functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxEn}, 18, newOTxEn18)
 	_ = functionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, 18, newOTxSePfn18)
@@ -75,6 +75,7 @@ func newSessionlessTransactionTestConnection() (*connection, *mockStreamer) {
 		msgregistry:  messageRegistry,
 		funcregistry: functionRegistry,
 	}
+	messageFactory.logger = &internalCommon.Odl
 	streamer := &mockStreamer{}
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageFactory(messageFactory).

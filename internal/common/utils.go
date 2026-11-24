@@ -6,7 +6,7 @@
 ** Subject to the condition set forth below, permission is hereby granted to any
 ** person obtaining a copy of this software, associated documentation and/or data
 ** (collectively the "Software"), free of charge and under any and all copyright
-** rights in the Software, and any and all patent rights owned or freely
+** rights in the Software, and under any and all patent rights owned or freely
 ** licensable by each licensor hereunder covering either (i) the unmodified
 ** Software as contributed to or provided by such licensor, or (ii) the Larger
 ** Works (as defined below), to deal in both
@@ -36,43 +36,32 @@
 ** SOFTWARE.
  */
 
-package config
+package common
 
-import (
-	"log/slog"
-	"reflect"
-	"testing"
-)
+import "strings"
 
-func TestValidateLoggingLevel(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		value   string
-		want    string
-		wantErr bool
-	}{
-		{name: "empty defaults to error", value: "", want: slog.LevelError.String()},
-		{name: "standard level", value: "INFO", want: slog.LevelInfo.String()},
-		{name: "fine", value: "fine", want: slog.Level(-8).String()},
-		{name: "finest", value: "finest", want: slog.Level(-16).String()},
-		{name: "mixed case finest", value: "FiNeSt", want: slog.Level(-16).String()},
-		{name: "invalid", value: "verbose", wantErr: true},
+// StripSpacesOutsideQuotes removes ASCII spaces that appear outside of double-quoted
+// strings. Spaces inside quotes are preserved.
+//
+// Example:
+//
+//	input:  host = "my host"  :1521
+//	output: host="my host":1521
+func StripSpacesOutsideQuotes(s string) string {
+	var result strings.Builder
+	inQuotes := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if ch == '"' {
+			inQuotes = !inQuotes
+			result.WriteByte(ch)
+			continue
+		}
+		if ch == ' ' && !inQuotes {
+			// skip spaces outside quotes
+			continue
+		}
+		result.WriteByte(ch)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := validateLoggingLevel(reflect.ValueOf(tt.value), "Logging.Level")
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("error presence = %t, want %t; error = %v", err != nil, tt.wantErr, err)
-			}
-			if tt.wantErr {
-				return
-			}
-			if got != tt.want {
-				t.Fatalf("level = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	return result.String()
 }

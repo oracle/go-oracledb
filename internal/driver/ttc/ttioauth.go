@@ -83,6 +83,9 @@ const (
 	authACL           = "AUTH_ACL"
 	authSid           = "AUTH_SID"
 
+	authSessionId     = "AUTH_SESSION_ID"
+	authSessionSerial = "AUTH_SERIAL_NUM"
+
 	authSessionClientDrvnm = "SESSION_CLIENT_DRIVER_NAME"
 	authSessionClientVsn   = "SESSION_CLIENT_VERSION"
 
@@ -135,6 +138,12 @@ const (
 	authNlsLxcTtznfm    = "AUTH_NLS_LXCTTZNFM"
 	authNlsLxcStznfm    = "AUTH_NLS_LXCSTZNFM"
 
+	AuthKpplConnClass      = "AUTH_KPPL_CONN_CLASS"
+	AuthKpplPurity         = "AUTH_KPPL_PURITY"
+	AuthKpplTag            = "AUTH_KPPL_TAG"
+	AuthKpplIsMultiPropTag = "AUTH_KPPL_IS_MULTIPROP_TAG"
+	AuthKpplFixUpCB        = "AUTH_KPPL_FIXUP_CB"
+
 	// Additional SESSION_* NLS keys used by server piggybacks (OCSSYNC)
 	sessionNlsLxcCharset   = "SESSION_NLS_LXCCHARSET"
 	sessionNlsLxcNlsLenSem = "SESSION_NLS_LXCNLSLENSEM"
@@ -175,12 +184,14 @@ type oAuth struct {
 	connectString           []byte
 	_hasO5LNPSupport        bool
 	_hasO7LMRSupport        bool
+	connectionClass         driverCommon.B1Array
+	connectionPurity        driverCommon.B1Array
 }
 
-// NewOAuth creates a new Oracle Authentication (OAUTH) TTC message with the legacy
+// newOAuth creates a new Oracle Authentication (OAUTH) TTC message with the legacy
 // TTIFUN header format. The returned oAuth value is pre-initialized via _oauthInit
 // and ready to be configured with credentials and session attributes before marshal.
-func NewOAuth() driverCommon.Message[driverCommon.MessageType] {
+func newOAuth() driverCommon.Message[driverCommon.MessageType] {
 	t := &oAuth{
 		header:           &ttiFunHeader{_funcType: oauth},
 		_hasO5LNPSupport: false,
@@ -191,10 +202,10 @@ func NewOAuth() driverCommon.Message[driverCommon.MessageType] {
 	return t
 }
 
-// NewOAuth18 creates a new Oracle Authentication (OAUTH) TTC message using the
+// newOAuth18 creates a new Oracle Authentication (OAUTH) TTC message using the
 // TTIFUN header format (ttiFunHeader18) while reusing the standard oAuth
 // initialization. It is returned as a Message interface ready for configuration.
-func NewOAuth18() driverCommon.Message[driverCommon.MessageType] {
+func newOAuth18() driverCommon.Message[driverCommon.MessageType] {
 	t := &oAuth{
 		header:           &ttiFunHeader18{ttiFunHeader: &ttiFunHeader{_funcType: oauth}},
 		_hasO5LNPSupport: false,
@@ -395,7 +406,7 @@ func (o *oAuth) prepareForOAUTH(luser driverCommon.B1Array,
 	o.setVSessionKeyValsForOAUTH()
 	o.setAlterSessionKeyValsForOAUTH()
 	o.setDriverIdentityKeyValsForOAUTH()
-
+	o.setDRCPKeyValsForOAUTH()
 	return nil
 }
 
@@ -409,6 +420,9 @@ func (o *oAuth) prepareForTokenOAUTH(luser driverCommon.B1Array) {
 	o.setVSessionKeyValsForOAUTH()
 	o.setAlterSessionKeyValsForOAUTH()
 	o.setDriverIdentityKeyValsForOAUTH()
+	if len(o.connectionClass) > 0 {
+		o.setDRCPKeyValsForOAUTH()
+	}
 }
 
 // Initializes logonMode before executing an oauth call.
@@ -495,6 +509,22 @@ func (o *oAuth) setVSessionKeyValsForOAUTH() {
 	}
 
 	o.keyValList.PushBackList(_keyValStaticInfoForOAuth2)
+}
+
+var _drcpClassNameKey = driverCommon.StringToB1Array(AuthKpplConnClass)
+var _drcpPurityKey = driverCommon.StringToB1Array(AuthKpplPurity)
+
+// public name for purity is SELF and NEW but the key value sent should be "1" and "2"
+var _drcpPurityNewName = driverCommon.StringToB1Array("1")
+var _drcpPuritySelfName = driverCommon.StringToB1Array("2")
+
+func (o *oAuth) setDRCPKeyValsForOAUTH() {
+	if len(o.connectionClass) > 0 {
+		o.keyValList.PushBack(&driverCommon.KeyValue{Key: _drcpClassNameKey, Value: o.connectionClass})
+	}
+	if len(o.connectionPurity) > 0 {
+		o.keyValList.PushBack(&driverCommon.KeyValue{Key: _drcpPurityKey, Value: o.connectionPurity})
+	}
 }
 
 var _authOraEditionKey = driverCommon.StringToB1Array(authOraEdition)
@@ -668,6 +698,21 @@ func (o *oAuth) setLogonMode(mode int64) {
 	o.logonMode = mode
 }
 
+// setDrcpConnectionClass sets the DRCP connecton class of this oauth
+func (o *oAuth) setDrcpConnectionClass(class driverCommon.B1Array) {
+	o.connectionClass = class
+}
+
+// setDrcpPurity sets the DRCP connecton class of this oauth
+func (o *oAuth) setDrcpPurity(purity string) {
+	if strings.EqualFold(purity, common.DrcpPuritySelf) {
+		o.connectionPurity = _drcpPuritySelfName
+	}
+	if strings.EqualFold(purity, common.DrcpPurityNew) {
+		o.connectionPurity = _drcpPurityNewName
+	}
+}
+
 // ---- oauth Function Reply (TTIRPA) Message ----
 
 // OAuthRPA represents an Oracle Authentication Reply (TTIRPA) TTC message.
@@ -679,10 +724,10 @@ type OAuthRPA struct {
 	connectionValues *driverCommon.Properties[string]
 }
 
-// NewOAuthRPA creates a new Oracle Authentication Reply (TTIRPA) TTC message.
+// newOAuthRPA creates a new Oracle Authentication Reply (TTIRPA) TTC message.
 // It initializes the OAuthRPA struct and returns it as a Message interface,
 // ready to unmarshal server authentication responses.
-func NewOAuthRPA() driverCommon.Message[driverCommon.MessageType] {
+func newOAuthRPA() driverCommon.Message[driverCommon.MessageType] {
 	return &OAuthRPA{}
 }
 
@@ -696,7 +741,7 @@ func (rpa *OAuthRPA) GetMsgCode() driverCommon.MessageType {
 // It implements the common.Unmarshallable interface and reads the TTC protocol
 // data for the authentication reply, extracting connection properties and session information.
 func (rpa *OAuthRPA) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
-	common.Odl.Debug("unmarshal OAUTH RPA starts")
+	common.Odl.Finest("unmarshal OAUTH RPA starts")
 	var err error
 	rpa.outNbPairs, err = engine.UnmarshalUB2(ctx)
 	if err != nil {
@@ -764,6 +809,6 @@ func (rpa *OAuthRPA) UnmarshalFrom(ctx context.Context, engine driverCommon.Mars
 			authScServiceName))
 
 	rpa.connectionValues.SetProperty(SessionTimeZone, rpa.sessionTimeZone)
-	common.Odl.Debug("unmarshal OAUTH RPA complete")
+	common.Odl.Finest("unmarshal OAUTH RPA complete")
 	return nil
 }

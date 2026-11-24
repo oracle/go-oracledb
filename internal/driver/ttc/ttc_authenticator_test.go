@@ -43,7 +43,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -101,18 +103,18 @@ func newAuthTestShelf(bufSize int) (*ttiShelf[driverCommon.MessageType], *Messag
 	// Function registry for TTIFUN implementors used by the authenticator.
 	funcReg := NewRegistry[functionRegistryKey]()
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oSesskey}, -1, func() driverCommon.Message[driverCommon.MessageType] {
-		return NewOSesskey()
+		return newOSesskey()
 	})
 	// Use NewOAuth18 to mirror production behaviour where the key/value list is pre-initialized.
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oauth}, -1, func() driverCommon.Message[driverCommon.MessageType] {
-		return NewOAuth18()
+		return newOAuth18()
 	})
 	// RPA responses used by the authenticator Pull paths
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oSesskey}, -1, func() driverCommon.Message[driverCommon.MessageType] {
-		return NewOSesskeyRPA()
+		return newOSesskeyRPA()
 	})
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oauth}, -1, func() driverCommon.Message[driverCommon.MessageType] {
-		return NewOAuthRPA()
+		return newOAuthRPA()
 	})
 	_ = funcReg.Register(functionRegistryKey{messageType: TTISPF, functionType: driverCommon.FunctionType(ocssync)}, -1, newttiSPFOCSSync)
 
@@ -126,12 +128,13 @@ func newAuthTestShelf(bufSize int) (*ttiShelf[driverCommon.MessageType], *Messag
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	}
+	factory.logger = &common.Odl
 	shelf.RegisterMessageFactory(factory)
 
 	// Streamer bound to this shelf.
 	streamer := NewMessageStreamer(shelf)
 	shelf.RegisterMessageStreamer(streamer)
-
+	shelf.UpdateDriverConfig(config.NewOracleDriverConfig())
 	return shelf, streamer, buf
 }
 
@@ -206,7 +209,7 @@ func testPasswordAuthenticatorOAuthPacket(t *testing.T, login, proxyClient strin
 	ctx := context.Background()
 
 	// Build oSesskeyRPA input for _doOAuth from the golden payload.
-	osrpaMsg := NewOSesskeyRPA()
+	osrpaMsg := newOSesskeyRPA()
 	rpaBuf := NewArrayDataBuffer(8192)
 	if err := rpaBuf.WriteBytesWithContext(ctx, makeOSesskeyRPAPayload()); err != nil {
 		t.Fatalf("write oSesskeyRPA payload to temp buffer failed: %v", err)

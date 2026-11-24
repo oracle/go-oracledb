@@ -672,9 +672,9 @@ func (e *statementExecutorSelect) buildOAll8Options(isDefine bool) driverCommon.
 // properties provide the LOB prefetch size used by define builders.
 func (e *statementExecutorSelect) buildDefineOACs() []driverCommon.Marshallable {
 	defines := make([]driverCommon.Marshallable, len(e.resultMetadata.columns))
-	connectionProperties := e.shelf.GetConnectionProperties()
+	drvConfig := e.shelf.GetDriverConfig()
 	for i, colContext := range e.resultMetadata.columns {
-		defines[i] = e.shelf.GetCodecFactory().getDefineOac(colContext.DataType, colContext, connectionProperties)
+		defines[i] = e.shelf.GetCodecFactory().getDefineOac(colContext.DataType, colContext, drvConfig)
 	}
 	return defines
 }

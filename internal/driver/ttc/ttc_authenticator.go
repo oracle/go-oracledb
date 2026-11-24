@@ -297,6 +297,23 @@ func (pa *passwordAuthenticator) _doOAuth(ctx context.Context) error {
 	oauthMsg.(*oAuth).setHasO5LNPSupport(shelf.GetCapabilities()[kztvovKpclogO5lNp].IsSet)
 	oauthMsg.(*oAuth).setHasO7LMRSupport(shelf.GetCapabilities()[kztvovKpclogO7lMr].IsSet)
 	oauthMsg.(*oAuth).setBUseO5Logon(sessionProperties.ContainsKey(authVFRData))
+
+	if shelf.GetDriverConfig().ConnectionProperties.ServerType == common.ServerTypePooled {
+		drcpClassName := shelf.GetDriverConfig().ConnectionProperties.Drcp.ClassName
+		if len(drcpClassName) != 0 {
+			oauthMsg.(*oAuth).setDrcpConnectionClass(
+				driverCommon.B1Array(drcpClassName))
+		}
+		purity := shelf.GetDriverConfig().ConnectionProperties.Drcp.Purity
+		if len(purity) != 0 {
+			oauthMsg.(*oAuth).setDrcpPurity(
+				purity)
+		} else {
+			common.Odl.Finest("DRCP purity omitted, setting it to SELF")
+			oauthMsg.(*oAuth).setDrcpPurity(
+				common.DrcpPuritySelf)
+		}
+	}
 	oauthMsg.(*oAuth).setLogonMode(pa._logonMode)
 	if common.KpzLogonSysdba.Enabled(pa._logonMode) && len(pa._password) == 0 {
 		common.Odl.Fine("KpzLogonSysdba mode, skip _oSessionKeyInit of o response")

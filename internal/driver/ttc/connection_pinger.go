@@ -86,6 +86,17 @@ func (c *connection) IsValid() bool {
 
 	c.isValid()
 
+	if c._drcpState == _drcpEnabled {
+		ctx, cancel := context.WithTimeout(context.Background(), _isValidTimeout)
+		defer cancel()
+		err := c.DetachFromResidentPool(ctx)
+		if err != nil {
+			c._logger.Debug("Failed to attach to the DRCP pool", "error", err)
+			c._isValid = false
+			return c._isValid
+		}
+	}
+
 	// Use one timeout context for all request-end callbacks.
 	ctx, cancel := context.WithTimeout(common.BackgroundContext, _isValidTimeout)
 	defer cancel()

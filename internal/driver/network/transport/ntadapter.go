@@ -72,7 +72,6 @@ type NTattributes struct {
 	HttpsProxyPort          int
 	UseSNI                  bool
 	Transportconnecttimeout int
-	Connectionidprefix      string
 	Connectionid            string
 	WalletContent           []byte
 	WalletPassword          string

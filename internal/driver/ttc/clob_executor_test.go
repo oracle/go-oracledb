@@ -47,6 +47,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -91,6 +92,7 @@ func newLobTestShelf(bufSize int) (*driverCommon.Shelf[driverCommon.MessageType]
 		ttcVersion:   24,
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
+		logger:       &common.Odl,
 	}
 	ttiShelf.RegisterMessageFactory(factory)
 

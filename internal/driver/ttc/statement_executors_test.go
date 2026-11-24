@@ -46,7 +46,9 @@ import (
 	"strings"
 	"testing"
 
+	common2 "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -67,8 +69,8 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 	shelf.RegisterMarshaller(mar)
 
 	funcReg := NewRegistry[functionRegistryKey]()
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, NewOall)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, NewOall18)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, newOall)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, newOall18)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, newOexfen)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
@@ -95,6 +97,8 @@ func newFaultyExecShelf(buf []byte, failOn FailOn, callN int) (*ttiShelf[common.
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
 	}
+	factory.logger = &common2.Odl
+
 	shelf.RegisterMessageFactory(factory)
 
 	streamer := NewMessageStreamer(shelf)
@@ -125,8 +129,8 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	// Local registries limited to what this test needs.
 	funcReg := NewRegistry[functionRegistryKey]()
 	// OALL8 request
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, NewOall)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, NewOall18)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, newOall)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, newOall18)
 	// OALL8 response
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
 
@@ -149,6 +153,7 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
+		logger:       &common2.Odl,
 	}
 	shelf.RegisterMessageFactory(factory)
 
@@ -771,8 +776,8 @@ func TestStatementExecutor_Select_Callback_GetMessage_RXD_Error_Integration(t *t
 
 	// Replace message factory with one that DOES NOT register TTIRXD to force GetMessage(TTIRXD) error.
 	funcReg := NewRegistry[functionRegistryKey]()
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, NewOall)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, NewOall18)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, newOall)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, newOall18)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, newOexfen)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
@@ -789,6 +794,7 @@ func TestStatementExecutor_Select_Callback_GetMessage_RXD_Error_Integration(t *t
 		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
+		logger:       &common2.Odl,
 	})
 
 	exec := &statementExecutorSelect{}
@@ -827,8 +833,8 @@ func TestStatementExecutor_Select_Callback_GetMessage_BVC_Error_Integration(t *t
 
 	// Replace message factory with one that DOES NOT register TTIBVC to force GetMessage(TTIBVC) error.
 	funcReg := NewRegistry[functionRegistryKey]()
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, NewOall)
-	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, NewOall18)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, -1, newOall)
+	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 18, newOall18)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, -1, newTTIOallRPA)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, -1, newOexfen)
 	_ = funcReg.Register(functionRegistryKey{messageType: TTIFUN, functionType: oExfen}, 18, newOexfen18)
@@ -845,8 +851,9 @@ func TestStatementExecutor_Select_Callback_GetMessage_BVC_Error_Integration(t *t
 		codecFactory: NewCodecFactoryForProtocol(24),
 		msgregistry:  msgReg,
 		funcregistry: funcReg,
+		logger:       &common2.Odl,
 	})
-
+	shelf.UpdateDriverConfig(config.NewOracleDriverConfig())
 	exec := &statementExecutorSelect{}
 	exec.SetShelf(shelf)
 	exec.SetSessionContext(common.NewSessionContext())

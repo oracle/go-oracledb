@@ -123,7 +123,7 @@ func TestConnectionPushSessionStateRequestErrors(t *testing.T) {
 		{
 			name: "unexpected message type",
 			factory: &mockFactory{
-				returnMsg: NewOall18(),
+				returnMsg: newOall18(),
 			},
 			streamer:      &mockStreamer{},
 			wantErrorCode: string(oracleErrors.InternalError),

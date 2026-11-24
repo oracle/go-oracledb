@@ -87,7 +87,8 @@ func TestGetConnection(t *testing.T) {
 		cancelErr: nil,
 	}
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
+		logger:    &common.Odl,
 	}
 	mockStr := &mockStreamer{
 		pullMsg: &mockOer{err: nil},
@@ -266,7 +267,7 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	ctx := context.Background()
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{err: nil}})
-	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
+	shelf.RegisterMessageFactory(&mockFactory{returnMsg: newOall18()})
 
 	oracleconfig := &oracleconfig.OracleDriverConfig{
 		DriverProperties: oracleconfig.OracleDriverProperties{},
@@ -324,7 +325,7 @@ func TestConnectionNegotiatorConfiguredLobPrefetchSize(t *testing.T) {
 	buffer.OnWriteDefaults = successOnWriteEOCS(6)
 	ns := &lobPrefetchTestNetworkSession{mockNetworkSession: &mockNetworkSession{}, TestDataBuffer: buffer}
 
-	instantiator, err := NewTTCConnectionInstantiator(config, ns, nil)
+	instantiator, err := NewTTCConnectionInstantiator("", config, ns, nil)
 	if err != nil {
 		t.Fatalf("create instantiator: %v", err)
 	}
@@ -333,8 +334,8 @@ func TestConnectionNegotiatorConfiguredLobPrefetchSize(t *testing.T) {
 		t.Fatalf("negotiate: %v", err)
 	}
 
-	props := shelf.GetConnectionProperties()
-	if props == nil || props.GetDefaultLobPrefetchSize() != prefetchSize {
+	props := shelf.GetDriverConfig()
+	if props == nil || props.DriverProperties.GetDefaultLobPrefetchSize() != prefetchSize {
 		t.Fatal("configured connection properties were not installed during negotiation")
 	}
 	marshaller := shelf.GetMarshaller().(*MarshalEngine)

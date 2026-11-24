@@ -47,6 +47,8 @@ import (
 
 // initMessagesEn Initialises error messages for English language.
 func initMessagesEn() {
+
+	message.SetString(language.English, string(oracleErrors.UserRequestCancel), "User requested cancel of current operation")
 	// Document: No
 	// Cause:    N/A
 	// Action:   N/A
@@ -693,5 +695,16 @@ func initMessagesEn() {
 	// Action:   Provide a timeout between 0 and 65535 seconds.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.SessionlessTransactionTimeoutOutOfRange), "sessionless transaction timeout must be between 0 and 65535 seconds")
+
+	// Document: No
+	// Cause:    DRCP is not enabled on the current connection
+	// Action:   Enable DRCP
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.DRCPNotEnabled), "DRCP is not enabled")
+	// Document: No
+	// Cause:    An operation is made on a connection which is not in the right attachment state.
+	// Action:   N/A
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.DRCPInvalidState), "Invalid DRCP state %d")
 
 }

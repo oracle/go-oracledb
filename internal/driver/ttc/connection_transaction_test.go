@@ -211,7 +211,7 @@ func TestCallBeginTxTwice(t *testing.T) {
 	functionRegistry := NewRegistry[functionRegistryKey]()
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: logOff}, 1, newLogOff)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 1, newRollback)
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, newOall18)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, 18, newOTxSePfn18)
 	messageFactory := &SimpleFactory{ttcVersion: 18, msgregistry: messageRegistry, funcregistry: functionRegistry}
 	mockStr := &mockStreamer{pullMsg: &mockOer{err: nil}}
@@ -247,7 +247,7 @@ func newTransactionTestConnection(streamer *mockStreamer) *connection {
 	messageRegistry := NewRegistry[common.MessageType]()
 	messageRegistry.Register(TTIOER, 1, newTTIoer)
 	functionRegistry := NewRegistry[functionRegistryKey]()
-	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, NewOall18)
+	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oAll8}, 1, newOall18)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxEn}, 18, newOTxEn18)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oTxEn}, 1, newOTxEnRPA)
 	functionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, 18, newOTxSePfn18)

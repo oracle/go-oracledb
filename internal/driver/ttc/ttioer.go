@@ -147,6 +147,9 @@ type endOfCallStatus struct {
 	// connectionShouldBeDropped indicates this connection is affected by a
 	// planned-down
 	endOfCallStatusFlags driverCommon.UB4
+
+	// DRCP detach
+	connectionDRCPDetached bool
 }
 
 // String returns a human-readable representation of end-of-call status.
@@ -154,9 +157,9 @@ type endOfCallStatus struct {
 // Returns:
 //   - string: Formatted end-of-call status.
 func (e *endOfCallStatus) String() string {
-	return fmt.Sprintf("endOfCallStatus {elapsedTime: [%v], connectionShouldBeDropped: [%v]}",
+	return fmt.Sprintf("endOfCallStatus {elapsedTime: [%v], connectionShouldBeDropped: [%v], connectionDRCPDetached: [%v]}",
 		e.elapsedTime,
-		e.connectionShouldBeDropped())
+		e.connectionShouldBeDropped(), e.connectionDRCPDetached)
 }
 
 // connectionShouldBeDropped reports whether the end-of-call status requests
@@ -566,6 +569,10 @@ func unmarshalEndOfCallStatus(ctx context.Context, mar driverCommon.Marshaller) 
 		common.Odl.Finest("tTIoer.UnmarshalFrom: EOCS ", "Elapsed time", elapsedTime)
 	}
 
+	if (retVal.endOfCallStatusFlags & TtiEocRel) != 0 {
+		retVal.connectionDRCPDetached = true
+		common.Odl.Debug("tTIoer", "UnmarshalFrom", "TtiEocRel received")
+	}
 	return retVal, nil
 }
 

@@ -42,13 +42,15 @@ import (
 	"testing"
 	"time"
 
+	common2 "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
 func TestConnectionCloser_Close(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
+		logger:    &common2.Odl,
 	}
 	mockStr := &mockStreamer{}
 
@@ -98,7 +100,8 @@ func TestConnectionCloser_Close(t *testing.T) {
 func TestConnectionCloser_CloseWithTimeout(t *testing.T) {
 	t.Parallel()
 	mockFac := &mockFactory{
-		returnMsg: NewOall18(),
+		returnMsg: newOall18(),
+		logger:    &common2.Odl,
 	}
 	mockStr := &mockStreamer{
 		pullMsg: &mockOer{err: nil},

@@ -41,6 +41,7 @@ package ttc
 import (
 	"testing"
 
+	common2 "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
@@ -112,6 +113,7 @@ func _createTestFactory(pv int8,
 		msgregistry:  mr,
 		funcregistry: fr,
 	}
+	factory.logger = &common2.Odl
 	return factory
 }
 

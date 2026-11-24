@@ -115,6 +115,7 @@ var parameterDestinations = map[string]string{
 	"SERVICE_TAG":           "CONNECT_DATA",
 	"CONNECTION_ID_PREFIX":  "CONNECT_DATA",
 	"POOL_BOUNDARY":         "CONNECT_DATA",
+	"POOL_NAME":             "CONNECT_DATA",
 
 	// SECURITY parameters
 	"SSL_SERVER_CERT_DN":  "SECURITY",
@@ -131,7 +132,7 @@ var protocolPattern = regexp.MustCompile(`^([a-zA-Z0-9]+)://`)
 // Example: "host:1521/mydb" -> "(DESCRIPTION=(ADDRESS=...)...)"
 func parseEzConnect(url string) (*conversionResult, error) {
 	// Remove all whitespace
-	url = driverCommon.StripSpacesOutsideQuotes(url)
+	url = common.StripSpacesOutsideQuotes(url)
 
 	// Step 1: Split and parse extended parameters (?key=val&key2=val2)
 	cleanURL, recognizedParams, unrecognizedParams, err := splitAndParseExtendedParams(url)
@@ -543,7 +544,7 @@ func buildConnectData(serviceName, serverMode, instanceName string, params map[s
 	}
 
 	connectData.WriteString(")")
-
+	common.Odl.Debug("buildConnectData", "connectData", connectData.String())
 	return connectData.String()
 }
 
