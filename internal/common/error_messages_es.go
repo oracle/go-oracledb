@@ -62,7 +62,6 @@ func initMessagesEs() {
 		{oracleErrors.ChannelReadFailed, "se detectó el fin del flujo. El extremo remoto cerró la conexión."},
 		{oracleErrors.ChannelWriteFailed, "no se pudo escribir en el canal."},
 		{oracleErrors.UnknownHost, "se especificó un host desconocido."},
-		{oracleErrors.LogonDenied, "credenciales no válidas o usuario no autorizado"},
 		{oracleErrors.InvalidServiceName, "no se puede conectar a la base de datos. El servicio %s no está registrado en el listener del host %s, puerto %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.NoAvailableHandler, "no se puede conectar a la base de datos. No hay ningún manejador %s disponible para el servicio solicitado %s en el host %s, puerto %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.UnknownInstance, "no se puede conectar a la base de datos. El listener no conoce la instancia %s del servicio %s en el host %s, puerto %d. (CONNECTION_ID=%s)"},

@@ -110,11 +110,6 @@ func initMessagesEn() {
 	// Action:   N/A
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.UnknownHost), "unknown host specified.")
-	// Document: No
-	// Cause:    N/A
-	// Action:   N/A
-	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.LogonDenied), "invalid credential or not authorized")
 	// Document: Yes
 	// Cause:    The service name specified in the connect descriptor is not registered with the listener.
 	// Action:   Verify the service name in the connect string and ensure it's correctly configured in the listener.

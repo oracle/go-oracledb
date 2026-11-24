@@ -62,7 +62,6 @@ func initMessagesPt() {
 		{oracleErrors.ChannelReadFailed, "fim do fluxo detectado. O peer remoto encerrou a conexão."},
 		{oracleErrors.ChannelWriteFailed, "falha ao gravar no canal."},
 		{oracleErrors.UnknownHost, "host especificado desconhecido."},
-		{oracleErrors.LogonDenied, "credencial inválida ou usuário não autorizado"},
 		{oracleErrors.InvalidServiceName, "não foi possível conectar ao banco de dados. O serviço %s não está registrado no listener do host %s, porta %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.NoAvailableHandler, "não foi possível conectar ao banco de dados. Nenhum handler %s disponível para o serviço solicitado %s no host %s, porta %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.UnknownInstance, "não foi possível conectar ao banco de dados. A instância %s do serviço %s não é conhecida pelo listener no host %s, porta %d. (CONNECTION_ID=%s)"},
