@@ -43,14 +43,15 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 /* Test helpers */
 
-func mustParse(t *testing.T, s string) *Node {
+func mustParse(t *testing.T, s string) *oracleconfig.Node {
 	t.Helper()
-	n, err := Parse(s)
+	n, err := oracleconfig.ParseConnectorDescriptor(s)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -302,7 +303,7 @@ func TestExtractAddressList_FullEmptyAndErrors(t *testing.T) {
 	})
 
 	t.Run("unknown child error", func(t *testing.T) {
-		node := &Node{Name: "ADDRESS_LIST", Children: []Node{{Name: "UNKNOWN", Value: "bad"}}}
+		node := &oracleconfig.Node{Name: "ADDRESS_LIST", Children: []oracleconfig.Node{{Name: "UNKNOWN", Value: "bad"}}}
 		if _, err := extractAddressList(node); err == nil {
 			t.Error("expected error for unknown child")
 		}
@@ -346,7 +347,7 @@ func TestExtractDescriptionList_FullEmptyAndErrors(t *testing.T) {
 	})
 
 	t.Run("unknown child error", func(t *testing.T) {
-		node := &Node{Name: "DESCRIPTION_LIST", Children: []Node{{Name: "UNKNOWN", Value: "bad"}}}
+		node := &oracleconfig.Node{Name: "DESCRIPTION_LIST", Children: []oracleconfig.Node{{Name: "UNKNOWN", Value: "bad"}}}
 		if _, err := extractDescriptionList(node); err == nil {
 			t.Error("expected error for unknown child")
 		}
@@ -375,7 +376,7 @@ func TestExtractAddress_SuccessAndError(t *testing.T) {
 		}
 	})
 	t.Run("error", func(t *testing.T) {
-		node := &Node{Name: "ADDRESS", Children: []Node{{Name: "INVALID", Value: "bad"}}}
+		node := &oracleconfig.Node{Name: "ADDRESS", Children: []oracleconfig.Node{{Name: "INVALID", Value: "bad"}}}
 		if _, err := extractAddress(node); err == nil {
 			t.Error("expected error for unknown param in ADDRESS")
 		}
@@ -397,7 +398,7 @@ func TestExtractConnectData_SuccessEmptyAndError(t *testing.T) {
 		}
 	})
 	t.Run("empty ok", func(t *testing.T) {
-		node := &Node{Name: "CONNECT_DATA"}
+		node := &oracleconfig.Node{Name: "CONNECT_DATA"}
 		cd, err := extractConnectData(node)
 		if err != nil {
 			t.Fatalf("unexpected error on empty CONNECT_DATA: %v", err)
@@ -407,7 +408,7 @@ func TestExtractConnectData_SuccessEmptyAndError(t *testing.T) {
 		}
 	})
 	t.Run("unknown child error", func(t *testing.T) {
-		node := &Node{Name: "CONNECT_DATA", Children: []Node{{Name: "UNKNOWN", Value: "bad"}}}
+		node := &oracleconfig.Node{Name: "CONNECT_DATA", Children: []oracleconfig.Node{{Name: "UNKNOWN", Value: "bad"}}}
 		if _, err := extractConnectData(node); err == nil {
 			t.Error("expected error for unknown param in CONNECT_DATA")
 		}
@@ -429,7 +430,7 @@ func TestExtractSecurity_SuccessEmptyAndError(t *testing.T) {
 		}
 	})
 	t.Run("empty ok", func(t *testing.T) {
-		node := &Node{Name: "SECURITY"}
+		node := &oracleconfig.Node{Name: "SECURITY"}
 		sec, err := extractSecurity(node)
 		if err != nil {
 			t.Fatalf("unexpected error on empty SECURITY: %v", err)
@@ -439,7 +440,7 @@ func TestExtractSecurity_SuccessEmptyAndError(t *testing.T) {
 		}
 	})
 	t.Run("unknown child error", func(t *testing.T) {
-		node := &Node{Name: "SECURITY", Children: []Node{{Name: "UNKNOWN", Value: "bad"}}}
+		node := &oracleconfig.Node{Name: "SECURITY", Children: []oracleconfig.Node{{Name: "UNKNOWN", Value: "bad"}}}
 		if _, err := extractSecurity(node); err == nil {
 			t.Error("expected error for unknown param in SECURITY")
 		}
@@ -604,9 +605,9 @@ func TestExtractDescription_ErrorPropagation(t *testing.T) {
 	}
 
 	// unsupported parameter in DESCRIPTION
-	node := &Node{
+	node := &oracleconfig.Node{
 		Name: "DESCRIPTION",
-		Children: []Node{
+		Children: []oracleconfig.Node{
 			{Name: "UNKNOWN", Value: "bad"},
 		},
 	}

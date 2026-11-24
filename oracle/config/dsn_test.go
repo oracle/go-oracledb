@@ -178,6 +178,299 @@ func TestHandleDsnBuildsConnectionPlans(t *testing.T) {
 	})
 }
 
+// TestHandleDsnNormalizesEZConnectTargets verifies EZConnect inputs through the
+// public DSN planning path, including endpoint grouping and CONNECT_DATA fields.
+func TestHandleDsnNormalizesEZConnectTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		dsn               string
+		protocol          driverCommon.Protocol
+		groups            [][]RemoteAccessPoint
+		serviceName       string
+		server            string
+		instanceName      string
+		wantLoadBalancing bool
+	}{
+		{
+			name:        "explicit port and service",
+			dsn:         "localhost:1521/mydb",
+			protocol:    driverCommon.ProtocolTCP,
+			groups:      [][]RemoteAccessPoint{{{Host: "localhost", Port: 1521}}},
+			serviceName: "mydb",
+		},
+		{
+			name:        "default port",
+			dsn:         "myhost/orcl",
+			protocol:    driverCommon.ProtocolTCP,
+			groups:      [][]RemoteAccessPoint{{{Host: "myhost", Port: 1521}}},
+			serviceName: "orcl",
+		},
+		{
+			name:     "host without service",
+			dsn:      "myhost",
+			protocol: driverCommon.ProtocolTCP,
+			groups:   [][]RemoteAccessPoint{{{Host: "myhost", Port: 1521}}},
+		},
+		{
+			name:              "multiple hosts enable load balancing",
+			dsn:               "host1:1521,host2:1522/mydb",
+			protocol:          driverCommon.ProtocolTCP,
+			groups:            [][]RemoteAccessPoint{{{Host: "host1", Port: 1521}, {Host: "host2", Port: 1522}}},
+			serviceName:       "mydb",
+			wantLoadBalancing: true,
+		},
+		{
+			name:         "TCPS groups IPv6 and connect data",
+			dsn:          "tcps://host1:2484,[2001:db8::1]:2485;host3:2486/orders:dedicated/inst1",
+			protocol:     driverCommon.ProtocolTCPS,
+			groups:       [][]RemoteAccessPoint{{{Host: "host1", Port: 2484}, {Host: "2001:db8::1", Port: 2485}}, {{Host: "host3", Port: 2486}}},
+			serviceName:  "orders",
+			server:       "DEDICATED",
+			instanceName: "inst1",
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			plans, err := HandleDsn(test.dsn, NewOracleDriverConfig())
+			if err != nil {
+				t.Fatalf("HandleDsn failed: %v", err)
+			}
+			if len(plans.Plan.Descriptions) != 1 {
+				t.Fatalf("description count = %d, want 1", len(plans.Plan.Descriptions))
+			}
+			description := plans.Plan.Descriptions[0]
+			if len(description.AddressGroups) != len(test.groups) {
+				t.Fatalf("address group count = %d, want %d", len(description.AddressGroups), len(test.groups))
+			}
+			for groupIndex, wantGroup := range test.groups {
+				gotGroup := description.AddressGroups[groupIndex]
+				if len(gotGroup.AccessPoints) != len(wantGroup) {
+					t.Fatalf("group %d access point count = %d, want %d", groupIndex, len(gotGroup.AccessPoints), len(wantGroup))
+				}
+				for accessPointIndex, want := range wantGroup {
+					got := gotGroup.AccessPoints[accessPointIndex]
+					if got.Host != want.Host || got.Port != want.Port || got.Protocol != test.protocol {
+						t.Errorf("group %d access point %d = %+v, want host=%q port=%d protocol=%s", groupIndex, accessPointIndex, got, want.Host, want.Port, test.protocol)
+					}
+				}
+			}
+			if got := description.ConnectData; test.serviceName == "" {
+				if got != nil {
+					t.Fatalf("connect data = %+v, want nil", got)
+				}
+			} else if got == nil || got.ServiceName != test.serviceName || got.Server != test.server || got.InstanceName != test.instanceName {
+				t.Fatalf("connect data = %+v, want service=%q server=%q instance=%q", got, test.serviceName, test.server, test.instanceName)
+			}
+			if got := description.LoadBalance != nil && *description.LoadBalance; got != test.wantLoadBalancing {
+				t.Errorf("load balancing = %t, want %t", got, test.wantLoadBalancing)
+			}
+		})
+	}
+}
+
+// TestHandleDsnAppliesEZConnectQuerySettings verifies query properties are
+// applied to the effective attempt configuration rather than serialized into a
+// generated TNS descriptor.
+func TestHandleDsnAppliesEZConnectQuerySettings(t *testing.T) {
+	t.Parallel()
+	plans, err := HandleDsn(
+		"tcps://db.example.com:2484/orders?retry_count=3&retry_delay=1&https_proxy=proxy.example.com&https_proxy_port=8080&ssl_server_dn_match=true",
+		NewOracleDriverConfig(),
+	)
+	if err != nil {
+		t.Fatalf("HandleDsn failed: %v", err)
+	}
+	iterator, err := plans.NewConnectionAttemptIterator(context.Background(), "query-settings-test")
+	if err != nil {
+		t.Fatalf("NewConnectionAttemptIterator failed: %v", err)
+	}
+	attempt, err := iterator.Next()
+	if err != nil {
+		t.Fatalf("iterator.Next failed: %v", err)
+	}
+	if attempt.GetRetryCount() != 3 || attempt.GetRetryDelay() != time.Second {
+		t.Errorf("retry policy = (%d, %v), want (3, 1s)", attempt.GetRetryCount(), attempt.GetRetryDelay())
+	}
+	properties := attempt.GetEffectiveConfig().ConnectionProperties
+	if properties.HttpsProxy != "proxy.example.com" || properties.HttpsProxyPort != 8080 {
+		t.Errorf("proxy settings = (%q, %d), want (%q, %d)", properties.HttpsProxy, properties.HttpsProxyPort, "proxy.example.com", 8080)
+	}
+	if !attempt.GetSecurity().SSLServerDNMatch {
+		t.Error("ssl_server_dn_match = false, want true")
+	}
+}
+
+// TestHandleDsnPreservesQuotedSecurityValues covers values that were
+// previously checked from the naming iterator tests. These are DSN parsing and
+// configuration behaviors; iteration is only used to inspect the resolved
+// attempt values.
+func TestHandleDsnPreservesQuotedSecurityValues(t *testing.T) {
+	t.Parallel()
+
+	t.Run("EZConnect wallet location", func(t *testing.T) {
+		t.Parallel()
+		plans, err := HandleDsn(`tcps://192.0.2.41:2484/mydb?wallet_location="C:\my_wallet with space"`, NewOracleDriverConfig())
+		if err != nil {
+			t.Fatalf("HandleDsn failed: %v", err)
+		}
+		iterator, err := plans.NewConnectionAttemptIterator(context.Background(), "quoted-wallet-test")
+		if err != nil {
+			t.Fatalf("NewConnectionAttemptIterator failed: %v", err)
+		}
+		attempt, err := iterator.Next()
+		if err != nil {
+			t.Fatalf("iterator.Next failed: %v", err)
+		}
+		if got, want := attempt.GetSecurity().WalletLocation, `C:\my_wallet with space`; got != want {
+			t.Fatalf("wallet location = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("EZConnect wallet location alias", func(t *testing.T) {
+		t.Parallel()
+		plans, err := HandleDsn(`tcps://192.0.2.41:2484/mydb?my_wallet_directory="C:\my_wallet"`, NewOracleDriverConfig())
+		if err != nil {
+			t.Fatalf("HandleDsn failed: %v", err)
+		}
+		iterator, err := plans.NewConnectionAttemptIterator(context.Background(), "wallet-alias-test")
+		if err != nil {
+			t.Fatalf("NewConnectionAttemptIterator failed: %v", err)
+		}
+		attempt, err := iterator.Next()
+		if err != nil {
+			t.Fatalf("iterator.Next failed: %v", err)
+		}
+		if got, want := attempt.GetSecurity().WalletLocation, `C:\my_wallet`; got != want {
+			t.Fatalf("wallet location alias = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("TNS server certificate DN", func(t *testing.T) {
+		t.Parallel()
+		dsn := `(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=192.0.2.42)(PORT=2484))` +
+			`(CONNECT_DATA=(SERVICE_NAME=mydb))` +
+			`(SECURITY=(SSL_SERVER_DN_MATCH=ON)(SSL_SERVER_CERT_DN="CN=My Server, OU=Org")))`
+		plans, err := HandleDsn(dsn, NewOracleDriverConfig())
+		if err != nil {
+			t.Fatalf("HandleDsn failed: %v", err)
+		}
+		iterator, err := plans.NewConnectionAttemptIterator(context.Background(), "quoted-dn-test")
+		if err != nil {
+			t.Fatalf("NewConnectionAttemptIterator failed: %v", err)
+		}
+		attempt, err := iterator.Next()
+		if err != nil {
+			t.Fatalf("iterator.Next failed: %v", err)
+		}
+		if got, want := attempt.GetSecurity().SSLServerCertDN, `CN=My Server, OU=Org`; got != want {
+			t.Fatalf("server certificate DN = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestHandleDsnAppliesQueryPropertiesAndParsesTNS(t *testing.T) {
+	t.Parallel()
+	input := `(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=192.0.2.44)(PORT=1521))` +
+		`(CONNECT_DATA=(SERVICE_NAME=example)))` +
+		`?oracle.go.Locale.Language=fr&oracle.go.DriverProperties.DefaultLobPrefetchSize=12345` +
+		`&oracle.go.DriverProperties.StrictNullValueHandling=false`
+	plans, err := HandleDsn(input, NewOracleDriverConfig())
+	if err != nil {
+		t.Fatalf("HandleDsn failed: %v", err)
+	}
+	if len(plans.Plan.Descriptions) != 1 {
+		t.Fatalf("description count = %d, want 1", len(plans.Plan.Descriptions))
+	}
+	description := plans.Plan.Descriptions[0]
+	if got := description.ConnectData.ServiceName; got != "example" {
+		t.Fatalf("service name = %q, want example", got)
+	}
+	if got := plans.BaseConfig.Locale.Language; got != "fr" {
+		t.Fatalf("locale language = %q, want fr", got)
+	}
+	if got := plans.BaseConfig.DriverProperties.DefaultLobPrefetchSize; got != 12345 {
+		t.Fatalf("default LOB prefetch size = %d, want 12345", got)
+	}
+	if plans.BaseConfig.DriverProperties.StrictNullValueHandling {
+		t.Fatal("strict null handling = true, want false")
+	}
+	if strings.Contains(plans.BaseConfig.ConnectDescriptor, "?") {
+		t.Fatalf("normalized connect descriptor still contains query settings: %s", plans.BaseConfig.ConnectDescriptor)
+	}
+}
+
+func TestHandleDsnAcceptsDescriptorWithoutCredentials(t *testing.T) {
+	t.Parallel()
+	plans, err := HandleDsn(
+		`(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=192.0.2.45)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=example)))`,
+		NewOracleDriverConfig(),
+	)
+	if err != nil {
+		t.Fatalf("HandleDsn failed: %v", err)
+	}
+	if plans.BaseConfig.Credentials.User != "" || plans.BaseConfig.Credentials.Password != "" {
+		t.Fatalf("empty credentials changed: %+v", plans.BaseConfig.Credentials)
+	}
+}
+
+func TestHandleDsnRejectsInvalidLegacyDSNInputs(t *testing.T) {
+	t.Parallel()
+	inputs := []struct {
+		name string
+		dsn  string
+	}{
+		{name: "empty DSN", dsn: ""},
+		{name: "invalid EZConnect port", dsn: "host:abc/mydb"},
+		{name: "malformed query property", dsn: "host:1521/mydb?invalidparam"},
+		{name: "unsupported descriptor root", dsn: "(FOO=BAR)"},
+		{name: "comma between descriptor nodes", dsn: "(DESCRIPTION=(RECV_TIMEOUT=5s),(CONNECT_TIMEOUT=2s)(ADDRESS=(PROTOCOL=TCP)(HOST=127.0.0.1)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=freepdb1)))"},
+	}
+	for _, input := range inputs {
+		input := input
+		t.Run(input.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := HandleDsn(input.dsn, NewOracleDriverConfig()); err == nil {
+				t.Fatal("HandleDsn accepted invalid DSN")
+			}
+		})
+	}
+}
+
+func TestHandleRedirectDsnAllowsConnectDataInRedirectPacket(t *testing.T) {
+	t.Parallel()
+	baseConfig := NewOracleDriverConfig()
+	baseConfig.ConnectionProperties.SendBufSize = 4096
+	plans, err := HandleRedirectDsn(
+		`(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=192.0.2.43)(PORT=2484)))`,
+		baseConfig,
+	)
+	if err != nil {
+		t.Fatalf("HandleRedirectDsn failed: %v", err)
+	}
+	if plans.BaseConfig == baseConfig {
+		t.Fatal("redirect plans should own a clone of the active configuration")
+	}
+	iterator, err := plans.NewConnectionAttemptIterator(context.Background(), "redirect-plan-test")
+	if err != nil {
+		t.Fatalf("NewConnectionAttemptIterator failed: %v", err)
+	}
+	attempt, err := iterator.Next()
+	if err != nil {
+		t.Fatalf("iterator.Next failed: %v", err)
+	}
+	if attempt.GetHost() != "192.0.2.43" || attempt.GetPort() != 2484 || attempt.GetProtocol() != driverCommon.ProtocolTCPS {
+		t.Fatalf("unexpected redirect endpoint: %s://%s:%d", attempt.GetProtocol(), attempt.GetHost(), attempt.GetPort())
+	}
+	if got := attempt.GetEffectiveConfig().ConnectionProperties.SendBufSize; got != 4096 {
+		t.Fatalf("inherited send buffer size = %d, want 4096", got)
+	}
+}
+
 // TestHandleDsnRejectsMalformedDescriptors verifies that malformed TNS
 // descriptors fail while building the normalized connection plan, before an
 // iterator or network session is created.
@@ -247,6 +540,33 @@ func TestConnectionAttemptBuildsConnectDescriptorWithClientInfo(t *testing.T) {
 	}
 	if strings.Contains(descriptor, "caller") || strings.Contains(descriptor, "caller-id") {
 		t.Fatalf("descriptor retained caller-supplied session values: %s", descriptor)
+	}
+}
+
+func TestConnectionAttemptSerializesAddressProxy(t *testing.T) {
+	t.Parallel()
+	dsn := `(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=db.example.com)(PORT=2484)` +
+		`(HTTPS_PROXY=proxy.example.com)(HTTPS_PROXY_PORT=8080))` +
+		`(CONNECT_DATA=(SERVICE_NAME=orders)))`
+	plans, err := HandleDsn(dsn, NewOracleDriverConfig())
+	if err != nil {
+		t.Fatalf("HandleDsn failed: %v", err)
+	}
+	iterator, err := plans.NewConnectionAttemptIterator(context.Background(), "proxy-attempt-test")
+	if err != nil {
+		t.Fatalf("NewConnectionAttemptIterator failed: %v", err)
+	}
+	attempt, err := iterator.Next()
+	if err != nil {
+		t.Fatalf("iterator.Next failed: %v", err)
+	}
+	if attempt.GetHTTPSProxy() != "proxy.example.com" || attempt.GetHTTPSProxyPort() != 8080 {
+		t.Fatalf("proxy = %q:%d, want proxy.example.com:8080", attempt.GetHTTPSProxy(), attempt.GetHTTPSProxyPort())
+	}
+	for _, descriptor := range []string{attempt.GetAddressDescriptor(), attempt.GetConnectDescriptor()} {
+		if !strings.Contains(descriptor, "(HTTPS_PROXY=proxy.example.com)") || !strings.Contains(descriptor, "(HTTPS_PROXY_PORT=8080)") {
+			t.Errorf("proxy settings missing from descriptor: %s", descriptor)
+		}
 	}
 }
 

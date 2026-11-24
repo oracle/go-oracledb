@@ -46,6 +46,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 )
 
 // ConnectionOption represents a single connection attempt with all necessary information.
@@ -53,7 +54,7 @@ type ConnectionOption struct {
 	Address         Address
 	Description     *Description
 	ConnectData     ConnectData
-	ConnectDataNode *Node
+	ConnectDataNode *oracleconfig.Node
 	ConnectDataStr  string
 	ConnectString   string
 }
@@ -62,7 +63,7 @@ func NewConnectionOption(
 	address Address,
 	description *Description,
 	connectData ConnectData,
-	connectDataNode *Node,
+	connectDataNode *oracleconfig.Node,
 	connectDataStr string,
 	connectString string,
 ) *ConnectionOption {
@@ -79,22 +80,22 @@ func NewConnectionOption(
 // DescriptionAttempts holds all connection attempts for a single description
 // Addresses are stored once, and iterated multiple times based on retry count
 type DescriptionAttempts struct {
-	Description      *Description  // Parent description
-	DescriptionNode  *Node         // Original DESCRIPTION node
-	Addresses        []Address     // All addresses collected from this description (with resolved IPs)
-	ConnectDataNode  *Node         // Shared CONNECT_DATA node
-	ConnectDataStr   string        // Serialized CONNECT_DATA string
-	RetryCount       int           // Number of retry cycles (0 = try once)
-	RetryDelay       time.Duration // Delay between retry cycles
-	CurrentCycle     int           // Current retry cycle (0-based)
-	CurrentAddrIndex int           // Current address index within cycle
+	Description      *Description       // Parent description
+	DescriptionNode  *oracleconfig.Node // Original DESCRIPTION node
+	Addresses        []Address          // All addresses collected from this description (with resolved IPs)
+	ConnectDataNode  *oracleconfig.Node // Shared CONNECT_DATA node
+	ConnectDataStr   string             // Serialized CONNECT_DATA string
+	RetryCount       int                // Number of retry cycles (0 = try once)
+	RetryDelay       time.Duration      // Delay between retry cycles
+	CurrentCycle     int                // Current retry cycle (0-based)
+	CurrentAddrIndex int                // Current address index within cycle
 }
 
 // ConnectionIterator manages iteration through connection attempts.
 // Uses lazy iteration with addresses stored once per description to optimize memory.
 // DNS resolution is performed once during iterator creation.
 type ConnectionIterator struct {
-	rootNode         *Node
+	rootNode         *oracleconfig.Node
 	context          *ConnectionContext
 	callerCtx        context.Context
 	descAttempts     []DescriptionAttempts
@@ -108,7 +109,7 @@ type ConnectionIterator struct {
 // Addresses are stored once per description and iterated based on retry count.
 // DNS resolution happens during iterator creation - hostnames are resolved to IPs,
 // and each IP becomes a separate connection attempt.
-func NewConnectionIterator(ctx context.Context, rootNode *Node, connCtx *ConnectionContext) *ConnectionIterator {
+func NewConnectionIterator(ctx context.Context, rootNode *oracleconfig.Node, connCtx *ConnectionContext) *ConnectionIterator {
 	iter := &ConnectionIterator{
 		rootNode:         rootNode,
 		context:          connCtx, // extracted properties context(different from the passed context)
@@ -221,60 +222,6 @@ func (ci *ConnectionIterator) HasNext() bool {
 	return false
 }
 
-// Reset resets the iterator to the beginning with new randomization
-func (ci *ConnectionIterator) Reset() {
-	ci.currentDescIndex = 0
-	ci.exhausted = false
-	ci.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	// Reset all description attempts
-	for i := range ci.descAttempts {
-		ci.descAttempts[i].CurrentCycle = 0
-		ci.descAttempts[i].CurrentAddrIndex = 0
-
-		// Re-shuffle if load balance enabled
-		if ci.descAttempts[i].Description != nil &&
-			ci.descAttempts[i].Description.IsLoadBalanceEnabled() {
-			ci.shuffleAddresses(ci.descAttempts[i].Addresses)
-		}
-		ci.reorderAddressesByDownHostStatus(ci.descAttempts[i].Addresses)
-	}
-	ci.reorderDescriptionsByDownHostStatus(ci.descAttempts)
-}
-
-// Remaining returns the number of remaining attempts
-func (ci *ConnectionIterator) Remaining() int {
-	if ci.exhausted {
-		return 0
-	}
-
-	count := 0
-	for i := ci.currentDescIndex; i < len(ci.descAttempts); i++ {
-		desc := &ci.descAttempts[i]
-
-		// Remaining in current cycle
-		if i == ci.currentDescIndex {
-			count += len(desc.Addresses) - desc.CurrentAddrIndex
-			// Add future cycles
-			count += len(desc.Addresses) * (desc.RetryCount - desc.CurrentCycle)
-		} else {
-			// Future descriptions - all cycles
-			count += len(desc.Addresses) * (desc.RetryCount + 1)
-		}
-	}
-
-	return count
-}
-
-// Total returns the total number of attempts
-func (ci *ConnectionIterator) Total() int {
-	count := 0
-	for i := range ci.descAttempts {
-		count += len(ci.descAttempts[i].Addresses) * (ci.descAttempts[i].RetryCount + 1)
-	}
-	return count
-}
-
 // buildDescriptionAttempts generates the description attempts based on context type
 func (ci *ConnectionIterator) buildDescriptionAttempts(ctx context.Context) []DescriptionAttempts {
 	if ci.context.DescriptionList != nil {
@@ -341,7 +288,7 @@ func (ci *ConnectionIterator) buildFromDescriptionList(ctx context.Context, dl *
 
 // buildFromDescription processes a single DESCRIPTION with all its addresses
 // DNS resolution is performed here
-func (ci *ConnectionIterator) buildFromDescription(ctx context.Context, desc *Description, descNode *Node) *DescriptionAttempts {
+func (ci *ConnectionIterator) buildFromDescription(ctx context.Context, desc *Description, descNode *oracleconfig.Node) *DescriptionAttempts {
 	// Collect all addresses with failover logic
 	addresses := ci.collectAllAddresses(desc)
 	if len(addresses) == 0 {
@@ -425,7 +372,7 @@ func (ci *ConnectionIterator) buildFromAddresses(ctx context.Context, addresses 
 			Description:      nil,
 			DescriptionNode:  nil,
 			Addresses:        resolvedAddresses, //contains resolved IPs
-			ConnectDataNode:  &Node{Name: "CONNECT_DATA"},
+			ConnectDataNode:  &oracleconfig.Node{Name: "CONNECT_DATA"},
 			ConnectDataStr:   "",
 			RetryCount:       0,
 			RetryDelay:       0,
@@ -470,9 +417,9 @@ func (ci *ConnectionIterator) collectAllAddresses(desc *Description) []Address {
 }
 
 // extractConnectDataNode retrieves the CONNECT_DATA node from a DESCRIPTION node
-func (ci *ConnectionIterator) extractConnectDataNode(descNode *Node) *Node {
+func (ci *ConnectionIterator) extractConnectDataNode(descNode *oracleconfig.Node) *oracleconfig.Node {
 	if descNode == nil {
-		return &Node{Name: "CONNECT_DATA"}
+		return &oracleconfig.Node{Name: "CONNECT_DATA"}
 	}
 
 	// Try using GetNode with full path
@@ -488,7 +435,7 @@ func (ci *ConnectionIterator) extractConnectDataNode(descNode *Node) *Node {
 		}
 	}
 
-	return &Node{Name: "CONNECT_DATA"}
+	return &oracleconfig.Node{Name: "CONNECT_DATA"}
 }
 
 // buildOptionFromDesc creates a connection option from description attempts(called from Next())
@@ -514,31 +461,31 @@ func (ci *ConnectionIterator) buildOptionFromDesc(desc *DescriptionAttempts) *Co
 
 // buildConnectString creates the full (DESCRIPTION=(ADDRESS=...)(CONNECT_DATA=...)) string
 // Uses ResolvedIP instead of hostname for the actual connection
-func (ci *ConnectionIterator) buildConnectString(addr *Address, connectDataNode *Node) string {
+func (ci *ConnectionIterator) buildConnectString(addr *Address, connectDataNode *oracleconfig.Node) string {
 	// Use ResolvedIP if available, otherwise fall back to Host
 	host := addr.ResolvedIP
 	if host == "" {
 		host = addr.Host
 	}
 
-	addrNode := Node{
+	addrNode := oracleconfig.Node{
 		Name: "ADDRESS",
-		Children: []Node{
+		Children: []oracleconfig.Node{
 			{Name: "PROTOCOL", Value: addr.Protocol.String()},
 			{Name: "HOST", Value: host}, // Use resolved IP here
 			{Name: "PORT", Value: strconv.Itoa(int(addr.Port))},
 		},
 	}
 	if addr.HTTPSProxy != "" {
-		addrNode.Children = append(addrNode.Children, Node{Name: "HTTPS_PROXY", Value: addr.HTTPSProxy})
+		addrNode.Children = append(addrNode.Children, oracleconfig.Node{Name: "HTTPS_PROXY", Value: addr.HTTPSProxy})
 		if addr.HTTPSProxyPort != 0 {
-			addrNode.Children = append(addrNode.Children, Node{Name: "HTTPS_PROXY_PORT", Value: strconv.Itoa(addr.HTTPSProxyPort)})
+			addrNode.Children = append(addrNode.Children, oracleconfig.Node{Name: "HTTPS_PROXY_PORT", Value: strconv.Itoa(addr.HTTPSProxyPort)})
 		}
 	}
 
-	descNode := Node{
+	descNode := oracleconfig.Node{
 		Name:     "DESCRIPTION",
-		Children: []Node{addrNode, *connectDataNode},
+		Children: []oracleconfig.Node{addrNode, *connectDataNode},
 	}
 
 	return descNode.ToString()
@@ -553,31 +500,31 @@ func (ci *ConnectionIterator) buildDescriptionWithAddress(addr *Address) string 
 		host = addr.Host
 	}
 
-	addrNode := Node{
+	addrNode := oracleconfig.Node{
 		Name: "ADDRESS",
-		Children: []Node{
+		Children: []oracleconfig.Node{
 			{Name: "PROTOCOL", Value: addr.Protocol.String()},
 			{Name: "HOST", Value: host}, // Use resolved IP here
 			{Name: "PORT", Value: strconv.Itoa(int(addr.Port))},
 		},
 	}
 	if addr.HTTPSProxy != "" {
-		addrNode.Children = append(addrNode.Children, Node{Name: "HTTPS_PROXY", Value: addr.HTTPSProxy})
+		addrNode.Children = append(addrNode.Children, oracleconfig.Node{Name: "HTTPS_PROXY", Value: addr.HTTPSProxy})
 		if addr.HTTPSProxyPort != 0 {
-			addrNode.Children = append(addrNode.Children, Node{Name: "HTTPS_PROXY_PORT", Value: strconv.Itoa(addr.HTTPSProxyPort)})
+			addrNode.Children = append(addrNode.Children, oracleconfig.Node{Name: "HTTPS_PROXY_PORT", Value: strconv.Itoa(addr.HTTPSProxyPort)})
 		}
 	}
 
-	descNode := Node{
+	descNode := oracleconfig.Node{
 		Name:     "DESCRIPTION",
-		Children: []Node{addrNode},
+		Children: []oracleconfig.Node{addrNode},
 	}
 
 	return descNode.ToString()
 }
 
 // findDescriptionNode locates the Nth DESCRIPTION node under DESCRIPTION_LIST
-func (ci *ConnectionIterator) findDescriptionNode(index int) *Node {
+func (ci *ConnectionIterator) findDescriptionNode(index int) *oracleconfig.Node {
 	if ci.rootNode == nil || ci.rootNode.Name != "DESCRIPTION_LIST" {
 		return nil
 	}

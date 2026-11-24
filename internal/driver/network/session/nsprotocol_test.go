@@ -526,6 +526,7 @@ func TestConnectSubtests(t *testing.T) {
 			TLSHostname:    "originalhost",
 			HTTPSProxy:     "proxy.example.com",
 			HTTPSProxyPort: 8080,
+			ConnectionID:   "redirect-test-id",
 		})
 		if err != nil {
 			t.Errorf("Unexpected redirect packet error without overflow: %v", err)
@@ -556,7 +557,7 @@ func TestConnectSubtests(t *testing.T) {
 		mock.receivedData = append(mock.receivedData, acceptpacket...)
 		mock.recvPos = 0
 		err := connectForTest(ns, transport.Address{
-			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521, ConnectionID: "redirect-test-id",
 		})
 		if err != nil {
 			t.Errorf("Unexpected redirect packet error: %v", err)
@@ -1965,5 +1966,30 @@ func TestCheckInbandNotification(t *testing.T) {
 				t.Errorf("controlPkt not reset, Errno = %d", ns.controlPkt.errno)
 			}
 		})
+	}
+}
+
+func TestResolveRedirectAttempt(t *testing.T) {
+	config := oracleconfig.NewOracleDriverConfig()
+	config.ConnectionProperties.SendBufSize = 4096
+	ns := newNetworkSession()
+	ns.effectiveConfig = config
+
+	attempt, err := ns.resolveRedirectAttempt(context.Background(),
+		"(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=192.0.2.88)(PORT=2484)))",
+		"redirect-test-id")
+	if err != nil {
+		t.Fatalf("resolveRedirectAttempt failed: %v", err)
+	}
+
+	options := attempt.GetTransportOptions()
+	if options.Protocol != driverCommon.ProtocolTCPS {
+		t.Errorf("protocol = %v, want %v", options.Protocol, driverCommon.ProtocolTCPS)
+	}
+	if options.Host != "192.0.2.88" || options.Port != 2484 {
+		t.Errorf("redirect target = %s:%d, want 192.0.2.88:2484", options.Host, options.Port)
+	}
+	if got := attempt.GetEffectiveConfig().ConnectionProperties.SendBufSize; got != 4096 {
+		t.Errorf("inherited send buffer size = %d, want 4096", got)
 	}
 }

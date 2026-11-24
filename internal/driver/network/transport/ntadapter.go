@@ -52,6 +52,39 @@ type NTAdapter interface {
 	Disconnect() error
 }
 
+// ReconfigureAdapter returns an adapter prepared with the supplied Oracle Net
+// transport attributes while preserving custom adapters used by callers and
+// tests. It reuses the existing protocol's adapter type when possible and
+// creates a fresh adapter when a redirect changes TCP/TCPS.
+func ReconfigureAdapter(existing NTAdapter, protocol driverCommon.Protocol, attributes NTattributes, tcpDefaultPort uint16) NTAdapter {
+	switch existing.(type) {
+	case *nttcp:
+		if protocol == driverCommon.ProtocolTCP {
+			return NewNTTCP(attributes, tcpDefaultPort)
+		}
+		if protocol == driverCommon.ProtocolTCPS {
+			return NewNTTCPS(attributes)
+		}
+	case *nttcps:
+		if protocol == driverCommon.ProtocolTCPS {
+			return NewNTTCPS(attributes)
+		}
+		if protocol == driverCommon.ProtocolTCP {
+			return NewNTTCP(attributes, tcpDefaultPort)
+		}
+	case nil:
+		if protocol == driverCommon.ProtocolTCP {
+			return NewNTTCP(attributes, tcpDefaultPort)
+		}
+		if protocol == driverCommon.ProtocolTCPS {
+			return NewNTTCPS(attributes)
+		}
+	default:
+		return existing
+	}
+	return existing
+}
+
 // Address contains the resolved transport destination and the hostname
 // identity needed for TLS and proxy CONNECT handling.
 type Address struct {

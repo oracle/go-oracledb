@@ -54,7 +54,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -70,17 +69,21 @@ type networkSession struct {
 	supportsFastAuth    bool
 	redirectCount       int
 	resendCount         int
-	sAtts               *sessionAtts
-	ntAdapter           transport.NTAdapter
-	cDataNVPair         interface{}
-	sndDatapkt          *dataPacket
-	rcvDatapkt          *dataPacket
-	controlPkt          *controlPacket
-	byteOrder           driverCommon.ByteOrder
-	rcvBuf              []byte
-	sndBuf              []byte
-	pendingPacket       []byte // to store pushed back packet from CheckinbandNotification
-	resetInProgress     bool
+	// effectiveConfig is the resolved configuration of the attempt that opened
+	// this session. Listener redirects inherit it before applying redirect
+	// DESCRIPTION and ADDRESS settings.
+	effectiveConfig *oracleconfig.OracleDriverConfig
+	sAtts           *sessionAtts
+	ntAdapter       transport.NTAdapter
+	cDataNVPair     interface{}
+	sndDatapkt      *dataPacket
+	rcvDatapkt      *dataPacket
+	controlPkt      *controlPacket
+	byteOrder       driverCommon.ByteOrder
+	rcvBuf          []byte
+	sndBuf          []byte
+	pendingPacket   []byte // to store pushed back packet from CheckinbandNotification
+	resetInProgress bool
 }
 
 // connectRequest carries CONNECT packet data for one handshake. It remains
@@ -138,10 +141,10 @@ func sanitizeCIDValue(v string) string {
 }
 
 // buildCIDNode creates the Oracle Net client identifier nested under CONNECT_DATA.
-func buildCIDNode() naming.Node {
-	return naming.Node{
+func buildCIDNode() oracleconfig.Node {
+	return oracleconfig.Node{
 		Name: "CID",
-		Children: []naming.Node{
+		Children: []oracleconfig.Node{
 			{Name: "PROGRAM", Value: sanitizeCIDValue(common.ProgramName)},
 			{Name: "HOST", Value: sanitizeCIDValue(common.HostName)},
 			{Name: "USER", Value: sanitizeCIDValue(common.UserName)},
@@ -365,7 +368,7 @@ func (ns *networkSession) refuseArgs(errCode string, address transport.Address, 
 		}
 		return []any{data.sid, address.DialHost, address.Port, address.ConnectionID}, nil
 	default:
-		return nil, nil
+		return nil, nil,nil
 	}
 }
 func (ns *networkSession) handleRefuse(ctx context.Context, p *refusePacket, address transport.Address, errorData connectErrorData) error {
@@ -377,7 +380,7 @@ func (ns *networkSession) handleRefuse(ctx context.Context, p *refusePacket, add
 		}
 		p.dataBuf = string(ns.rcvDatapkt.buf[ns.rcvDatapkt.offset:ns.rcvDatapkt.len])
 	}
-	refuseNode, err := naming.Parse(p.dataBuf)
+	refuseNode, err := oracleconfig.ParseConnectorDescriptor(string(p.dataBuf))
 	if err != nil {
 		return common.NewOracleError(oracleErrors.RefuseDataParseFailed, err)
 	}
@@ -422,28 +425,19 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 		addrStr = string(p.dataBuf)
 		redirectConnectData = originalConnectData
 	}
-	redirAddressNode, err := naming.Parse(addrStr)
+	redirectAttempt, err := ns.resolveRedirectAttempt(ctx, addrStr, address.ConnectionID)
 	if err != nil {
 		return err
 	}
 	oldHostname := address.TLSHostname
-	redirCtx, err := naming.ExtractConnectionContext(redirAddressNode)
-	if err != nil {
-		return err
-	}
-	iter := naming.NewConnectionIterator(ctx, redirAddressNode, redirCtx)
-
-	if iter.HasNext() {
-		redirOption := iter.Next()
-		hostToBeUsed := redirOption.Address.Host
-		if redirOption.Address.ResolvedIP != "" {
-			hostToBeUsed = redirOption.Address.ResolvedIP
-		}
+	if redirectAttempt != nil {
+		redirectOptions := redirectAttempt.GetTransportOptions()
+		redirectAccessPoint := redirectAttempt.GetAccessPoint()
 		newAddress := transport.Address{
-			DialHost:         hostToBeUsed,
-			Port:             redirOption.Address.Port,
-			Protocol:         redirOption.Address.Protocol,
-			TLSHostname:      redirOption.Address.Host,
+			DialHost:         redirectOptions.Host,
+			Port:             redirectOptions.Port,
+			Protocol:         redirectOptions.Protocol,
+			TLSHostname:      redirectAccessPoint.Host,
 			PreviousHostname: oldHostname,
 			HTTPSProxy:       address.HTTPSProxy,
 			HTTPSProxyPort:   address.HTTPSProxyPort,
@@ -451,6 +445,19 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 		}
 		ns.ntAdapter.Disconnect()
 		ns.connected = false
+		// The redirect DESCRIPTION can override transport settings such as TLS,
+		// timeouts, and socket buffers. Keep negotiated Oracle Net state, but
+		// rebuild the adapter from this selected redirect attempt.
+		ns.sAtts.setFrom(redirectOptions)
+		attributes, err := ns.sAtts.prepare(redirectOptions.Protocol)
+		if err != nil {
+			return err
+		}
+		if redirectOptions.Protocol != driverCommon.ProtocolTCP && redirectOptions.Protocol != driverCommon.ProtocolTCPS {
+			return common.NewOracleError(oracleErrors.InvalidNetworkContextExpectedValue, nil, "protocol", "TCP or TCPS", redirectOptions.Protocol)
+		}
+		ns.ntAdapter = transport.ReconfigureAdapter(ns.ntAdapter, redirectOptions.Protocol, attributes, TCP_DEFAULT_PORT)
+		ns.effectiveConfig = redirectAttempt.GetEffectiveConfig()
 		err = ns.transportConnect(ctx, newAddress)
 		if err != nil {
 			return err
@@ -468,6 +475,28 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 		return nil // continue the loop
 	}
 	return common.NewOracleError(oracleErrors.RedirectAddressMissing, nil)
+}
+
+// resolveRedirectAttempt turns the listener's redirect descriptor into the
+// first resolved attempt. The redirect packet's CONNECT_DATA is handled by
+// handleRedirect separately because it may be carried outside the descriptor.
+func (ns *networkSession) resolveRedirectAttempt(ctx context.Context, descriptor, connectionID string) (*oracleconfig.ConnectionAttempt, error) {
+	plans, err := oracleconfig.HandleRedirectDsn(descriptor, ns.effectiveConfig)
+	if err != nil {
+		return nil, err
+	}
+	iterator, err := plans.NewConnectionAttemptIterator(ctx, connectionID)
+	if err != nil {
+		return nil, err
+	}
+	attempt, err := iterator.Next()
+	if err == io.EOF {
+		return nil, common.NewOracleError(oracleErrors.RedirectAddressMissing, nil)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return attempt, nil
 }
 
 func (ns *networkSession) handleResend(ctx context.Context, p *resendPacket, connectPkt *connectPacket) error {
@@ -493,7 +522,6 @@ func (ns *networkSession) handleResend(ctx context.Context, p *resendPacket, con
 	}
 	return nil // continue the loop
 }
-
 func (ns *networkSession) connect(ctx context.Context, address transport.Address, request connectRequest) error {
 	var err error
 	err = ns.transportConnect(ctx, address)
@@ -583,6 +611,7 @@ func ConnectToAttempt(ctx context.Context, attempt *oracleconfig.ConnectionAttem
 	// timeouts, buffers, compression, and proxy settings match the chosen target.
 	options := attempt.GetTransportOptions()
 	ns := newNetworkSession()
+	ns.effectiveConfig = attempt.GetEffectiveConfig()
 	ns.sAtts = newSessionAtts()
 	ns.sAtts.setFrom(options)
 	attributes, err := ns.sAtts.prepare(options.Protocol)
@@ -622,6 +651,9 @@ func ConnectToAttempt(ctx context.Context, attempt *oracleconfig.ConnectionAttem
 		HTTPSProxyPort: options.HTTPSProxyPort,
 		ConnectionID:   attempt.GetConnectionID(),
 	}
+
+	common.OdlT("NSPROTOCOL").Debug("connecting", "address", address)
+
 	if err := ns.connect(ctx, address, request); err != nil {
 		return nil, err
 	}

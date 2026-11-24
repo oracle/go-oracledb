@@ -104,7 +104,7 @@ func (c *TTLCache[T]) Get(key string) (value T, found bool) {
 	entry, ok := c.entries[key]
 	if !ok {
 		var zero T
-		Odl.Debug("cache miss", "key", key)
+		Odl.Finest("cache miss", "key", key)
 		return zero, false
 	}
 
@@ -119,7 +119,7 @@ func (c *TTLCache[T]) Put(key string, value T) T {
 	}
 
 	if len(c.entries) == c.maxSize {
-		Odl.Debug("cache overflow")
+		Odl.Finest("cache overflow")
 		c.removeOldest()
 	}
 
@@ -189,7 +189,7 @@ func (c *TTLCache[T]) removeOldest() {
 	}
 
 	if !first {
-		Odl.Debug("oldest discarded", "key", oldestKey)
+		Odl.Finest("oldest discarded", "key", oldestKey)
 		delete(c.entries, oldestKey)
 		c.recomputeNextExpiration()
 	}
@@ -323,7 +323,7 @@ func (c *LRUCache[T]) Put(key string, value T) T {
 
 	// Evict the least recently used entry when the cache exceeds its capacity.
 	if c.order.Len() == c.maxSize {
-		Odl.Debug("cache overflow")
+		Odl.Finest("cache overflow")
 		c.removeOldest()
 	}
 

@@ -46,6 +46,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -228,7 +229,7 @@ func NewSecurity() *Security {
 }
 
 // ExtractConnectionContext converts the parsed node tree into business-level context
-func ExtractConnectionContext(root *Node) (*ConnectionContext, error) {
+func ExtractConnectionContext(root *oracleconfig.Node) (*ConnectionContext, error) {
 	if root == nil {
 		return nil, common.NewOracleError(oracleErrors.NamingContextError, nil, "", "root")
 	}
@@ -275,7 +276,7 @@ func ExtractConnectionContext(root *Node) (*ConnectionContext, error) {
 }
 
 // extractDescriptionList processes DESCRIPTION_LIST node
-func extractDescriptionList(node *Node) (*DescriptionList, error) {
+func extractDescriptionList(node *oracleconfig.Node) (*DescriptionList, error) {
 	descList := NewDescriptionList()
 	var parsingError error
 
@@ -311,7 +312,7 @@ func extractDescriptionList(node *Node) (*DescriptionList, error) {
 }
 
 // extractDescription processes DESCRIPTION node
-func extractDescription(node *Node) (*Description, error) {
+func extractDescription(node *oracleconfig.Node) (*Description, error) {
 	desc := NewDescription()
 	var parsingError error
 	for _, child := range node.Children {
@@ -435,7 +436,7 @@ func extractDescription(node *Node) (*Description, error) {
 }
 
 // extractAddressList processes ADDRESS_LIST node
-func extractAddressList(node *Node) (*AddressList, error) {
+func extractAddressList(node *oracleconfig.Node) (*AddressList, error) {
 	addrList := NewAddressList()
 	var parsingError error
 
@@ -471,7 +472,7 @@ func extractAddressList(node *Node) (*AddressList, error) {
 }
 
 // extractAddress processes ADDRESS node
-func extractAddress(node *Node) (Address, error) {
+func extractAddress(node *oracleconfig.Node) (Address, error) {
 	addr := Address{}
 	var parsingError error
 	for _, child := range node.Children {
@@ -507,7 +508,7 @@ func extractAddress(node *Node) (Address, error) {
 }
 
 // extractConnectData processes CONNECT_DATA node
-func extractConnectData(node *Node) (*ConnectData, error) {
+func extractConnectData(node *oracleconfig.Node) (*ConnectData, error) {
 	connectData := &ConnectData{}
 
 	for _, child := range node.Children {
@@ -552,7 +553,7 @@ func extractConnectData(node *Node) (*ConnectData, error) {
 }
 
 // extractSecurity processes SECURITY node
-func extractSecurity(node *Node) (*Security, error) {
+func extractSecurity(node *oracleconfig.Node) (*Security, error) {
 	security := NewSecurity()
 	var parsingError error
 	for _, child := range node.Children {

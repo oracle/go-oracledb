@@ -825,6 +825,39 @@ func HandleDsn(dsn string, drvConfig *OracleDriverConfig) (*ConnectionPlans, err
 	}, nil
 }
 
+// HandleRedirectDsn parses a listener redirect descriptor into connection
+// plans. Redirect packets can carry CONNECT_DATA separately from the address
+// descriptor, so this entry point permits DESCRIPTION nodes without
+// CONNECT_DATA. The supplied configuration is cloned because redirect-specific
+// settings must not mutate the active connection's configuration.
+//
+// Input:
+//   - dsn: TNS DESCRIPTION or DESCRIPTION_LIST supplied by the listener.
+//   - baseConfig: effective configuration of the active connection; nil uses
+//     the default Oracle driver configuration.
+//
+// Output:
+//   - *ConnectionPlans: normalized redirect targets using the cloned base
+//     configuration.
+//   - error: malformed redirect descriptor or invalid inherited configuration.
+func HandleRedirectDsn(dsn string, baseConfig *OracleDriverConfig) (*ConnectionPlans, error) {
+	config := NewOracleDriverConfig()
+	if baseConfig != nil {
+		config = baseConfig.Clone()
+	}
+
+	cleanDSN := driverCommon.StripSpacesOutsideQuotes(dsn)
+	plan, err := handleConnectDescriptorFormatDsnWithConnectData(cleanDSN, false)
+	if err != nil {
+		return nil, err
+	}
+	if err := config.Validate(); err != nil {
+		return nil, common.NewOracleError(oracleErrors.NamingDSNInvalid, err, dsn)
+	}
+	config.ConnectDescriptor = cleanDSN
+	return &ConnectionPlans{BaseConfig: config, Plan: plan}, nil
+}
+
 // handleConnectDescriptorFormatDsn parses a TNS descriptor into the normalized
 // connection-description plan.
 //
@@ -836,6 +869,12 @@ func HandleDsn(dsn string, drvConfig *OracleDriverConfig) (*ConnectionPlans, err
 //     DESCRIPTION alternatives.
 //   - error: invalid descriptor structure, policy value, endpoint, or setting.
 func handleConnectDescriptorFormatDsn(dsn string) (ConnectionDescriptionPlan, error) {
+	return handleConnectDescriptorFormatDsnWithConnectData(dsn, true)
+}
+
+// handleConnectDescriptorFormatDsnWithConnectData parses a TNS descriptor and
+// optionally requires each DESCRIPTION to provide CONNECT_DATA.
+func handleConnectDescriptorFormatDsnWithConnectData(dsn string, requireConnectData bool) (ConnectionDescriptionPlan, error) {
 	root, err := ParseConnectorDescriptor(dsn)
 	if err != nil {
 		return ConnectionDescriptionPlan{}, err
@@ -843,6 +882,14 @@ func handleConnectDescriptorFormatDsn(dsn string) (ConnectionDescriptionPlan, er
 
 	plan := ConnectionDescriptionPlan{}
 	switch root.Name {
+	case "ADDRESS":
+		accessPoint, parseErr := parseRemoteAccessPoint(root)
+		if parseErr != nil {
+			return ConnectionDescriptionPlan{}, parseErr
+		}
+		plan.Descriptions = append(plan.Descriptions, ConnectionDescription{
+			AddressGroups: []ConnectionAddressGroup{{AccessPoints: []RemoteAccessPoint{accessPoint}}},
+		})
 	case "DESCRIPTION":
 		description, err := parseConnectionDescription(root)
 		if err != nil {
@@ -892,7 +939,7 @@ func handleConnectDescriptorFormatDsn(dsn string) (ConnectionDescriptionPlan, er
 		return ConnectionDescriptionPlan{}, common.NewOracleError(oracleErrors.NamingContextError, nil, root.Name, "DESCRIPTION")
 	}
 	for _, description := range plan.Descriptions {
-		if description.ConnectData == nil {
+		if requireConnectData && description.ConnectData == nil {
 			return ConnectionDescriptionPlan{}, common.NewOracleError(oracleErrors.NamingContextError, nil, "DESCRIPTION", "CONNECT_DATA")
 		}
 		if len(description.AddressGroups) == 0 && len(plan.AddressGroups) == 0 {
