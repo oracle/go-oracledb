@@ -45,6 +45,7 @@ import (
 	"testing"
 
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TestTTIInitNegotiationQueuesMessages verifies queue order, initial client settings,
@@ -183,14 +184,14 @@ func TestTTIInitNegotiationProcessesResponses(t *testing.T) {
 	}
 }
 
-// TestTTIInitNegotiationDecodeErrors verifies that failed PRO/DTY decoding
-// does not install negotiated settings or complete negotiation.
+// TestTTIInitNegotiationDecodeErrors verifies that the authentication reader returns PRO and DTY decode errors.
 func TestTTIInitNegotiationDecodeErrors(t *testing.T) {
-	decodeErr := errors.New("negotiation response decode failed")
 	for _, messageType := range []driverCommon.MessageType{TTIPRO, TTIDTY} {
 		t.Run(TTCMsgTypeDescription[messageType], func(t *testing.T) {
-			negotiator := newTTIInitConnectionNegotiator(NewArrayDataBuffer(4096), nil)
-			sessCtx, shelf, err := negotiator.Negotiate(context.Background())
+			ctx := context.Background()
+			buffer := NewArrayDataBuffer(4096)
+			negotiator := newTTIInitConnectionNegotiator(buffer, nil)
+			sessCtx, shelf, err := negotiator.Negotiate(ctx)
 			if err != nil {
 				t.Fatalf("Negotiate failed: %v", err)
 			}
@@ -199,10 +200,22 @@ func TestTTIInitNegotiationDecodeErrors(t *testing.T) {
 			const previousTimezoneVersion byte = 3
 			sessCtx.SetTimeZoneVersionNumber(previousTimezoneVersion)
 
-			keep, err := streamer.postUCallbacks[messageType](nil, decodeErr)
+			response := []byte{byte(TTIPRO)} // PRO missing its body.
+			if messageType == TTIDTY {
+				response = DefaultTTIproSuccessPayloadWithEOCS(6)
+				response = append(response, byte(TTIDTY))
+				response = append(response, driverCommon.GetTimeZoneBytes()...)
+				response = append(response, 0, 0, 0, 42) // DTY missing its datatype table.
+			}
+			if err := buffer.WriteBytesWithContext(ctx, response); err != nil {
+				t.Fatalf("prepare response: %v", err)
+			}
 
-			if !keep || err != decodeErr {
-				t.Fatalf("callback returned (%t, %v), want (true, %v)", keep, err, decodeErr)
+			_, err = readTTIInitAuthenticationResponse(ctx, shelf, streamer, oSesskey)
+
+			cause, ok := errors.Unwrap(err).(oracleErrors.SQLError)
+			if !ok || cause.ErrorCode() != string(oracleErrors.FailUnmarshal) {
+				t.Fatalf("authentication error = %v, want a negotiation message decode failure", err)
 			}
 			if got := sessCtx.GetClientProperties().GetProperty(driverCommon.TimeZoneVersionNumber); got != previousTimezoneVersion {
 				t.Errorf("timezone version = %v, want %d", got, previousTimezoneVersion)

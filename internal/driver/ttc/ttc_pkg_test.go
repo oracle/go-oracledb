@@ -654,6 +654,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIInitNegotiationQueuesMessages", Categories: "unitary", Exclusive: false, Fn: TestTTIInitNegotiationQueuesMessages},
 	{Name: "TestTTIInitNegotiationProcessesResponses", Categories: "unitary", Exclusive: false, Fn: TestTTIInitNegotiationProcessesResponses},
 	{Name: "TestTTIInitNegotiationDecodeErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIInitNegotiationDecodeErrors},
+	{Name: "TestTTIInitPasswordAuthenticateFallsBack", Categories: "unitary", Exclusive: false, Fn: TestTTIInitPasswordAuthenticateFallsBack},
+	{Name: "TestTTIInitTokenAuthenticateAppliesSessionProperties", Categories: "unitary", Exclusive: false, Fn: TestTTIInitTokenAuthenticateAppliesSessionProperties},
 	{Name: "TestReadTTIInitAuthenticationResponse", Categories: "unitary", Exclusive: false, Fn: TestReadTTIInitAuthenticationResponse},
 	{Name: "TestReadTTIInitAuthenticationResponseTTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestReadTTIInitAuthenticationResponseTTIRENEG},
 	{Name: "TestReadTTIInitAuthenticationResponseFailure", Categories: "unitary", Exclusive: false, Fn: TestReadTTIInitAuthenticationResponseFailure},
