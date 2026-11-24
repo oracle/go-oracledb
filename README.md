@@ -244,7 +244,7 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 | `NCHAR`      | `string`             |
 | `VARCHAR2`   | `string`             |
 | `NVARCHAR2`  | `string`             |
-| `CLOB`       | `string` or `[]byte` |
+| `CLOB`       | `string`             |
 | `NCLOB`      | `string`             |
 
 ---
@@ -262,7 +262,7 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 
 > **Important**  
 > Mapping `NUMBER` to `float64` by default is discouraged due to precision loss.  
-> Returning `string` allows users to choose the correct numeric representation.
+> Use `string` for `NUMBER` values that exceed the range or precision of Go's numeric types, such as integers outside the `int64` range. This preserves the value and lets users choose an appropriate representation.
 
 ---
 
@@ -292,10 +292,9 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 
 | Oracle Type            | Driver returns | Supported values       |
 |------------------------|----------------|------------------------|
-| `BOOLEAN` (23ai)       | `bool`         | true, false            |
+| `SQL BOOLEAN` (23ai)   | `bool`         | true, false            |
 | `NUMBER(1)`            | `bool`         | 0 and 1                |
 | `VARCHAR2`             | `bool`         | 'TRUE' and 'FALSE'     |
-| `CHAR(1)`              | `bool`         | 'Y', 'N', 'T', and 'F' |
 ---
 
 ### Advanced and Complex Types
