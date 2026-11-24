@@ -297,6 +297,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OpenConnectorPreservesQuotedInParameters", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorPreservesQuotedInParameters},
 	{Name: "TestDriver_Select_BLOB_Type", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BLOB_Type},
 	{Name: "TestDriver_TTIInitConnectionTiming", Categories: "performance", Exclusive: true, Fn: TestDriver_TTIInitConnectionTiming},
+	{Name: "TestDriver_TTIInitPassword", Categories: "functional", Exclusive: true, Fn: TestDriver_TTIInitPassword},
+	{Name: "TestDriver_TTIInitOCIToken", Categories: "functional", Exclusive: true, Fn: TestDriver_TTIInitOCIToken},
 }
 
 func TestCategoryExecutor(t *testing.T) {
