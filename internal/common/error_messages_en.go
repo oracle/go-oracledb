@@ -664,5 +664,6 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.ProviderNotFound), "no provider of the requested type was found")
 
 	message.SetString(language.English, string(oracleErrors.DeepDataSecurityNotSupported), "database does not support Deep Data Security")
+	message.SetString(language.English, string(oracleErrors.DeepDataSecurityRequiresTLS), "Deep Data Security requires a TLS connection")
 	message.SetString(language.English, string(oracleErrors.InvalidEndUserSecurityContext), "invalid end-user security context")
 }

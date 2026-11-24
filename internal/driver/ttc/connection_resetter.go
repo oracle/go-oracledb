@@ -56,7 +56,8 @@ func (c *connection) ResetSession(ctx context.Context) error {
 		return driver.ErrBadConn
 	}
 
-	c.ClearEndUserSecurityContext()
+	// clear the context before the connection is reused
+	c.clearEndUserSecurityContext()
 	statements := c.shelf.GetStatements(true)
 	for _, statement := range statements {
 		if err := statement.Close(); err != nil {

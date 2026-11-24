@@ -93,6 +93,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDecryptCBC_InvalidKey", Categories: "unitary", Exclusive: false, Fn: TestDecryptCBC_InvalidKey},
 	{Name: "TestDecryptCBC_3DES_RoundTrip", Categories: "unitary", Exclusive: false, Fn: TestDecryptCBC_3DES_RoundTrip},
 	{Name: "TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSProcessWalletReusesParsedWalletAfterRawContentCleared},
+	{Name: "TestNTTCPSIsTLS", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSIsTLS},
 	{Name: "TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate},
 	{Name: "TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchRejectsMismatchedFinalCertificate},
 	{Name: "TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback", Categories: "unitary", Exclusive: false, Fn: TestNTTCPSVerifyPostAcceptDNMatchUsesWeakServiceNameFallback},

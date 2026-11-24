@@ -41,7 +41,7 @@ package providers
 import (
 	"context"
 
-	"github.com/oracle/go-oracledb/v26/oracle/sql"
+	osql "github.com/oracle/go-oracledb/v26/oracle/sql"
 )
 
 // ProviderRegistrar registers runtime providers used by the connector during
@@ -79,20 +79,12 @@ type SignedTokenAuthenticationProvider interface {
 
 /*** END OF TOKEN AUTHENTICATION ***/
 
-// DeepDataSecurityProvider supplies an end-user security context for database
-// operations using Oracle Deep Data Security. Register it on the connector
-// before opening the database. A provider can be called concurrently by
-// different connections and must be safe for concurrent use.
+// DeepDataSecurityProvider supplies end-user security contexts for database
+// operations.
 type DeepDataSecurityProvider interface {
 	Provider
-	// EndUserSecurityContext returns the context for the database operation.
-	// The Go context comes from the current database call; internal calls may
-	// not carry application request values. Commit and rollback use values from
-	// the context passed to BeginTx; rollback does not retain its deadline or
-	// cancellation. Returning nil with no error runs the operation under the
-	// authenticated database user's security policy. An error prevents the
-	// database call, including rollback, from executing.
-	// An explicitly selected connection context takes precedence over this
-	// provider.
-	EndUserSecurityContext(context.Context) (sql.EndUserSecurityContext, error)
+	// EndUserSecurityContext returns a valid context for a query or statement
+	// execution. The driver calls it before each execution unless an explicit
+	// connection context has been selected. An error prevents the operation.
+	EndUserSecurityContext(context.Context) (osql.EndUserSecurityContext, error)
 }

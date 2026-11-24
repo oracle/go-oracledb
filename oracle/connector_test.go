@@ -84,6 +84,9 @@ type mockConnectorNetworkSession struct {
 	inband           bool
 }
 
+// IsTLS reports whether the mock session uses TLS.
+func (m *mockConnectorNetworkSession) IsTLS() bool { return false }
+
 func (m *mockConnectorNetworkSession) Disconnect(ctx context.Context, flags int) error {
 	m.disconnectCalled = true
 	m.disconnectCtx = ctx

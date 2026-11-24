@@ -131,6 +131,12 @@ func newNetworkSession() *networkSession {
 	}
 }
 
+// IsTLS reports whether the active transport has completed a TLS handshake.
+func (ns *networkSession) IsTLS() bool {
+	adapter, ok := ns.ntAdapter.(interface{ IsTLS() bool })
+	return ok && adapter.IsTLS()
+}
+
 // GetRemoteAddress returns the connected remote network address when it is
 // available, or an empty string otherwise.
 func (ns *networkSession) GetRemoteAddress() string {

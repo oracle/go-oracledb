@@ -69,7 +69,7 @@ func (c *connection) Close() error {
 	_ = c.shelf.GetStatements(true)
 
 	// clear end-user sec context
-	c.ClearEndUserSecurityContext()
+	c.clearEndUserSecurityContext()
 
 	// Close the TTC connection.
 	ttcCloseErr := c._closeTTCConnection(ctx)

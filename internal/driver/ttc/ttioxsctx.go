@@ -40,7 +40,6 @@ package ttc
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -48,9 +47,12 @@ import (
 )
 
 const (
-	maxXsctxKeyLength   = 128
+	// maxXsctxKeyLength is the maximum OXSCTX key length in bytes
+	maxXsctxKeyLength = 128
+	// maxXsctxValueLength is the maximum OXSCTX value length in bytes
 	maxXsctxValueLength = 64 * 1024
-	xsctxProcessInit    = driverCommon.UB4(1)
+	// xsctxProcessInit requests initialization of the security context
+	xsctxProcessInit = driverCommon.UB4(1)
 )
 
 // ttiOXSCTX is a client-to-server piggyback carrying end-user security context data.
@@ -117,9 +119,4 @@ func (msg *ttiOXSCTX) MarshalTo(ctx context.Context, engine driverCommon.Marshal
 		}
 	}
 	return nil
-}
-
-// String reports the number of OXSCTX pairs without exposing their values.
-func (msg *ttiOXSCTX) String() string {
-	return fmt.Sprintf("ttiOXSCTX{pairs: %d}", len(msg.pairs))
 }

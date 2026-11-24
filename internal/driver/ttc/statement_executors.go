@@ -901,18 +901,14 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCo
 	var err error
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
-	// queue the oxsxctx piggyback
-	if state := e.shelf._deepDataSecurity; state != nil {
-		osxctxMsg, err := state.prepare(ctx)
-		if err != nil {
-			return nil, -1, e.shelf.LocalizeError(err)
-		}
-		if osxctxMsg != nil {
-			if err := stmr.Push(ctx, osxctxMsg); err != nil {
-				return nil, -1, common.NewOracleError(oracleErrors.RunQueryError, err, "push")
-			}
-		}
+	// queue any end-user security context before the query
+	finishSecurity, err := e.shelf._deepDataSecurity.queueSecurityContext(ctx, stmr, oracleErrors.RunQueryError)
+	if err != nil {
+		return nil, -1, err
 	}
+	completed := false
+	// retain the context fingerprint only if the round trip completes without cancellation
+	defer func() { finishSecurity(completed && ctx.Err() == nil) }()
 
 	if err = stmr.Push(ctx, message); err != nil {
 		// map push failure -> OGD-00053 RunQueryError("push")
@@ -1002,6 +998,7 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, message driverCo
 	if state.rows != nil {
 		state.rows.numOfRows = len(state.rows.rowData)
 	}
+	completed = err == nil
 	return state, returnedCursorID, err
 }
 
@@ -1127,18 +1124,14 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 	common.Odl.Fine("runExec: start", "msgCode", message.GetMsgCode())
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
-	// queue the oxsxctx piggyback
-	if state := e.shelf._deepDataSecurity; state != nil {
-		osxctxMsg, err := state.prepare(ctx)
-		if err != nil {
-			return nil, e.shelf.LocalizeError(err)
-		}
-		if osxctxMsg != nil {
-			if err := stmr.Push(ctx, osxctxMsg); err != nil {
-				return nil, common.NewOracleError(oracleErrors.RunExecError, err, "push")
-			}
-		}
+	// queue any end-user security context before the statement
+	finishSecurity, err := e.shelf._deepDataSecurity.queueSecurityContext(ctx, stmr, oracleErrors.RunExecError)
+	if err != nil {
+		return nil, err
 	}
+	completed := false
+	// retain the context fingerprint only if the round trip completes without cancellation
+	defer func() { finishSecurity(completed && ctx.Err() == nil) }()
 
 	if err := stmr.Push(ctx, message); err != nil {
 		common.Odl.Error("runExec: Push failed", "error", err, "stage", "push", "msgCode", message.GetMsgCode())
@@ -1226,6 +1219,7 @@ func (e *statementExecutorExec) runExec(ctx context.Context, message driverCommo
 
 	common.Odl.Fine("runExec: End of function", "rowsAffected", rowsAffected)
 	execResult.result = &ttcResult{rowsAffected: rowsAffected, shelf: e.shelf}
+	completed = true
 	return execResult, nil
 }
 

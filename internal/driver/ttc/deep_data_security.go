@@ -40,11 +40,13 @@ package ttc
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"maps"
 	"reflect"
 	"slices"
-	"sync"
-	"time"
-	"unicode/utf8"
+	"strconv"
+	"unicode/utf16"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/oson"
@@ -55,9 +57,21 @@ import (
 
 // deepDataSecurity holds connection-wide end-user security context selection.
 type deepDataSecurity struct {
-	connection *connection
-	mu         sync.Mutex
-	context    osql.EndUserSecurityContext
+	connection      *connection
+	context         osql.EndUserSecurityContext
+	hashSupported   bool
+	previousContext *[sha256.Size]byte
+}
+
+// newDeepDataSecurity initializes the connection state from the authentication response.
+func newDeepDataSecurity(conn *connection) *deepDataSecurity {
+	dds := &deepDataSecurity{connection: conn}
+	if flag, err := conn.sessCtx.GetSessionProperties().GetTrimmedString("AUTH_CLIENT_EUSC_FLAG"); err == nil {
+		if value, err := strconv.Atoi(flag); err == nil {
+			dds.hashSupported = value&0x01 != 0
+		}
+	}
+	return dds
 }
 
 // SetEndUserSecurityContext validates context and selects it for subsequent
@@ -66,24 +80,20 @@ func (c *connection) SetEndUserSecurityContext(selectedCtx osql.EndUserSecurityC
 	if c._isClosed || !c._isValid {
 		return c.shelf.LocalizeError(common.NewOracleError(oracleErrors.InvalidConnection, nil))
 	}
-	if selectedCtx == nil {
-		common.Odl.Debug("Deep Data Security: nil context")
-		return c.shelf.LocalizeError(common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, nil))
-	}
 
-	// tls enforcement is not implemented yet
 	if err := c.checkDeepDataSecuritySupport(); err != nil {
 		return c.shelf.LocalizeError(err)
 	}
 
 	// reject invalid values before replacing the current selection
-	if _, err := validateEndUserSecurityContext(selectedCtx); err != nil {
-		return c.shelf.LocalizeError(err)
+	if !isValidEndUserSecCtx(selectedCtx) {
+		return c.shelf.LocalizeError(common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, nil))
 	}
-	state := c.shelf._deepDataSecurity
-	state.mu.Lock()
-	state.context = selectedCtx
-	state.mu.Unlock()
+
+	// copy caller-owned roles and attributes while sharing read-only json values
+	selectedCtx.DataRoles = slices.Clone(selectedCtx.DataRoles)
+	selectedCtx.Attributes = maps.Clone(selectedCtx.Attributes)
+	c.shelf._deepDataSecurity.context = selectedCtx
 	if common.Odl.Enabled(context.Background(), common.OlDebug) {
 		common.Odl.Debug("Deep Data Security: explicit context selected")
 	}
@@ -93,218 +103,227 @@ func (c *connection) SetEndUserSecurityContext(selectedCtx osql.EndUserSecurityC
 // ClearEndUserSecurityContext stops propagating the selected context.
 // No database call is made.
 func (c *connection) ClearEndUserSecurityContext() {
-	state := c.shelf._deepDataSecurity
-	if state == nil {
-		return
-	}
-	state.mu.Lock()
-	// clearing the explicit context allows the provider to be consulted again
-	state.context = nil
-	state.mu.Unlock()
+	c.clearEndUserSecurityContext()
 	if common.Odl.Enabled(context.Background(), common.OlDebug) {
-		common.Odl.Debug("Deep Data Security: explicit context cleared")
+		common.Odl.Debug("Deep Data Security: explicit context clear requested")
 	}
 }
 
-// checkDeepDataSecuritySupport rejects servers without context propagation support.
+// clearEndUserSecurityContext clears the current end user sec ctx.
+func (c *connection) clearEndUserSecurityContext() {
+	if c.shelf._deepDataSecurity == nil {
+		return
+	}
+
+	c.shelf._deepDataSecurity.context = osql.EndUserSecurityContext{}
+	c.shelf._deepDataSecurity.previousContext = nil
+}
+
+// checkDeepDataSecuritySupport requires server support and a TLS connection.
 func (c *connection) checkDeepDataSecuritySupport() error {
 	if !c.shelf.GetCapabilities()[kpccapCtbBackportFeature1Xsctx].IsSet {
 		return common.NewOracleError(oracleErrors.DeepDataSecurityNotSupported, nil)
 	}
+	if !c.ns.IsTLS() {
+		common.Odl.Debug("Deep Data Security: TLS connection required")
+		return common.NewOracleError(oracleErrors.DeepDataSecurityRequiresTLS, nil)
+	}
 	return nil
 }
 
-// selectContext returns the explicit context or asks the registered provider.
-func (state *deepDataSecurity) selectContext(ctx context.Context) (osql.EndUserSecurityContext, error) {
+// preparePiggyback selects a context and creates its OXSCTX message.
+// It returns nil when neither an explicit context nor a provider is present.
+func (dds *deepDataSecurity) preparePiggyback(ctx context.Context) (*ttiOXSCTX, *[sha256.Size]byte, error) {
 	// an explicitly selected context takes precedence over the provider
-	state.mu.Lock()
-	selected := state.context
-	state.mu.Unlock()
-	if selected != nil {
-		return selected, nil
-	}
-
-	// call the provider outside the lock so it can obtain request data
-	registry := state.connection.shelf.getProviderRegistry()
-	if registry == nil {
-		return nil, nil
-	}
-	provider, err := registry.Get(reflect.TypeOf((*providers.DeepDataSecurityProvider)(nil)).Elem())
-	if err != nil {
-		return nil, common.NewOracleError(oracleErrors.InternalError, err)
-	}
-	if provider == nil {
-		return nil, nil
-	}
-	selected, err = provider.(providers.DeepDataSecurityProvider).EndUserSecurityContext(ctx)
-	if err != nil {
-		common.Odl.Debug("Deep Data Security: provider failed")
-		return nil, common.NewOracleError(oracleErrors.InternalError, err)
-	}
-	return selected, nil
-}
-
-// prepare encodes the selected context before any bytes of a database call
-// are written. Without a selection, the call has no security context.
-func (state *deepDataSecurity) prepare(ctx context.Context) (*ttiOXSCTX, error) {
-	selected, err := state.selectContext(ctx)
-	if err != nil || selected == nil {
-		return nil, err
+	selected := dds.context
+	if selected.DatabaseAccessToken == "" {
+		registry := dds.connection.shelf.getProviderRegistry()
+		if registry == nil {
+			return nil, nil, nil
+		}
+		provider, err := registry.Get(reflect.TypeOf((*providers.DeepDataSecurityProvider)(nil)).Elem())
+		if err != nil {
+			return nil, nil, common.NewOracleError(oracleErrors.InternalError, err)
+		}
+		if provider == nil {
+			// no explicit context or provider is available
+			return nil, nil, nil
+		}
+		if common.Odl.Enabled(context.Background(), common.OlDebug) {
+			common.Odl.Debug("Deep Data Security: calling context provider")
+		}
+		selected, err = provider.(providers.DeepDataSecurityProvider).EndUserSecurityContext(ctx)
+		if err != nil {
+			common.Odl.Debug("Deep Data Security: provider failed")
+			return nil, nil, common.NewOracleError(oracleErrors.InternalError, err)
+		}
 	}
 
 	// check support for provider contexts as well as explicit contexts
-	if err := state.connection.checkDeepDataSecuritySupport(); err != nil {
-		return nil, err
+	if err := dds.connection.checkDeepDataSecuritySupport(); err != nil {
+		return nil, nil, err
 	}
-	payload, err := encodeEndUserSecurityContext(selected)
+	if !isValidEndUserSecCtx(selected) {
+		return nil, nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, nil)
+	}
+	useHash := dds.hashSupported && selected.NamedUser.Username == ""
+	var authHash string
+	if useHash {
+		authHash = secCtxHash(selected)
+	}
+
+	// compare the full payload before selecting the smaller representation
+	fullPayload, err := encodeEndUserSecCtx(selected, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if common.Odl.Enabled(context.Background(), common.OlDebug) {
-		common.Odl.Debug("Deep Data Security: full context prepared")
+	fingerprint := sha256.Sum256(fullPayload)
+	sendFull := !useHash || dds.previousContext == nil || *dds.previousContext != fingerprint
+	payload := fullPayload
+	if !sendFull {
+		payload, err = encodeEndUserSecCtx(selected, false)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
-	// attach the complete encoded context as the piggyback value
-	message, err := state.connection.shelf.GetMessageFactory().GetMessageForFunction(TTIPFN, oXsctx)
+
+	message, err := dds.connection.shelf.GetMessageFactory().GetMessageForFunction(TTIPFN, oXsctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	msg := message.(*ttiOXSCTX)
-	msg.pairs = []*keywordValuePairWithName{
-		newKeywordValuePairWithName("ORCL_XS_AUTHZ_CONTEXT", "", payload, 0),
+	msg.pairs = nil
+	if useHash {
+		msg.pairs = append(msg.pairs, newKeywordValuePairWithName("ORCL_XS_AUTH_HASH", authHash, nil, 0))
 	}
-	return msg, nil
+	msg.pairs = append(msg.pairs, newKeywordValuePairWithName("ORCL_XS_AUTHZ_CONTEXT", "", payload, 0))
+	if common.Odl.Enabled(context.Background(), common.OlDebug) {
+		common.Odl.Debug("Deep Data Security: context prepared", "hash enabled", useHash, "full context", sendFull)
+	}
+	if !useHash {
+		return msg, nil, nil
+	}
+	return msg, &fingerprint, nil
 }
 
-// validatedEndUserSecurityContext holds the values checked for one use.
-type validatedEndUserSecurityContext struct {
-	accessToken  []byte
-	endUserToken []byte
-	tokenBased   bool
-	endUserName  string
-	nameBased    bool
-	lookupKey    []byte
-	hasKey       bool
-	roles        []string
-	attributes   []any
-}
-
-// validateEndUserSecurityContext reads and validates the context for one use.
-func validateEndUserSecurityContext(context osql.EndUserSecurityContext) (*validatedEndUserSecurityContext, error) {
-	// capture mutable values once so validation and encoding use the same data
-	accessToken := slices.Clone(context.DatabaseAccessToken())
-	endUserToken, tokenBased := context.EndUserToken()
-	endUserToken = slices.Clone(endUserToken)
-	endUserName, nameBased := context.EndUserName()
-	lookupKey, hasKey := context.LookUpKey()
-	lookupKey = slices.Clone(lookupKey)
-
-	// validate credentials
-	if len(accessToken) == 0 || !utf8.Valid(accessToken) {
-		common.Odl.Debug("Deep Data Security: invalid database access token")
-		return nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, nil)
+// queueSecurityContext queues the context and returns a function that records the round trip outcome.
+func (dds *deepDataSecurity) queueSecurityContext(ctx context.Context, streamer MessageStreamerInterface, code oracleErrors.ErrorCode) (func(bool), error) {
+	if dds == nil {
+		return func(bool) {}, nil
 	}
-	if (tokenBased && nameBased) || (tokenBased && (len(endUserToken) == 0 || !utf8.Valid(endUserToken))) || (nameBased && (endUserName == "" || !utf8.ValidString(endUserName))) {
-		common.Odl.Debug("Deep Data Security: invalid end-user principal")
-		return nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, nil)
+	msg, pending, err := dds.preparePiggyback(ctx)
+	if err != nil {
+		dds.previousContext = nil
+		return nil, dds.connection.shelf.LocalizeError(err)
 	}
-
-	// check expiration before each use because tokens may expire after selection
-	now := time.Now()
-	expires := context.DatabaseAccessTokenExpiration()
-	if !now.Before(expires) {
-		common.Odl.Debug("Deep Data Security: database access token expired")
-		return nil, common.NewOracleError(oracleErrors.ExpiredToken, nil)
-	}
-	if tokenBased {
-		userExpires := context.EndUserTokenExpiration()
-		if !now.Before(userExpires) {
-			common.Odl.Debug("Deep Data Security: end-user token expired")
-			return nil, common.NewOracleError(oracleErrors.ExpiredToken, nil)
+	if msg != nil {
+		if err := streamer.Push(ctx, msg); err != nil {
+			dds.previousContext = nil
+			return nil, common.NewOracleError(code, err, "push")
 		}
 	}
-
-	if nameBased && hasKey && len(lookupKey) == 0 {
-		common.Odl.Debug("Deep Data Security: invalid lookup key")
-		return nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, nil)
-	}
-
-	// normalize roles without changing the context's slice
-	roles := slices.Clone(context.DataRoles())
-	slices.Sort(roles)
-	roles = slices.Compact(roles)
-	for _, role := range roles {
-		if role == "" || !utf8.ValidString(role) {
-			common.Odl.Debug("Deep Data Security: invalid data role")
-			return nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, nil)
+	return func(success bool) {
+		dds.previousContext = nil
+		if success {
+			dds.previousContext = pending
 		}
-	}
-
-	// retain the decoded values used by the payload so each object is read once
-	attributes := context.Attributes()
-	attributeNames := make([]string, 0, len(attributes))
-	for name := range attributes {
-		attributeNames = append(attributeNames, name)
-	}
-	slices.Sort(attributeNames)
-	values := make([]any, 0, len(attributeNames))
-	for _, name := range attributeNames {
-		if name == "" || !utf8.ValidString(name) {
-			common.Odl.Debug("Deep Data Security: invalid attribute name")
-			return nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, nil)
-		}
-		value, err := attributes[name].GetValue()
-		if err != nil {
-			common.Odl.Debug("Deep Data Security: cannot read attributes")
-			return nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, err)
-		}
-		values = append(values, map[string]any{"name": name, "values": value})
-	}
-	return &validatedEndUserSecurityContext{
-		accessToken: accessToken, endUserToken: endUserToken, tokenBased: tokenBased,
-		endUserName: endUserName, nameBased: nameBased, lookupKey: lookupKey, hasKey: hasKey,
-		roles: roles, attributes: values,
 	}, nil
 }
 
-// encodeEndUserSecurityContext encodes a validated context using the database's OSON schema.
-func encodeEndUserSecurityContext(context osql.EndUserSecurityContext) ([]byte, error) {
-	validated, err := validateEndUserSecurityContext(context)
-	if err != nil {
-		return nil, err
+// secCtxHash computes the hash of the context tokens and data roles
+func secCtxHash(selected osql.EndUserSecurityContext) string {
+	roles := slices.Clone(selected.DataRoles)
+	// order roles as jdbc does when generating the token hash
+	slices.SortFunc(roles, func(a, b string) int {
+		return slices.Compare(utf16.Encode([]rune(a)), utf16.Encode([]rune(b)))
+	})
+	roles = slices.Compact(roles)
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(selected.EndUserToken))
+	_, _ = hash.Write([]byte(selected.DatabaseAccessToken))
+	for _, role := range roles {
+		_, _ = hash.Write([]byte(strconv.Itoa(len(role))))
+		_, _ = hash.Write([]byte(":"))
+		_, _ = hash.Write([]byte(role))
+	}
+	return base64.StdEncoding.EncodeToString(hash.Sum(nil))
+}
+
+// isValidEndUserSecCtx checks the fields required for a security context.
+func isValidEndUserSecCtx(selected osql.EndUserSecurityContext) bool {
+	// the database access token is mandatory
+	if selected.DatabaseAccessToken == "" {
+		return false
 	}
 
-	// add the principal and optional fields expected by the database
-	payload := map[string]any{"ver": "1.0", "database_access_token": string(validated.accessToken)}
-	if validated.tokenBased {
-		payload["end_user_token"] = string(validated.endUserToken)
-	}
-	if validated.nameBased {
-		payload["end_user_name"] = validated.endUserName
-		if validated.hasKey {
-			payload["end_user_contextid"] = string(validated.lookupKey)
-		}
-	}
-	if len(validated.roles) > 0 {
-		roles := make([]any, len(validated.roles))
-		for index, role := range validated.roles {
-			roles[index] = role
-		}
-		payload["data_roles"] = roles
-	}
-	if len(validated.attributes) > 0 {
-		payload["attributes"] = validated.attributes
+	// the end-user token and named user are mutually exclusive
+	if selected.EndUserToken != "" && selected.NamedUser.Username != "" {
+		return false
 	}
 
+	// a lookup key requires a name
+	if selected.NamedUser.LookupKey != "" && selected.NamedUser.Username == "" {
+		return false
+	}
+
+	// reject tokens only when a readable expiration has passed
+	if validateJWTExpiration(selected.DatabaseAccessToken) != nil || validateJWTExpiration(selected.EndUserToken) != nil {
+		return false
+	}
+
+	return true
+}
+
+// encodeEndUserSecCtx encodes a previously validated security context as OSON.
+func encodeEndUserSecCtx(secCtx osql.EndUserSecurityContext, full bool) ([]byte, error) {
+	// prepare the payload map with the required fields
+	payload := map[string]any{"ver": "1.0"}
+
+	if full {
+		payload["database_access_token"] = secCtx.DatabaseAccessToken
+		if secCtx.EndUserToken != "" {
+			payload["end_user_token"] = secCtx.EndUserToken
+		}
+		if secCtx.NamedUser.Username != "" {
+			payload["end_user_name"] = secCtx.NamedUser.Username
+			if secCtx.NamedUser.LookupKey != "" {
+				payload["end_user_contextid"] = secCtx.NamedUser.LookupKey
+			}
+		}
+
+		// sort and deduplicate a copy to preserve the selected roles
+		if len(secCtx.DataRoles) > 0 {
+			roles := slices.Clone(secCtx.DataRoles)
+			slices.Sort(roles)
+			roles = slices.Compact(roles)
+			values := make([]any, len(roles))
+			for i, role := range roles {
+				values[i] = role
+			}
+			payload["data_roles"] = values
+		}
+	}
+
+	// prepare attributes in a stable order
+	if len(secCtx.Attributes) > 0 {
+		names := slices.Sorted(maps.Keys(secCtx.Attributes))
+		values := make([]any, len(names))
+		for i, name := range names {
+			value, err := secCtx.Attributes[name].GetValue()
+			if err != nil {
+				return nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, err)
+			}
+			values[i] = map[string]any{"name": name, "values": value}
+		}
+		payload["attributes"] = values
+	}
+
+	// encode the payload as OSON
 	encoded, err := oson.Encode(payload)
 	if err != nil {
 		common.Odl.Debug("Deep Data Security: cannot encode context")
 		return nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, err)
 	}
 
-	// reject oversized payloads before they reach the protocol writer
-	if len(encoded) > maxXsctxValueLength {
-		common.Odl.Debug("Deep Data Security: context exceeds 65536 bytes")
-		return nil, common.NewOracleError(oracleErrors.InvalidEndUserSecurityContext, nil)
-	}
 	return encoded, nil
 }

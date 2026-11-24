@@ -43,7 +43,11 @@ import (
 	"testing"
 )
 
+type testProvider interface{}
+
+// namedProvider identifies a test provider by name.
 type namedProvider interface {
+	testProvider
 	Name() string
 }
 
@@ -60,7 +64,7 @@ func (m mockProviderRegistryProvider) Name() string {
 func TestProviderRegistryGetProviderReturnsFirstMatch(t *testing.T) {
 	t.Parallel()
 
-	registry := NewSafeRegistry[any]()
+	registry := NewSafeRegistry[testProvider]()
 	first := mockProviderRegistryProvider{name: "first"}
 	second := mockProviderRegistryProvider{name: "second"}
 
@@ -83,7 +87,7 @@ func TestProviderRegistryGetProviderReturnsFirstMatch(t *testing.T) {
 func TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded(t *testing.T) {
 	t.Parallel()
 
-	registry := NewSafeRegistry[any]()
+	registry := NewSafeRegistry[testProvider]()
 	for i := 0; i < maxItems; i++ {
 		registry.Register(mockProviderRegistryProvider{name: string(rune('a' + i))})
 	}
@@ -104,7 +108,7 @@ func TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded(t *tes
 func TestProviderRegistryGetProviderReturnsRequestedInterface(t *testing.T) {
 	t.Parallel()
 
-	registry := NewSafeRegistry[any]()
+	registry := NewSafeRegistry[testProvider]()
 	original := mockProviderRegistryProvider{name: "original"}
 	registry.Register(original)
 
@@ -123,7 +127,7 @@ func TestProviderRegistryGetProviderReturnsRequestedInterface(t *testing.T) {
 func TestProviderRegistryGetProviderReturnsErrorWhenUninitialized(t *testing.T) {
 	t.Parallel()
 
-	registry := NewSafeRegistry[any]()
+	registry := NewSafeRegistry[testProvider]()
 
 	provider, _ := registry.Get(reflect.TypeOf((*namedProvider)(nil)).Elem())
 	if provider != nil {

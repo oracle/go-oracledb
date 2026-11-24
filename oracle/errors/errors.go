@@ -254,9 +254,11 @@ const (
 
 	// DeepDataSecurityNotSupported indicates that the server cannot receive end-user security contexts.
 	DeepDataSecurityNotSupported ErrorCode = "OGD-00400"
+	// DeepDataSecurityRequiresTLS indicates that Deep Data Security requires a TLS connection.
+	DeepDataSecurityRequiresTLS ErrorCode = "OGD-00401"
 	// InvalidEndUserSecurityContext indicates that an end-user security context is
-	// nil, contains missing or invalid credentials, conflicting identity fields,
-	// invalid roles or attributes, or exceeds the supported size limit.
+	// missing required credentials, contains conflicting or invalid fields,
+	// has an expired token, or cannot be encoded within the supported size limit.
 	InvalidEndUserSecurityContext ErrorCode = "OGD-00402"
 
 	// JSONUninitializedValue indicates a public oracle/datatype/json API was called on an uninitialized receiver.

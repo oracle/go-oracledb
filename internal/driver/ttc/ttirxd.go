@@ -46,7 +46,8 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// columnSecurityEnabled marks columns whose result values have a security metadata byte.
+// columnSecurityEnabled is the column description flag indicating that values
+// can carry a security metadata byte before their encoded data.
 const columnSecurityEnabled uint32 = 0x01
 
 /*
