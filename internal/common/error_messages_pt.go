@@ -51,6 +51,7 @@ func initMessagesPt() {
 		message string
 	}{
 		{oracleErrors.InvalidCredential, "credencial inválida ou usuário não autorizado: %s"},
+		{oracleErrors.InvalidDateYear, "o ano completo deve estar entre -4713 e +9999 e não pode ser 0"},
 		{oracleErrors.ConnectionLost, "conexão com o banco de dados encerrada pelo peer"},
 		{oracleErrors.AliasNotFound, "não foi possível conectar ao banco de dados. Alias %s não encontrado."},
 		{oracleErrors.NoListenerAvailable, "não foi possível conectar. Nenhum listener em %s"},
@@ -181,6 +182,7 @@ func initMessagesPt() {
 		{oracleErrors.AlreadyInTransaction, "a transação já foi iniciada"},
 		{oracleErrors.ErrorInTransaction, "ocorreu um erro durante a operação de transação %s"},
 		{oracleErrors.ConfigureTransactionError, "falha ao configurar a transação"},
+		{oracleErrors.StartResumeTransactionFailure, "falha ao iniciar ou retomar a transação"},
 		{oracleErrors.AuthenticatorError, "ocorreu um erro durante a autenticação"},
 		{oracleErrors.NegotiatorError, "ocorreu um erro durante a negociação da conexão"},
 		{oracleErrors.MarshalEngineError, "ocorreu um erro ao serializar ou desserializar um valor do tipo %s"},
@@ -207,6 +209,9 @@ func initMessagesPt() {
 		{oracleErrors.ExpiredToken, "o token de acesso expirou"},
 		{oracleErrors.ProviderNotFound, "nenhum provedor do tipo solicitado foi encontrado"},
 		{oracleErrors.InvalidEndUserSecurityContext, "contexto de segurança do usuário final inválido"},
+		{oracleErrors.InvalidGlobalTransactionIDValue, "valor inválido do identificador global de transação"},
+		{oracleErrors.InvalidSessionlessTransactionTimeout, "o tempo limite para iniciar a transação sem sessão deve ser maior que zero"},
+		{oracleErrors.SessionlessTransactionTimeoutOutOfRange, "o tempo limite da transação sem sessão deve estar entre 0 e 65535 segundos"},
 	}
 
 	for _, translation := range translations {

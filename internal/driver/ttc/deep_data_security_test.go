@@ -230,19 +230,20 @@ func TestDDSExecution(t *testing.T) {
 				streamer := &mockStreamer{pullMsg: &mockOer{}}
 				conn.shelf.RegisterMessageStreamer(streamer)
 				statement := &dummyMsg{}
+				messages := []driverCommon.Message[driverCommon.MessageType]{statement}
 				var err error
 				if operation == "query" {
 					streamer.pullMsg = &mockOer{err: common.NewOracleError(oracleErrors.NoDataFound, nil)}
 					executor := newStatementExecutorSelect()
 					executor.SetShelf(conn.shelf)
-					_, _, err = executor.runQuery(context.Background(), statement)
+					_, _, err = executor.runQuery(context.Background(), messages)
 					if isNoDataFoundError(err) {
 						err = nil
 					}
 				} else {
 					executor := newStatementExecutorDML()
 					executor.SetShelf(conn.shelf)
-					_, err = executor.runExec(context.Background(), statement)
+					_, err = executor.runExec(context.Background(), messages)
 				}
 				// preparation failures must not queue or flush a statement
 				if scenario != "provider" && scenario != "absent" {
@@ -506,11 +507,12 @@ func TestDDSHashRoundTrips(t *testing.T) {
 			runCtx := context.Background()
 			run := func() (*ttiOXSCTX, error) {
 				streamer.pushedMsg.Init()
+				messages := []driverCommon.Message[driverCommon.MessageType]{&dummyMsg{}}
 				var err error
 				if operation == "query" {
-					_, _, err = query.runQuery(runCtx, &dummyMsg{})
+					_, _, err = query.runQuery(runCtx, messages)
 				} else {
-					_, err = exec.runExec(runCtx, &dummyMsg{})
+					_, err = exec.runExec(runCtx, messages)
 				}
 				entry := streamer.pushedMsg.Front()
 				if entry == nil {

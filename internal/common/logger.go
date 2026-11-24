@@ -48,7 +48,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 )
 
@@ -282,20 +282,22 @@ var Odl = OracleLogger{
 	sensitiveEnabled: false,
 }
 
-// keep track if InitLoggingWithConfig has been called once.
-var ready atomic.Bool
+var loggingMu sync.Mutex
 var currentLogCloser io.Closer
 
+// InitLoggingWithConfig applies a logging configuration, replacing the current
+// settings. It may be called repeatedly to change logging settings.
 func InitLoggingWithConfig(config LoggingConfig) {
+	loggingMu.Lock()
+	defer loggingMu.Unlock()
 	if config == nil {
-		if !ready.CompareAndSwap(false, true) {
-			return
-		}
 		return
 	}
+	applyLoggingWithConfig(config)
+}
 
-	ready.Store(true)
-
+// applyLoggingWithConfig updates logger state while loggingMu is held.
+func applyLoggingWithConfig(config LoggingConfig) {
 	config.AssignFromFlags()
 	config.AssignFromEnv()
 
@@ -308,6 +310,7 @@ func InitLoggingWithConfig(config LoggingConfig) {
 	Odl.sensitiveEnabled = false
 
 	if strings.EqualFold(config.GetDestination(), "NULL") {
+		Odl.Logger = *slog.New(slog.DiscardHandler)
 		return
 	}
 

@@ -353,6 +353,16 @@ func init() {
 		common.Odl.Warn("Failed to register function OXSCTX", "error", err)
 	}
 
+	// Register the OSESSSTATE request-boundary piggyback function
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oSessState}, 18, newOSessStatePfn18)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oSessState", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oSessState}, MinTTCProtocolVersion, newOSessStatePfn)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oSessState", "error", err)
+	}
+
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oAll8}, MinTTCProtocolVersion, newTTIOallRPA)
 	if err != nil {
 		common.Odl.Warn("Failed to register OAll8 function reply", "error", err)
@@ -388,6 +398,44 @@ func init() {
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: rollback}, 18, newRollback18)
 	if err != nil {
 		common.Odl.Warn("Failed to register Commit function", "error", err)
+	}
+
+	// Register OTXSE transaction start and RPA.
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxSe}, 18, newOTxSe18)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxSe", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxSe}, MinTTCProtocolVersion, newOTxSe)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxSe", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oTxSe}, MinTTCProtocolVersion, newOTxSeRPA)
+	if err != nil {
+		common.Odl.Warn("Failed to register OTxSe function reply", "error", err)
+	}
+
+	// Register OTXEN transaction end and RPA.
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxEn}, 18, newOTxEn18)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxEn", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIFUN, functionType: oTxEn}, MinTTCProtocolVersion, newOTxEn)
+	if err != nil {
+		common.Odl.Warn("Failed to register function oTxEn", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIRPA, functionType: oTxEn}, MinTTCProtocolVersion, newOTxEnRPA)
+	if err != nil {
+		common.Odl.Warn("Failed to register OTxEn function reply", "error", err)
+	}
+
+	// Register OTXSE transaction start piggy-back message.
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, 18, newOTxSePfn18)
+	if err != nil {
+		common.Odl.Warn("Failed to register piggyback function oTxSe", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oTxSe}, MinTTCProtocolVersion, newOTxSePfn)
+	if err != nil {
+		common.Odl.Warn("Failed to register piggyback function oTxSe", "error", err)
 	}
 
 	// Initialize our type representation table
@@ -777,64 +825,64 @@ func init() {
 
 	// ========================= TYPE CODEC Registry =========================
 	// Register default encoders.
-	if err := EncoderRegistry.Register(reflect.TypeOf(""), MinTTCProtocolVersion, converters.EncodeVarchar); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf("")}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeVarchar)); err != nil {
 		common.Odl.Warn("Failed to register string encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int16(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int16(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int16 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int32(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int32(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int64(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int64(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int64 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(int8(0)), MinTTCProtocolVersion, converters.EncodeInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(int8(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeInt)); err != nil {
 		common.Odl.Warn("Failed to register int8 encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint8(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint8(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint8 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint16(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint16(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint16 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint32(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint32(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(uint64(0)), MinTTCProtocolVersion, converters.EncodeUInt); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(uint64(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeUInt)); err != nil {
 		common.Odl.Warn("Failed to register uint64 encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf(float32(0)), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(float32(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeFloat)); err != nil {
 		common.Odl.Warn("Failed to register float32 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(float64(0)), MinTTCProtocolVersion, converters.EncodeFloat); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(float64(0))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeFloat)); err != nil {
 		common.Odl.Warn("Failed to register float64 encoder", "error", err)
 	}
-	if err := EncoderRegistry.Register(reflect.TypeOf(time.Time{}), MinTTCProtocolVersion, converters.EncodeTimestampWithTimeZone); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(time.Time{})}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeTimestampWithTimeZone)); err != nil {
 		common.Odl.Warn("Failed to register time.Time encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, converters.EncodeBinary); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf([]byte(nil))}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeBinary)); err != nil {
 		common.Odl.Warn("Failed to register []byte encoder", "error", err)
 	}
 
-	if err := EncoderRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, converters.EncodeNull); err != nil {
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(nil)}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeNull)); err != nil {
 		common.Odl.Warn("Failed to register nil encoder", "error", err)
 	}
 	// bool is version dependent
-	err = EncoderRegistry.Register(reflect.TypeOf(true), MinTTCProtocolVersion, converters.EncodeBooleanAsNumber)
+	err = EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(true)}, MinTTCProtocolVersion, newCLRBindEncoder(converters.EncodeBooleanAsNumber))
 	if err != nil {
 		common.Odl.Warn("Failed to register string bool (v<=17) encoder", "error", err)
 	}
-	err = EncoderRegistry.Register(reflect.TypeOf(true), 18, converters.EncodeBoolean)
+	err = EncoderRegistry.Register(encoderKey{goType: reflect.TypeOf(true)}, 18, newCLRBindEncoder(converters.EncodeBoolean))
 	if err != nil {
 		common.Odl.Warn("Failed to register string bool (v>=18) encoder", "error", err)
 	}
@@ -1061,6 +1109,7 @@ func init() {
 	}
 
 	_sqlKindMap["select"] = select_
+	_sqlKindMap["with"] = select_
 	_sqlKindMap["insert"] = dml
 	_sqlKindMap["update"] = dml
 	_sqlKindMap["delete"] = dml
