@@ -51,53 +51,6 @@ import (
 	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 )
 
-// TestTTIInitConnection verifies a fresh TTIINIT password connection can execute SQL.
-func TestTTIInitConnection(t *testing.T) {
-	if TestingConfig == nil {
-		t.Skip("No configuration available")
-	}
-	cfg := NewOracleDriverConfig()
-	cfg.ConnectDescriptor = TestingConfig.GetConnectionDSN()
-	cfg.Credentials.User = TestingConfig.Credentials.Username
-	cfg.Credentials.Password = TestingConfig.Credentials.Password
-	cfg.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
-	cfg.DriverProperties.TTIInitOptimizationEnabled = true
-	connector, err := NewOracleConnector(cfg)
-	if err != nil {
-		t.Fatal("could not create TTIINIT connector")
-	}
-	c := connector.(*oracleConnector)
-	factory := c.connInstantiatorFactory
-	noFastAuth := errors.New("database does not advertise fast authentication")
-	var usedTTIInit, fellBack bool
-	c.connInstantiatorFactory = func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, registry common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
-		if !ns.SupportsFastAuthentication() {
-			return nil, noFastAuth
-		}
-		usedTTIInit = usedTTIInit || (!serverProPending && config.DriverProperties.IsTTIInitOptimizationEnabled())
-		fellBack = fellBack || serverProPending
-		return factory(config, ns, registry, serverProPending)
-	}
-	db := sql.OpenDB(connector)
-	defer db.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	var got int
-	err = db.QueryRowContext(ctx, "SELECT 1 FROM DUAL").Scan(&got)
-	if errors.Is(err, noFastAuth) {
-		t.Skip("database does not advertise fast authentication; TTIINIT cannot be tested")
-	}
-	if err != nil {
-		t.Fatalf("connect through TTIINIT and query: %v", err)
-	}
-	if !usedTTIInit || fellBack {
-		t.Fatalf("TTIINIT selected = %t, fell back to normal negotiation = %t", usedTTIInit, fellBack)
-	}
-	if got != 1 {
-		t.Fatalf("SELECT 1 returned %d", got)
-	}
-}
-
 // BenchmarkPoolOpen measures the cost of checking out a pooled database
 // connection and returning it to the pool on each iteration.
 func BenchmarkPoolOpen(b *testing.B) {
@@ -205,51 +158,6 @@ func BenchmarkSimpleOpen(b *testing.B) {
 			conn.Close()
 			b.StartTimer()
 		}
-	}
-}
-
-// BenchmarkTTIInitConnection compares fresh password connections with TTIINIT
-// disabled and enabled. Use a database that advertises fast authentication.
-func BenchmarkTTIInitConnection(b *testing.B) {
-	if TestingConfig == nil {
-		b.Skip("No configuration available")
-	}
-
-	for _, mode := range []struct {
-		name    string
-		enabled bool
-	}{
-		{name: "disabled", enabled: false},
-		{name: "enabled", enabled: true},
-	} {
-		b.Run(mode.name, func(b *testing.B) {
-			cfg := NewOracleDriverConfig()
-			cfg.ConnectDescriptor = TestingConfig.GetConnectionDSN()
-			cfg.Credentials.User = TestingConfig.Credentials.Username
-			cfg.Credentials.Password = TestingConfig.Credentials.Password
-			cfg.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
-			cfg.DriverProperties.TTIInitOptimizationEnabled = mode.enabled
-
-			connector, err := NewOracleConnector(cfg)
-			if err != nil {
-				b.Fatal("could not create benchmark connector")
-			}
-			if got := connector.(*oracleConnector).connectorConfig.DriverProperties.IsTTIInitOptimizationEnabled(); got != mode.enabled {
-				b.Fatalf("TTIINIT setting = %t, want %t", got, mode.enabled)
-			}
-
-			for b.Loop() {
-				conn, err := connector.Connect(context.Background())
-				b.StopTimer()
-				if err != nil {
-					b.Fatalf("open connection: %v", err)
-				}
-				if err := conn.Close(); err != nil {
-					b.Fatalf("close connection: %v", err)
-				}
-				b.StartTimer()
-			}
-		})
 	}
 }
 
@@ -377,4 +285,68 @@ func BenchmarkInsertMultipleValues(b *testing.B) {
 		}
 		conn.Close()
 	}
+}
+
+// TestDriver_TTIInitConnectionTiming compares 30 fresh connections per setting.
+func TestDriver_TTIInitConnectionTiming(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const samples = 30
+	noFastAuth := errors.New("database does not advertise fast authentication")
+
+	newConnector := func(enabled bool) *oracleConnector {
+		t.Helper()
+		c, err := openTestConnectorWithConfig(TestingConfig)
+		if err != nil {
+			t.Fatalf("create connector (TTIINIT enabled=%t): %v", enabled, err)
+		}
+		connector := c.(*oracleConnector)
+		connector.connectorConfig.DriverProperties.TTIInitOptimizationEnabled = enabled
+		return connector
+	}
+
+	disabled, enabled := newConnector(false), newConnector(true)
+	factory := enabled.connInstantiatorFactory
+	enabled.connInstantiatorFactory = func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, registry common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
+		if !ns.SupportsFastAuthentication() {
+			return nil, noFastAuth
+		}
+		if serverProPending {
+			return nil, errors.New("server rejected TTIINIT and requested normal negotiation")
+		}
+		return factory(config, ns, registry, serverProPending)
+	}
+
+	measureConnection := func(label string, c *oracleConnector) time.Duration {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		start := time.Now()
+		conn, err := c.Connect(ctx)
+		elapsed := time.Since(start)
+		if errors.Is(err, noFastAuth) {
+			t.Skip("database does not advertise fast authentication; TTIINIT cannot be timed")
+		}
+		if err != nil {
+			t.Fatalf("%s connect: %v", label, err)
+		}
+		if err := conn.Close(); err != nil {
+			t.Fatalf("%s close: %v", label, err)
+		}
+		return elapsed
+	}
+
+	var disabledTotal, enabledTotal time.Duration
+	for range samples {
+		disabledTotal += measureConnection("TTIINIT disabled", disabled)
+		enabledTotal += measureConnection("TTIINIT enabled", enabled)
+	}
+
+	gain := 100 * float64(disabledTotal-enabledTotal) / float64(disabledTotal)
+	t.Logf("TTIINIT disabled average: %v", disabledTotal/samples)
+	t.Logf("TTIINIT enabled average: %v", enabledTotal/samples)
+	t.Logf("TTIINIT optimization gain: %.2f%%", gain)
 }

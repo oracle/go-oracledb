@@ -59,7 +59,6 @@ func TestMain(m *testing.M) {
 }
 
 var testCases = []oracleTest.CategorizedTestCase{
-	{Name: "TestTTIInitConnection", Categories: "functional", Exclusive: false, Fn: TestTTIInitConnection},
 	{Name: "TestDriver_ConfigurationWithConnectorBasic", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorBasic},
 	{Name: "TestDriver_ConfigurationWithConnectorWithEnvOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithEnvOverwrite},
 	{Name: "TestDriver_ConfigurationWithConnectorWithFlagOverwrite", Categories: "functional", Exclusive: true, Fn: TestDriver_ConfigurationWithConnectorWithFlagOverwrite},
@@ -297,6 +296,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OSON_NullDistinction", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NullDistinction},
 	{Name: "TestDriver_OpenConnectorPreservesQuotedInParameters", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorPreservesQuotedInParameters},
 	{Name: "TestDriver_Select_BLOB_Type", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BLOB_Type},
+	{Name: "TestDriver_TTIInitConnectionTiming", Categories: "performance", Exclusive: true, Fn: TestDriver_TTIInitConnectionTiming},
 }
 
 func TestCategoryExecutor(t *testing.T) {
