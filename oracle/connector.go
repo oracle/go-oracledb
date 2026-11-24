@@ -132,7 +132,8 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	common.OdlT(sessionUid).Log(common.BackgroundContext, common.OlFine, "Connecting to Oracle")
 
-	iterator := c.config.NewConnectionAttemptIterator(ctx)
+	defaultProxyConfigured := c.connectorConfig.ConnectionProperties.HttpsProxy != ""
+	iterator := c.config.NewConnectionAttemptIteratorWithProxy(ctx, defaultProxyConfigured)
 	if !iterator.HasNext() {
 		// No attempts means the connect string (or parsed config) didn't yield any usable
 		// ADDRESS entries, so there is nothing we can connect to.

@@ -409,11 +409,18 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 	if err != nil {
 		return err
 	}
-	iter := naming.NewConnectionIterator(ctx, redirAddressNode, redirCtx)
+	defaultProxyConfigured := address.HTTPSProxy != "" || ns.sAtts.nt.HttpsProxy != ""
+	iter := naming.NewConnectionIteratorWithProxy(ctx, redirAddressNode, redirCtx, defaultProxyConfigured)
 
 	if iter.HasNext() {
 		redirOption := iter.Next()
 		redirOption.Address.OriginHost = oldhostname
+		proxyHost := address.HTTPSProxy
+		proxyPort := address.HTTPSProxyPort
+		if proxyHost == "" && redirOption.Address.HTTPSProxy != "" {
+			proxyHost = redirOption.Address.HTTPSProxy
+			proxyPort = redirOption.Address.HTTPSProxyPort
+		}
 		hostToBeUsed := redirOption.Address.Host
 		if redirOption.Address.ResolvedIP != "" {
 			hostToBeUsed = redirOption.Address.ResolvedIP
@@ -423,14 +430,14 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 				Host:           hostToBeUsed,
 				Port:           redirOption.Address.Port,
 				Protocol:       redirOption.Address.Protocol,
-				HTTPSProxy:     address.HTTPSProxy,
-				HTTPSProxyPort: address.HTTPSProxyPort,
+				HTTPSProxy:     proxyHost,
+				HTTPSProxyPort: proxyPort,
 				OriginHost:     oldhostname,
 				ResolvedIP:     redirOption.Address.ResolvedIP,
 			},
 			Hostname:       redirOption.Address.Host,
-			HTTPSProxy:     address.HTTPSProxy,
-			HTTPSProxyPort: address.HTTPSProxyPort,
+			HTTPSProxy:     proxyHost,
+			HTTPSProxyPort: proxyPort,
 		}
 		ns.ntAdapter.Disconnect()
 		ns.connected = false

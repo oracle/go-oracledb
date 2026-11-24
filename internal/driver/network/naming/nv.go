@@ -432,6 +432,12 @@ func (pc *ParsedConfig) NewConnectionAttemptIterator(ctx context.Context) *Conne
 	return NewConnectionIterator(ctx, pc.rootNode, pc.connectionContext)
 }
 
+// NewConnectionAttemptIteratorWithProxy creates an iterator while applying a
+// connection-wide proxy setting in addition to any address-level proxy settings.
+func (pc *ParsedConfig) NewConnectionAttemptIteratorWithProxy(ctx context.Context, defaultProxyConfigured bool) *ConnectionIterator {
+	return NewConnectionIteratorWithProxy(ctx, pc.rootNode, pc.connectionContext, defaultProxyConfigured)
+}
+
 /*========================Print=========================*/
 /*
 // String returns a string representation of the node tree
