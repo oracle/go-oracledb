@@ -41,9 +41,62 @@ package oracle
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
+	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 )
+
+// TestTTIInitConnection verifies a fresh TTIINIT password connection can execute SQL.
+func TestTTIInitConnection(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+	cfg := NewOracleDriverConfig()
+	cfg.ConnectDescriptor = TestingConfig.GetConnectionDSN()
+	cfg.Credentials.User = TestingConfig.Credentials.Username
+	cfg.Credentials.Password = TestingConfig.Credentials.Password
+	cfg.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
+	cfg.DriverProperties.TTIInitOptimizationEnabled = true
+	connector, err := NewOracleConnector(cfg)
+	if err != nil {
+		t.Fatal("could not create TTIINIT connector")
+	}
+	c := connector.(*oracleConnector)
+	factory := c.connInstantiatorFactory
+	noFastAuth := errors.New("database does not advertise fast authentication")
+	var usedTTIInit, fellBack bool
+	c.connInstantiatorFactory = func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, registry common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
+		if !ns.SupportsFastAuthentication() {
+			return nil, noFastAuth
+		}
+		usedTTIInit = usedTTIInit || (!serverProPending && config.DriverProperties.IsTTIInitOptimizationEnabled())
+		fellBack = fellBack || serverProPending
+		return factory(config, ns, registry, serverProPending)
+	}
+	db := sql.OpenDB(connector)
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	var got int
+	err = db.QueryRowContext(ctx, "SELECT 1 FROM DUAL").Scan(&got)
+	if errors.Is(err, noFastAuth) {
+		t.Skip("database does not advertise fast authentication; TTIINIT cannot be tested")
+	}
+	if err != nil {
+		t.Fatalf("connect through TTIINIT and query: %v", err)
+	}
+	if !usedTTIInit || fellBack {
+		t.Fatalf("TTIINIT selected = %t, fell back to normal negotiation = %t", usedTTIInit, fellBack)
+	}
+	if got != 1 {
+		t.Fatalf("SELECT 1 returned %d", got)
+	}
+}
 
 // BenchmarkPoolOpen measures the cost of checking out a pooled database
 // connection and returning it to the pool on each iteration.
@@ -152,6 +205,51 @@ func BenchmarkSimpleOpen(b *testing.B) {
 			conn.Close()
 			b.StartTimer()
 		}
+	}
+}
+
+// BenchmarkTTIInitConnection compares fresh password connections with TTIINIT
+// disabled and enabled. Use a database that advertises fast authentication.
+func BenchmarkTTIInitConnection(b *testing.B) {
+	if TestingConfig == nil {
+		b.Skip("No configuration available")
+	}
+
+	for _, mode := range []struct {
+		name    string
+		enabled bool
+	}{
+		{name: "disabled", enabled: false},
+		{name: "enabled", enabled: true},
+	} {
+		b.Run(mode.name, func(b *testing.B) {
+			cfg := NewOracleDriverConfig()
+			cfg.ConnectDescriptor = TestingConfig.GetConnectionDSN()
+			cfg.Credentials.User = TestingConfig.Credentials.Username
+			cfg.Credentials.Password = TestingConfig.Credentials.Password
+			cfg.Credentials.LogonMode = TestingConfig.Credentials.LogonMode
+			cfg.DriverProperties.TTIInitOptimizationEnabled = mode.enabled
+
+			connector, err := NewOracleConnector(cfg)
+			if err != nil {
+				b.Fatal("could not create benchmark connector")
+			}
+			if got := connector.(*oracleConnector).connectorConfig.DriverProperties.IsTTIInitOptimizationEnabled(); got != mode.enabled {
+				b.Fatalf("TTIINIT setting = %t, want %t", got, mode.enabled)
+			}
+
+			for b.Loop() {
+				conn, err := connector.Connect(context.Background())
+				b.StopTimer()
+				if err != nil {
+					b.Fatalf("open connection: %v", err)
+				}
+				if err := conn.Close(); err != nil {
+					b.Fatalf("close connection: %v", err)
+				}
+				b.StartTimer()
+			}
+		})
 	}
 }
 
