@@ -72,7 +72,7 @@ func TestNewPasswordAuthenticatorParsesProxy(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			const password = "password_test"
-			pa := newPasswordAuthenticator(tc.input, password, "connect")
+			pa := newPasswordAuthenticator(tc.input, password, 0, "connect")
 			if got := string(pa._username); got != tc.user {
 				t.Fatalf("username = %q, want %q", got, tc.user)
 			}
@@ -151,7 +151,7 @@ func TestPasswordAuthenticator_doOSESSKEY_Golden(t *testing.T) {
 	}
 
 	// Initialize authenticator with requested capability = 239
-	pa := newPasswordAuthenticator("username_test", "username_test",
+	pa := newPasswordAuthenticator("username_test", "username_test", 0,
 		"(DESCRIPTION=(ADDRESS=(HOST=localhost)(PORT=1521)(PROTOCOL=tcp))(CONNECT_DATA=(SERVICE_NAME=freepdb1)))")
 	pa.SetShelf(shelf)
 	pa.SetSessionContext(driverCommon.NewSessionContext())

@@ -249,6 +249,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 
 	{Name: "TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails},
 	{Name: "TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails},
+	{Name: "TestConnectorConnectFallsBackOnTTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectFallsBackOnTTIRENEG},
 	{Name: "TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess},
 	{Name: "TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess},
 	{Name: "TestDriver_InsertForeignKeyViolation", Categories: "functional", Exclusive: false, Fn: TestDriver_InsertForeignKeyViolation},

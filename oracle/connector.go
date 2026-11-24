@@ -58,14 +58,19 @@ import (
 // network session and the connector's currently registered providers.
 //
 // Parameters:
+//
 //   - config: the Oracle driver configuration for the connection attempt.
+//
 //   - ns: the established network session to bind to the instantiator.
+//
 //   - providerRegistry: the provider registry registered on the connector for this attempt.
+//
+//   - serverProPending: whether normal negotiation starts with a pending server TTIPRO.
 //
 // Returns:
 //   - a connection instantiator bound to ns.
 //   - an error if the instantiator cannot be created.
-type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error)
+type ConnInstantiatorFactory func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error)
 
 // ConnCreator opens a network session for a specific connection option and
 // connection identifier.
@@ -204,12 +209,20 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	common.OdlT(sessionUid).Fine("Network session established")
 
-	connInstantiator, err := c.connInstantiatorFactory(c.connectorConfig, ns, c.providerRegistry)
+	connInstantiator, err := c.connInstantiatorFactory(c.connectorConfig, ns, c.providerRegistry, false)
 	if err != nil {
 		e := common.NewOracleError(oracleErrors.ConnectFailed, err)
 		return nil, localizationService.LocalizeError(e)
 	}
 	connection, err := connInstantiator.GetConnection(ctx)
+	if errors.Is(err, driverCommon.ErrTTIRENEG) {
+		common.OdlT(sessionUid).Fine("TTIINIT rejected; resuming normal TTC negotiation")
+		fallback, fallbackErr := c.connInstantiatorFactory(c.connectorConfig, ns, c.providerRegistry, true)
+		if fallbackErr != nil {
+			return nil, localizationService.LocalizeError(common.NewOracleError(oracleErrors.ConnectFailed, fallbackErr))
+		}
+		connection, err = fallback.GetConnection(ctx)
+	}
 	if err == nil {
 		// Connection established successfully no clean-up needed.
 		isConnectionEstablished = true

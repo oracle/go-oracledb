@@ -151,7 +151,7 @@ func TestConnectorRegisterProviderMakesProviderAvailableToConnectionFactory(t *t
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			registered, err := providerRegistry.Get(reflect.TypeOf(provider))
 			if err != nil {
 				return nil, err
@@ -196,7 +196,7 @@ func TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails(t *testi
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			if connectedNS != ns {
 				t.Fatalf("got network session %p, want %p", connectedNS, ns)
 			}
@@ -235,7 +235,7 @@ func TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails(t *test
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			if connectedNS != ns {
 				t.Fatalf("got network session %p, want %p", connectedNS, ns)
 			}
@@ -268,7 +268,7 @@ func TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess(t *testing.T) {
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			assertNoTokenProviderRegistered(t, providerRegistry)
 			return mockConnectorConnectionInstantiator{conn: mockConnectorDriverConn{}}, nil
 		},
@@ -303,7 +303,7 @@ func TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess(t *test
 			}
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			if connectedNS != ns {
 				t.Fatalf("got network session %p, want %p", connectedNS, ns)
 			}
@@ -324,5 +324,52 @@ func TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess(t *test
 	}
 	if attempts != 2 {
 		t.Fatalf("expected two connection attempts, got %d", attempts)
+	}
+}
+
+// TestConnectorConnectFallsBackOnTTIRENEG verifies that the connector asks
+// the same factory for normal fallback on the original network session.
+func TestConnectorConnectFallsBackOnTTIRENEG(t *testing.T) {
+	t.Parallel()
+	ns := &mockConnectorNetworkSession{}
+	factoryCalls := 0
+	connector, err := newOracleConnector(
+		newConnectorTestConfig(t),
+		NewOracleDriverConfig(),
+		func(context.Context, *naming.ConnectionOption, string) (driverCommon.NetworkSession, error) {
+			return ns, nil
+		},
+		func(_ *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, _ common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
+			factoryCalls++
+			if connectedNS != ns {
+				t.Fatal("fallback must reuse the original network session")
+			}
+			switch factoryCalls {
+			case 1:
+				if serverProPending {
+					t.Fatal("first attempt must start without a pending server PRO")
+				}
+				return mockConnectorConnectionInstantiator{err: driverCommon.ErrTTIRENEG}, nil
+			case 2:
+				if !serverProPending {
+					t.Fatal("fallback must read the pending server PRO")
+				}
+				return mockConnectorConnectionInstantiator{conn: mockConnectorDriverConn{}}, nil
+			default:
+				t.Fatal("connector retried more than once")
+				return nil, nil
+			}
+		},
+	)
+	if err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+
+	conn, err := connector.Connect(context.Background())
+	if err != nil || conn == nil {
+		t.Fatalf("Connect() = (%v, %v), want a successful fallback connection", conn, err)
+	}
+	if factoryCalls != 2 || ns.disconnectCalled {
+		t.Fatalf("factory calls = %d, session disconnected = %t", factoryCalls, ns.disconnectCalled)
 	}
 }

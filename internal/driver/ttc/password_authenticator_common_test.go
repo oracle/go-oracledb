@@ -98,6 +98,7 @@ func testPasswordAuthenticatorOAuthPacket(t *testing.T, login, proxyClient strin
 	pa := newPasswordAuthenticator(
 		login,
 		"username_test",
+		0,
 		"(DESCRIPTION=(ADDRESS=(HOST=localhost)(PORT=1521)(PROTOCOL=tcp))(CONNECT_DATA=(SERVICE_NAME=freepdb1)))").passwordAuthenticatorCommon
 	pa.SetShelf(shelf)
 	pa.SetSessionContext(driverCommon.NewSessionContext())
@@ -173,7 +174,7 @@ func TestPasswordAuthenticatorValidatePasswordLength(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pa := newPasswordAuthenticator("user", strings.Repeat("a", tc.length), "connect").passwordAuthenticatorCommon
+			pa := newPasswordAuthenticator("user", strings.Repeat("a", tc.length), 0, "connect").passwordAuthenticatorCommon
 			err := pa.validatePasswordLength()
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("validatePasswordLength error = %v, wantErr %v", err, tc.wantErr)

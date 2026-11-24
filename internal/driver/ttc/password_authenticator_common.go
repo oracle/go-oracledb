@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -52,6 +53,10 @@ import (
 // server-side code.
 const maxPasswordBytes = 1024
 
+// A proxy login consists of two identifiers, either unquoted or double quoted.
+// Brackets within a quoted identifier are part of that identifier.
+var proxyUsernamePattern = regexp.MustCompile(`^("[^"\x00]+"|[\p{L}\p{M}\p{N}\p{Pc}$#]+)\[("[^"\x00]+"|[\p{L}\p{M}\p{N}\p{Pc}$#]+)\]$`)
+
 // passwordAuthenticatorCommon holds credentials and shared password authentication steps.
 type passwordAuthenticatorCommon struct {
 	_username                      driverCommon.B1Array
@@ -63,6 +68,30 @@ type passwordAuthenticatorCommon struct {
 	_sessionContext                *driverCommon.SessionContext
 	_connectString                 string
 	_logonHelper                   *o5Logon
+}
+
+func newPasswordAuthenticatorCommon(username, password, connectString string, logonMode common.LogonMode) *passwordAuthenticatorCommon {
+	username, proxyClient := parseUsername(username)
+	return &passwordAuthenticatorCommon{
+		_connectString: connectString,
+		_username:      driverCommon.StringToB1Array(username),
+		_proxyClient:   driverCommon.StringToB1Array(proxyClient),
+		_password:      driverCommon.StringToB1Array(sanitizeInputCredential(password)),
+		_logonMode:     logonMode.Value(),
+	}
+}
+
+// parseUsername extracts the proxy client and sanitizes the authenticating username.
+// Unrecognized syntax is treated as an ordinary username.
+func parseUsername(username string) (string, string) {
+	var proxyClient string
+	// Parse before sanitizing to preserve quoted identifiers.
+	if parts := proxyUsernamePattern.FindStringSubmatch(strings.TrimSpace(username)); parts != nil {
+		username = parts[1]
+		// Preserve quotes on the proxy client.
+		proxyClient = parts[2]
+	}
+	return sanitizeInputCredential(username), proxyClient
 }
 
 func (pa *passwordAuthenticatorCommon) validatePasswordLength() error {

@@ -92,6 +92,14 @@ type DataBuffer interface {
 	Flush(context.Context) error
 }
 
+// ConnectionMode selects the connection establishment workflow.
+type ConnectionMode uint8
+
+const (
+	ConnectionNormal  ConnectionMode = iota // Normal TTC negotiation and authentication.
+	ConnectionTTIInit                       // Combine TTC negotiation with the first authentication request.
+)
+
 // ConnectionInstantiator implementors can create connections to the database
 type ConnectionInstantiator interface {
 	// GetConnection returns a new connection to the database

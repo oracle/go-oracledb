@@ -40,17 +40,11 @@ package ttc
 
 import (
 	"context"
-	"regexp"
-	"strings"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
-
-// A proxy login consists of two identifiers, either unquoted or double quoted.
-// Brackets within a quoted identifier are part of that identifier.
-var proxyUsernamePattern = regexp.MustCompile(`^("[^"\x00]+"|[\p{L}\p{M}\p{N}\p{Pc}$#]+)\[("[^"\x00]+"|[\p{L}\p{M}\p{N}\p{Pc}$#]+)\]$`)
 
 // passwordAuthenticator authenticates using user/password O5 logon.
 type passwordAuthenticator struct {
@@ -61,31 +55,12 @@ type passwordAuthenticator struct {
 // Parameters:
 //   - username : the username
 //   - password : user password
+//   - logonMode : the selected logon mode, or 0 for the default
 //   - connectString : connectionString
-func newPasswordAuthenticator(username, password string, connectString string) *passwordAuthenticator {
-	username, proxyClient := parseUsername(username)
-	shared := &passwordAuthenticatorCommon{
-		_connectString: connectString,
-		_username:      driverCommon.StringToB1Array(username),
-		_proxyClient:   driverCommon.StringToB1Array(proxyClient),
-		_password:      driverCommon.StringToB1Array(sanitizeInputCredential(password)),
-		_logonMode:     0,
-	}
+func newPasswordAuthenticator(username, password string, logonMode common.LogonMode, connectString string) *passwordAuthenticator {
 	return &passwordAuthenticator{
-		passwordAuthenticatorCommon: shared,
+		passwordAuthenticatorCommon: newPasswordAuthenticatorCommon(username, password, connectString, logonMode),
 	}
-}
-
-// newPasswordAuthenticatorWithLogonMode instantiates a new password authenticator.
-// Parameters:
-//   - username : the username
-//   - password : user password
-//   - connectString : connectionString
-//   - mode : logonMode
-func newPasswordAuthenticatorWithLogonMode(username, password string, mode common.LogonMode, connectString string) *passwordAuthenticator {
-	pa := newPasswordAuthenticator(username, password, connectString)
-	pa._logonMode = mode.Value()
-	return pa
 }
 
 // Authenticate performs authentication.
@@ -109,19 +84,6 @@ func (pa *passwordAuthenticator) Authenticate(ctx context.Context) error {
 	}
 	common.Odl.Fine("Authenticate ended")
 	return nil
-}
-
-// parseUsername extracts the proxy client and sanitizes the authenticating username.
-// Unrecognized syntax is treated as an ordinary username.
-func parseUsername(username string) (string, string) {
-	var proxyClient string
-	// Parse before sanitizing to preserve quoted identifiers.
-	if parts := proxyUsernamePattern.FindStringSubmatch(strings.TrimSpace(username)); parts != nil {
-		username = parts[1]
-		// Preserve quotes on the proxy client.
-		proxyClient = parts[2]
-	}
-	return sanitizeInputCredential(username), proxyClient
 }
 
 func (pa *passwordAuthenticator) _doOSESSKEY(ctx context.Context) error {
