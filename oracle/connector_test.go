@@ -46,6 +46,7 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	internalDriver "github.com/oracle/go-oracledb/v26/internal/driver"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
@@ -371,5 +372,48 @@ func TestConnectorConnectFallsBackOnTTIRENEG(t *testing.T) {
 	}
 	if factoryCalls != 2 || ns.disconnectCalled {
 		t.Fatalf("factory calls = %d, session disconnected = %t", factoryCalls, ns.disconnectCalled)
+	}
+}
+
+type instantiatorSelectionSession struct {
+	mockConnectorNetworkSession
+	driverCommon.DataBuffer
+	fastAuth bool
+}
+
+func (s *instantiatorSelectionSession) SupportsFastAuthentication() bool {
+	return s.fastAuth
+}
+
+// TestConnectionInstantiatorSelection verifies that only an eligible initial attempt selects TTIINIT.
+func TestConnectionInstantiatorSelection(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name                          string
+		enabled, fastAuth, proPending bool
+		want                          string
+	}{
+		{name: "eligible", enabled: true, fastAuth: true, want: "ttiInitConnectionInstantiator"},
+		{name: "disabled", fastAuth: true, want: "connectionInstantiator"},
+		{name: "server lacks fast authentication", enabled: true, want: "connectionInstantiator"},
+		{name: "fallback", enabled: true, fastAuth: true, proPending: true, want: "connectionInstantiator"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := NewOracleDriverConfig()
+			cfg.Credentials.User = "user"
+			cfg.Credentials.Password = "password"
+			cfg.DriverProperties.TTIInitOptimizationEnabled = tc.enabled
+			ns := &instantiatorSelectionSession{fastAuth: tc.fastAuth}
+			instantiator, err := internalDriver.GetConnectionInstantiator(cfg, ns, nil, tc.proPending)
+			if err != nil {
+				t.Fatalf("select instantiator: %v", err)
+			}
+			if instantiator == nil {
+				t.Fatal("factory returned no instantiator")
+			}
+			if got := reflect.TypeOf(instantiator).Elem().Name(); got != tc.want {
+				t.Fatalf("instantiator = %s, want %s", got, tc.want)
+			}
+		})
 	}
 }

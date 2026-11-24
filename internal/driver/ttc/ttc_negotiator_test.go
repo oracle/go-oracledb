@@ -456,3 +456,28 @@ func TestConnectionNegotiator_Negotiate_SelectsEOCSMessages(t *testing.T) {
 		t.Error("TTISTA does not support end-of-call status after EOCS negotiation")
 	}
 }
+
+// TestConnectionNegotiatorReadsPendingPRO verifies that fallback starts with the server's PRO and sends only DTY.
+func TestConnectionNegotiatorReadsPendingPRO(t *testing.T) {
+	buffer := NewTestDataBuffer()
+	buffer.WriteBuf(DefaultTTIproSuccessPayloadWithEOCS(6))
+	var sent []byte
+	buffer.OnFlush = func(b *TestDataBuffer) {
+		if b.buf.Len() == 0 {
+			t.Fatal("flushed an empty request")
+		}
+		sent = append(sent, b.buf.Bytes()[0])
+		b.ResetBuf()
+		b.WriteBuf([]byte{byte(TTIDTY), 0, 0})
+	}
+
+	negotiator := GetNegotiator(buffer, nil, common.ConnectionNormal, true)
+	_, _, err := negotiator.Negotiate(context.Background())
+
+	if err != nil {
+		t.Fatalf("negotiate with pending PRO: %v", err)
+	}
+	if len(sent) != 1 || sent[0] != byte(TTIDTY) {
+		t.Fatalf("flushed message types = %v, want only TTIDTY", sent)
+	}
+}
