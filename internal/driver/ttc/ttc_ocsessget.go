@@ -48,7 +48,7 @@ import (
 
 // ttiOCSessget server's "session-release values" message for a pooled-session release.
 // This message is received from the server and therefore only implements
-// UnMarshalFrom and GetMsgCode; it does not support MarshalTo.
+// UnmarshalFrom and GetMsgCode; it does not support MarshalTo.
 type ttiOCSessget struct {
 	header        driverCommon.Marshallable
 	sessgetOkvn   driverCommon.UB2 // Number of keyvalue pair
@@ -61,7 +61,7 @@ const multiPropertyTagMatchAny = 0x00000001
 
 // newttiOCSessget allocates a new receiver for OCSSESSGRET payloads.
 // The returned value implements common.Message and is intended to be populated
-// via UnMarshalFrom by the MessageStreamer.
+// via UnmarshalFrom by the MessageStreamer.
 func newttiOCSessget() driverCommon.Message[driverCommon.MessageType] {
 	return &ttiOCSessget{
 		header: &ttiFunHeader{_funcType: ocsessget},
@@ -160,11 +160,11 @@ func (p *ttiOCSessgetRpa) GetMsgCode() driverCommon.MessageType {
 	return TTIRPA
 }
 
-// UnMarshalFrom read OCSSESSGET RPA response from the wire
+// UnmarshalFrom read OCSSESSGET RPA response from the wire
 // arguments:
 //   - ctx : context
 //   - engine : marshalling engine
-func (rpa *ttiOCSessgetRpa) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (rpa *ttiOCSessgetRpa) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 
 	common.Odl.Debug("ttiOCSessgetRpa unmarshalling from ttiFun")
 

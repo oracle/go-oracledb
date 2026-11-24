@@ -229,8 +229,8 @@ func (ms *MessageStreamer) Pull(ctx context.Context, expectedMessageTypes ...dri
 		if !isUnmarshallable {
 			// we received a message that we do not know how to unmarshal, throw
 			// error
-			ms.logger.Warn("Message does not implmente common.UnMarshallable", "msg", msg)
-			common.Odl.Warn("Message does not implmente common.Unmarshallable", "msg", msg)
+			ms.logger.Warn("Message does not implement common.UnMarshallable", "msg", msg)
+			common.Odl.Warn("Message does not implement common.Unmarshallable", "msg", msg)
 			return nil, common.NewOracleError(oracleErrors.StreamerReadError, nil, nil)
 		}
 		uerr := marshallable.UnmarshalFrom(ctx, ms.shelf.GetMarshaller())

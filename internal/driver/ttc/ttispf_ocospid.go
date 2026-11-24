@@ -48,13 +48,13 @@ import (
 
 // ttiSPFOCOspid OS PID for MTS connection
 // This message is received from the server and therefore only implements
-// UnMarshalFrom and GetMsgCode; it does not support MarshalTo.
+// UnmarshalFrom and GetMsgCode; it does not support MarshalTo.
 type ttiSPFOCOspid struct {
 }
 
 // ttiSPFOCOspid allocates a new receiver for TTISPF/OCOSPID payloads.
 // The returned value implements common.Message and is intended to be populated
-// via UnMarshalFrom by the MessageStreamer.
+// via UnmarshalFrom by the MessageStreamer.
 func newttiSPFOCOspid() driverCommon.Message[driverCommon.MessageType] {
 	return &ttiSPFOCOspid{}
 }
@@ -71,9 +71,9 @@ func (spf *ttiSPFOCOspid) GetFuncCode() driverCommon.FunctionType {
 	return driverCommon.FunctionType(ocospid)
 }
 
-// UnMarshalFrom reads a TTISPF/OCOSPID payload from the wire.
+// UnmarshalFrom reads a TTISPF/OCOSPID payload from the wire.
 // Expected layout (as observed from network traces):
-func (spf *ttiSPFOCOspid) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (spf *ttiSPFOCOspid) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 	common.Odl.Debug("Unmarshalling TTISPF/OCOSPID")
 	nbOfDtys, err := engine.UnmarshalUB2(ctx)
 	if err != nil {

@@ -61,7 +61,7 @@ const (
 
 // newttiOCSessrel allocates a new receiver for OCSSESSREL payloads.
 // The returned value implements common.Message and is intended to be populated
-// via UnMarshalFrom by the MessageStreamer.
+// via UnmarshalFrom by the MessageStreamer.
 func newttiOCSessrel() driverCommon.Message[driverCommon.MessageType] {
 	return &ttiOCSessrel{
 		header:      &ttiFunHeader{_funcType: ocsessrls},

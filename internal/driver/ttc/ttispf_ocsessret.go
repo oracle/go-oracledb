@@ -48,7 +48,7 @@ import (
 
 // ttiSPFOCSessret server’s piggyback “session-return values” message for a pooled-session GET/attach.
 // This message is received from the server and therefore only implements
-// UnMarshalFrom and GetMsgCode; it does not support MarshalTo.
+// UnmarshalFrom and GetMsgCode; it does not support MarshalTo.
 type ttiSPFOCSessret struct {
 	// keyValueArr holds the list of keyword/value pairs carried by the piggyback.
 	keyValueArr *keywordValueArray
@@ -78,7 +78,7 @@ func (spf *ttiSPFOCSessret) getSessretser() driverCommon.UB2 {
 // newttiSPFOCSessret allocates a new receiv
 // er for TTISPF/OCSSESSRET payloads.
 // The returned value implements common.Message and is intended to be populated
-// via UnMarshalFrom by the MessageStreamer.
+// via UnmarshalFrom by the MessageStreamer.
 func newttiSPFOCSessret() driverCommon.Message[driverCommon.MessageType] {
 	return &ttiSPFOCSessret{}
 }
@@ -95,9 +95,9 @@ func (spf *ttiSPFOCSessret) GetFuncCode() driverCommon.FunctionType {
 	return ocsessret
 }
 
-// UnMarshalFrom reads a TTISPF/OCSSESSRET payload from the wire.
+// UnmarshalFrom reads a TTISPF/OCSSESSRET payload from the wire.
 // Expected layout (as observed from network traces):
-func (spf *ttiSPFOCSessret) UnMarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
+func (spf *ttiSPFOCSessret) UnmarshalFrom(ctx context.Context, engine driverCommon.Marshaller) error {
 	common.Odl.Debug("Unmarshal ttiSPFOCSessret")
 	// Reserved/length (ignored)
 	_, err := engine.UnmarshalUB2(ctx)

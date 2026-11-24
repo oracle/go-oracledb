@@ -80,9 +80,10 @@ func getDBUsingEZConnect(poolName string, className string, purity string, confi
 	var err error
 	var db *sql.DB
 
-	var dsn = fmt.Sprintf("%s/%s@tcp://%s:%d/%s:POOLED?",
+	var dsn = fmt.Sprintf("%s/%s@%s://%s:%d/%s:POOLED?",
 		config.Credentials.Username,
 		config.Credentials.Password,
+		config.Database.Protocol,
 		config.Database.Host,
 		config.Database.Port,
 		config.Database.ServiceName)
@@ -122,9 +123,10 @@ func getDBUsingEZConnect(poolName string, className string, purity string, confi
 func getDBUsingDescriptor(poolName string, className string, purity string, config *TestConfig) (*sql.DB, error) {
 	var err error
 	var db *sql.DB
-	var dsn = fmt.Sprintf("%s/%s@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=%s)(PORT=%d))(CONNECT_DATA=(SERVICE_NAME=%s)(SERVER=POOLED)",
+	var dsn = fmt.Sprintf("%s/%s@(DESCRIPTION=(ADDRESS=(PROTOCOL=%s)(HOST=%s)(PORT=%d))(CONNECT_DATA=(SERVICE_NAME=%s)(SERVER=POOLED)",
 		config.Credentials.Username,
 		config.Credentials.Password,
+		config.Database.Protocol,
 		config.Database.Host,
 		config.Database.Port,
 		config.Database.ServiceName)
