@@ -47,11 +47,11 @@ import (
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-// TestTTIInitNegotiationQueuesMessages verifies queue order, provisional settings,
+// TestTTIInitNegotiationQueuesMessages verifies queue order, initial client settings,
 // and that negotiation performs no I/O before authentication sends the batch.
 func TestTTIInitNegotiationQueuesMessages(t *testing.T) {
 	buffer := NewArrayDataBuffer(4096)
-	negotiator := newTTIInitConnectionNegotiator(buffer)
+	negotiator := newTTIInitConnectionNegotiator(buffer, nil)
 
 	sessCtx, shelf, err := negotiator.Negotiate(context.Background())
 
@@ -78,26 +78,44 @@ func TestTTIInitNegotiationQueuesMessages(t *testing.T) {
 	if !reflect.DeepEqual(dty.negotiatedCapsMap, init._protocolMessage.clientCaps.toMap()) {
 		t.Error("DTY does not use the prepared client capabilities")
 	}
-	if got := shelf.GetMessageFactory().(*SimpleFactory).ttcVersion; got != int8(init._fieldVersion) {
+	initialFactory := shelf.GetMessageFactory().(*SimpleFactory)
+	if got := initialFactory.ttcVersion; got != int8(init._fieldVersion) {
 		t.Errorf("initial factory version = %d, envelope version = %d", got, init._fieldVersion)
 	}
-	if got := init._protocolMessage.svrCharSet; got != 0 {
-		t.Errorf("initial database character set = %d, want unset", got)
+	oer, err := initialFactory.GetMessage(TTIOER)
+	if err != nil {
+		t.Fatalf("create initial OER decoder: %v", err)
+	}
+	if got, want := oer.(*tTIoer14)._supportsEndOfCallStatus, dty.negotiatedCapsMap[kpccapCtbTtc1Eocs].IsSet; got != want {
+		t.Errorf("initial OER end-of-call status support = %t, advertised = %t", got, want)
+	}
+	if shelf.GetCapabilities() != nil {
+		t.Error("server capabilities were installed before receiving PRO")
+	}
+	if shelf.GetCodecFactory() != nil {
+		t.Error("session codec factory was installed before datatype negotiation completed")
+	}
+	if got := sessCtx.DriverCharacterSet(); got != 0 {
+		t.Errorf("initial driver character set = %d, want unset", got)
+	}
+	defaultCaps := newDefaultCapability()
+	if !reflect.DeepEqual(init._protocolMessage.clientCaps.compileTimeCapabilities, defaultCaps.compileTimeCapabilities) {
+		t.Error("TTIINIT changed the default client compile-time capabilities")
+	}
+	if !reflect.DeepEqual(init._protocolMessage.clientCaps.runTimeCapabilities, defaultCaps.runTimeCapabilities) {
+		t.Error("TTIINIT changed the default client runtime capabilities")
 	}
 	if got := sessCtx.SessionNCharCharacterSet(); got != 0 {
 		t.Errorf("initial NCHAR character set = %d, want unset", got)
 	}
-	if err := negotiator.checkNegotiationComplete(); err == nil {
-		t.Error("queued negotiation was marked complete before receiving responses")
-	}
 }
 
-// TestTTIInitNegotiationProcessesResponses verifies that real PRO/DTY replace
-// provisional settings while DTY decoding retains the capabilities already sent.
+// TestTTIInitNegotiationProcessesResponses verifies that real PRO/DTY install
+// server settings while DTY decoding retains the capabilities already sent.
 func TestTTIInitNegotiationProcessesResponses(t *testing.T) {
 	ctx := context.Background()
 	buffer := NewArrayDataBuffer(4096)
-	negotiator := newTTIInitConnectionNegotiator(buffer)
+	negotiator := newTTIInitConnectionNegotiator(buffer, nil)
 	sessCtx, shelf, err := negotiator.Negotiate(ctx)
 	if err != nil {
 		t.Fatalf("Negotiate failed: %v", err)
@@ -108,31 +126,46 @@ func TestTTIInitNegotiationProcessesResponses(t *testing.T) {
 	server := newCapability()
 	fieldVersion := server.knownUsedCompileTimeCapabilities[kpccapCtTtcFldVsn]
 	server.compileTimeCapabilities[fieldVersion.index] = ttcFldVsn234
-	// The real PRO allows timezone exchange, unlike the assumed profile used for
-	// this request. DTY must still decode the response without timezone bytes.
-	timezone := server.knownUsedCompileTimeCapabilities[kpccapCtbTtc3Tzver]
-	server.compileTimeCapabilities[timezone.index] = timezone.value
+	const serverTimezoneVersion byte = 42
 	response := defaultTTIproSuccessPayload(6, true, true, server.compileTimeCapabilities, server.runTimeCapabilities)
-	response = append(response, byte(TTIDTY), 0, 0) // Empty datatype representation table.
+	response = append(response, byte(TTIDTY))
+	// The default client capabilities request the timezone interval and its four-byte version.
+	response = append(response, driverCommon.GetTimeZoneBytes()...)
+	response = append(response, 0, 0, 0, serverTimezoneVersion)
+	// Empty datatype table, followed by a message with no body.
+	response = append(response, 0, 0, byte(TTIFOB))
 	if err := buffer.WriteBytesWithContext(ctx, response); err != nil {
 		t.Fatalf("prepare server response: %v", err)
 	}
 
-	if _, err := streamer.Pull(ctx, TTIPRO); err != nil {
-		t.Fatalf("read PRO response: %v", err)
+	prepareDTY := streamer.preUCallbacks[TTIDTY]
+	streamer.RegisterPreUnmarshallCallback(TTIDTY, func(header *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
+		if got := shelf.GetMessageFactory().(*SimpleFactory).ttcVersion; got != int8(ttiInitInitialFieldVersion) {
+			t.Errorf("factory version before DTY = %d, want initial version %d", got, ttiInitInitialFieldVersion)
+		}
+		if shelf.GetCodecFactory() != nil {
+			t.Error("session codec factory was installed before DTY was decoded")
+		}
+		return prepareDTY(header)
+	})
+
+	msg, err := streamer.Pull(ctx, TTIPRO, TTIDTY, TTIFOB)
+	if err != nil {
+		t.Fatalf("read through DTY reply: %v", err)
 	}
-	if err := negotiator.checkNegotiationComplete(); err == nil {
-		t.Fatal("PRO alone completed negotiation")
-	}
-	if _, err := streamer.Pull(ctx, TTIDTY); err != nil {
-		t.Fatalf("read DTY response: %v", err)
+	if msg.GetMsgCode() != TTIFOB {
+		t.Fatalf("got message %v after negotiation, want TTIFOB", msg.GetMsgCode())
 	}
 
-	if err := negotiator.checkNegotiationComplete(); err != nil {
-		t.Fatalf("negotiation did not complete: %v", err)
+	if got := shelf.GetCapabilities()[kpccapCtTtcFldVsn].Value; got != ttcFldVsn234 {
+		t.Fatalf("server field version after PRO = %d, want %d", got, ttcFldVsn234)
 	}
-	if sentDTY.negotiatedCapsMap[kpccapRtTzEx].IsSet {
+
+	if !sentDTY.negotiatedCapsMap[kpccapRtTzEx].IsSet || !sentDTY.negotiatedCapsMap[kpccapCtbTtc3Tzver].IsSet {
 		t.Error("fresh PRO changed the capabilities used to decode this DTY response")
+	}
+	if got := sessCtx.GetClientProperties().GetProperty(driverCommon.TimeZoneVersionNumber); got != serverTimezoneVersion {
+		t.Errorf("timezone version = %v, want %d", got, serverTimezoneVersion)
 	}
 	if got := shelf.GetMessageFactory().(*SimpleFactory).ttcVersion; got != int8(ttcFldVsn234) {
 		t.Errorf("confirmed factory version = %d, want %d", got, ttcFldVsn234)
@@ -151,12 +184,12 @@ func TestTTIInitNegotiationProcessesResponses(t *testing.T) {
 }
 
 // TestTTIInitNegotiationDecodeErrors verifies that failed PRO/DTY decoding
-// preserves the provisional session settings and leaves negotiation incomplete.
+// does not install negotiated settings or complete negotiation.
 func TestTTIInitNegotiationDecodeErrors(t *testing.T) {
 	decodeErr := errors.New("negotiation response decode failed")
 	for _, messageType := range []driverCommon.MessageType{TTIPRO, TTIDTY} {
 		t.Run(TTCMsgTypeDescription[messageType], func(t *testing.T) {
-			negotiator := newTTIInitConnectionNegotiator(NewArrayDataBuffer(4096))
+			negotiator := newTTIInitConnectionNegotiator(NewArrayDataBuffer(4096), nil)
 			sessCtx, shelf, err := negotiator.Negotiate(context.Background())
 			if err != nil {
 				t.Fatalf("Negotiate failed: %v", err)
@@ -166,13 +199,10 @@ func TestTTIInitNegotiationDecodeErrors(t *testing.T) {
 			const previousTimezoneVersion byte = 3
 			sessCtx.SetTimeZoneVersionNumber(previousTimezoneVersion)
 
-			_, err = streamer.postUCallbacks[messageType](nil, decodeErr)
+			keep, err := streamer.postUCallbacks[messageType](nil, decodeErr)
 
-			if err != decodeErr {
-				t.Fatalf("callback error = %v, want %v", err, decodeErr)
-			}
-			if err := negotiator.checkNegotiationComplete(); err == nil {
-				t.Error("failed response completed negotiation")
+			if !keep || err != decodeErr {
+				t.Fatalf("callback returned (%t, %v), want (true, %v)", keep, err, decodeErr)
 			}
 			if got := sessCtx.GetClientProperties().GetProperty(driverCommon.TimeZoneVersionNumber); got != previousTimezoneVersion {
 				t.Errorf("timezone version = %v, want %d", got, previousTimezoneVersion)

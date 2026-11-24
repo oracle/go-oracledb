@@ -40,7 +40,6 @@ package ttc
 
 import (
 	"bytes"
-	"container/list"
 	"context"
 	"errors"
 	"fmt"
@@ -51,8 +50,8 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-// TestReadTTIInitAuthenticationResponse consumes negotiation responses and
-// decodes the function-specific authentication RPA through the real streamer.
+// TestReadTTIInitAuthenticationResponse decodes the function-specific RPA
+// through the real streamer.
 func TestReadTTIInitAuthenticationResponse(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -66,12 +65,7 @@ func TestReadTTIInitAuthenticationResponse(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			shelf, realStreamer, buffer := newAuthTestShelf(1 << 16)
-			// PRO and DTY have already been decoded by the negotiator's callbacks.
-			negotiationResponses := list.New()
-			negotiationResponses.PushBack(newTTIpro())
-			negotiationResponses.PushBack(NewTTIdty())
-			streamer := NewWrappedMockStreamer(negotiationResponses, realStreamer)
+			shelf, streamer, buffer := newAuthTestShelf(1 << 16)
 			writeAuthWarning(t, ctx, buffer, 28002, "password will expire", 0)
 			response := append([]byte{byte(TTIRPA)}, tc.payload()...)
 			if tc.function == oauth {
@@ -101,13 +95,10 @@ func TestReadTTIInitAuthenticationResponse(t *testing.T) {
 			if got := fmt.Sprintf("%T", rpa); got != tc.wantType {
 				t.Fatalf("RPA type = %s, want %s", got, tc.wantType)
 			}
-			if negotiationResponses.Len() != 0 {
-				t.Error("reader did not consume the negotiation responses")
-			}
 			if next, err := buffer.ReadByteWithContext(ctx); err != nil || next != byte(TTISTA) {
 				t.Fatalf("next message = %d, error = %v; want untouched STA after OER", next, err)
 			}
-			if realStreamer.preUCallbacks[TTIRPA] != nil {
+			if streamer.preUCallbacks[TTIRPA] != nil {
 				t.Error("authentication RPA callback remains registered")
 			}
 		})
@@ -119,7 +110,7 @@ func TestReadTTIInitAuthenticationResponse(t *testing.T) {
 func TestReadTTIInitAuthenticationResponseTTIRENEG(t *testing.T) {
 	ctx := context.Background()
 	buffer := NewArrayDataBuffer(4096)
-	negotiator := newTTIInitConnectionNegotiator(buffer)
+	negotiator := newTTIInitConnectionNegotiator(buffer, nil)
 	_, shelf, err := negotiator.Negotiate(ctx)
 	if err != nil {
 		t.Fatalf("prepare negotiation: %v", err)

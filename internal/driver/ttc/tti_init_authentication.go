@@ -70,6 +70,8 @@ func readTTIInitAuthenticationResponse(
 
 	goOn := true
 	for goOn {
+		// The callbacks discard successful PRO and DTY replies. Keep both types
+		// in the list so Pull returns their decode errors immediately.
 		msg, err := streamer.Pull(ctx, TTIRPA, TTIOER, TTIWRN, TTIPRO, TTIRENEG, TTIDTY)
 		if err != nil {
 			common.Odl.Fine("Authenticator failed to pull server messages", "error", err)
@@ -89,8 +91,6 @@ func readTTIInitAuthenticationResponse(
 			goOn = false
 		case TTIWRN:
 			logAuthenticationWarning(msg.(*tTIwrn))
-		case TTIPRO, TTIDTY:
-			// Negotiation callbacks handled these responses.
 		case TTIRENEG:
 			common.Odl.Fine("TTIINIT authentication: Server requested TTC renegotiation", "function", funcType)
 			return nil, driverCommon.ErrTTIRENEG

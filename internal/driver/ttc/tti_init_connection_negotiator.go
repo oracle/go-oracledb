@@ -46,43 +46,36 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
-const ttiInitAssumedFieldVersion byte = 23
-
-// newTTIInitProtocol prepares the provisional settings used before server PRO arrives.
-func newTTIInitProtocol() *tTIpro {
-	pro := newTTIpro().(*tTIpro)
-	fieldVersion := pro.serverCaps.knownUsedCompileTimeCapabilities[kpccapCtTtcFldVsn]
-	pro.serverCaps.compileTimeCapabilities[fieldVersion.index] = ttiInitAssumedFieldVersion
-	pro.clientCaps.adjustCapabilityFrom(pro.serverCaps)
-	return pro
-}
+// TTC field version declared in TTIINIT and used for the first authentication request.
+const ttiInitInitialFieldVersion byte = 23
 
 // Negotiation responses are consumed later, during authentication.
 type ttiInitConnectionNegotiator struct {
 	*connectionNegotiatorCommon
-	_negotiationComplete bool
 }
 
-func newTTIInitConnectionNegotiator(buffer driverCommon.DataBuffer) *ttiInitConnectionNegotiator {
+func newTTIInitConnectionNegotiator(buffer driverCommon.DataBuffer, connectionProperties driverCommon.DriverProperties) *ttiInitConnectionNegotiator {
 	return &ttiInitConnectionNegotiator{
-		connectionNegotiatorCommon: &connectionNegotiatorCommon{_dataBuffer: buffer},
+		connectionNegotiatorCommon: &connectionNegotiatorCommon{
+			_dataBuffer:           buffer,
+			_connectionProperties: connectionProperties,
+		},
 	}
 }
 
 // Negotiate queues TTIINIT and TTIDTY without flushing. Authentication appends
 // its first request and sends the combined batch.
 func (n *ttiInitConnectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.SessionContext, *ttiShelf[driverCommon.MessageType], error) {
-	n._negotiationComplete = false
 	shelf, sessCtx, streamer, _ := n.initializeNegotiationResources()
-	pro := newTTIInitProtocol()
-	shelf.RegisterCapabilities(pro.serverCaps.toMap())
+	pro := newTTIpro().(*tTIpro)
 	dty := NewTTIdty().(*tTIdty)
 	dty.SetNegotiatedCapabilities(pro.clientCaps)
-	n.applyNegotiatedSettings(shelf, sessCtx, pro, dty)
+	initialFactory := NewMessageFactoryForProtocol(int8(ttiInitInitialFieldVersion), pro.clientCaps.toMap())
+	shelf.RegisterMessageFactory(initialFactory)
 
 	initMsg := &ttiInitMessage{
 		_protocolMessage: pro,
-		_fieldVersion:    ttiInitAssumedFieldVersion,
+		_fieldVersion:    ttiInitInitialFieldVersion,
 	}
 	if err := streamer.Push(ctx, initMsg); err != nil {
 		return nil, nil, err
@@ -109,45 +102,33 @@ func (n *ttiInitConnectionNegotiator) registerTTIInitNegotiationCallbacks(
 		if decodeErr != nil {
 			return true, decodeErr
 		}
-		if pro != nil {
-			return true, common.NewOracleError(oracleErrors.InternalError, nil)
-		}
 		pro = msg.(*tTIpro)
 		shelf.RegisterCapabilities(pro.serverCaps.toMap())
-		return true, nil
+		return false, nil
 	}
 	prepareDatatypeResponse := func(_ *messageHeader) (driverCommon.Message[driverCommon.MessageType], error) {
 		if pro == nil {
 			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
-		// Reuse the request's DTY: its capabilities determine which response fields to read.
+
 		return dty, nil
 	}
 	completeNegotiation := func(msg driverCommon.Message[driverCommon.MessageType], decodeErr error) (bool, error) {
 		if decodeErr != nil {
 			return true, decodeErr
 		}
-		if pro == nil || n._negotiationComplete {
+		if pro == nil {
 			return true, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
 		response := msg.(*tTIdty)
 		n.applyNegotiatedSettings(shelf, sessCtx, pro, response)
 		sessCtx.SetTimeZoneVersionNumber(response.GetTimeZoneVersionNumber())
-		n._negotiationComplete = true
 		common.Odl.Fine("ttiInitConnectionNegotiator: Negotiation complete", "SessionContext", sessCtx, "Shelf", shelf)
-		return true, nil
+		return false, nil
 	}
 	streamer.RegisterPostUnmarshallCallback(TTIPRO, receiveProtocolResponse)
 	streamer.RegisterPreUnmarshallCallback(TTIDTY, prepareDatatypeResponse)
 	streamer.RegisterPostUnmarshallCallback(TTIDTY, completeNegotiation)
-}
-
-// checkNegotiationComplete prevents returning a connection with provisional settings.
-func (n *ttiInitConnectionNegotiator) checkNegotiationComplete() error {
-	if !n._negotiationComplete {
-		return common.NewOracleError(oracleErrors.NegotiatorError, nil)
-	}
-	return nil
 }
 
 func unregisterTTIInitNegotiationCallbacks(streamer MessageStreamerInterface) {
