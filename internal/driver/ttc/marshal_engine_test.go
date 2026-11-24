@@ -1095,7 +1095,7 @@ func TestUnmarshalCLRColumnData(t *testing.T) {
 			}
 
 			dataBuffer.currentReadPosition = 0
-			readValue, readLength, err := engine.UnmarshalCLRColumnData(context.Background())
+			readValue, readLength, err := engine.UnmarshalCLRColumnData(context.Background(), maxCLRColumnDataLength(engine))
 			if err != nil {
 				t.Errorf("UnmarshalCLR failed: %v", err)
 			}
@@ -1111,12 +1111,12 @@ func TestUnmarshalCLRColumnData(t *testing.T) {
 	}
 }
 
-// TestUnmarshalCLRColumnDataWithMaxLength verifies the caller-supplied total
+// TestUnmarshalCLRColumnDataEnforcesMaxLength verifies the caller-supplied total
 // payload limit for both short and chunked CLR values.
 // Test cases:
 //   - Accept short and chunked payloads whose lengths equal the limit.
 //   - Reject short and chunked payloads that exceed the limit.
-func TestUnmarshalCLRColumnDataWithMaxLength(t *testing.T) {
+func TestUnmarshalCLRColumnDataEnforcesMaxLength(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name      string
@@ -1141,7 +1141,7 @@ func TestUnmarshalCLRColumnDataWithMaxLength(t *testing.T) {
 			}
 			dataBuffer.currentReadPosition = 0
 
-			got, gotLength, err := engine.UnmarshalCLRColumnDataWithMaxLength(context.Background(), common.UB4(tc.maxLength))
+			got, gotLength, err := engine.UnmarshalCLRColumnData(context.Background(), int64(tc.maxLength))
 			if tc.wantError {
 				if err == nil {
 					t.Fatalf("accepted %d-byte payload with max length %d", tc.valueSize, tc.maxLength)
@@ -1150,7 +1150,7 @@ func TestUnmarshalCLRColumnDataWithMaxLength(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("UnmarshalCLRColumnDataWithMaxLength returned error: %v", err)
+				t.Fatalf("UnmarshalCLRColumnData returned error: %v", err)
 			}
 			if gotLength != len(value) || !bytes.Equal(got, value) {
 				t.Fatalf("decoded payload length=%d, bytes match=%t; want length=%d", gotLength, bytes.Equal(got, value), len(value))
@@ -1186,7 +1186,7 @@ func TestUnmarshalCLRColumnDataRejectsInvalidLongChunkLengths(t *testing.T) {
 				}
 			}()
 
-			_, _, err := engine.UnmarshalCLRColumnData(context.Background())
+			_, _, err := engine.UnmarshalCLRColumnData(context.Background(), _maximumLongCLRAggregateLength)
 			if err == nil {
 				t.Fatalf("UnmarshalCLRColumnData should have rejected %s", tt.name)
 			}
@@ -1212,7 +1212,7 @@ func TestUnmarshalCLRColumnDataRejectsAggregateLengthAboveMaximum(t *testing.T) 
 		}
 	}()
 
-	_, _, err := engine.UnmarshalCLRColumnData(context.Background())
+	_, _, err := engine.UnmarshalCLRColumnData(context.Background(), _maximumLongCLRAggregateLength)
 	if err == nil {
 		t.Fatal("UnmarshalCLRColumnData should have rejected aggregate length above maximum")
 	}

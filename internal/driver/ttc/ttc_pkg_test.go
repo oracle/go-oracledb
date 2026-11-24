@@ -697,7 +697,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIwrnUnmarshalFrom", Categories: "unitary", Exclusive: false, Fn: TestTTIwrnUnmarshalFrom},
 	{Name: "TestTTIwrnUnmarshalFromRejectsTruncatedMessage", Categories: "unitary", Exclusive: false, Fn: TestTTIwrnUnmarshalFromRejectsTruncatedMessage},
 	{Name: "TestUnmarshalCLRColumnData", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalCLRColumnData},
-	{Name: "TestUnmarshalCLRColumnDataWithMaxLength", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalCLRColumnDataWithMaxLength},
+	{Name: "TestUnmarshalCLRColumnDataEnforcesMaxLength", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalCLRColumnDataEnforcesMaxLength},
 	{Name: "TestUnmarshalCLRColumnDataRejectsAggregateLengthAboveMaximum", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalCLRColumnDataRejectsAggregateLengthAboveMaximum},
 	{Name: "Test_defaultNumericValue", Categories: "unitary", Exclusive: false, Fn: Test_defaultNumericValue},
 	{Name: "Test_defaultValueForNull", Categories: "unitary", Exclusive: false, Fn: Test_defaultValueForNull},

@@ -210,26 +210,15 @@ type Marshaller interface {
 	UnmarshalCLR(context.Context, B1Array, int) (int, error)
 
 	// UnmarshalCLRColumnData reads a CLR column value in short, NULL, or chunked
-	// form using the standard aggregate limit. The limit accounts for scalar CLR
-	// data and the configured LOB prefetch allowance.
+	// form using the supplied maximum length.
 	// Parameters:
 	//   - context: Request context used while reading.
+	//   - maxLength: Maximum payload length, including the configured LOB prefetch allowance when applicable.
 	// Returns:
 	//   - data: Raw value bytes; NULL returns nil.
 	//   - length: Number of value bytes read; NULL returns zero.
-	//   - err: Non-nil if the wire data is malformed, truncated, or exceeds the standard limit.
-	UnmarshalCLRColumnData(context.Context) (B1Array, int, error)
-
-	// UnmarshalCLRColumnDataWithMaxLength reads a CLR column value in short, NULL,
-	// or chunked form, limiting total value bytes to maxLength across all chunks.
-	// Parameters:
-	//   - context: Request context used while reading.
-	//   - maxLength: Maximum number of value bytes to accept.
-	// Returns:
-	//   - data: Raw value bytes; NULL returns nil.
-	//   - length: Number of value bytes read; NULL returns zero.
-	//   - err: Non-nil if the wire data is malformed, truncated, or exceeds maxLength.
-	UnmarshalCLRColumnDataWithMaxLength(context.Context, UB4) (B1Array, int, error)
+	//   - err: Non-nil if the wire data is malformed, truncated, or exceeds the supplied maximum length.
+	UnmarshalCLRColumnData(context.Context, int64) (B1Array, int, error)
 
 	// UnmarshalB1Array Reads an array of bytes
 	// Parameters:

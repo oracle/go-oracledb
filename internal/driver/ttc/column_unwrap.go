@@ -47,6 +47,35 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
+// maxCLRColumnDataLength returns the aggregate payload limit for a CLR column.
+// It uses the larger of the scalar CLR limit and twice the configured LOB
+// prefetch size. If the marshaller does not expose a prefetch size, or its size
+// is nonpositive, the scalar CLR limit is used. The multiplication saturates
+// at MaxInt64 to prevent overflow.
+//
+// Parameters:
+//   - mar: Marshaller used to read the column. MarshalEngine provides its
+//     configured LOB prefetch size; other marshallers use the scalar limit.
+//
+// Returns:
+//   - int64: Maximum aggregate CLR payload length in bytes.
+func maxCLRColumnDataLength(mar driverCommon.Marshaller) int64 {
+	const maxInt64 = int64(1<<63 - 1)
+	maxLength := int64(_maximumLongCLRAggregateLength)
+	provider, ok := mar.(interface{ defaultLobPrefetchSize() int64 })
+	if !ok {
+		return maxLength
+	}
+	prefetchSize := provider.defaultLobPrefetchSize()
+	if prefetchSize <= 0 {
+		return maxLength
+	}
+	if prefetchSize > maxInt64/_longCLRAggregateLengthMultiplier {
+		return maxInt64
+	}
+	return max(maxLength, prefetchSize*_longCLRAggregateLengthMultiplier)
+}
+
 // columnPayload holds raw wire bytes or an already constructed value (for example
 // driver.Rows), with its optional LOB metadata. Byte payloads still use the type
 // decoder; constructed values pass through unchanged. Handlers normalize NULL to nil.
@@ -178,7 +207,7 @@ Errors:
 func unwrapCLRColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
 	var payload columnPayload
 
-	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
+	colData, length, err := mar.UnmarshalCLRColumnData(ctx, maxCLRColumnDataLength(mar))
 	if err != nil {
 		common.Odl.Warn("Failed to unwrap column data column", "index", env.index, "error", err)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
@@ -278,7 +307,7 @@ func unwrapClobColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 		}
 	}
 
-	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
+	colData, length, err := mar.UnmarshalCLRColumnData(ctx, maxCLRColumnDataLength(mar))
 	if err != nil {
 		common.Odl.Error("unwrapClobColumn: failed to read prefetched column data",
 			"error", err, "stage", "prefetched-data", "index", env.index)
@@ -292,7 +321,7 @@ func unwrapClobColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 	// ------------------------------------------
 
 	// locator
-	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
+	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx, maxCLRColumnDataLength(mar)); err != nil {
 		common.Odl.Error("unwrapClobColumn: failed to read LOB locator",
 			"error", err, "stage", "lob-locator", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
@@ -356,7 +385,7 @@ func unwrapBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 
-	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
+	colData, length, err := mar.UnmarshalCLRColumnData(ctx, maxCLRColumnDataLength(mar))
 	if err != nil {
 		common.Odl.Error("unwrapBlobColumn: failed to read prefetched column data",
 			"error", err, "stage", "prefetched-data", "index", env.index)
@@ -370,7 +399,7 @@ func unwrapBlobColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 	// ------------------------------------------
 
 	// locator
-	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
+	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx, maxCLRColumnDataLength(mar)); err != nil {
 		common.Odl.Error("unwrapBlobColumn: failed to read LOB locator",
 			"error", err, "stage", "lob-locator", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
@@ -429,7 +458,7 @@ func unwrapJSONColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}
 
-	colData, length, err := mar.UnmarshalCLRColumnData(ctx)
+	colData, length, err := mar.UnmarshalCLRColumnData(ctx, maxCLRColumnDataLength(mar))
 	if err != nil {
 		common.Odl.Error("unwrapJSONColumn: failed to read prefetched column data",
 			"error", err, "stage", "prefetched-data", "index", env.index)
@@ -441,7 +470,7 @@ func unwrapJSONColumn(ctx context.Context, mar driverCommon.Marshaller, env colu
 		"data", colData)
 	payload = byteColumnPayload(colData)
 
-	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx); err != nil {
+	if lob.LobLocator, _, err = mar.UnmarshalCLRColumnData(ctx, maxCLRColumnDataLength(mar)); err != nil {
 		common.Odl.Error("unwrapJSONColumn: failed to read LOB locator",
 			"error", err, "stage", "lob-locator", "index", env.index)
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
@@ -476,7 +505,7 @@ func byteColumnPayload(data driverCommon.B1Array) columnPayload {
 // unwrapLongColumn reads short, NULL, or chunked LONG/LONG RAW CLR data with
 // the SQL LONG size limit, then consumes the two trailing SB2 row fields.
 func unwrapLongColumn(ctx context.Context, mar driverCommon.Marshaller, _ columnUnwrapContext) (columnPayload, error) {
-	data, _, err := mar.UnmarshalCLRColumnDataWithMaxLength(ctx, converters.MaxLongValueLength)
+	data, _, err := mar.UnmarshalCLRColumnData(ctx, int64(converters.MaxLongValueLength))
 	if err != nil {
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
 	}

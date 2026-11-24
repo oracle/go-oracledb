@@ -262,6 +262,10 @@ func (m *MarshalEngine) setDefaultLobPrefetchSize(prefetchSize int64) {
 	m._defaultLobPrefetchSize = prefetchSize
 }
 
+func (m *MarshalEngine) defaultLobPrefetchSize() int64 {
+	return m._defaultLobPrefetchSize
+}
+
 // marshalSeqNo marshals the next sequence number from the engine's internal
 // counter and returns the value written to the buffer.
 //
@@ -877,51 +881,19 @@ func (m *MarshalEngine) UnmarshalCLR(ctx context.Context, bytes driverCommon.B1A
 // by that many bytes, terminated by an SB4 zero. The 0xFD escape marker is
 // invalid for this format.
 //
-// The total payload is limited to the larger of the scalar CLR limit and twice
-// the configured LOB prefetch size, since this reader also handles prefetched
-// LOB data. Chunk framing bytes are not included in that limit.
+// The total payload is limited to maxLength. Chunk framing bytes are not
+// included in that limit.
 //
 // Parameters:
 //   - ctx: Request context used while reading.
+//   - maxLength: Maximum number of payload bytes to accept.
 //
 // Returns:
 //   - data: Unmarshaled value bytes; NULL returns nil.
 //   - length: Number of value bytes read; NULL returns zero.
 //   - err: Non-nil if the wire data is malformed, truncated, or exceeds the limit.
-func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context) (driverCommon.B1Array, int, error) {
-	return m.unmarshalCLRColumnData(ctx, m.maxCLRColumnDataLength())
-}
-
-// UnmarshalCLRColumnDataWithMaxLength unmarshals a CLR column value with an
-// explicit maximum total payload length, using the same short, NULL, and
-// chunked forms as UnmarshalCLRColumnData. The limit applies to the combined
-// bytes of all chunks, not to the CLR framing bytes.
-//
-// Parameters:
-//   - ctx: Request context used while reading the value.
-//   - maxLength: Maximum number of payload bytes accepted.
-//
-// Returns:
-//   - data: Unmarshaled value bytes; NULL returns nil.
-//   - length: Number of value bytes read; NULL returns zero.
-//   - err: Non-nil if the wire data is malformed, truncated, or exceeds maxLength.
-func (m *MarshalEngine) UnmarshalCLRColumnDataWithMaxLength(ctx context.Context, maxLength driverCommon.UB4) (driverCommon.B1Array, int, error) {
-	return m.unmarshalCLRColumnData(ctx, int64(maxLength))
-}
-
-// maxCLRColumnDataLength returns the standard aggregate payload limit for a CLR
-// column. It is the larger of the scalar CLR limit and twice the configured LOB
-// prefetch size; multiplication saturates to avoid integer overflow.
-func (m *MarshalEngine) maxCLRColumnDataLength() int64 {
-	maxLength := int64(_maximumLongCLRAggregateLength)
-	const maxInt64 = int64(1<<63 - 1)
-	lobPrefetchLength := max(int64(0), m._defaultLobPrefetchSize)
-	if lobPrefetchLength > maxInt64/_longCLRAggregateLengthMultiplier {
-		lobPrefetchLength = maxInt64
-	} else {
-		lobPrefetchLength *= _longCLRAggregateLengthMultiplier
-	}
-	return max(maxLength, lobPrefetchLength)
+func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context, maxLength int64) (driverCommon.B1Array, int, error) {
+	return m.unmarshalCLRColumnData(ctx, maxLength)
 }
 
 // unmarshalCLRColumnData reads and validates one CLR value with the supplied

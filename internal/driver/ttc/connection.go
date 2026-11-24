@@ -369,7 +369,9 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 // checkNamedValue validates sql.Out destinations and returns shelf-localized
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
-	// Preserve LONG bind types for TTC codec selection.
+	// Keep the named types intact: database/sql's default converter would turn
+	// them into string or []byte, losing the type TTC uses to select the
+	// LONG/LONG RAW OAC and encoder.
 	switch nv.Value.(type) {
 	case datatype.Long, datatype.LongRaw:
 		return nil

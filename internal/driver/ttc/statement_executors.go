@@ -811,6 +811,8 @@ func (e *statementProcessor) prepareOACs(rows [][]driverCommon.B1Array, metadata
 						converters.MaxPLSQLLongValueLength)
 				}
 				oacLength = converters.MaxPLSQLLongValueLength
+			} else {
+				oacLength = converters.MaxLongValueLength
 			}
 		}
 		var err error
