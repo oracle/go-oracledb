@@ -121,8 +121,8 @@ func newConnection(
 	if id != nil {
 		conn._logger = common.OdlT(sessCtx.GetClientProperties().GetProperty(driverCommon.SessionUuid).(string))
 	} else {
-				conn._logger = common.OdlT("N/A")
-   }
+		conn._logger = common.OdlT("N/A")
+	}
 
 	if shelf.Shelf.GetDriverConfig().ConnectionProperties.ServerType == common.ServerTypePooled {
 		conn._drcpState = _drcpEnabled
