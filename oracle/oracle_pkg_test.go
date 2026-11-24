@@ -327,7 +327,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OSON_NullDistinction", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NullDistinction},
 	{Name: "TestDriver_OpenConnectorPreservesQuotedInParameters", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorPreservesQuotedInParameters},
 	{Name: "TestDriver_Select_BLOB_Type", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BLOB_Type},
-	{Name: "TestDriver_DRCP_Basic", Categories: "functional", Exclusive: false, Fn: TestDriver_DRCP_Basic},
+	{Name: "TestDriver_DRCP_Basic", Categories: "functional,sanity", Exclusive: false, Fn: TestDriver_DRCP_Basic},
 	{Name: "TestDriver_DRCP_ClassAutoGen", Categories: "functional", Exclusive: false, Fn: TestDriver_DRCP_ClassAutoGen},
 	{Name: "TestDriver_Table_EmptyStringSelect", Categories: "functional", Exclusive: false, Fn: TestDriver_Table_EmptyStringSelect},
 }
