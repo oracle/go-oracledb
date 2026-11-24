@@ -72,6 +72,36 @@ func TestVectorFloat64RoundTrip(t *testing.T) {
 	}
 }
 
+// TestVectorSpecialFloatRoundTrip verifies the codec preserves the IEEE class
+// and sign of NaN and infinity without requiring a special encoding path.
+func TestVectorSpecialFloatRoundTrip(t *testing.T) {
+	float64Wire, err := EncodeVectorFloat64(datatype.VectorFloat64{math.NaN(), math.Inf(1), math.Inf(-1)})
+	if err != nil {
+		t.Fatalf("encode FLOAT64 special values: %v", err)
+	}
+	float64Values, err := DecodeVector(float64Wire)
+	if err != nil {
+		t.Fatalf("decode FLOAT64 special values: %v", err)
+	}
+	got64 := float64Values.([]float64)
+	if !math.IsNaN(got64[0]) || !math.IsInf(got64[1], 1) || !math.IsInf(got64[2], -1) {
+		t.Fatalf("FLOAT64 special values = %v", got64)
+	}
+
+	float32Wire, err := EncodeVectorFloat32(datatype.VectorFloat32{float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))})
+	if err != nil {
+		t.Fatalf("encode FLOAT32 special values: %v", err)
+	}
+	float32Values, err := DecodeVector(float32Wire)
+	if err != nil {
+		t.Fatalf("decode FLOAT32 special values: %v", err)
+	}
+	got32 := float32Values.([]float32)
+	if !math.IsNaN(float64(got32[0])) || !math.IsInf(float64(got32[1]), 1) || !math.IsInf(float64(got32[2]), -1) {
+		t.Fatalf("FLOAT32 special values = %v", got32)
+	}
+}
+
 // TestVectorPublicEncodersValidateTypeAndNil verifies public encoders reject
 // mismatched values and preserve typed nil vectors as SQL NULL.
 func TestVectorPublicEncodersValidateTypeAndNil(t *testing.T) {

@@ -41,6 +41,7 @@ package oracle
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"testing"
 
@@ -71,14 +72,15 @@ func TestDriver_Vector_Basic(t *testing.T) {
 		table       string
 		definition  string
 		insert      any
+		null        any
 		want        any
 		update      any
 		updatedWant any
 	}{
-		{"float64", "vector_f64", "VECTOR(1024, FLOAT64)", values, []float64(values), updatedValues, []float64(updatedValues)},
-		{"float32", "vector_f32", "VECTOR(3, FLOAT32)", datatype.VectorFloat32{4.5, -5.25, 6.75}, []float32{4.5, -5.25, 6.75}, datatype.VectorFloat32{-1.5, 2.25, 9.75}, []float32{-1.5, 2.25, 9.75}},
-		{"int8", "vector_i8", "VECTOR(3, INT8)", datatype.VectorInt8{1, -2, 3}, []int8{1, -2, 3}, datatype.VectorInt8{-8, 0, 7}, []int8{-8, 0, 7}},
-		{"binary", "vector_binary", "VECTOR(16, BINARY)", datatype.VectorBinary{0xAA, 0x0F}, []byte{0xAA, 0x0F}, datatype.VectorBinary{0x55, 0xF0}, []byte{0x55, 0xF0}},
+		{"float64", "vector_f64", "VECTOR(1024, FLOAT64)", values, datatype.VectorFloat64(nil), []float64(values), updatedValues, []float64(updatedValues)},
+		{"float32", "vector_f32", "VECTOR(3, FLOAT32)", datatype.VectorFloat32{4.5, -5.25, 6.75}, datatype.VectorFloat32(nil), []float32{4.5, -5.25, 6.75}, datatype.VectorFloat32{-1.5, 2.25, 9.75}, []float32{-1.5, 2.25, 9.75}},
+		{"int8", "vector_i8", "VECTOR(3, INT8)", datatype.VectorInt8{1, -2, 3}, datatype.VectorInt8(nil), []int8{1, -2, 3}, datatype.VectorInt8{-8, 0, 7}, []int8{-8, 0, 7}},
+		{"binary", "vector_binary", "VECTOR(16, BINARY)", datatype.VectorBinary{0xAA, 0x0F}, datatype.VectorBinary(nil), []byte{0xAA, 0x0F}, datatype.VectorBinary{0x55, 0xF0}, []byte{0x55, 0xF0}},
 	}
 
 	for _, tc := range tests {
@@ -99,6 +101,18 @@ func TestDriver_Vector_Basic(t *testing.T) {
 				t.Fatalf("insert: %v", err)
 			} else if count, err := result.RowsAffected(); err != nil || count != 1 {
 				t.Fatalf("insert rows affected: got %d, err=%v", count, err)
+			}
+			if result, err := db.ExecContext(ctx, fmt.Sprintf("INSERT INTO %s (id, vec) VALUES (:1, :2)", tc.table), 2, tc.null); err != nil {
+				t.Fatalf("insert NULL: %v", err)
+			} else if count, err := result.RowsAffected(); err != nil || count != 1 {
+				t.Fatalf("insert NULL rows affected: got %d, err=%v", count, err)
+			}
+			var nullable any
+			if err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT vec FROM %s WHERE id = :1", tc.table), 2).Scan(&nullable); err != nil {
+				t.Fatalf("fetch NULL: %v", err)
+			}
+			if nullable != nil {
+				t.Fatalf("fetched NULL VECTOR = %T(%v), want nil", nullable, nullable)
 			}
 
 			assertVector := func(want any) {
@@ -134,6 +148,85 @@ func TestDriver_Vector_Basic(t *testing.T) {
 			} else if count, err := result.RowsAffected(); err != nil || count != 1 {
 				t.Fatalf("delete rows affected: got %d, err=%v", count, err)
 			}
+		})
+	}
+}
+
+// TestDriver_Vector_SpecialFloatValues verifies FLOAT32 and FLOAT64 VECTOR
+// values preserve NaN and positive and negative infinity through Oracle.
+func TestDriver_Vector_SpecialFloatValues(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+	if TestingConfig.DatabaseVersion.Major < 23 {
+		t.Skip("VECTOR datatype requires Oracle Database 23c+")
+	}
+
+	ctx := context.Background()
+	tests := []struct {
+		name       string
+		table      string
+		definition string
+		value      any
+		assert     func(*testing.T, any)
+	}{
+		{
+			name:       "float64",
+			table:      "vector_special_f64",
+			definition: "VECTOR(3, FLOAT64)",
+			value:      datatype.VectorFloat64{math.NaN(), math.Inf(1), math.Inf(-1)},
+			assert: func(t *testing.T, value any) {
+				t.Helper()
+				got := value.([]float64)
+				if len(got) != 3 || !math.IsNaN(got[0]) || !math.IsInf(got[1], 1) || !math.IsInf(got[2], -1) {
+					t.Fatalf("special FLOAT64 VECTOR = %v", got)
+				}
+			},
+		},
+		{
+			name:       "float32",
+			table:      "vector_special_f32",
+			definition: "VECTOR(3, FLOAT32)",
+			value:      datatype.VectorFloat32{float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))},
+			assert: func(t *testing.T, value any) {
+				t.Helper()
+				got := value.([]float32)
+				if len(got) != 3 || !math.IsNaN(float64(got[0])) || !math.IsInf(float64(got[1]), 1) || !math.IsInf(float64(got[2]), -1) {
+					t.Fatalf("special FLOAT32 VECTOR = %v", got)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db, err := openTestDBWithConfig(TestingConfig)
+			if err != nil {
+				t.Fatalf("open test database: %v", err)
+			}
+			defer db.Close()
+
+			_ = dropTable(ctx, db, tc.table)
+			if err := createTable(ctx, db, tc.table, map[string]string{"id": "NUMBER PRIMARY KEY", "vec": tc.definition}); err != nil {
+				t.Fatalf("create table: %v", err)
+			}
+			defer func() { _ = dropTable(ctx, db, tc.table) }()
+
+			if _, err := db.ExecContext(ctx, fmt.Sprintf("INSERT INTO %s (id, vec) VALUES (:1, :2)", tc.table), 1, tc.value); err != nil {
+				t.Fatalf("insert special values: %v", err)
+			}
+
+			var got any
+			switch tc.name {
+			case "float64":
+				got = new([]float64)
+			case "float32":
+				got = new([]float32)
+			}
+			if err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT vec FROM %s WHERE id = :1", tc.table), 1).Scan(got); err != nil {
+				t.Fatalf("fetch special values: %v", err)
+			}
+			tc.assert(t, reflect.ValueOf(got).Elem().Interface())
 		})
 	}
 }
