@@ -1058,15 +1058,12 @@ func (target attemptTarget) dialHost() string {
 // Output:
 //   - *ConnectionAttemptIterator: an iterator that yields one fully configured
 //     attempt at a time.
-//   - error: missing plans, base configuration, or connection ID; or context
-//     cancellation while pre-resolving selected description targets.
+//   - error: missing plans, base configuration, or connection ID; invalid
+//     access-point configuration; or context cancellation while resolving targets.
 func (plans *ConnectionPlans) NewConnectionAttemptIterator(ctx context.Context, connectionID string) (*ConnectionAttemptIterator, error) {
 
 	if connectionID == "" {
 		return nil, common.NewOracleError(oracleErrors.InternalError, fmt.Errorf("connection ID is required"))
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 
 	// Step 1: use the already merged base configuration directly. HandleDsn
@@ -1209,40 +1206,48 @@ func (iterator *ConnectionAttemptIterator) Next() (*ConnectionAttempt, error) {
 // Output:
 //   - *descriptionCursor: description settings, retry policy, and ordered
 //     candidate endpoints. Its effective configuration is loaded on demand.
-//   - error: context cancellation while resolving candidate endpoints.
+//   - error: invalid access-point configuration or context cancellation while
+//     resolving candidate endpoints.
 func (iterator *ConnectionAttemptIterator) newDescriptionCursor(index int) (*descriptionCursor, error) {
-	source := iterator.plans.Plan.Descriptions[index]
-	description := cloneConnectionDescription(source)
+	description := cloneConnectionDescription(iterator.plans.Plan.Descriptions[index])
+	if err := validateTaggedConfigurationStruct(&description); err != nil {
+		return nil, err
+	}
+	baseRetryCount, err := validateRetryCount(
+		reflect.ValueOf(iterator.baseConfig.ConnectionProperties.RetryCount), "RETRY_COUNT")
+	if err != nil {
+		return nil, err
+	}
 	// Step 1: resolve retry and address-selection policy from validated base
 	// defaults, then apply explicit DESCRIPTION values over those defaults.
 	policy := attemptPolicy{
 		failover:    iterator.baseConfig.ConnectionProperties.Failover,
 		loadBalance: iterator.baseConfig.ConnectionProperties.LoadBalance,
 		sourceRoute: iterator.baseConfig.ConnectionProperties.SourceRoute,
-		retryCount:  iterator.baseConfig.ConnectionProperties.RetryCount,
+		retryCount:  baseRetryCount.(int),
 		retryDelay:  time.Duration(iterator.baseConfig.ConnectionProperties.RetryDelay) * time.Second,
 	}
 	if iterator.plans.Plan.SourceRoute != nil {
 		policy.sourceRoute = *iterator.plans.Plan.SourceRoute
 	}
-	if source.Failover != nil {
-		policy.failover = *source.Failover
+	if description.Failover != nil {
+		policy.failover = *description.Failover
 	}
-	if source.LoadBalance != nil {
-		policy.loadBalance = *source.LoadBalance
+	if description.LoadBalance != nil {
+		policy.loadBalance = *description.LoadBalance
 	}
-	if source.SourceRoute != nil {
-		policy.sourceRoute = *source.SourceRoute
+	if description.SourceRoute != nil {
+		policy.sourceRoute = *description.SourceRoute
 	}
-	if source.RetryCount != nil {
-		policy.retryCount = *source.RetryCount
+	if description.RetryCount != nil {
+		policy.retryCount = *description.RetryCount
 	}
-	if source.RetryDelay != nil {
-		policy.retryDelay = *source.RetryDelay
+	if description.RetryDelay != nil {
+		policy.retryDelay = *description.RetryDelay
 	}
 	// Step 2: flatten address groups into candidate targets while honoring each
 	// group's load-balance and failover settings.
-	groups := source.AddressGroups
+	groups := description.AddressGroups
 	if len(groups) == 0 && len(iterator.plans.Plan.AddressGroups) > 0 {
 		groups = iterator.plans.Plan.AddressGroups
 	}
@@ -1299,7 +1304,7 @@ func (iterator *ConnectionAttemptIterator) newDescriptionCursor(index int) (*des
 //     are already resolved.
 //
 // Output:
-//   - error: configuration validation failure or invalid retry settings.
+//   - error: configuration validation failure or negative retry delay.
 func (iterator *ConnectionAttemptIterator) resolveDescriptionConfig(cursor *descriptionCursor) error {
 	if cursor.effectiveConfig != nil {
 		return nil
@@ -1308,9 +1313,6 @@ func (iterator *ConnectionAttemptIterator) resolveDescriptionConfig(cursor *desc
 	applyDescriptionConfig(config, cursor.description)
 	if err := config.Validate(); err != nil {
 		return err
-	}
-	if cursor.policy.retryCount < 0 {
-		return fmt.Errorf("retry count cannot be negative")
 	}
 	if cursor.policy.retryDelay < 0 {
 		return fmt.Errorf("retry delay cannot be negative")
@@ -1332,8 +1334,14 @@ func (iterator *ConnectionAttemptIterator) resolveDescriptionConfig(cursor *desc
 //
 // Output:
 //   - []attemptTarget: one target per resolved IP, or one hostname fallback.
-//   - error: context cancellation while preparing the attempt list.
+//   - error: invalid access-point configuration or context cancellation while
+//     preparing the attempt list.
 func (iterator *ConnectionAttemptIterator) resolveAccessPoint(group ConnectionAddressGroup, accessPoint RemoteAccessPoint, sourceRoute bool) ([]attemptTarget, error) {
+	// Validate and normalize each endpoint before DNS resolution so every
+	// generated target carries a complete protocol, host, and listener port.
+	if err := accessPoint.Validate(); err != nil {
+		return nil, err
+	}
 	ips, err := driverCommon.ResolveHost(iterator.ctx, accessPoint.Host)
 	if err != nil {
 		if iterator.ctx.Err() != nil {
@@ -1475,26 +1483,12 @@ func stablePartition[T any](items []T, moveToEnd func(T) bool) {
 // Output:
 //   - *ConnectionAttempt: an immutable snapshot of the effective config,
 //     transport options, connect data, and target descriptor.
-//   - error: invalid endpoint data or configuration validation failure.
+//   - error: DESCRIPTION configuration validation failure or invalid transport
+//     settings after the endpoint has been prepared.
 func (iterator *ConnectionAttemptIterator) resolveSelectedTarget(cursor *descriptionCursor, target attemptTarget) (*ConnectionAttempt, error) {
-	// Step 1: validate and normalize the selected endpoint before using it to
-	// configure either the socket or the Oracle Net descriptor.
-	protocol, err := driverCommon.NormalizeProtocol(target.accessPoint.Protocol.String())
-	if err != nil {
-		return nil, fmt.Errorf("invalid protocol for connection attempt: %w", err)
-	}
-	if target.accessPoint.Host == "" {
-		return nil, fmt.Errorf("connection attempt host is empty")
-	}
-	if target.accessPoint.Port < 0 || target.accessPoint.Port > 65535 {
-		return nil, fmt.Errorf("connection attempt port %d is outside the valid range 0..65535", target.accessPoint.Port)
-	}
-	target.accessPoint.Protocol = protocol
-	if target.accessPoint.Port == 0 {
-		target.accessPoint.Port = 1521
-	}
-
-	// Step 2: clone the resolved DESCRIPTION config and apply the selected
+	// The endpoint has already been validated and normalized before DNS
+	// resolution; only attempt-specific configuration is applied here.
+	// Step 1: clone the resolved DESCRIPTION config and apply the selected
 	// ADDRESS overrides. This snapshot is isolated from other attempts.
 	config := cursor.effectiveConfig.Clone()
 	applyAddressConfig(config, target.accessPoint)
@@ -1502,7 +1496,7 @@ func (iterator *ConnectionAttemptIterator) resolveSelectedTarget(cursor *descrip
 		return nil, err
 	}
 
-	// Step 3: merge query CONNECT_DATA with the selected DESCRIPTION's values;
+	// Step 2: merge query CONNECT_DATA with the selected DESCRIPTION's values;
 	// the more specific descriptor values take precedence.
 	connectData, connectDataSet := mergeConnectData(iterator.queryConnectData, iterator.queryConnectDataSet,
 		cursor.description.ConnectData, cursor.description.ConnectDataSet)
@@ -1512,7 +1506,7 @@ func (iterator *ConnectionAttemptIterator) resolveSelectedTarget(cursor *descrip
 	resolvedCursor := *cursor
 	resolvedCursor.description = description
 
-	// Step 4: build transport settings and preserve remaining scoped parameters,
+	// Step 3: build transport settings and preserve remaining scoped parameters,
 	// then capture the selected endpoint and descriptor in the attempt.
 	transportOptions, err := buildTransportOptions(config, &resolvedCursor, target)
 	if err != nil {

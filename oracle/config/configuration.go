@@ -52,6 +52,7 @@ import (
 	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 	"golang.org/x/text/language"
 )
@@ -190,9 +191,9 @@ type OracleConnectionProperties struct {
 	// GlobalName identifies the requested global database name.
 	GlobalName string `ns_name:"global_name" tns_section:"CONNECT_DATA" help:"sets the requested global database name"`
 
-	// RetryCount sets how many times the configured host list is traversed when
-	// attempting to connect.
-	RetryCount int `ns_name:"retry_count" default:"0" help:"sets the number of times the list of hosts is traversed when attempting to connect to Oracle Database"`
+	// RetryCount sets how many additional times the configured host list is
+	// traversed when attempting to connect. Negative values are normalized to 0.
+	RetryCount int `ns_name:"retry_count" default:"0" validator:"validateRetryCount" help:"sets the number of times the list of hosts is traversed when attempting to connect to Oracle Database"`
 
 	// RetryDelay sets the delay, in seconds, between retries of host-list
 	// traversal.
@@ -1095,6 +1096,10 @@ func init() {
 	_fieldsValidators["validateLoggingLevel"] = validateLoggingLevel
 	_fieldsValidators["validateUserName"] = validateUserName
 	_fieldsValidators["validateServerType"] = validateServerType
+	_fieldsValidators["validatePort"] = validatePort
+	_fieldsValidators["validateProtocol"] = validateProtocol
+	_fieldsValidators["validateHost"] = validateHost
+	_fieldsValidators["validateRetryCount"] = validateRetryCount
 
 	// populates flags for each driver config items
 	NewOracleDriverConfig().populateFlags()
@@ -1309,6 +1314,213 @@ func validateZeroOrPositive(value reflect.Value, valueName string) (any, error) 
 			[]string{"int64"})
 
 	}
+}
+
+// validatePort validates a TCP listener port and returns it as an int.
+//
+// Input:
+//   - value: decimal port text or an integer value.
+//   - valueName: configuration or descriptor field name used in errors.
+//
+// Output:
+//   - any: the validated port as an int.
+//   - error: non-nil unless the value is an integer from 1 through 65535.
+func validatePort(value reflect.Value, valueName string) (any, error) {
+	var port int64
+	switch value.Kind() {
+	case reflect.String:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value.String()), 10, 32)
+		if err != nil {
+			return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, err,
+				value.String(), valueName, "integer from 1 through 65535")
+		}
+		port = parsed
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		port = value.Int()
+	default:
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+			value, valueName, "integer from 1 through 65535")
+	}
+	if port < 1 || port > 65535 {
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+			port, valueName, "integer from 1 through 65535")
+	}
+	return int(port), nil
+}
+
+// validateRetryCount parses a retry count and normalizes negative values to 0.
+//
+// Input:
+//   - value: decimal retry-count text or an integer value.
+//   - valueName: configuration or descriptor field name used in errors.
+//
+// Output:
+//   - any: the retry count as a non-negative int.
+//   - error: non-nil when the value cannot be parsed as an integer.
+func validateRetryCount(value reflect.Value, valueName string) (any, error) {
+	var retryCount int64
+	switch value.Kind() {
+	case reflect.String:
+		parsed, err := strconv.Atoi(strings.TrimSpace(value.String()))
+		if err != nil {
+			return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, err,
+				value.String(), valueName, "integer")
+		}
+		retryCount = int64(parsed)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		retryCount = value.Int()
+	default:
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+			value, valueName, "integer")
+	}
+	if retryCount < 0 {
+		retryCount = 0
+	}
+	return int(retryCount), nil
+}
+
+// validateProtocol normalizes supported Oracle Net protocols.
+//
+// Input:
+//   - value: a protocol string or a driver protocol value.
+//   - valueName: configuration or descriptor field name used in errors.
+//
+// Output:
+//   - any: the normalized TCP or TCPS protocol.
+//   - error: non-nil when the value is not TCP or TCPS.
+func validateProtocol(value reflect.Value, valueName string) (any, error) {
+	var protocol driverCommon.Protocol
+	switch value.Kind() {
+	case reflect.String:
+		normalized, err := driverCommon.NormalizeProtocol(value.String())
+		if err != nil {
+			return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, err,
+				value.String(), valueName, "TCP or TCPS")
+		}
+		protocol = normalized
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		protocol = driverCommon.Protocol(value.Int())
+		if protocol.String() == "" {
+			return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+				value.Int(), valueName, "TCP or TCPS")
+		}
+	default:
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+			value, valueName, "TCP or TCPS")
+	}
+	return protocol, nil
+}
+
+// validateHost trims and checks a database listener hostname.
+//
+// Input:
+//   - value: host text to validate.
+//   - valueName: configuration or descriptor field name used in errors.
+//
+// Output:
+//   - any: the trimmed host string.
+//   - error: non-nil when the host is empty or not a string.
+func validateHost(value reflect.Value, valueName string) (any, error) {
+	if value.Kind() != reflect.String {
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+			value, valueName, "non-empty host")
+	}
+	host := strings.TrimSpace(value.String())
+	if host == "" {
+		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, nil,
+			host, valueName, "non-empty host")
+	}
+	return host, nil
+}
+
+// validateTaggedConfigurationStruct applies declared defaults and validators
+// to fields of a configuration value. Field tags remain the source of truth
+// for which settings are normalized and how.
+//
+// Input:
+//   - value: non-nil pointer to a struct whose field tags declare validators
+//     and optional defaults.
+//
+// Output:
+//   - error: invalid value, unknown validator, or incompatible validator result.
+func validateTaggedConfigurationStruct(value any) error {
+	structValue := reflect.ValueOf(value)
+	if !structValue.IsValid() || structValue.Kind() != reflect.Ptr || structValue.IsNil() || structValue.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("configuration validation requires a non-nil pointer to a struct")
+	}
+	structValue = structValue.Elem()
+	for index := 0; index < structValue.NumField(); index++ {
+		fieldInfo := structValue.Type().Field(index)
+		validatorName := fieldInfo.Tag.Get("validator")
+		if validatorName == "" {
+			continue
+		}
+		validator, ok := _fieldsValidators[validatorName]
+		if !ok {
+			return fmt.Errorf("unknown configuration validator %q on %s", validatorName, fieldInfo.Name)
+		}
+		field := structValue.Field(index)
+		valueName := strings.ToUpper(strings.TrimSpace(fieldInfo.Tag.Get("ns_name")))
+		if valueName == "" {
+			valueName = fieldInfo.Name
+		}
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				if fieldInfo.Tag.Get("default") == "" {
+					continue
+				}
+				field.Set(reflect.New(field.Type().Elem()))
+			}
+			field = field.Elem()
+		}
+		if field.IsZero() {
+			if defaultValue := fieldInfo.Tag.Get("default"); defaultValue != "" {
+				defaultResult, err := validator(reflect.ValueOf(defaultValue), valueName)
+				if err != nil {
+					return err
+				}
+				if err := setReflectedField(field, defaultResult); err != nil {
+					return err
+				}
+			}
+		}
+		validated, err := validator(field, valueName)
+		if err != nil {
+			return err
+		}
+		if err := setReflectedField(field, validated); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setReflectedField stores a validator result in a settable field when its
+// type is assignable or convertible to the field type.
+//
+// Input:
+//   - field: settable configuration field to update.
+//   - value: validator result to assign.
+//
+// Output:
+//   - error: field cannot be set or the result is incompatible with its type.
+func setReflectedField(field reflect.Value, value any) error {
+	if !field.CanSet() {
+		return fmt.Errorf("configuration field %s is not settable", field.Type())
+	}
+	result := reflect.ValueOf(value)
+	if !result.IsValid() {
+		return fmt.Errorf("configuration validator returned no value for %s", field.Type())
+	}
+	if result.Type().AssignableTo(field.Type()) {
+		field.Set(result)
+		return nil
+	}
+	if result.Type().ConvertibleTo(field.Type()) {
+		field.Set(result.Convert(field.Type()))
+		return nil
+	}
+	return fmt.Errorf("configuration validator returned %s for field type %s", result.Type(), field.Type())
 }
 
 // validateDurationString parses a duration string and returns its canonical

@@ -293,6 +293,9 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OpenConnectorCommonParamsFromConf", Categories: "functional", Exclusive: false, Fn: TestDriver_OpenConnectorCommonParamsFromConf},
 	{Name: "TestDriver_OpenConnectorCommonParamsFromTSNDSN", Categories: "functional", Exclusive: false, Fn: TestDriver_OpenConnectorCommonParamsFromTSNDSN},
 	{Name: "TestDriver_OpenConnectorCommonParamsFromEZCDSN", Categories: "functional", Exclusive: false, Fn: TestDriver_OpenConnectorCommonParamsFromEZCDSN},
+	{Name: "TestDriver_OpenConnectorTransportConnectTimeoutFromConf", Categories: "functional", Exclusive: false, Fn: TestDriver_OpenConnectorTransportConnectTimeoutFromConf},
+	{Name: "TestDriver_OpenConnectorTransportConnectTimeoutFromTSNDSN", Categories: "functional", Exclusive: false, Fn: TestDriver_OpenConnectorTransportConnectTimeoutFromTSNDSN},
+	{Name: "TestDriver_OpenConnectorTransportConnectTimeoutFromEZCDSN", Categories: "functional", Exclusive: false, Fn: TestDriver_OpenConnectorTransportConnectTimeoutFromEZCDSN},
 }
 
 func TestCategoryExecutor(t *testing.T) {

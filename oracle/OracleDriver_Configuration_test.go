@@ -647,3 +647,136 @@ func TestDriver_OpenConnectorCommonParamsFromEZCDSN(t *testing.T) {
 		t.Fatalf("connection using server type failed: %v", err)
 	}
 }
+
+// TestDriver_OpenConnectorTransportConnectTimeoutFromConf verifies that a
+// connector-config timeout reaches the transport and remains usable for Exec
+// and Query operations.
+func TestDriver_OpenConnectorTransportConnectTimeoutFromConf(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const timeoutSeconds = 30
+	config := NewOracleDriverConfig()
+	config.ConnectDescriptor = TestingConfig.GetConnectionDSN()
+	config.Credentials.User = TestingConfig.Credentials.Username
+	config.Credentials.Password = TestingConfig.Credentials.Password
+	config.ConnectionProperties.TransportConnectTimeout = timeoutSeconds
+
+	connector, err := NewOracleConnector(config)
+	if err != nil {
+		t.Fatalf("creating connector: %v", err)
+	}
+	checkTransportConnectTimeoutAndUseConnection(t, connector.(*oracleConnector), timeoutSeconds)
+}
+
+// TestDriver_OpenConnectorTransportConnectTimeoutFromTSNDSN verifies that a
+// TNS DESCRIPTION timeout reaches the transport and remains usable for Exec
+// and Query operations.
+func TestDriver_OpenConnectorTransportConnectTimeoutFromTSNDSN(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const timeoutSeconds = 30
+	connectData := ""
+	if serviceName := strings.TrimSpace(TestingConfig.Database.ServiceName); serviceName != "" {
+		connectData = fmt.Sprintf("(CONNECT_DATA=(SERVICE_NAME=%s))", serviceName)
+	} else if sid := strings.TrimSpace(TestingConfig.Database.SIDName); sid != "" {
+		connectData = fmt.Sprintf("(CONNECT_DATA=(SID=%s))", sid)
+	} else {
+		t.Skip("test database configuration has no service name or SID")
+	}
+	protocol := strings.ToUpper(strings.TrimSpace(TestingConfig.Database.Protocol))
+	if protocol == "" {
+		protocol = "TCP"
+	}
+	dsn := fmt.Sprintf("%s/%s@(DESCRIPTION=(TRANSPORT_CONNECT_TIMEOUT=%d)(ADDRESS=(PROTOCOL=%s)(HOST=%s)(PORT=%d))%s)",
+		TestingConfig.Credentials.Username, TestingConfig.Credentials.Password,
+		timeoutSeconds, protocol, TestingConfig.Database.Host,
+		TestingConfig.Database.Port, connectData)
+	config := NewOracleDriverConfig()
+	config.ConnectDescriptor = dsn
+
+	connector, err := NewOracleConnector(config)
+	if err != nil {
+		t.Fatalf("creating connector: %v", err)
+	}
+	checkTransportConnectTimeoutAndUseConnection(t, connector.(*oracleConnector), timeoutSeconds)
+}
+
+// TestDriver_OpenConnectorTransportConnectTimeoutFromEZCDSN verifies that an
+// EZConnect query timeout reaches the transport and remains usable for Exec
+// and Query operations.
+func TestDriver_OpenConnectorTransportConnectTimeoutFromEZCDSN(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+	serviceName := strings.TrimSpace(TestingConfig.Database.ServiceName)
+	if serviceName == "" {
+		t.Skip("test database configuration has no service name for EZConnect")
+	}
+
+	const timeoutSeconds = 30
+	protocol := strings.ToLower(strings.TrimSpace(TestingConfig.Database.Protocol))
+	if protocol == "" {
+		protocol = "tcp"
+	}
+	dsn := fmt.Sprintf("%s/%s@%s://%s:%d/%s?transport_connect_timeout=%d",
+		TestingConfig.Credentials.Username, TestingConfig.Credentials.Password,
+		protocol, TestingConfig.Database.Host, TestingConfig.Database.Port,
+		serviceName, timeoutSeconds)
+	connector, err := NewDriver().openConnector(dsn)
+	if err != nil {
+		t.Fatalf("creating connector: %v", err)
+	}
+	checkTransportConnectTimeoutAndUseConnection(t, connector.(*oracleConnector), timeoutSeconds)
+}
+
+// checkTransportConnectTimeoutAndUseConnection checks the effective attempt
+// settings, then executes one statement and queries one row through the connector.
+func checkTransportConnectTimeoutAndUseConnection(t *testing.T, connector *oracleConnector, timeoutSeconds int) {
+	t.Helper()
+	iterator, err := connector.connectionPlans.NewConnectionAttemptIterator(context.Background(), "transport-timeout-test")
+	if err != nil {
+		t.Fatalf("creating connection attempt iterator: %v", err)
+	}
+	attempt, err := iterator.Next()
+	if err != nil {
+		t.Fatalf("resolving connection attempt: %v", err)
+	}
+	expectedDuration := time.Duration(timeoutSeconds) * time.Second
+	if got := attempt.GetEffectiveConfig().ConnectionProperties.TransportConnectTimeout; got != timeoutSeconds {
+		t.Fatalf("effective config transport connect timeout = %d seconds, want %d", got, timeoutSeconds)
+	}
+	if got := attempt.GetTransportConnectTimeout(); got != expectedDuration {
+		t.Fatalf("transport option timeout = %v, want %v", got, expectedDuration)
+	}
+	wantDescriptorValue := "(TRANSPORT_CONNECT_TIMEOUT=" + expectedDuration.String() + ")"
+	if !strings.Contains(strings.ToLower(attempt.GetConnectDescriptor()), strings.ToLower(wantDescriptorValue)) {
+		t.Fatalf("connect descriptor does not contain %s: %s", wantDescriptorValue, attempt.GetConnectDescriptor())
+	}
+
+	db := sql.OpenDB(connector)
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("closing database: %v", err)
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if _, err := db.ExecContext(ctx, "BEGIN NULL; END;"); err != nil {
+		t.Fatalf("Exec using configured transport timeout failed: %v", err)
+	}
+	var value int
+	if err := db.QueryRowContext(ctx, "SELECT 1 FROM DUAL").Scan(&value); err != nil {
+		t.Fatalf("Query using configured transport timeout failed: %v", err)
+	}
+	if value != 1 {
+		t.Fatalf("Query returned %d, want 1", value)
+	}
+}

@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -443,7 +442,7 @@ func TestConnectionAttemptIteratorHandlesManyTargets(t *testing.T) {
 
 func intPointer(value int) *int { return &value }
 
-func TestConnectionAttemptIteratorRejectsNegativeRetryCount(t *testing.T) {
+func TestConnectionAttemptIteratorNormalizesNegativeRetryCount(t *testing.T) {
 	t.Parallel()
 	description := newAttemptTestDescription("192.0.2.131")
 	retryCount := -1
@@ -453,8 +452,15 @@ func TestConnectionAttemptIteratorRejectsNegativeRetryCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewConnectionAttemptIterator failed before validating selected DESCRIPTION: %v", err)
 	}
-	if _, err := iterator.Next(); err == nil || !strings.Contains(err.Error(), "retry count cannot be negative") {
-		t.Fatalf("iterator.Next error = %v, want negative retry count validation error", err)
+	attempt, err := iterator.Next()
+	if err != nil {
+		t.Fatalf("iterator.Next failed: %v", err)
+	}
+	if got := attempt.GetRetryCount(); got != 0 {
+		t.Fatalf("attempt retry count = %d, want 0", got)
+	}
+	if _, err := iterator.Next(); err != io.EOF {
+		t.Fatalf("iterator.Next after one attempt = %v, want io.EOF", err)
 	}
 }
 

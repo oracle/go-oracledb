@@ -456,7 +456,6 @@ func TestHandleDsnRejectsInvalidTNSValues(t *testing.T) {
 	}{
 		{name: "invalid description boolean", dsn: `(DESCRIPTION=(USE_SNI=maybe)(ADDRESS=(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
 		{name: "negative duration", dsn: `(DESCRIPTION=(CONNECT_TIMEOUT=-1)(ADDRESS=(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
-		{name: "negative integer", dsn: `(DESCRIPTION=(RETRY_COUNT=-1)(ADDRESS=(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
 		{name: "invalid address protocol", dsn: `(DESCRIPTION=(ADDRESS=(PROTOCOL=HTTP)(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
 		{name: "invalid listener port", dsn: `(DESCRIPTION=(ADDRESS=(HOST=192.0.2.61)(PORT=65536))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
 		{name: "invalid proxy port", dsn: `(DESCRIPTION=(ADDRESS=(HOST=192.0.2.61)(HTTPS_PROXY=proxy)(HTTPS_PROXY_PORT=65536))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
@@ -469,6 +468,39 @@ func TestHandleDsnRejectsInvalidTNSValues(t *testing.T) {
 			t.Parallel()
 			if _, err := HandleDsn(test.dsn, NewOracleDriverConfig()); err == nil {
 				t.Fatalf("HandleDsn accepted invalid descriptor: %s", test.dsn)
+			}
+		})
+	}
+}
+
+func TestHandleDsnNormalizesNegativeRetryCount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		dsn  string
+	}{
+		{
+			name: "TNS descriptor",
+			dsn:  `(DESCRIPTION=(RETRY_COUNT=-1)(ADDRESS=(PROTOCOL=TCP)(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)))`,
+		},
+		{
+			name: "EZConnect query",
+			dsn:  `tcp://192.0.2.61:1521/svc?retry_count=-1`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			plans, err := HandleDsn(test.dsn, NewOracleDriverConfig())
+			if err != nil {
+				t.Fatalf("HandleDsn failed: %v", err)
+			}
+			if got := plans.BaseConfig.ConnectionProperties.RetryCount; got != 0 {
+				t.Errorf("base retry count = %d, want 0", got)
+			}
+			if plans.Plan.Descriptions[0].RetryCount != nil && *plans.Plan.Descriptions[0].RetryCount != 0 {
+				t.Errorf("description retry count = %d, want 0", *plans.Plan.Descriptions[0].RetryCount)
 			}
 		})
 	}
@@ -1297,11 +1329,12 @@ func TestValidatePort(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		port    string
+		want    int
 		wantErr bool
 	}{
-		{port: "1"},
-		{port: "1521"},
-		{port: "65535"},
+		{port: "1", want: 1},
+		{port: "1521", want: 1521},
+		{port: "65535", want: 65535},
 		{port: "0", wantErr: true},
 		{port: "-1", wantErr: true},
 		{port: "65536", wantErr: true},
@@ -1312,13 +1345,16 @@ func TestValidatePort(t *testing.T) {
 		test := test
 		t.Run(test.port, func(t *testing.T) {
 			t.Parallel()
-			err := validatePort(test.port)
+			value, err := validatePort(reflect.ValueOf(test.port), "PORT")
 			if test.wantErr {
-				assertConfigErrorCode(t, err, oracleErrors.NamingEzConnectError)
+				assertConfigErrorCode(t, err, oracleErrors.InvalidConnectionParameter)
 				return
 			}
 			if err != nil {
 				t.Fatalf("validatePort(%q) returned unexpected error: %v", test.port, err)
+			}
+			if got, ok := value.(int); !ok || got != test.want {
+				t.Fatalf("validatePort(%q) = %v, want int %d", test.port, value, test.want)
 			}
 		})
 	}

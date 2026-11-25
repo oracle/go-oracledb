@@ -400,8 +400,9 @@ type ConnectionDescription struct {
 	UseSNI *bool `ns_name:"use_sni"`
 	// ConnectTimeout limits the overall connection establishment time.
 	ConnectTimeout *time.Duration `ns_name:"connect_timeout"`
-	// RetryCount is the number of additional passes over the selected addresses.
-	RetryCount *int `ns_name:"retry_count"`
+	// RetryCount is the number of additional passes over the selected addresses;
+	// negative values are normalized to 0.
+	RetryCount *int `ns_name:"retry_count" validator:"validateRetryCount"`
 	// RetryDelay is the wait between retry passes.
 	RetryDelay *time.Duration `ns_name:"retry_delay"`
 	// TransportConnectTimeout limits each socket or proxy transport connection.
@@ -460,11 +461,11 @@ type ConnectionAddressGroup struct {
 // RemoteAccessPoint is one protocol endpoint from an ADDRESS node.
 type RemoteAccessPoint struct {
 	// Protocol is the transport protocol, normally TCP or TCPS.
-	Protocol driverCommon.Protocol
+	Protocol driverCommon.Protocol `ns_name:"protocol" default:"TCP" validator:"validateProtocol"`
 	// Host is the hostname or IP address of the database listener.
-	Host string
+	Host string `ns_name:"host" validator:"validateHost"`
 	// Port is the database listener port.
-	Port int
+	Port int `ns_name:"port" default:"1521" validator:"validatePort"`
 	// HTTPSProxy optionally selects an HTTP CONNECT proxy for TCPS.
 	HTTPSProxy *string `ns_name:"https_proxy"`
 	// HTTPSProxyPort is the HTTP CONNECT proxy port when HTTPSProxy is set.
@@ -475,6 +476,19 @@ type RemoteAccessPoint struct {
 	SendBufSize *int `ns_name:"send_buf_size"`
 	// AdditionalSettings preserves unrecognized scalar settings at address scope.
 	AdditionalSettings map[string]string
+}
+
+// Validate normalizes and validates this listener endpoint using its declared
+// configuration tags. A zero port is replaced with the declared default.
+//
+// Input:
+//   - accessPoint: endpoint values to normalize in place.
+//
+// Output:
+//   - error: invalid protocol, empty host, invalid port, or invalid validator
+//     metadata.
+func (accessPoint *RemoteAccessPoint) Validate() error {
+	return validateTaggedConfigurationStruct(accessPoint)
 }
 
 // ConnectData contains database identification and connection parameters from
@@ -556,10 +570,12 @@ func parseEazyConnectDescriptor(url string) (*remoteAccessPoints, string, error)
 
 	var err error
 	if matches := protocolPattern.FindStringSubmatch(url); matches != nil {
-		result.protocol, err = driverCommon.NormalizeProtocol(matches[1])
+		validatedProtocol, validationErr := validateProtocol(reflect.ValueOf(matches[1]), "PROTOCOL")
+		err = validationErr
 		if err != nil {
-			return nil, "", common.NewOracleError(oracleErrors.NamingEzConnectError, nil, matches[1], "protocol")
+			return nil, "", err
 		}
+		result.protocol = validatedProtocol.(driverCommon.Protocol)
 		url = protocolPattern.ReplaceAllString(url, "")
 	} else {
 		result.protocol = defaultProtocol
@@ -632,7 +648,8 @@ func parseAddressGroups(hostStr string) ([]addressGroup, error) {
 //   - hostStr: one group of comma-separated hosts, optionally with ports.
 //
 // Output:
-//   - []hostPort: hosts with explicit or default listener ports.
+//   - []hostPort: hosts and any explicitly supplied listener ports; omitted
+//     ports remain zero until RemoteAccessPoint validation applies its default.
 //   - error: missing host or invalid port.
 func parseHostList(hostStr string) ([]hostPort, error) {
 	var hosts []hostPort
@@ -645,6 +662,21 @@ func parseHostList(hostStr string) ([]hostPort, error) {
 			return host[1 : len(host)-1]
 		}
 		return host
+	}
+	appendValidatedHost := func(rawHost, rawPort string) error {
+		accessPoint := RemoteAccessPoint{Host: normalizeHost(strings.TrimSpace(rawHost))}
+		if rawPort != "" {
+			validatedPort, err := validatePort(reflect.ValueOf(strings.TrimSpace(rawPort)), "port")
+			if err != nil {
+				return err
+			}
+			accessPoint.Port = validatedPort.(int)
+		}
+		if err := accessPoint.Validate(); err != nil {
+			return err
+		}
+		hosts = append(hosts, hostPort{host: accessPoint.Host, port: strconv.Itoa(accessPoint.Port)})
+		return nil
 	}
 
 	for i := 0; i < len(hostStr); i++ {
@@ -662,15 +694,9 @@ func parseHostList(hostStr string) ([]hostPort, error) {
 				parsingPort = true
 			}
 		} else if ch == ',' {
-			host := normalizeHost(strings.TrimSpace(currentHost.String()))
-			port := strings.TrimSpace(currentPort.String())
-			if port == "" {
-				port = defaultOraclePort
-			}
-			if err := validatePort(port); err != nil {
+			if err := appendValidatedHost(currentHost.String(), currentPort.String()); err != nil {
 				return nil, err
 			}
-			hosts = append(hosts, hostPort{host: host, port: port})
 			currentHost.Reset()
 			currentPort.Reset()
 			parsingPort = false
@@ -681,39 +707,10 @@ func parseHostList(hostStr string) ([]hostPort, error) {
 		}
 	}
 
-	host := strings.TrimSpace(currentHost.String())
-	port := strings.TrimSpace(currentPort.String())
-	if host == "" {
-		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, "", "host")
-	}
-	host = normalizeHost(host)
-	if port == "" {
-		port = defaultOraclePort
-	}
-	if err := validatePort(port); err != nil {
+	if err := appendValidatedHost(currentHost.String(), currentPort.String()); err != nil {
 		return nil, err
 	}
-
-	hosts = append(hosts, hostPort{host: host, port: port})
 	return hosts, nil
-}
-
-// validatePort checks that port is a decimal TCP port in the usable range.
-//
-// Input:
-//   - port: decimal port string to validate.
-//
-// Output:
-//   - error: non-nil when port is not an integer from 1 through 65535.
-func validatePort(port string) error {
-	portNum, err := strconv.Atoi(port)
-	if err != nil {
-		return common.NewOracleError(oracleErrors.NamingEzConnectError, err, port, "port")
-	}
-	if portNum < 1 || portNum > 65535 {
-		return common.NewOracleError(oracleErrors.NamingEzConnectError, nil, port, "port")
-	}
-	return nil
 }
 
 // _isConnectDescriptorFormat reports whether dsn begins with a TNS descriptor.
@@ -978,6 +975,8 @@ func parseConnectionDescription(node *Node) (ConnectionDescription, error) {
 		directAddresses = nil
 	}
 
+	// remaining contains children not assigned by ns_name tags, primarily nested
+	// sections and values that need explicit parsing or preservation here.
 	for i := range remaining {
 		child := &remaining[i]
 		var err error
@@ -1073,7 +1072,7 @@ func parseConnectionAddressGroup(node *Node) (ConnectionAddressGroup, error) {
 //   - RemoteAccessPoint: normalized protocol endpoint and address-scoped options.
 //   - error: invalid protocol, host, port, or nested address setting.
 func parseRemoteAccessPoint(node *Node) (RemoteAccessPoint, error) {
-	address := RemoteAccessPoint{Protocol: defaultProtocol, Port: 1521}
+	address := RemoteAccessPoint{}
 	_, remaining, assignErr := assignTaggedScalars(&address, node)
 	if assignErr != nil {
 		return RemoteAccessPoint{}, assignErr
@@ -1082,15 +1081,6 @@ func parseRemoteAccessPoint(node *Node) (RemoteAccessPoint, error) {
 		child := &remaining[i]
 		var err error
 		switch child.Name {
-		case "PROTOCOL":
-			address.Protocol, err = driverCommon.NormalizeProtocol(child.Value)
-		case "HOST":
-			address.Host = child.Value
-		case "PORT":
-			err = validatePort(child.Value)
-			if err == nil {
-				address.Port, err = strconv.Atoi(child.Value)
-			}
 		case "HTTPS_PROXY_PORT":
 			var port int
 			port, err = strconv.Atoi(child.Value)
@@ -1113,8 +1103,8 @@ func parseRemoteAccessPoint(node *Node) (RemoteAccessPoint, error) {
 			return RemoteAccessPoint{}, descriptorValueError(child, err)
 		}
 	}
-	if address.Host == "" {
-		return RemoteAccessPoint{}, common.NewOracleError(oracleErrors.NamingContextError, nil, node.Name, "HOST")
+	if err := address.Validate(); err != nil {
+		return RemoteAccessPoint{}, err
 	}
 	return address, nil
 }
@@ -1281,7 +1271,7 @@ func assignTaggedScalars(dst any, node *Node) (map[string]bool, []Node, error) {
 			continue
 		}
 		field := destination.Field(index)
-		if err := assignTNSScalar(field, child.Value); err != nil {
+		if err := assignTNSScalar(field, child.Value, destination.Type().Field(index)); err != nil {
 			return nil, nil, descriptorValueError(child, err)
 		}
 		set[child.Name] = true
@@ -1334,7 +1324,7 @@ func hasTaggedTNSField(dst any, name string) bool {
 
 // assignTNSScalar parses raw descriptor text into a tagged scalar field. Pointer
 // fields are allocated only after successful parsing, preserving omitted values.
-func assignTNSScalar(field reflect.Value, raw string) error {
+func assignTNSScalar(field reflect.Value, raw string, fieldInfo reflect.StructField) error {
 	if !field.CanSet() {
 		return fmt.Errorf("descriptor field of type %s cannot be set", field.Type())
 	}
@@ -1345,29 +1335,50 @@ func assignTNSScalar(field reflect.Value, raw string) error {
 	}
 
 	var parsed reflect.Value
-	switch {
-	case targetType == reflect.TypeOf(time.Duration(0)):
-		value, err := parseDescriptorDuration(raw)
+	if validatorName := fieldInfo.Tag.Get("validator"); validatorName != "" {
+		validator, found := _fieldsValidators[validatorName]
+		if !found {
+			return fmt.Errorf("unknown descriptor validator %q on %s", validatorName, fieldInfo.Name)
+		}
+		validated, err := validator(reflect.ValueOf(raw), tnsFieldName(fieldInfo))
 		if err != nil {
 			return err
 		}
-		parsed = reflect.ValueOf(value)
-	case targetType.Kind() == reflect.String:
-		parsed = reflect.ValueOf(raw).Convert(targetType)
-	case targetType.Kind() == reflect.Bool:
-		value, err := parseDescriptorBool(raw)
-		if err != nil {
-			return err
+		parsed = reflect.ValueOf(validated)
+		if !parsed.IsValid() {
+			return fmt.Errorf("descriptor validator %q returned no value", validatorName)
 		}
-		parsed = reflect.ValueOf(value).Convert(targetType)
-	case targetType.Kind() == reflect.Int:
-		value, err := parseDescriptorInt(raw)
-		if err != nil {
-			return err
+		if !parsed.Type().AssignableTo(targetType) {
+			if !parsed.Type().ConvertibleTo(targetType) {
+				return fmt.Errorf("descriptor validator %q returned %s for field type %s", validatorName, parsed.Type(), targetType)
+			}
+			parsed = parsed.Convert(targetType)
 		}
-		parsed = reflect.ValueOf(value).Convert(targetType)
-	default:
-		return fmt.Errorf("unsupported tagged descriptor field type %s", targetType)
+	} else {
+		switch {
+		case targetType == reflect.TypeOf(time.Duration(0)):
+			value, err := parseDescriptorDuration(raw)
+			if err != nil {
+				return err
+			}
+			parsed = reflect.ValueOf(value)
+		case targetType.Kind() == reflect.String:
+			parsed = reflect.ValueOf(raw).Convert(targetType)
+		case targetType.Kind() == reflect.Bool:
+			value, err := parseDescriptorBool(raw)
+			if err != nil {
+				return err
+			}
+			parsed = reflect.ValueOf(value).Convert(targetType)
+		case targetType.Kind() == reflect.Int:
+			value, err := parseDescriptorInt(raw)
+			if err != nil {
+				return err
+			}
+			parsed = reflect.ValueOf(value).Convert(targetType)
+		default:
+			return fmt.Errorf("unsupported tagged descriptor field type %s", targetType)
+		}
 	}
 
 	if pointer {
@@ -1491,15 +1502,22 @@ func handleEasyConnectDescriptorFormatDsn(dsn string) (ConnectionDescriptionPlan
 	for _, group := range accessPoints.addressGroups {
 		addressGroup := ConnectionAddressGroup{}
 		for _, host := range group.hosts {
-			port, err := strconv.Atoi(host.port)
-			if err != nil {
-				return ConnectionDescriptionPlan{}, err
+			port := 0
+			if host.port != "" {
+				port, err = strconv.Atoi(host.port)
+				if err != nil {
+					return ConnectionDescriptionPlan{}, err
+				}
 			}
-			addressGroup.AccessPoints = append(addressGroup.AccessPoints, RemoteAccessPoint{
+			accessPoint := RemoteAccessPoint{
 				Protocol: accessPoints.protocol,
 				Host:     host.host,
 				Port:     port,
-			})
+			}
+			if err := accessPoint.Validate(); err != nil {
+				return ConnectionDescriptionPlan{}, err
+			}
+			addressGroup.AccessPoints = append(addressGroup.AccessPoints, accessPoint)
 		}
 		description.AddressGroups = append(description.AddressGroups, addressGroup)
 	}
