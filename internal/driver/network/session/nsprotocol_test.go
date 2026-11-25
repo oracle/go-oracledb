@@ -55,7 +55,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -86,10 +85,15 @@ type mockNTAdapter struct {
 //
 // Output:
 //   - error: the result returned by the handshake.
-func connectForTest(ns *networkSession, address transport.Address) error {
+func connectForTest(ns *networkSession, address transport.Address, connectionID ...string) error {
+	var id string
+	if len(connectionID) > 0 {
+		id = connectionID[0]
+	}
 	return ns.connect(context.Background(), address, connectRequest{
-		descriptor: []byte("(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=orcl)))"),
-		errorData:  connectErrorData{serviceName: "orcl"},
+		descriptor:   []byte("(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=orcl)))"),
+		connectionID: id,
+		errorData:    connectErrorData{serviceName: "orcl"},
 	})
 }
 
@@ -443,21 +447,10 @@ func TestSanitizeCIDValue(t *testing.T) {
 	}
 }
 
-// TestConnectSubtests groups subtests for ConnectToOption
+// TestConnectSubtests groups CONNECT packet handshake subtests.
 func TestConnectSubtests(t *testing.T) {
 	t.Parallel()
-	option := naming.NewConnectionOption(
-		naming.Address{
-			Host:     "localhost",
-			Port:     1521,
-			Protocol: driverCommon.ProtocolTCP,
-		},
-		&naming.Description{},
-		naming.ConnectData{},
-		nil,
-		"",
-		"(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=orcl)))",
-	)
+	connectDescriptor := "(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=orcl)))"
 
 	t.Run("Low TNS Version", func(t *testing.T) {
 		mock := &mockNTAdapter{}
@@ -478,7 +471,7 @@ func TestConnectSubtests(t *testing.T) {
 			t.Errorf("Unexpected transportConnect error: %v", err)
 		}
 		connectPkt := &connectPacket{}
-		connectPkt.marshal([]byte(option.ConnectString), ns.sAtts, NO_HEADER_FLAGS)
+		connectPkt.marshal([]byte(connectDescriptor), ns.sAtts, NO_HEADER_FLAGS)
 		err = ns.sendConnect(context.Background(), connectPkt)
 		if err != nil {
 			t.Errorf("Unexpected sendConnect error: %v", err)
@@ -526,8 +519,7 @@ func TestConnectSubtests(t *testing.T) {
 			TLSHostname:    "originalhost",
 			HTTPSProxy:     "proxy.example.com",
 			HTTPSProxyPort: 8080,
-			ConnectionID:   "redirect-test-id",
-		})
+		}, "redirect-test-id")
 		if err != nil {
 			t.Errorf("Unexpected redirect packet error without overflow: %v", err)
 		}
@@ -557,8 +549,8 @@ func TestConnectSubtests(t *testing.T) {
 		mock.receivedData = append(mock.receivedData, acceptpacket...)
 		mock.recvPos = 0
 		err := connectForTest(ns, transport.Address{
-			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521, ConnectionID: "redirect-test-id",
-		})
+			DialHost: "localhost", Protocol: driverCommon.ProtocolTCP, Port: 1521,
+		}, "redirect-test-id")
 		if err != nil {
 			t.Errorf("Unexpected redirect packet error: %v", err)
 		}
@@ -635,7 +627,7 @@ func TestConnectSubtests(t *testing.T) {
 			t.Errorf("Unexpected transportConnect error: %v", err)
 		}
 		connectPkt := &connectPacket{}
-		connectPkt.marshal([]byte(option.ConnectString), ns.sAtts, NO_HEADER_FLAGS)
+		connectPkt.marshal([]byte(connectDescriptor), ns.sAtts, NO_HEADER_FLAGS)
 		err = ns.sendConnect(context.Background(), connectPkt)
 		if err != nil {
 			t.Errorf("Unexpected sendConnect error: %v", err)
@@ -679,7 +671,7 @@ func TestConnectSubtests(t *testing.T) {
 			t.Errorf("Unexpected transportConnect error: %v", err)
 		}
 		connectPkt := &connectPacket{}
-		connectPkt.marshal([]byte(option.ConnectString), ns.sAtts, NO_HEADER_FLAGS)
+		connectPkt.marshal([]byte(connectDescriptor), ns.sAtts, NO_HEADER_FLAGS)
 		err = ns.sendConnect(context.Background(), connectPkt)
 		if err != nil {
 			t.Errorf("Unexpected sendConnect error: %v", err)
@@ -703,7 +695,7 @@ func TestConnectSubtests(t *testing.T) {
 			t.Errorf("Unexpected transportConnect error: %v", err)
 		}
 		connectPkt := &connectPacket{}
-		connectPkt.marshal([]byte(option.ConnectString), ns.sAtts, NO_HEADER_FLAGS)
+		connectPkt.marshal([]byte(connectDescriptor), ns.sAtts, NO_HEADER_FLAGS)
 		err = ns.sendConnect(context.Background(), connectPkt)
 		if err != nil {
 			t.Errorf("Unexpected sendConnect error: %v", err)
@@ -728,7 +720,7 @@ func TestConnectSubtests(t *testing.T) {
 			t.Errorf("Unexpected transportConnect error: %v", err)
 		}
 		connectPkt := &connectPacket{}
-		connectPkt.marshal([]byte(option.ConnectString), ns.sAtts, NO_HEADER_FLAGS)
+		connectPkt.marshal([]byte(connectDescriptor), ns.sAtts, NO_HEADER_FLAGS)
 		err = ns.sendConnect(context.Background(), connectPkt)
 		if err == nil || !strings.Contains(err.Error(), "send error") {
 			t.Errorf("Expected send connect error, got %v", err)
@@ -1787,7 +1779,7 @@ func TestRecvPacket(t *testing.T) {
 func TestRefuseArgs(t *testing.T) {
 	t.Parallel()
 	ns := newNetworkSession()
-	address := transport.Address{DialHost: "host", Port: 1521, TLSHostname: "hostname", ConnectionID: "connid"}
+	address := transport.Address{DialHost: "host", Port: 1521, TLSHostname: "hostname"}
 
 	tests := []struct {
 		name      string
@@ -1811,7 +1803,7 @@ func TestRefuseArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args, err := ns.refuseArgs(tt.errCode, address, tt.data)
+			args, err := ns.refuseArgs(tt.errCode, address, "connid", tt.data)
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("Expected error but got nil")
@@ -1844,7 +1836,7 @@ func TestHandleRefuse(t *testing.T) {
 		ns, _ := setup()
 		address := transport.Address{DialHost: "host", Port: 1521}
 		p := &refusePacket{overflow: false, dataBuf: "(DESCRIPTION=(ERR=99999))"}
-		err := ns.handleRefuse(context.Background(), p, address, connectErrorData{serviceName: "orcl"})
+		err := ns.handleRefuse(context.Background(), p, address, "connid", connectErrorData{serviceName: "orcl"})
 		expectOracleErrorCode(t, err, oracleErrors.ConnectionRefusedDetail)
 	})
 	t.Run("RecvErrorInOverflow", func(t *testing.T) {
@@ -1852,7 +1844,7 @@ func TestHandleRefuse(t *testing.T) {
 		mock.receiveErr = fmt.Errorf("recv error")
 		address := transport.Address{DialHost: "host", Port: 1521}
 		p := &refusePacket{overflow: true, dataBuf: "(DESCRIPTION=(ERR=12514))"}
-		err := ns.handleRefuse(context.Background(), p, address, connectErrorData{serviceName: "orcl"})
+		err := ns.handleRefuse(context.Background(), p, address, "connid", connectErrorData{serviceName: "orcl"})
 		if err == nil || !strings.Contains(err.Error(), "recv error") {
 			t.Errorf("Expected recv error in overflow, got %v", err)
 		}
@@ -1861,7 +1853,7 @@ func TestHandleRefuse(t *testing.T) {
 		ns, _ := setup()
 		address := transport.Address{DialHost: "host", Port: 1521}
 		p := &refusePacket{overflow: false, dataBuf: "invalid"}
-		err := ns.handleRefuse(context.Background(), p, address, connectErrorData{serviceName: "orcl"})
+		err := ns.handleRefuse(context.Background(), p, address, "connid", connectErrorData{serviceName: "orcl"})
 		expectOracleErrorCode(t, err, oracleErrors.RefuseDataParseFailed)
 	})
 }

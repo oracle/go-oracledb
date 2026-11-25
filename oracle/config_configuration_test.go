@@ -316,7 +316,7 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 	}
 	want := map[string]bool{
 		"ssl_server_cert_dn=\"CN=test\"": false,
-		"ssl_server_dn_match=false":      false,
+		"ssl_server_dn_match=true":       false,
 		"ssl_allow_weak_dn_match=false":  false,
 		"https_proxy_port=9000":          false,
 		"connect_timeout=0":              false,
@@ -331,7 +331,7 @@ func TestConfiguration_toNSConnectionParameters(t *testing.T) {
 		"retry_count=0":                  false,
 		"retry_delay=7":                  false,
 		"transport_connect_timeout=0":    false,
-		"USE_SNI=false":                  false,
+		"use_sni=false":                  false,
 	}
 	tokens := strings.Split(params, "&")
 

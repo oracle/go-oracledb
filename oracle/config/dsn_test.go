@@ -8,6 +8,7 @@ package config
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -273,6 +274,206 @@ func TestHandleDsnNormalizesEZConnectTargets(t *testing.T) {
 	}
 }
 
+// TestHandleDsnParsesTNSDescriptionFields verifies that TNS settings from each
+// descriptor scope are retained in the normalized plan, including settings
+// that were previously covered only by naming's legacy context extractor.
+func TestHandleDsnParsesTNSDescriptionFields(t *testing.T) {
+	t.Parallel()
+	dsn := `(DESCRIPTION_LIST=(FAILOVER=on)(LOAD_BALANCE=off)(SOURCE_ROUTE=yes)(CUSTOM_LIST=root-value)` +
+		`(DESCRIPTION=(FAILOVER=off)(LOAD_BALANCE=on)(SOURCE_ROUTE=no)(USE_SNI=yes)` +
+		`(CONNECT_TIMEOUT=15)(RETRY_COUNT=0)(RETRY_DELAY=1sec)(TRANSPORT_CONNECT_TIMEOUT=500ms)` +
+		`(EXPIRE_TIME=10)(RECV_TIMEOUT=30sec)(SEND_TIMEOUT=250ms)(SDU=8192)` +
+		`(RECV_BUF_SIZE=1024)(SEND_BUF_SIZE=2048)(ENABLE=broken)` +
+		`(CONNECTION_ID_PREFIX=description-prefix)(COMPRESSION=on)` +
+		`(COMPRESSION_LEVELS=(LEVEL=low)(LEVEL=high))(TYPE_OF_SERVICE=oracle)` +
+		`(CUSTOM_DESCRIPTION=description-value)` +
+		`(ADDRESS=(PROTOCOL=TCP)(HOST=192.0.2.51)(PORT=1521)(CUSTOM_ADDRESS=address-value))` +
+		`(ADDRESS_LIST=(LOAD_BALANCE=yes)(FAILOVER=off)(SOURCE_ROUTE=yes)(CUSTOM_GROUP=group-value)` +
+		`(ADDRESS=(PROTOCOL=TCPS)(HOST=192.0.2.52)(PORT=2484)` +
+		`(HTTPS_PROXY=proxy.example.com)(HTTPS_PROXY_PORT=8080)(RECV_BUF_SIZE=4096)(SEND_BUF_SIZE=8192)))` +
+		`(ADDRESS=(PROTOCOL=TCP)(HOST=192.0.2.53)(PORT=1522))` +
+		`(SECURITY=(SSL_SERVER_CERT_DN="CN=orders, OU=DB")(SSL_SERVER_DN_MATCH=yes)` +
+		`(SSL_ALLOW_WEAK_DN_MATCH=no)(WALLET_LOCATION=/wallet)(MY_WALLET_DIRECTORY=/legacy-wallet)` +
+		`(CUSTOM_SECURITY=security-value))` +
+		`(CONNECT_DATA=(SERVICE_NAME=orders)(SID=ORD)(SERVER=DEDICATED)(INSTANCE_NAME=orders1)` +
+		`(FAILOVER_MODE=(TYPE=select)(METHOD=basic)(RETRIES=3)(DELAY=5))` +
+		`(HS=ok)(RDB_DATABASE=remote-db)(GLOBAL_NAME=orders.global)` +
+		`(CONNECTION_ID_PREFIX=data-prefix)(CUSTOM_DATA=data-value)))` +
+		`(CUSTOM_LIST_END=list-end-value))`
+
+	plans, err := HandleDsn(dsn, NewOracleDriverConfig())
+	if err != nil {
+		t.Fatalf("HandleDsn failed: %v", err)
+	}
+	if plans.Plan.Failover == nil || !*plans.Plan.Failover || plans.Plan.LoadBalance == nil || *plans.Plan.LoadBalance || plans.Plan.SourceRoute == nil || !*plans.Plan.SourceRoute {
+		t.Fatalf("unexpected DESCRIPTION_LIST policy: failover=%v loadBalance=%v sourceRoute=%v", plans.Plan.Failover, plans.Plan.LoadBalance, plans.Plan.SourceRoute)
+	}
+	if plans.Plan.AdditionalSettings["CUSTOM_LIST"] != "root-value" || plans.Plan.AdditionalSettings["CUSTOM_LIST_END"] != "list-end-value" {
+		t.Fatalf("DESCRIPTION_LIST additional settings = %v", plans.Plan.AdditionalSettings)
+	}
+	if len(plans.Plan.Descriptions) != 1 {
+		t.Fatalf("description count = %d, want 1", len(plans.Plan.Descriptions))
+	}
+	description := plans.Plan.Descriptions[0]
+	assertBoolPointer := func(name string, value *bool, want bool) {
+		t.Helper()
+		if value == nil || *value != want {
+			t.Errorf("%s = %v, want %t", name, value, want)
+		}
+	}
+	assertIntPointer := func(name string, value *int, want int) {
+		t.Helper()
+		if value == nil || *value != want {
+			t.Errorf("%s = %v, want %d", name, value, want)
+		}
+	}
+	assertDurationPointer := func(name string, value *time.Duration, want time.Duration) {
+		t.Helper()
+		if value == nil || *value != want {
+			t.Errorf("%s = %v, want %v", name, value, want)
+		}
+	}
+	assertBoolPointer("description failover", description.Failover, false)
+	assertBoolPointer("description load balance", description.LoadBalance, true)
+	assertBoolPointer("description source route", description.SourceRoute, false)
+	assertBoolPointer("description use SNI", description.UseSNI, true)
+	assertBoolPointer("description compression", description.Compression, true)
+	assertDurationPointer("connect timeout", description.ConnectTimeout, 15*time.Second)
+	assertIntPointer("retry count", description.RetryCount, 0)
+	assertDurationPointer("retry delay", description.RetryDelay, time.Second)
+	assertDurationPointer("transport connect timeout", description.TransportConnectTimeout, 500*time.Millisecond)
+	assertIntPointer("expire time", description.ExpireTime, 10)
+	assertDurationPointer("receive timeout", description.RecvTimeout, 30*time.Second)
+	assertDurationPointer("send timeout", description.SendTimeout, 250*time.Millisecond)
+	assertIntPointer("SDU", description.SDU, 8192)
+	assertIntPointer("receive buffer size", description.RecvBufSize, 1024)
+	assertIntPointer("send buffer size", description.SendBufSize, 2048)
+	if description.Enable == nil || *description.Enable != "broken" {
+		t.Errorf("ENABLE = %v, want broken", description.Enable)
+	}
+	if description.ConnectionIDPrefix == nil || *description.ConnectionIDPrefix != "description-prefix" {
+		t.Errorf("description connection ID prefix = %v, want description-prefix", description.ConnectionIDPrefix)
+	}
+	if !reflect.DeepEqual(description.CompressionLevels, []string{"low", "high"}) {
+		t.Errorf("compression levels = %v, want [low high]", description.CompressionLevels)
+	}
+	if description.TypeOfService == nil || *description.TypeOfService != "oracle" {
+		t.Errorf("type of service = %v, want oracle", description.TypeOfService)
+	}
+	if description.AdditionalSettings["CUSTOM_DESCRIPTION"] != "description-value" {
+		t.Errorf("description additional settings = %v", description.AdditionalSettings)
+	}
+	if len(description.AddressGroups) != 3 {
+		t.Fatalf("address group count = %d, want 3", len(description.AddressGroups))
+	}
+	if got := description.AddressGroups[0].AccessPoints[0]; got.Host != "192.0.2.51" || got.Port != 1521 || got.Protocol != driverCommon.ProtocolTCP || got.AdditionalSettings["CUSTOM_ADDRESS"] != "address-value" {
+		t.Errorf("first direct ADDRESS = %+v", got)
+	}
+	group := description.AddressGroups[1]
+	assertBoolPointer("address-list load balance", group.LoadBalance, true)
+	assertBoolPointer("address-list failover", group.Failover, false)
+	assertBoolPointer("address-list source route", group.SourceRoute, true)
+	if group.AdditionalSettings["CUSTOM_GROUP"] != "group-value" {
+		t.Errorf("address-list additional settings = %v", group.AdditionalSettings)
+	}
+	if len(group.AccessPoints) != 1 {
+		t.Fatalf("address-list access point count = %d, want 1", len(group.AccessPoints))
+	}
+	accessPoint := group.AccessPoints[0]
+	if accessPoint.Protocol != driverCommon.ProtocolTCPS || accessPoint.Host != "192.0.2.52" || accessPoint.Port != 2484 {
+		t.Errorf("address-list endpoint = %+v", accessPoint)
+	}
+	if accessPoint.HTTPSProxy == nil || *accessPoint.HTTPSProxy != "proxy.example.com" || accessPoint.HTTPSProxyPort == nil || *accessPoint.HTTPSProxyPort != 8080 {
+		t.Errorf("address-list proxy = %v:%v", accessPoint.HTTPSProxy, accessPoint.HTTPSProxyPort)
+	}
+	assertIntPointer("address receive buffer size", accessPoint.RecvBufSize, 4096)
+	assertIntPointer("address send buffer size", accessPoint.SendBufSize, 8192)
+	if description.Security == nil {
+		t.Fatal("security is nil")
+	}
+	if description.Security.SSLServerCertDN != "CN=orders, OU=DB" || !description.Security.SSLServerDNMatch || description.Security.SSLAllowWeakDNMatch || description.Security.WalletLocation != "/wallet" || description.Security.MyWalletDirectory != "/legacy-wallet" {
+		t.Errorf("security settings = %+v", description.Security)
+	}
+	if description.Security.AdditionalSettings["CUSTOM_SECURITY"] != "security-value" {
+		t.Errorf("security additional settings = %v", description.Security.AdditionalSettings)
+	}
+	if description.ConnectData == nil {
+		t.Fatal("connect data is nil")
+	}
+	connectData := description.ConnectData
+	if connectData.ServiceName != "orders" || connectData.SID != "ORD" || connectData.Server != "DEDICATED" || connectData.InstanceName != "orders1" || connectData.HS != "ok" || connectData.RDBDatabase != "remote-db" || connectData.GlobalName != "orders.global" || connectData.ConnectionIDPrefix != "data-prefix" {
+		t.Errorf("connect data = %+v", connectData)
+	}
+	if !reflect.DeepEqual(connectData.FailoverModeSettings, map[string]string{"TYPE": "select", "METHOD": "basic", "RETRIES": "3", "DELAY": "5"}) {
+		t.Errorf("failover mode settings = %v", connectData.FailoverModeSettings)
+	}
+	if connectData.AdditionalSettings["CUSTOM_DATA"] != "data-value" {
+		t.Errorf("connect-data additional settings = %v", connectData.AdditionalSettings)
+	}
+}
+
+// TestHandleDsnUsesDefaultSecurityValues verifies the security defaults on a
+// resolved attempt when the descriptor does not contain a SECURITY node.
+func TestHandleDsnUsesDefaultSecurityValues(t *testing.T) {
+	t.Parallel()
+
+	config := NewOracleDriverConfig()
+	if !config.ConnectionProperties.SSLServerDNMatch {
+		t.Fatal("default SSL server DN matching = false, want true")
+	}
+	if config.ConnectionProperties.SSLAllowWeakDNMatch {
+		t.Fatal("default weak DN matching = true, want false")
+	}
+
+	plans, err := HandleDsn(
+		`(DESCRIPTION=(ADDRESS=(PROTOCOL=TCPS)(HOST=192.0.2.70)(PORT=2484))(CONNECT_DATA=(SERVICE_NAME=svc)))`,
+		config,
+	)
+	if err != nil {
+		t.Fatalf("HandleDsn failed: %v", err)
+	}
+	iterator, err := plans.NewConnectionAttemptIterator(context.Background(), "default-security-test")
+	if err != nil {
+		t.Fatalf("NewConnectionAttemptIterator failed: %v", err)
+	}
+	attempt, err := iterator.Next()
+	if err != nil {
+		t.Fatalf("iterator.Next failed: %v", err)
+	}
+	security := attempt.GetSecurity()
+	if !security.SSLServerDNMatch || security.SSLAllowWeakDNMatch || security.SSLServerCertDN != "" || security.WalletLocation != "" {
+		t.Fatalf("unexpected default security settings: %+v", security)
+	}
+}
+
+// TestHandleDsnRejectsInvalidTNSValues covers invalid values that must fail
+// during typed descriptor parsing rather than being deferred to connection setup.
+func TestHandleDsnRejectsInvalidTNSValues(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		dsn  string
+	}{
+		{name: "invalid description boolean", dsn: `(DESCRIPTION=(USE_SNI=maybe)(ADDRESS=(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
+		{name: "negative duration", dsn: `(DESCRIPTION=(CONNECT_TIMEOUT=-1)(ADDRESS=(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
+		{name: "negative integer", dsn: `(DESCRIPTION=(RETRY_COUNT=-1)(ADDRESS=(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
+		{name: "invalid address protocol", dsn: `(DESCRIPTION=(ADDRESS=(PROTOCOL=HTTP)(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
+		{name: "invalid listener port", dsn: `(DESCRIPTION=(ADDRESS=(HOST=192.0.2.61)(PORT=65536))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
+		{name: "invalid proxy port", dsn: `(DESCRIPTION=(ADDRESS=(HOST=192.0.2.61)(HTTPS_PROXY=proxy)(HTTPS_PROXY_PORT=65536))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
+		{name: "invalid security boolean", dsn: `(DESCRIPTION=(ADDRESS=(HOST=192.0.2.61))(SECURITY=(SSL_SERVER_DN_MATCH=maybe))(CONNECT_DATA=(SERVICE_NAME=svc)))`},
+		{name: "invalid nested failover mode", dsn: `(DESCRIPTION=(ADDRESS=(HOST=192.0.2.61))(CONNECT_DATA=(SERVICE_NAME=svc)(FAILOVER_MODE=(TYPE=(NESTED=value)))))`},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := HandleDsn(test.dsn, NewOracleDriverConfig()); err == nil {
+				t.Fatalf("HandleDsn accepted invalid descriptor: %s", test.dsn)
+			}
+		})
+	}
+}
+
 // TestHandleDsnAppliesEZConnectQuerySettings verifies query properties are
 // applied to the effective attempt configuration rather than serialized into a
 // generated TNS descriptor.
@@ -415,6 +616,64 @@ func TestHandleDsnAcceptsDescriptorWithoutCredentials(t *testing.T) {
 	}
 	if plans.BaseConfig.Credentials.User != "" || plans.BaseConfig.Credentials.Password != "" {
 		t.Fatalf("empty credentials changed: %+v", plans.BaseConfig.Credentials)
+	}
+}
+
+func TestHandleDsnParsesCredentialsFromDSN(t *testing.T) {
+	t.Parallel()
+	plans, err := HandleDsn("dsnuser/dsnpassword@db.example.com:1521/orders", NewOracleDriverConfig())
+	if err != nil {
+		t.Fatalf("HandleDsn failed: %v", err)
+	}
+	if plans.BaseConfig.Credentials.User != "dsnuser" || plans.BaseConfig.Credentials.Password != "dsnpassword" {
+		t.Fatalf("parsed credentials = (%q, %q), want (dsnuser, dsnpassword)", plans.BaseConfig.Credentials.User, plans.BaseConfig.Credentials.Password)
+	}
+	if plans.BaseConfig.ConnectDescriptor != "db.example.com:1521/orders" {
+		t.Fatalf("connect descriptor = %q, want db.example.com:1521/orders", plans.BaseConfig.ConnectDescriptor)
+	}
+	if len(plans.Plan.Descriptions) != 1 || plans.Plan.Descriptions[0].ConnectData == nil || plans.Plan.Descriptions[0].ConnectData.ServiceName != "orders" {
+		t.Fatalf("unexpected plan after credential extraction: %+v", plans.Plan)
+	}
+}
+
+func TestHandleDsnRejectsInvalidOrConflictingCredentials(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		dsn     string
+		config  func() *OracleDriverConfig
+		wantErr oracleErrors.ErrorCode
+	}{
+		{
+			name:    "missing password separator",
+			dsn:     "dsnuser@db.example.com/orders",
+			config:  NewOracleDriverConfig,
+			wantErr: oracleErrors.NamingDSNInvalid,
+		},
+		{
+			name:    "empty username",
+			dsn:     "/dsnpassword@db.example.com/orders",
+			config:  NewOracleDriverConfig,
+			wantErr: oracleErrors.NamingDSNInvalid,
+		},
+		{
+			name: "credentials already configured",
+			dsn:  "dsnuser/dsnpassword@db.example.com/orders",
+			config: func() *OracleDriverConfig {
+				config := NewOracleDriverConfig()
+				config.Credentials.User = "configuser"
+				return config
+			},
+			wantErr: oracleErrors.ConflictingConnectionParameterSource,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := HandleDsn(test.dsn, test.config())
+			assertConfigErrorCode(t, err, test.wantErr)
+		})
 	}
 }
 
@@ -1034,6 +1293,37 @@ func TestParseEzConnect_ValidPort_Boundary(t *testing.T) {
 	}
 }
 
+func TestValidatePort(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		port    string
+		wantErr bool
+	}{
+		{port: "1"},
+		{port: "1521"},
+		{port: "65535"},
+		{port: "0", wantErr: true},
+		{port: "-1", wantErr: true},
+		{port: "65536", wantErr: true},
+		{port: "abc", wantErr: true},
+		{port: "", wantErr: true},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.port, func(t *testing.T) {
+			t.Parallel()
+			err := validatePort(test.port)
+			if test.wantErr {
+				assertConfigErrorCode(t, err, oracleErrors.NamingEzConnectError)
+				return
+			}
+			if err != nil {
+				t.Fatalf("validatePort(%q) returned unexpected error: %v", test.port, err)
+			}
+		})
+	}
+}
+
 func TestParseEzConnect_EmptyAddressGroups(t *testing.T) {
 	t.Parallel()
 
@@ -1073,11 +1363,15 @@ func TestParseHostList_MultipleHosts(t *testing.T) {
 	}
 }
 
-func TestParseHostList_EmptyHost(t *testing.T) {
+func TestParseHostList_NormalizesBracketedIPv6Hosts(t *testing.T) {
 	t.Parallel()
-
-	if _, err := parseHostList(""); err == nil {
-		t.Fatal("expected error for empty host string")
+	hosts, err := parseHostList("[::1]:1521,[2001:db8::1]:1522")
+	if err != nil {
+		t.Fatalf("parseHostList failed: %v", err)
+	}
+	want := []hostPort{{host: "::1", port: "1521"}, {host: "2001:db8::1", port: "1522"}}
+	if !reflect.DeepEqual(hosts, want) {
+		t.Fatalf("hosts = %+v, want %+v", hosts, want)
 	}
 }
 

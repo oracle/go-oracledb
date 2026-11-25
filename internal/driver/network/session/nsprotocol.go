@@ -92,6 +92,9 @@ type connectRequest struct {
 	// descriptor is the serialized TNS DESCRIPTION sent in the CONNECT packet.
 	// It is also used as the connect-data fallback when a redirect omits one.
 	descriptor []byte
+	// connectionID is the resolved Oracle connection identifier for this
+	// handshake. It is used in CONNECT_DATA and listener refusal messages.
+	connectionID string
 	// errorData contains resolved CONNECT_DATA values used only to format Oracle
 	// listener refusal errors. These values are not transmitted in the packet.
 	errorData connectErrorData
@@ -336,7 +339,7 @@ func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) err
 
 // refuseArgs collects the placeholder values needed to format the
 // localized message for a specific ORA code.
-func (ns *networkSession) refuseArgs(errCode string, address transport.Address, data connectErrorData) ([]any, error) {
+func (ns *networkSession) refuseArgs(errCode string, address transport.Address, connectionID string, data connectErrorData) ([]any, error) {
 	missingValue := func(name string) error {
 		return fmt.Errorf("resolved CONNECT_DATA is missing %s", name)
 	}
@@ -345,7 +348,7 @@ func (ns *networkSession) refuseArgs(errCode string, address transport.Address, 
 		if data.serviceName == "" {
 			return nil, missingValue("SERVICE_NAME")
 		}
-		return []any{data.serviceName, address.DialHost, address.Port, address.ConnectionID}, nil
+		return []any{data.serviceName, address.DialHost, address.Port, connectionID}, nil
 	case "12520":
 		if data.serverType == "" {
 			return nil, missingValue("SERVER")
@@ -353,7 +356,7 @@ func (ns *networkSession) refuseArgs(errCode string, address transport.Address, 
 		if data.serviceName == "" {
 			return nil, missingValue("SERVICE_NAME")
 		}
-		return []any{data.serverType, data.serviceName, address.DialHost, address.Port, address.ConnectionID}, nil
+		return []any{data.serverType, data.serviceName, address.DialHost, address.Port, connectionID}, nil
 	case "12521":
 		if data.instanceName == "" {
 			return nil, missingValue("INSTANCE_NAME")
@@ -361,17 +364,17 @@ func (ns *networkSession) refuseArgs(errCode string, address transport.Address, 
 		if data.serviceName == "" {
 			return nil, missingValue("SERVICE_NAME")
 		}
-		return []any{data.instanceName, data.serviceName, address.DialHost, address.Port, address.ConnectionID}, nil
+		return []any{data.instanceName, data.serviceName, address.DialHost, address.Port, connectionID}, nil
 	case "12505":
 		if data.sid == "" {
 			return nil, missingValue("SID")
 		}
-		return []any{data.sid, address.DialHost, address.Port, address.ConnectionID}, nil
+		return []any{data.sid, address.DialHost, address.Port, connectionID}, nil
 	default:
-		return nil, nil,nil
+		return nil, nil
 	}
 }
-func (ns *networkSession) handleRefuse(ctx context.Context, p *refusePacket, address transport.Address, errorData connectErrorData) error {
+func (ns *networkSession) handleRefuse(ctx context.Context, p *refusePacket, address transport.Address, connectionID string, errorData connectErrorData) error {
 	if p.overflow {
 		_, err := ns.recvPacket(ctx)
 		if err != nil {
@@ -393,14 +396,14 @@ func (ns *networkSession) handleRefuse(ctx context.Context, p *refusePacket, add
 		return common.NewOracleError(oracleErrors.ConnectionRefusedDetail, nil, errCode, p.userReason, p.systemReason)
 	}
 
-	args, err := ns.refuseArgs(errCode, address, errorData)
+	args, err := ns.refuseArgs(errCode, address, connectionID, errorData)
 	if err != nil {
 		return err
 	}
 	return common.NewOracleError(mappedCode, nil, args...)
 }
 
-func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket, address transport.Address, originalConnectData []byte) error {
+func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket, address transport.Address, connectionID string, originalConnectData []byte) error {
 	ns.redirectCount++
 	if ns.redirectCount > maxRedirectCount {
 		return common.NewOracleError(oracleErrors.NetworkRetryLimitExceeded, nil, "redirects", maxRedirectCount)
@@ -425,7 +428,7 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 		addrStr = string(p.dataBuf)
 		redirectConnectData = originalConnectData
 	}
-	redirectAttempt, err := ns.resolveRedirectAttempt(ctx, addrStr, address.ConnectionID)
+	redirectAttempt, err := ns.resolveRedirectAttempt(ctx, addrStr, connectionID)
 	if err != nil {
 		return err
 	}
@@ -441,7 +444,6 @@ func (ns *networkSession) handleRedirect(ctx context.Context, p *redirectPacket,
 			PreviousHostname: oldHostname,
 			HTTPSProxy:       address.HTTPSProxy,
 			HTTPSProxyPort:   address.HTTPSProxyPort,
-			ConnectionID:     address.ConnectionID,
 		}
 		ns.ntAdapter.Disconnect()
 		ns.connected = false
@@ -556,13 +558,13 @@ func (ns *networkSession) connect(ctx context.Context, address transport.Address
 			}
 			return nil
 		case *refusePacket:
-			err = ns.handleRefuse(ctx, p, address, request.errorData)
+			err = ns.handleRefuse(ctx, p, address, request.connectionID, request.errorData)
 			if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
 				return disconnectErr
 			}
 			return err
 		case *redirectPacket:
-			err = ns.handleRedirect(ctx, p, address, request.descriptor)
+			err = ns.handleRedirect(ctx, p, address, request.connectionID, request.descriptor)
 			if err != nil {
 				if disconnectErr := ns.Disconnect(ctx, 0); disconnectErr != nil {
 					return disconnectErr
@@ -632,7 +634,8 @@ func ConnectToAttempt(ctx context.Context, attempt *oracleconfig.ConnectionAttem
 			sanitizeCIDValue(common.HostName),
 			sanitizeCIDValue(common.UserName),
 		)),
-		errorData: refusalDataFromAttempt(attempt),
+		connectionID: attempt.GetConnectionID(),
+		errorData:    refusalDataFromAttempt(attempt),
 	}
 
 	// Step 3: construct the socket destination from the same attempt and open
@@ -649,7 +652,6 @@ func ConnectToAttempt(ctx context.Context, attempt *oracleconfig.ConnectionAttem
 		TLSHostname:    accessPoint.Host,
 		HTTPSProxy:     options.HTTPSProxy,
 		HTTPSProxyPort: options.HTTPSProxyPort,
-		ConnectionID:   attempt.GetConnectionID(),
 	}
 
 	common.OdlT("NSPROTOCOL").Debug("connecting", "address", address)

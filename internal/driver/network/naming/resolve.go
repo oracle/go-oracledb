@@ -49,6 +49,16 @@ import (
 
 type lookupIPAddrFunc = driverCommon.LookupIPAddrFunc
 
+// Address is an endpoint retained by the naming package's standalone host
+// resolver. ResolvedIP records the selected DNS result while Host preserves
+// the name supplied by the caller.
+type Address struct {
+	Protocol   driverCommon.Protocol
+	Host       string
+	Port       uint16
+	ResolvedIP string
+}
+
 // resolveAddress resolves a single Address.
 //
 // If Host is a hostname, it is resolved via DNS and expanded to one Address per resolved IP.
@@ -93,11 +103,3 @@ func resolveAddressWithLookup(ctx context.Context, address Address, lookupIPAddr
 
 	return resolved, nil
 }
-
-// GetDNSErrors returns any DNS resolution errors that occurred during iterator creation.
-// Currently always returns nil.
-/*
-func (ci *ConnectionIterator) GetDNSErrors() []error {
-	return ci.dnsErrors
-}
-*/

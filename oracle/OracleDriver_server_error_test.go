@@ -123,7 +123,7 @@ func TestServerError(t *testing.T) {
 			t.Skip("Cannot connection to ADB wrong PORT, disable tests for ADB")
 		}
 		wrongPortCfg := TestingConfig.Clone()
-		wrongPortCfg.Database.Port = 8443
+		wrongPortCfg.Database.Port = 1234
 
 		dsn := wrongPortCfg.GetConnectionString()
 		db, err := sql.Open(wrongPortCfg.Driver.Name, dsn)

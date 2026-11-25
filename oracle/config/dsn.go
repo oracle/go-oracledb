@@ -39,6 +39,8 @@
 package config
 
 import (
+	"fmt"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -371,11 +373,11 @@ type ConnectionPlans struct {
 // represented as a plan with one Description.
 type ConnectionDescriptionPlan struct {
 	// Failover controls whether connection attempts continue to later descriptions.
-	Failover *bool
+	Failover *bool `ns_name:"failover"`
 	// LoadBalance controls the initial order of descriptions.
-	LoadBalance *bool
+	LoadBalance *bool `ns_name:"load_balance"`
 	// SourceRoute indicates that the connection routes through multiple addresses.
-	SourceRoute *bool
+	SourceRoute *bool `ns_name:"source_route"`
 	// AddressGroups holds plan-level address groups when the descriptor provides them.
 	AddressGroups []ConnectionAddressGroup
 	// Descriptions contains each DESCRIPTION or the normalized EZConnect target.
@@ -389,43 +391,43 @@ type ConnectionDescriptionPlan struct {
 // explicitly supplied zero value.
 type ConnectionDescription struct {
 	// Failover controls whether later addresses in this description are tried.
-	Failover *bool
+	Failover *bool `ns_name:"failover"`
 	// LoadBalance controls the initial order of this description's addresses.
-	LoadBalance *bool
+	LoadBalance *bool `ns_name:"load_balance"`
 	// SourceRoute enables source routing through this description's address groups.
-	SourceRoute *bool
+	SourceRoute *bool `ns_name:"source_route"`
 	// UseSNI enables TLS Server Name Indication for this description.
-	UseSNI *bool
+	UseSNI *bool `ns_name:"use_sni"`
 	// ConnectTimeout limits the overall connection establishment time.
-	ConnectTimeout *time.Duration
+	ConnectTimeout *time.Duration `ns_name:"connect_timeout"`
 	// RetryCount is the number of additional passes over the selected addresses.
-	RetryCount *int
+	RetryCount *int `ns_name:"retry_count"`
 	// RetryDelay is the wait between retry passes.
-	RetryDelay *time.Duration
+	RetryDelay *time.Duration `ns_name:"retry_delay"`
 	// TransportConnectTimeout limits each socket or proxy transport connection.
-	TransportConnectTimeout *time.Duration
+	TransportConnectTimeout *time.Duration `ns_name:"transport_connect_timeout"`
 	// ExpireTime is the interval for network liveness probes, in minutes.
-	ExpireTime *int
+	ExpireTime *int `ns_name:"expire_time"`
 	// RecvTimeout limits reads from the established Oracle Net connection.
-	RecvTimeout *time.Duration
+	RecvTimeout *time.Duration `ns_name:"recv_timeout"`
 	// SendTimeout limits writes to the established Oracle Net connection.
-	SendTimeout *time.Duration
+	SendTimeout *time.Duration `ns_name:"send_timeout"`
 	// SDU is the Oracle Net Session Data Unit size in bytes.
-	SDU *int
+	SDU *int `ns_name:"sdu"`
 	// RecvBufSize is the socket receive buffer size in bytes.
-	RecvBufSize *int
+	RecvBufSize *int `ns_name:"recv_buf_size"`
 	// SendBufSize is the socket send buffer size in bytes.
-	SendBufSize *int
+	SendBufSize *int `ns_name:"send_buf_size"`
 	// Enable contains the Oracle Net ENABLE setting, such as BROKEN.
-	Enable *string
+	Enable *string `ns_name:"enable"`
 	// ConnectionIDPrefix prefixes generated Oracle Net connection identifiers.
-	ConnectionIDPrefix *string
+	ConnectionIDPrefix *string `ns_name:"connection_id_prefix"`
 	// Compression enables Oracle Net network compression.
-	Compression *bool
+	Compression *bool `ns_name:"compression"`
 	// CompressionLevels lists compression algorithms or levels requested by the descriptor.
 	CompressionLevels []string
 	// TypeOfService contains the requested Oracle Net service type.
-	TypeOfService *string
+	TypeOfService *string `ns_name:"type_of_service"`
 	// Security contains TLS and wallet settings scoped to this description.
 	Security *Security
 	// SecuritySet records which Security members were explicitly specified.
@@ -444,11 +446,11 @@ type ConnectionDescription struct {
 // group formed by direct ADDRESS children of a DESCRIPTION.
 type ConnectionAddressGroup struct {
 	// Failover controls whether later access points in this group are tried.
-	Failover *bool
+	Failover *bool `ns_name:"failover"`
 	// LoadBalance controls the initial order of access points in this group.
-	LoadBalance *bool
+	LoadBalance *bool `ns_name:"load_balance"`
 	// SourceRoute enables source routing for this group.
-	SourceRoute *bool
+	SourceRoute *bool `ns_name:"source_route"`
 	// AccessPoints contains the protocol endpoints in the group.
 	AccessPoints []RemoteAccessPoint
 	// AdditionalSettings preserves unrecognized scalar settings at group scope.
@@ -464,13 +466,13 @@ type RemoteAccessPoint struct {
 	// Port is the database listener port.
 	Port int
 	// HTTPSProxy optionally selects an HTTP CONNECT proxy for TCPS.
-	HTTPSProxy *string
+	HTTPSProxy *string `ns_name:"https_proxy"`
 	// HTTPSProxyPort is the HTTP CONNECT proxy port when HTTPSProxy is set.
 	HTTPSProxyPort *int
 	// RecvBufSize overrides the socket receive buffer for this endpoint.
-	RecvBufSize *int
+	RecvBufSize *int `ns_name:"recv_buf_size"`
 	// SendBufSize overrides the socket send buffer for this endpoint.
-	SendBufSize *int
+	SendBufSize *int `ns_name:"send_buf_size"`
 	// AdditionalSettings preserves unrecognized scalar settings at address scope.
 	AdditionalSettings map[string]string
 }
@@ -479,36 +481,37 @@ type RemoteAccessPoint struct {
 // the CONNECT_DATA section of a descriptor.
 type ConnectData struct {
 	// ServiceName identifies the database service requested by the client.
-	ServiceName string
+	ServiceName string `ns_name:"service_name"`
 	// SID identifies an instance by Oracle system identifier.
-	SID string
+	SID string `ns_name:"sid"`
 	// Server selects the server mode, such as DEDICATED or POOLED.
-	Server string
+	Server string `ns_name:"server"`
 	// PoolName selects a DRCP pool with the TNS POOL_NAME parameter.
-	PoolName string
+	PoolName string `ns_name:"pool_name"`
 	// PoolConnectionClass selects the DRCP connection class.
-	PoolConnectionClass string
+	PoolConnectionClass string `ns_name:"pool_connection_class"`
 	// PoolPurity selects the requested DRCP session purity.
-	PoolPurity string
+	PoolPurity string `ns_name:"pool_purity"`
 	// PoolBoundary selects the DRCP pool boundary behavior.
-	PoolBoundary string
+	PoolBoundary string `ns_name:"pool_boundary"`
 	// ServiceTag carries the service tag used by Oracle Net connect data.
-	ServiceTag string
+	ServiceTag string `ns_name:"service_tag"`
 	// InstanceName identifies a particular database instance.
-	InstanceName string
+	InstanceName string `ns_name:"instance_name"`
 	// FailoverMode contains the requested client-side failover mode.
-	FailoverMode string
-	// FailoverModeSettings contains nested TAF settings such as TYPE, METHOD,
-	// RETRIES, and DELAY when FAILOVER_MODE is represented as a section.
+	FailoverMode string `ns_name:"failover_mode"`
+	// FailoverModeSettings contains nested Transparent Application Failover
+	// settings such as TYPE, METHOD, RETRIES, and DELAY when FAILOVER_MODE is
+	// represented as a section.
 	FailoverModeSettings map[string]string
 	// HS enables heterogeneous services when set by the descriptor.
-	HS string
+	HS string `ns_name:"hs"`
 	// RDBDatabase identifies an Rdb database when applicable.
-	RDBDatabase string
+	RDBDatabase string `ns_name:"rdb_database"`
 	// GlobalName identifies the requested global database name.
-	GlobalName string
+	GlobalName string `ns_name:"global_name"`
 	// ConnectionIDPrefix prefixes generated Oracle Net connection identifiers.
-	ConnectionIDPrefix string
+	ConnectionIDPrefix string `ns_name:"connection_id_prefix"`
 	// AdditionalSettings preserves other scalar CONNECT_DATA parameters.
 	AdditionalSettings map[string]string
 	// StructuredSettings preserves CONNECT_DATA sections whose values are
@@ -519,15 +522,15 @@ type ConnectData struct {
 // Security contains TLS and wallet parameters from a SECURITY section.
 type Security struct {
 	// SSLServerCertDN is the distinguished name expected in the server certificate.
-	SSLServerCertDN string
+	SSLServerCertDN string `ns_name:"ssl_server_cert_dn"`
 	// SSLServerDNMatch controls matching the server certificate to SSLServerCertDN.
-	SSLServerDNMatch bool
+	SSLServerDNMatch bool `ns_name:"ssl_server_dn_match"`
 	// SSLAllowWeakDNMatch permits less strict server distinguished-name matching.
-	SSLAllowWeakDNMatch bool
+	SSLAllowWeakDNMatch bool `ns_name:"ssl_allow_weak_dn_match"`
 	// WalletLocation identifies the directory containing client wallet material.
-	WalletLocation string
+	WalletLocation string `ns_name:"wallet_location"`
 	// MyWalletDirectory is the Oracle Net alias for WalletLocation.
-	MyWalletDirectory string
+	MyWalletDirectory string `ns_name:"my_wallet_directory"`
 	// AdditionalSettings preserves other scalar SECURITY parameters.
 	AdditionalSettings map[string]string
 	// StructuredSettings preserves nested SECURITY parameters as serialized TNS
@@ -564,7 +567,9 @@ func parseEazyConnectDescriptor(url string) (*remoteAccessPoints, string, error)
 
 	parts := strings.Split(url, "/")
 	hostPart := parts[0]
-
+	if hostPart == "" {
+		return nil, "", common.NewOracleError(oracleErrors.NamingEzConnectError, nil, "", "host")
+	}
 	addressGroups, err := parseAddressGroups(hostPart)
 	if err != nil {
 		return nil, "", err
@@ -599,9 +604,6 @@ func parseEazyConnectDescriptor(url string) (*remoteAccessPoints, string, error)
 //   - []addressGroup: parsed address groups in source order.
 //   - error: missing host or invalid host/port syntax in any group.
 func parseAddressGroups(hostStr string) ([]addressGroup, error) {
-	if hostStr == "" {
-		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, "", "host")
-	}
 
 	groupStrs := strings.Split(hostStr, ";")
 	groups := make([]addressGroup, 0, len(groupStrs))
@@ -633,15 +635,17 @@ func parseAddressGroups(hostStr string) ([]addressGroup, error) {
 //   - []hostPort: hosts with explicit or default listener ports.
 //   - error: missing host or invalid port.
 func parseHostList(hostStr string) ([]hostPort, error) {
-	if hostStr == "" {
-		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, "", "host")
-	}
-
 	var hosts []hostPort
 	var currentHost strings.Builder
 	var currentPort strings.Builder
 	inBrackets := false
 	parsingPort := false
+	normalizeHost := func(host string) string {
+		if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+			return host[1 : len(host)-1]
+		}
+		return host
+	}
 
 	for i := 0; i < len(hostStr); i++ {
 		ch := hostStr[i]
@@ -658,7 +662,7 @@ func parseHostList(hostStr string) ([]hostPort, error) {
 				parsingPort = true
 			}
 		} else if ch == ',' {
-			host := strings.TrimSpace(currentHost.String())
+			host := normalizeHost(strings.TrimSpace(currentHost.String()))
 			port := strings.TrimSpace(currentPort.String())
 			if port == "" {
 				port = defaultOraclePort
@@ -682,6 +686,7 @@ func parseHostList(hostStr string) ([]hostPort, error) {
 	if host == "" {
 		return nil, common.NewOracleError(oracleErrors.NamingEzConnectError, nil, "", "host")
 	}
+	host = normalizeHost(host)
 	if port == "" {
 		port = defaultOraclePort
 	}
@@ -897,15 +902,13 @@ func handleConnectDescriptorFormatDsnWithConnectData(dsn string, requireConnectD
 		}
 		plan.Descriptions = append(plan.Descriptions, description)
 	case "DESCRIPTION_LIST":
-		for i := range root.Children {
-			child := &root.Children[i]
+		_, remaining, assignErr := assignTaggedScalars(&plan, root)
+		if assignErr != nil {
+			return ConnectionDescriptionPlan{}, assignErr
+		}
+		for i := range remaining {
+			child := &remaining[i]
 			switch child.Name {
-			case "FAILOVER":
-				plan.Failover, err = parseBoolPointer(child)
-			case "LOAD_BALANCE":
-				plan.LoadBalance, err = parseBoolPointer(child)
-			case "SOURCE_ROUTE":
-				plan.SourceRoute, err = parseBoolPointer(child)
 			case "ADDRESS_LIST":
 				var group ConnectionAddressGroup
 				group, err = parseConnectionAddressGroup(child)
@@ -960,6 +963,10 @@ func handleConnectDescriptorFormatDsnWithConnectData(dsn string, requireConnectD
 //   - error: invalid value or unsupported nested structure in the description.
 func parseConnectionDescription(node *Node) (ConnectionDescription, error) {
 	description := ConnectionDescription{}
+	_, remaining, err := assignTaggedScalars(&description, node)
+	if err != nil {
+		return ConnectionDescription{}, err
+	}
 	var directAddresses []RemoteAccessPoint
 	flushDirectAddresses := func() {
 		if len(directAddresses) == 0 {
@@ -971,44 +978,10 @@ func parseConnectionDescription(node *Node) (ConnectionDescription, error) {
 		directAddresses = nil
 	}
 
-	for i := range node.Children {
-		child := &node.Children[i]
+	for i := range remaining {
+		child := &remaining[i]
 		var err error
 		switch child.Name {
-		case "FAILOVER":
-			description.Failover, err = parseBoolPointer(child)
-		case "LOAD_BALANCE":
-			description.LoadBalance, err = parseBoolPointer(child)
-		case "SOURCE_ROUTE":
-			description.SourceRoute, err = parseBoolPointer(child)
-		case "USE_SNI":
-			description.UseSNI, err = parseBoolPointer(child)
-		case "CONNECT_TIMEOUT":
-			description.ConnectTimeout, err = parseDurationPointer(child)
-		case "RETRY_COUNT":
-			description.RetryCount, err = parseIntPointer(child)
-		case "RETRY_DELAY":
-			description.RetryDelay, err = parseDurationPointer(child)
-		case "TRANSPORT_CONNECT_TIMEOUT":
-			description.TransportConnectTimeout, err = parseDurationPointer(child)
-		case "EXPIRE_TIME":
-			description.ExpireTime, err = parseIntPointer(child)
-		case "RECV_TIMEOUT":
-			description.RecvTimeout, err = parseDurationPointer(child)
-		case "SEND_TIMEOUT":
-			description.SendTimeout, err = parseDurationPointer(child)
-		case "SDU":
-			description.SDU, err = parseIntPointer(child)
-		case "RECV_BUF_SIZE":
-			description.RecvBufSize, err = parseIntPointer(child)
-		case "SEND_BUF_SIZE":
-			description.SendBufSize, err = parseIntPointer(child)
-		case "ENABLE":
-			description.Enable = stringPointer(child.Value)
-		case "CONNECTION_ID_PREFIX":
-			description.ConnectionIDPrefix = stringPointer(child.Value)
-		case "COMPRESSION":
-			description.Compression, err = parseBoolPointer(child)
 		case "COMPRESSION_LEVELS":
 			for _, level := range child.Children {
 				if level.Name != "LEVEL" {
@@ -1016,8 +989,6 @@ func parseConnectionDescription(node *Node) (ConnectionDescription, error) {
 				}
 				description.CompressionLevels = append(description.CompressionLevels, level.Value)
 			}
-		case "TYPE_OF_SERVICE":
-			description.TypeOfService = stringPointer(child.Value)
 		case "SECURITY":
 			description.Security, description.SecuritySet, err = parseSecurity(child)
 		case "CONNECT_DATA":
@@ -1062,22 +1033,20 @@ func parseConnectionDescription(node *Node) (ConnectionDescription, error) {
 //   - error: invalid group value, nested structure, or missing ADDRESS child.
 func parseConnectionAddressGroup(node *Node) (ConnectionAddressGroup, error) {
 	group := ConnectionAddressGroup{}
-	for i := range node.Children {
-		child := &node.Children[i]
-		var err error
+	_, remaining, err := assignTaggedScalars(&group, node)
+	if err != nil {
+		return ConnectionAddressGroup{}, err
+	}
+	for i := range remaining {
+		child := &remaining[i]
 		switch child.Name {
-		case "FAILOVER":
-			group.Failover, err = parseBoolPointer(child)
-		case "LOAD_BALANCE":
-			group.LoadBalance, err = parseBoolPointer(child)
-		case "SOURCE_ROUTE":
-			group.SourceRoute, err = parseBoolPointer(child)
 		case "ADDRESS":
 			var address RemoteAccessPoint
 			address, err = parseRemoteAccessPoint(child)
-			if err == nil {
-				group.AccessPoints = append(group.AccessPoints, address)
+			if err != nil {
+				return ConnectionAddressGroup{}, descriptorValueError(child, err)
 			}
+			group.AccessPoints = append(group.AccessPoints, address)
 		default:
 			if len(child.Children) != 0 {
 				return ConnectionAddressGroup{}, common.NewOracleError(oracleErrors.NamingContextError, nil, child.Name, "ADDRESS_LIST")
@@ -1086,9 +1055,6 @@ func parseConnectionAddressGroup(node *Node) (ConnectionAddressGroup, error) {
 				group.AdditionalSettings = make(map[string]string)
 			}
 			group.AdditionalSettings[child.Name] = child.Value
-		}
-		if err != nil {
-			return ConnectionAddressGroup{}, descriptorValueError(child, err)
 		}
 	}
 	if len(group.AccessPoints) == 0 {
@@ -1108,8 +1074,12 @@ func parseConnectionAddressGroup(node *Node) (ConnectionAddressGroup, error) {
 //   - error: invalid protocol, host, port, or nested address setting.
 func parseRemoteAccessPoint(node *Node) (RemoteAccessPoint, error) {
 	address := RemoteAccessPoint{Protocol: defaultProtocol, Port: 1521}
-	for i := range node.Children {
-		child := &node.Children[i]
+	_, remaining, assignErr := assignTaggedScalars(&address, node)
+	if assignErr != nil {
+		return RemoteAccessPoint{}, assignErr
+	}
+	for i := range remaining {
+		child := &remaining[i]
 		var err error
 		switch child.Name {
 		case "PROTOCOL":
@@ -1121,8 +1091,6 @@ func parseRemoteAccessPoint(node *Node) (RemoteAccessPoint, error) {
 			if err == nil {
 				address.Port, err = strconv.Atoi(child.Value)
 			}
-		case "HTTPS_PROXY":
-			address.HTTPSProxy = stringPointer(child.Value)
 		case "HTTPS_PROXY_PORT":
 			var port int
 			port, err = strconv.Atoi(child.Value)
@@ -1132,10 +1100,6 @@ func parseRemoteAccessPoint(node *Node) (RemoteAccessPoint, error) {
 			if err == nil {
 				address.HTTPSProxyPort = &port
 			}
-		case "RECV_BUF_SIZE":
-			address.RecvBufSize, err = parseIntPointer(child)
-		case "SEND_BUF_SIZE":
-			address.SendBufSize, err = parseIntPointer(child)
 		default:
 			if len(child.Children) != 0 {
 				return RemoteAccessPoint{}, common.NewOracleError(oracleErrors.NamingContextError, nil, child.Name, "ADDRESS")
@@ -1167,10 +1131,25 @@ func parseRemoteAccessPoint(node *Node) (RemoteAccessPoint, error) {
 //   - error: nested structure that cannot be represented or parsed.
 func parseConnectData(node *Node) (*ConnectData, map[string]bool, error) {
 	connectData := &ConnectData{}
-	set := make(map[string]bool)
-	for i := range node.Children {
-		child := &node.Children[i]
-		if child.Name != "FAILOVER_MODE" && len(child.Children) > 0 {
+	set, remaining, err := connectData.assignFromNode(node)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range remaining {
+		child := &remaining[i]
+		if child.Name == "FAILOVER_MODE" && len(child.Children) > 0 {
+			connectData.FailoverModeSettings = make(map[string]string, len(child.Children))
+			for j := range child.Children {
+				setting := &child.Children[j]
+				if len(setting.Children) > 0 {
+					return nil, nil, common.NewOracleError(oracleErrors.NamingContextError, nil, setting.Name, "FAILOVER_MODE")
+				}
+				connectData.FailoverModeSettings[setting.Name] = setting.Value
+			}
+		} else if len(child.Children) > 0 {
+			if hasTaggedTNSField(connectData, child.Name) {
+				return nil, nil, common.NewOracleError(oracleErrors.NamingContextError, nil, child.Name, "CONNECT_DATA")
+			}
 			if connectData.StructuredSettings == nil {
 				connectData.StructuredSettings = make(map[string]map[string]string)
 			}
@@ -1183,53 +1162,7 @@ func parseConnectData(node *Node) (*ConnectData, map[string]bool, error) {
 				section[setting.Name] = setting.Value
 			}
 			connectData.StructuredSettings[child.Name] = section
-			set[child.Name] = true
-			continue
-		}
-		switch child.Name {
-		case "SERVICE_NAME":
-			connectData.ServiceName = child.Value
-		case "SID":
-			connectData.SID = child.Value
-		case "SERVER":
-			connectData.Server = child.Value
-		case "POOL_NAME":
-			connectData.PoolName = child.Value
-		case "POOL_CONNECTION_CLASS":
-			connectData.PoolConnectionClass = child.Value
-		case "POOL_PURITY":
-			connectData.PoolPurity = child.Value
-		case "POOL_BOUNDARY":
-			connectData.PoolBoundary = child.Value
-		case "SERVICE_TAG":
-			connectData.ServiceTag = child.Value
-		case "INSTANCE_NAME":
-			connectData.InstanceName = child.Value
-		case "FAILOVER_MODE":
-			if len(child.Children) == 0 {
-				connectData.FailoverMode = child.Value
-			} else {
-				connectData.FailoverModeSettings = make(map[string]string, len(child.Children))
-				for j := range child.Children {
-					setting := &child.Children[j]
-					if len(setting.Children) > 0 {
-						return nil, nil, common.NewOracleError(oracleErrors.NamingContextError, nil, setting.Name, "FAILOVER_MODE")
-					}
-					connectData.FailoverModeSettings[setting.Name] = setting.Value
-				}
-			}
-		case "HS":
-			connectData.HS = child.Value
-		case "RDB_DATABASE":
-			connectData.RDBDatabase = child.Value
-		case "GLOBAL_NAME":
-			connectData.GlobalName = child.Value
-		case "CONNECTION_ID_PREFIX":
-			connectData.ConnectionIDPrefix = child.Value
-		default:
-			if len(child.Children) > 0 {
-				return nil, nil, common.NewOracleError(oracleErrors.NamingContextError, nil, child.Name, "CONNECT_DATA")
-			}
+		} else {
 			if connectData.AdditionalSettings == nil {
 				connectData.AdditionalSettings = make(map[string]string)
 			}
@@ -1252,47 +1185,30 @@ func parseConnectData(node *Node) (*ConnectData, map[string]bool, error) {
 //   - error: invalid boolean setting or malformed supported structure.
 func parseSecurity(node *Node) (*Security, map[string]bool, error) {
 	security := &Security{}
-	set := make(map[string]bool)
-	for i := range node.Children {
-		child := &node.Children[i]
-		var err error
-		if child.Name == "WALLET_LOCATION" && len(child.Children) > 0 {
+	set, remaining, err := assignTaggedScalars(security, node)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range remaining {
+		child := &remaining[i]
+		if len(child.Children) > 0 {
+			if child.Name != "WALLET_LOCATION" && hasTaggedTNSField(security, child.Name) {
+				return nil, nil, common.NewOracleError(oracleErrors.NamingContextError, nil, child.Name, "SECURITY")
+			}
 			if security.StructuredSettings == nil {
 				security.StructuredSettings = make(map[string]string)
 			}
 			security.StructuredSettings[child.Name] = child.ToString()
-			if directory := findDescriptorValue(child, "DIRECTORY"); directory != nil {
-				security.WalletLocation = directory.Value
-			}
-			set[child.Name] = true
-			continue
-		}
-		switch child.Name {
-		case "SSL_SERVER_CERT_DN":
-			security.SSLServerCertDN = child.Value
-		case "SSL_SERVER_DN_MATCH":
-			security.SSLServerDNMatch, err = parseDescriptorBool(child.Value)
-		case "SSL_ALLOW_WEAK_DN_MATCH":
-			security.SSLAllowWeakDNMatch, err = parseDescriptorBool(child.Value)
-		case "WALLET_LOCATION":
-			security.WalletLocation = child.Value
-		case "MY_WALLET_DIRECTORY":
-			security.MyWalletDirectory = child.Value
-		default:
-			if len(child.Children) > 0 {
-				if security.StructuredSettings == nil {
-					security.StructuredSettings = make(map[string]string)
+			if child.Name == "WALLET_LOCATION" {
+				if directory := findDescriptorValue(child, "DIRECTORY"); directory != nil {
+					security.WalletLocation = directory.Value
 				}
-				security.StructuredSettings[child.Name] = child.ToString()
-			} else {
-				if security.AdditionalSettings == nil {
-					security.AdditionalSettings = make(map[string]string)
-				}
-				security.AdditionalSettings[child.Name] = child.Value
 			}
-		}
-		if err != nil {
-			return nil, nil, descriptorValueError(child, err)
+		} else {
+			if security.AdditionalSettings == nil {
+				security.AdditionalSettings = make(map[string]string)
+			}
+			security.AdditionalSettings[child.Name] = child.Value
 		}
 		set[child.Name] = true
 	}
@@ -1321,21 +1237,147 @@ func findDescriptorValue(node *Node, name string) *Node {
 	return nil
 }
 
-// parseBoolPointer parses a descriptor node's boolean value while preserving
-// the distinction between an omitted value and an explicit false value.
+// assignTaggedScalars assigns scalar child nodes to matching ns_name-tagged
+// fields on dst. Nodes without a matching scalar field remain available for
+// the caller to parse as nested structures or preserve as additional settings.
 //
 // Input:
-//   - node: descriptor node whose scalar value contains the boolean text.
+//   - dst: non-nil pointer to the scope-specific descriptor value being filled.
+//   - node: descriptor section whose children are assigned.
 //
 // Output:
-//   - *bool: pointer to the parsed boolean value.
-//   - error: invalid boolean text.
-func parseBoolPointer(node *Node) (*bool, error) {
-	value, err := parseDescriptorBool(node.Value)
-	if err != nil {
-		return nil, err
+//   - map[string]bool: upper-case names of fields explicitly assigned.
+//   - []Node: children not handled as tagged scalar fields.
+//   - error: invalid destination, duplicate tag, or scalar conversion failure.
+func assignTaggedScalars(dst any, node *Node) (map[string]bool, []Node, error) {
+	if node == nil {
+		return nil, nil, common.NewOracleError(oracleErrors.NamingContextError, nil, "", "node")
 	}
-	return &value, nil
+	destination := reflect.ValueOf(dst)
+	if !destination.IsValid() || destination.Kind() != reflect.Ptr || destination.IsNil() || destination.Elem().Kind() != reflect.Struct {
+		return nil, nil, fmt.Errorf("descriptor assignment destination must be a non-nil pointer to a struct")
+	}
+	destination = destination.Elem()
+
+	fieldIndex := make(map[string]int, destination.NumField())
+	for i := 0; i < destination.NumField(); i++ {
+		name := tnsFieldName(destination.Type().Field(i))
+		if name == "" {
+			continue
+		}
+		if _, exists := fieldIndex[name]; exists {
+			return nil, nil, fmt.Errorf("duplicate ns_name %q on %s", name, destination.Type())
+		}
+		fieldIndex[name] = i
+	}
+
+	set := make(map[string]bool)
+	remaining := make([]Node, 0, len(node.Children))
+	for i := range node.Children {
+		child := &node.Children[i]
+		index, found := fieldIndex[child.Name]
+		if !found || len(child.Children) != 0 {
+			remaining = append(remaining, *child)
+			continue
+		}
+		field := destination.Field(index)
+		if err := assignTNSScalar(field, child.Value); err != nil {
+			return nil, nil, descriptorValueError(child, err)
+		}
+		set[child.Name] = true
+	}
+	return set, remaining, nil
+}
+
+// assignFromNode assigns scalar CONNECT_DATA fields to data and returns the
+// children that need structured or additional-setting handling.
+//
+// Input:
+//   - data: CONNECT_DATA value to update in place.
+//   - node: CONNECT_DATA descriptor node.
+//
+// Output:
+//   - map[string]bool: upper-case names explicitly assigned from the node.
+//   - []Node: nested or unrecognized children left for special handling.
+//   - error: scalar conversion or descriptor assignment failure.
+func (data *ConnectData) assignFromNode(node *Node) (map[string]bool, []Node, error) {
+	return assignTaggedScalars(data, node)
+}
+
+// tnsFieldName returns a normalized ns_name tag for a struct field.
+func tnsFieldName(field reflect.StructField) string {
+	return strings.ToUpper(strings.TrimSpace(field.Tag.Get("ns_name")))
+}
+
+// hasTaggedTNSField reports whether dst contains a scalar field tagged with name.
+func hasTaggedTNSField(dst any, name string) bool {
+	value := reflect.ValueOf(dst)
+	if !value.IsValid() {
+		return false
+	}
+	if value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return false
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return false
+	}
+	for i := 0; i < value.NumField(); i++ {
+		if tnsFieldName(value.Type().Field(i)) == strings.ToUpper(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// assignTNSScalar parses raw descriptor text into a tagged scalar field. Pointer
+// fields are allocated only after successful parsing, preserving omitted values.
+func assignTNSScalar(field reflect.Value, raw string) error {
+	if !field.CanSet() {
+		return fmt.Errorf("descriptor field of type %s cannot be set", field.Type())
+	}
+	targetType := field.Type()
+	pointer := targetType.Kind() == reflect.Ptr
+	if pointer {
+		targetType = targetType.Elem()
+	}
+
+	var parsed reflect.Value
+	switch {
+	case targetType == reflect.TypeOf(time.Duration(0)):
+		value, err := parseDescriptorDuration(raw)
+		if err != nil {
+			return err
+		}
+		parsed = reflect.ValueOf(value)
+	case targetType.Kind() == reflect.String:
+		parsed = reflect.ValueOf(raw).Convert(targetType)
+	case targetType.Kind() == reflect.Bool:
+		value, err := parseDescriptorBool(raw)
+		if err != nil {
+			return err
+		}
+		parsed = reflect.ValueOf(value).Convert(targetType)
+	case targetType.Kind() == reflect.Int:
+		value, err := parseDescriptorInt(raw)
+		if err != nil {
+			return err
+		}
+		parsed = reflect.ValueOf(value).Convert(targetType)
+	default:
+		return fmt.Errorf("unsupported tagged descriptor field type %s", targetType)
+	}
+
+	if pointer {
+		value := reflect.New(targetType)
+		value.Elem().Set(parsed)
+		field.Set(value)
+		return nil
+	}
+	field.Set(parsed)
+	return nil
 }
 
 // parseDescriptorBool converts common TNS boolean spellings to a Go bool.
@@ -1357,38 +1399,20 @@ func parseDescriptorBool(value string) (bool, error) {
 	}
 }
 
-// parseIntPointer parses a non-negative integer while retaining whether the
-// descriptor explicitly supplied it.
+// parseDescriptorInt parses a non-negative integer from a TNS scalar.
 //
 // Input:
-//   - node: descriptor node containing the integer text.
+//   - value: integer text from the descriptor.
 //
 // Output:
-//   - *int: pointer to the parsed integer.
+//   - int: parsed integer value.
 //   - error: text is not a non-negative decimal integer.
-func parseIntPointer(node *Node) (*int, error) {
-	value, err := strconv.Atoi(strings.TrimSpace(node.Value))
-	if err != nil || value < 0 {
-		return nil, common.NewOracleError(oracleErrors.InvalidConnectionParameter, err, node.Value, "integer", "non-negative")
+func parseDescriptorInt(value string) (int, error) {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 0 {
+		return 0, common.NewOracleError(oracleErrors.InvalidConnectionParameter, err, value, "integer", "non-negative")
 	}
-	return &value, nil
-}
-
-// parseDurationPointer parses a descriptor duration while retaining whether it
-// was explicitly supplied.
-//
-// Input:
-//   - node: descriptor node containing the duration text.
-//
-// Output:
-//   - *time.Duration: pointer to the parsed duration.
-//   - error: invalid or negative duration.
-func parseDurationPointer(node *Node) (*time.Duration, error) {
-	value, err := parseDescriptorDuration(node.Value)
-	if err != nil {
-		return nil, err
-	}
-	return &value, nil
+	return parsed, nil
 }
 
 // parseDescriptorDuration converts Oracle Net duration spellings into a Go duration.

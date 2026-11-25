@@ -104,9 +104,6 @@ type Address struct {
 	HTTPSProxy string
 	// HTTPSProxyPort is the HTTP CONNECT proxy port.
 	HTTPSProxyPort int
-	// ConnectionID is the resolved identifier used to correlate transport logs
-	// and errors with the Oracle Net connection attempt.
-	ConnectionID string
 }
 
 // String formats the dial destination as host:port for network errors and logs.
@@ -116,8 +113,6 @@ func (address Address) String() string {
 
 // NTattributes contains adapter-specific settings projected from the resolved
 // transport options, plus runtime TLS material such as loaded wallet contents.
-// ConnectionID is carried on Address because it identifies the attempt rather
-// than configuring the transport.
 type NTattributes struct {
 	TCPNODelay              bool
 	SendTimeout             int

@@ -74,7 +74,6 @@ type nttcp struct {
 	dialHost         string
 	tlsHostname      string
 	previousHostname string
-	connectionID     string
 	port             uint16
 	stream           net.Conn
 	atts             NTattributes
@@ -170,13 +169,13 @@ func (nt *nttcp) Send(ctx context.Context, buf []byte) error {
 		return nil
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
-		common.OdlT(nt.connectionID).Debug("context for Send() cancelled, cancelling writer")
+		common.Odl.Debug("context for Send() cancelled, cancelling writer")
 		nt.stream.SetWriteDeadline(time.Now())
 		nt._writerWG.Wait()
-		common.OdlT(nt.connectionID).Debug("Send() timed-out, writer is now joined")
+		common.Odl.Debug("Send() timed-out, writer is now joined")
 		// reset the deadline
 		nt.stream.SetWriteDeadline(time.Time{})
-		return common.NewOracleError(oracleErrors.CtxTimeout, ctx.Err(), "send", fmt.Sprintf("%s:%d", nt.dialHost, nt.port), nt.connectionID)
+		return common.NewOracleError(oracleErrors.CtxTimeout, ctx.Err(), "send", fmt.Sprintf("%s:%d", nt.dialHost, nt.port))
 	}
 }
 
@@ -200,8 +199,7 @@ func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 	ctxToBeUsed = ctx
 	if nt.atts.RecvTimeout > 0 {
 		ctxToBeUsed, cancel = context.WithTimeoutCause(ctx, time.Duration(nt.atts.RecvTimeout)*time.Millisecond,
-			common.NewCtxTimeoutCauseError("recv-timeout", uint(nt.atts.RecvTimeout),
-				nt.connectionID))
+			common.NewCtxTimeoutCauseError("recv-timeout", uint(nt.atts.RecvTimeout), ""))
 		defer cancel()
 	}
 
@@ -231,10 +229,10 @@ func (nt *nttcp) Receive(ctx context.Context, buf []byte, bytes2Read int) (int, 
 		return res.byteCount, nil
 	case <-ctxToBeUsed.Done():
 		// kick out go routine stuck on read now.
-		common.OdlT(nt.connectionID).Debug("context for Receive() cancelled, cancelling reader")
+		common.Odl.Debug("context for Receive() cancelled, cancelling reader")
 		nt.stream.SetReadDeadline(time.Now())
 		nt._readerWG.Wait()
-		common.OdlT(nt.connectionID).Debug("Receive() timed-out, reader is now joined")
+		common.Odl.Debug("Receive() timed-out, reader is now joined")
 		// reset the deadline
 		nt.stream.SetReadDeadline(time.Time{})
 		return 0, context.Cause(ctxToBeUsed)
@@ -262,8 +260,7 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 			context.WithTimeoutCause(ctx,
 				time.Duration(nt.atts.Transportconnecttimeout)*time.Millisecond,
 				common.NewCtxTimeoutCauseError("TransportConnectTimeout",
-					uint(nt.atts.Transportconnecttimeout),
-					nt.connectionID))
+					uint(nt.atts.Transportconnecttimeout), ""))
 		defer dialCancelToBeUsed()
 	}
 	dialAddress := address.String()
@@ -271,16 +268,16 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 		httpsProxyPort = httpsProxyPortOrDefault(httpsProxyPort)
 		dialAddress = net.JoinHostPort(httpsProxy, strconv.Itoa(httpsProxyPort))
 	}
-	common.OdlT(nt.connectionID).Debug("dialing remote host")
+	common.Odl.Debug("dialing remote host")
 	conn, err := dialer.DialContext(dialCtxToBeUsed, "tcp", dialAddress)
 	if err != nil {
 		if httpsProxy == "" {
-			return normalizeDialError(dialCtxToBeUsed, err, address, nt.connectionID)
+			return normalizeDialError(dialCtxToBeUsed, err, address)
 		}
 		proxyAddress := address
 		proxyAddress.DialHost = httpsProxy
 		proxyAddress.Port = uint16(httpsProxyPort)
-		return normalizeDialError(dialCtxToBeUsed, err, proxyAddress, nt.connectionID)
+		return normalizeDialError(dialCtxToBeUsed, err, proxyAddress)
 	}
 	if httpsProxy != "" {
 		request, reqErr := http.NewRequestWithContext(dialCtxToBeUsed, http.MethodConnect, "http://"+target, nil)
@@ -338,7 +335,7 @@ func (nt *nttcp) nTConnect(ctx context.Context, address Address) error {
 
 // normalizeDialError preserves DNS errors so callers can distinguish a failed
 // hostname lookup from a failed TCP connection to a resolved endpoint.
-func normalizeDialError(ctx context.Context, err error, address Address, connectionID string) error {
+func normalizeDialError(ctx context.Context, err error, address Address) error {
 	var dnsErr *net.DNSError
 	if errors.As(err, &dnsErr) {
 		return err
@@ -357,8 +354,7 @@ func normalizeDialError(ctx context.Context, err error, address Address, connect
 			return te
 		}
 		// deal with a context case now as we always want an oracleErrors
-		return common.NewOracleError(oracleErrors.CtxTimeout, nil, "CONNECT",
-			address.String(), connectionID)
+		return common.NewOracleError(oracleErrors.CtxTimeout, nil, "CONNECT", address.String())
 	}
 	if opError.Op == "dial" && errors.Is(opError.Err, syscall.ECONNREFUSED) {
 		return common.NewOracleError(oracleErrors.NoListenerAvailable, nil, address.String())
@@ -369,7 +365,6 @@ func normalizeDialError(ctx context.Context, err error, address Address, connect
 // Connect establishes a network transport connection
 func (nt *nttcp) Connect(ctx context.Context, address Address) error {
 	nt.previousHostname = address.PreviousHostname
-	nt.connectionID = address.ConnectionID
 	nt.dialHost = address.DialHost
 	nt.tlsHostname = address.TLSHostname
 	if nt.tlsHostname == "" {

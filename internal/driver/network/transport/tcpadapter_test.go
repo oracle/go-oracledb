@@ -75,7 +75,7 @@ func TestNormalizeDialError_PreservesDNSTimeout(t *testing.T) {
 	dnsErr := &net.DNSError{Err: "i/o timeout", Name: "db.example.com", IsTimeout: true}
 	err := &net.OpError{Op: "dial", Net: "tcp", Err: dnsErr}
 
-	got := normalizeDialError(context.Background(), err, Address{}, "test-id")
+	got := normalizeDialError(context.Background(), err, Address{})
 	var gotDNSErr *net.DNSError
 	if !errors.As(got, &gotDNSErr) {
 		t.Fatalf("normalized error = %T, want an error wrapping *net.DNSError", got)

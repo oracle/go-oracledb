@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,6 +51,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
 // TransportOptions contains the effective network and Oracle Net settings for
@@ -92,8 +94,6 @@ type TransportOptions struct {
 	CompressionLevels []string
 	// Enable contains the Oracle Net ENABLE value, such as BROKEN.
 	Enable string
-	// ConnectionIDPrefix prefixes generated Oracle Net connection identifiers.
-	ConnectionIDPrefix string
 	// SourceRoute indicates that the connection uses source routing.
 	SourceRoute bool
 	// TypeOfService contains the requested Oracle Net service type.
@@ -117,6 +117,9 @@ type ConnectionAttempt struct {
 	// connectionID is the identifier included in this attempt's Oracle Net
 	// handshake, including any configured connection ID prefix.
 	connectionID string
+	// connectionIDPrefix is the effective Oracle Net prefix resolved from
+	// configuration and the selected DESCRIPTION/CONNECT_DATA settings.
+	connectionIDPrefix string
 	// resolvedIP is the listener IP selected for this attempt, whether from DNS
 	// or an IP literal. It is separate from accessPoint.Host, which retains the
 	// hostname from the DSN, and is empty when DNS fails or returns no addresses.
@@ -398,7 +401,7 @@ func (attempt *ConnectionAttempt) GetEnable() string {
 // Output:
 //   - string: the prefix used when generating the Oracle Net connection ID.
 func (attempt *ConnectionAttempt) GetConnectionIDPrefix() string {
-	return attempt.transportOptions.ConnectionIDPrefix
+	return attempt.connectionIDPrefix
 }
 
 // GetSourceRoute reports whether source routing is enabled for this attempt.
@@ -787,8 +790,8 @@ func (attempt *ConnectionAttempt) getConnectDescriptor(sessionInfo *connectDescr
 	if options.Enable != "" {
 		appendDescriptorField(&result, "ENABLE", options.Enable)
 	}
-	if options.ConnectionIDPrefix != "" {
-		appendDescriptorField(&result, "CONNECTION_ID_PREFIX", options.ConnectionIDPrefix)
+	if attempt.connectionIDPrefix != "" {
+		appendDescriptorField(&result, "CONNECTION_ID_PREFIX", attempt.connectionIDPrefix)
 	}
 	if options.Compression || description.Compression != nil {
 		appendDescriptorField(&result, "COMPRESSION", strconv.FormatBool(options.Compression))
@@ -1058,11 +1061,9 @@ func (target attemptTarget) dialHost() string {
 //   - error: missing plans, base configuration, or connection ID; or context
 //     cancellation while pre-resolving selected description targets.
 func (plans *ConnectionPlans) NewConnectionAttemptIterator(ctx context.Context, connectionID string) (*ConnectionAttemptIterator, error) {
-	if plans == nil || plans.BaseConfig == nil {
-		return nil, fmt.Errorf("connection plans and base config are required")
-	}
+
 	if connectionID == "" {
-		return nil, fmt.Errorf("connection ID is required")
+		return nil, common.NewOracleError(oracleErrors.InternalError, fmt.Errorf("connection ID is required"))
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -1524,21 +1525,23 @@ func (iterator *ConnectionAttemptIterator) resolveSelectedTarget(cursor *descrip
 	mergeStringMaps(additional, target.accessPoint.AdditionalSettings)
 	transportOptions.AdditionalSettings = cloneStringMap(additional)
 	connectionID := iterator.connectionID
-	if connectionID != "" && transportOptions.ConnectionIDPrefix != "" {
-		connectionID = transportOptions.ConnectionIDPrefix + connectionID
+	connectionIDPrefix := config.ConnectionProperties.ConnectionIDPrefix
+	if connectionID != "" && connectionIDPrefix != "" {
+		connectionID = connectionIDPrefix + connectionID
 	}
 
 	attempt := &ConnectionAttempt{
-		transportOptions: transportOptions,
-		connectionID:     connectionID,
-		resolvedIP:       target.resolvedIP,
-		connectData:      connectData,
-		connectDataSet:   connectDataSet,
-		description:      description,
-		addressGroup:     cloneConnectionAddressGroup(target.group),
-		accessPoint:      cloneRemoteAccessPoint(target.accessPoint),
-		policy:           cursor.policy,
-		additional:       additional,
+		transportOptions:   transportOptions,
+		connectionID:       connectionID,
+		connectionIDPrefix: connectionIDPrefix,
+		resolvedIP:         target.resolvedIP,
+		connectData:        connectData,
+		connectDataSet:     connectDataSet,
+		description:        description,
+		addressGroup:       cloneConnectionAddressGroup(target.group),
+		accessPoint:        cloneRemoteAccessPoint(target.accessPoint),
+		policy:             cursor.policy,
+		additional:         additional,
 	}
 	config.ConnectDescriptor = attempt.GetConnectDescriptor()
 	attempt.effectiveConfig = config
@@ -1605,18 +1608,9 @@ func configurationDescriptorName(field *_fieldListElem) string {
 //   - ConnectData: service, server mode, and related values used to build the
 //     CONNECT_DATA section of the network descriptor.
 func connectDataFromConfig(properties OracleConnectionProperties) ConnectData {
-	return ConnectData{
-		ServiceName:        properties.ServiceName,
-		SID:                properties.SID,
-		Server:             properties.ServerType,
-		ServiceTag:         properties.ServiceTag,
-		InstanceName:       properties.InstanceName,
-		FailoverMode:       properties.FailoverMode,
-		HS:                 properties.HS,
-		RDBDatabase:        properties.RDBDatabase,
-		GlobalName:         properties.GlobalName,
-		ConnectionIDPrefix: properties.ConnectionIDPrefix,
-	}
+	connectData := ConnectData{}
+	copyTaggedFields(&connectData, properties, "CONNECT_DATA", "")
+	return connectData
 }
 
 // applyConnectDataToConfig copies non-DRCP CONNECT_DATA values into the
@@ -1629,16 +1623,71 @@ func connectDataFromConfig(properties OracleConnectionProperties) ConnectData {
 // Output:
 //   - None. Matching OracleConnectionProperties fields are replaced.
 func applyConnectDataToConfig(properties *OracleConnectionProperties, connectData ConnectData) {
-	properties.ServiceName = connectData.ServiceName
-	properties.SID = connectData.SID
-	properties.ServerType = connectData.Server
-	properties.ServiceTag = connectData.ServiceTag
-	properties.InstanceName = connectData.InstanceName
-	properties.FailoverMode = connectData.FailoverMode
-	properties.HS = connectData.HS
-	properties.RDBDatabase = connectData.RDBDatabase
-	properties.GlobalName = connectData.GlobalName
-	properties.ConnectionIDPrefix = connectData.ConnectionIDPrefix
+	copyTaggedFields(properties, connectData, "", "CONNECT_DATA")
+}
+
+// copyTaggedFields copies compatible fields with matching ns_name tags,
+// optionally limiting the source or destination to one TNS section.
+//
+// Input:
+//   - destination: pointer or value receiving matching fields; pointers are
+//     required when destination fields must be updated.
+//   - source: struct containing values to copy.
+//   - sourceSection: optional tns_section required on source fields.
+//   - destinationSection: optional tns_section required on destination fields.
+//
+// Output: none. Matching settable fields are copied by their normalized
+// ns_name, so config-to-CONNECT_DATA mapping follows the struct tags.
+func copyTaggedFields(destination, source any, sourceSection, destinationSection string) {
+	destinationValue := reflect.ValueOf(destination)
+	if destinationValue.Kind() == reflect.Ptr {
+		if destinationValue.IsNil() {
+			return
+		}
+		destinationValue = destinationValue.Elem()
+	}
+	sourceValue := reflect.ValueOf(source)
+	if sourceValue.Kind() == reflect.Ptr {
+		if sourceValue.IsNil() {
+			return
+		}
+		sourceValue = sourceValue.Elem()
+	}
+	if destinationValue.Kind() != reflect.Struct || sourceValue.Kind() != reflect.Struct {
+		return
+	}
+
+	destinationFields := make(map[string]int, destinationValue.NumField())
+	for i := 0; i < destinationValue.NumField(); i++ {
+		field := destinationValue.Type().Field(i)
+		name := tnsFieldName(field)
+		if name == "" || destinationSection != "" && field.Tag.Get("tns_section") != destinationSection {
+			continue
+		}
+		destinationFields[name] = i
+	}
+
+	for i := 0; i < sourceValue.NumField(); i++ {
+		sourceFieldInfo := sourceValue.Type().Field(i)
+		name := tnsFieldName(sourceFieldInfo)
+		if name == "" || sourceSection != "" && sourceFieldInfo.Tag.Get("tns_section") != sourceSection {
+			continue
+		}
+		destinationIndex, found := destinationFields[name]
+		if !found {
+			continue
+		}
+		destinationField := destinationValue.Field(destinationIndex)
+		sourceField := sourceValue.Field(i)
+		if !destinationField.CanSet() {
+			continue
+		}
+		if sourceField.Type().AssignableTo(destinationField.Type()) {
+			destinationField.Set(sourceField)
+		} else if sourceField.Type().ConvertibleTo(destinationField.Type()) {
+			destinationField.Set(sourceField.Convert(destinationField.Type()))
+		}
+	}
 }
 
 // applyDescriptionConfig applies explicitly set DESCRIPTION values over the
@@ -1781,49 +1830,8 @@ func mergeConnectData(query ConnectData, querySet map[string]bool, description *
 	if description == nil {
 		return result, set
 	}
-	values := map[string]*string{
-		"SERVICE_NAME":          &result.ServiceName,
-		"SID":                   &result.SID,
-		"SERVER":                &result.Server,
-		"POOL_NAME":             &result.PoolName,
-		"POOL_CONNECTION_CLASS": &result.PoolConnectionClass,
-		"POOL_PURITY":           &result.PoolPurity,
-		"POOL_BOUNDARY":         &result.PoolBoundary,
-		"SERVICE_TAG":           &result.ServiceTag,
-		"INSTANCE_NAME":         &result.InstanceName,
-		"FAILOVER_MODE":         &result.FailoverMode,
-		"HS":                    &result.HS,
-		"RDB_DATABASE":          &result.RDBDatabase,
-		"GLOBAL_NAME":           &result.GlobalName,
-		"CONNECTION_ID_PREFIX":  &result.ConnectionIDPrefix,
-	}
-	descriptorValues := ConnectData{
-		ServiceName: description.ServiceName, SID: description.SID, Server: description.Server,
-		PoolName: description.PoolName, PoolConnectionClass: description.PoolConnectionClass,
-		PoolPurity: description.PoolPurity, PoolBoundary: description.PoolBoundary,
-		ServiceTag: description.ServiceTag, InstanceName: description.InstanceName,
-		FailoverMode: description.FailoverMode, HS: description.HS,
-		RDBDatabase: description.RDBDatabase, GlobalName: description.GlobalName,
-		ConnectionIDPrefix: description.ConnectionIDPrefix,
-	}
-	valueByName := map[string]string{
-		"SERVICE_NAME": descriptorValues.ServiceName, "SID": descriptorValues.SID,
-		"SERVER": descriptorValues.Server, "POOL_NAME": descriptorValues.PoolName,
-		"POOL_CONNECTION_CLASS": descriptorValues.PoolConnectionClass,
-		"POOL_PURITY":           descriptorValues.PoolPurity, "POOL_BOUNDARY": descriptorValues.PoolBoundary,
-		"SERVICE_TAG": descriptorValues.ServiceTag, "INSTANCE_NAME": descriptorValues.InstanceName,
-		"FAILOVER_MODE": descriptorValues.FailoverMode, "HS": descriptorValues.HS,
-		"RDB_DATABASE": descriptorValues.RDBDatabase, "GLOBAL_NAME": descriptorValues.GlobalName,
-		"CONNECTION_ID_PREFIX": descriptorValues.ConnectionIDPrefix,
-	}
-	for name, destination := range values {
-		if descriptionSet[name] || valueByName[name] != "" {
-			*destination = valueByName[name]
-			set[name] = true
-		}
-	}
-	if descriptionSet["FAILOVER_MODE"] || descriptorValues.FailoverMode != "" || len(description.FailoverModeSettings) > 0 {
-		result.FailoverMode = descriptorValues.FailoverMode
+	mergeTaggedConnectData(&result, description, descriptionSet, set)
+	if descriptionSet["FAILOVER_MODE"] || description.FailoverMode != "" || len(description.FailoverModeSettings) > 0 {
 		result.FailoverModeSettings = cloneStringMap(description.FailoverModeSettings)
 		set["FAILOVER_MODE"] = true
 	}
@@ -1842,6 +1850,24 @@ func mergeConnectData(query ConnectData, querySet map[string]bool, description *
 		}
 	}
 	return result, set
+}
+
+// mergeTaggedConnectData overlays explicitly set or non-empty tagged fields
+// from description onto result and updates the merged field-presence set.
+func mergeTaggedConnectData(result, description *ConnectData, descriptionSet, mergedSet map[string]bool) {
+	resultValue := reflect.ValueOf(result).Elem()
+	descriptionValue := reflect.ValueOf(description).Elem()
+	for i := 0; i < resultValue.NumField(); i++ {
+		name := tnsFieldName(resultValue.Type().Field(i))
+		if name == "" {
+			continue
+		}
+		sourceField := descriptionValue.Field(i)
+		if descriptionSet[name] || !sourceField.IsZero() {
+			resultValue.Field(i).Set(sourceField)
+			mergedSet[name] = true
+		}
+	}
 }
 
 // buildTransportOptions copies resolved configuration and selected address
@@ -1884,10 +1910,9 @@ func buildTransportOptions(config *OracleDriverConfig, cursor *descriptionCursor
 			SSLServerDNMatch: props.SSLServerDNMatch, SSLAllowWeakDNMatch: props.SSLAllowWeakDNMatch,
 			WalletLocation: props.WalletLocation, MyWalletDirectory: props.WalletLocation},
 		Compression: props.Compression, Enable: props.Enable,
-		CompressionLevels:  parseStringList(props.CompressionLevels),
-		ConnectionIDPrefix: props.ConnectionIDPrefix,
-		SourceRoute:        target.sourceRoute,
-		TypeOfService:      props.TypeOfService,
+		CompressionLevels: parseStringList(props.CompressionLevels),
+		SourceRoute:       target.sourceRoute,
+		TypeOfService:     props.TypeOfService,
 	}
 	if props.HttpsProxyPort <= 0 {
 		options.HTTPSProxyPort = 80
@@ -1926,17 +1951,11 @@ func buildTransportOptions(config *OracleDriverConfig, cursor *descriptionCursor
 	if len(description.CompressionLevels) > 0 {
 		options.CompressionLevels = append([]string(nil), description.CompressionLevels...)
 	}
-	if description.ConnectionIDPrefix != nil {
-		options.ConnectionIDPrefix = *description.ConnectionIDPrefix
-	}
 	if description.Enable != nil {
 		options.Enable = *description.Enable
 	}
 	if description.TypeOfService != nil {
 		options.TypeOfService = *description.TypeOfService
-	}
-	if options.ConnectionIDPrefix == "" && cursor.description.ConnectData != nil {
-		options.ConnectionIDPrefix = cursor.description.ConnectData.ConnectionIDPrefix
 	}
 	if description.Security != nil {
 		security := description.Security

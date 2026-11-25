@@ -94,7 +94,7 @@ type OracleConnectionProperties struct {
 
 	// SSLServerDNMatch enables matching the database server certificate DN
 	// against SSLServerCertDN during TLS negotiation.
-	SSLServerDNMatch bool `ns_name:"ssl_server_dn_match" default:"false" validator:"validateBoolean" help:"specifies the distinguished name (DN) of the database server"`
+	SSLServerDNMatch bool `ns_name:"ssl_server_dn_match" default:"true" validator:"validateBoolean" help:"specifies the distinguished name (DN) of the database server"`
 
 	// SSLAllowWeakDNMatch allows less strict distinguished-name matching during
 	// TLS certificate validation.

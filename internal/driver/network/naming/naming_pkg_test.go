@@ -71,19 +71,6 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
-	{Name: "TestExtractDescription_DefaultSecurity", Categories: "unitary", Exclusive: false, Fn: TestExtractDescription_DefaultSecurity},
-	{Name: "TestExtractConnectionContext_Success", Categories: "unitary", Exclusive: false, Fn: TestExtractConnectionContext_Success},
-	{Name: "TestExtractConnectionContext_Errors", Categories: "unitary", Exclusive: false, Fn: TestExtractConnectionContext_Errors},
-	{Name: "TestExtractDescription_Complete", Categories: "unitary", Exclusive: false, Fn: TestExtractDescription_Complete},
-	{Name: "TestExtractDescription_CompressionLevels", Categories: "unitary", Exclusive: false, Fn: TestExtractDescription_CompressionLevels},
-	{Name: "TestExtractAddressList_FullEmptyAndErrors", Categories: "unitary", Exclusive: false, Fn: TestExtractAddressList_FullEmptyAndErrors},
-	{Name: "TestExtractDescriptionList_FullEmptyAndErrors", Categories: "unitary", Exclusive: false, Fn: TestExtractDescriptionList_FullEmptyAndErrors},
-	{Name: "TestExtractAddress_SuccessAndError", Categories: "unitary", Exclusive: false, Fn: TestExtractAddress_SuccessAndError},
-	{Name: "TestExtractConnectData_SuccessEmptyAndError", Categories: "unitary", Exclusive: false, Fn: TestExtractConnectData_SuccessEmptyAndError},
-	{Name: "TestExtractSecurity_SuccessEmptyAndError", Categories: "unitary", Exclusive: false, Fn: TestExtractSecurity_SuccessEmptyAndError},
-	{Name: "TestHelpersAndMethods", Categories: "unitary", Exclusive: false, Fn: TestHelpersAndMethods},
-	{Name: "TestExtractDescription_ErrorPropagation", Categories: "unitary", Exclusive: false, Fn: TestExtractDescription_ErrorPropagation},
-	{Name: "TestCoverage_MissingFlags", Categories: "unitary", Exclusive: false, Fn: TestCoverage_MissingFlags},
 	{Name: "TestResolveAddresses_ContextHandling", Categories: "unitary", Exclusive: false, Fn: TestResolveAddresses_ContextHandling},
 	{Name: "TestResolveAddresses_DNSExpansion", Categories: "unitary", Exclusive: false, Fn: TestResolveAddresses_DNSExpansion},
 	{Name: "TestResolveAddresses_HostClassification", Categories: "unitary", Exclusive: false, Fn: TestResolveAddresses_HostClassification},
