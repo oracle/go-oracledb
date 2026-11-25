@@ -948,7 +948,7 @@ func init() {
 		common.Odl.Warn("Failed to register binary decoder", "error", err)
 	}
 	if err := DecoderRegistry.Register(DtyVec, MinTTCProtocolVersion, newTypeDecoder(
-		DecodeVectorColumn, nil, unwrapVectorColumn)); err != nil {
+		DecodeVectorColumn, GetScanTypeForVectorColumn, unwrapVectorColumn)); err != nil {
 		common.Odl.Warn("Failed to register VECTOR decoder", "error", err)
 	}
 

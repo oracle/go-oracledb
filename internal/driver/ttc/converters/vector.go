@@ -59,29 +59,44 @@ const (
 	// maxVectorBinaryDimensions is the largest supported dense BINARY VECTOR dimension count.
 	maxVectorBinaryDimensions = 65528
 
-	// VECTOR envelope layout constants.
-	vectorMagic           = 0xDB
-	vectorVersionV0       = 0
+	// vectorMagic identifies a VECTOR envelope.
+	vectorMagic = 0xDB
+	// vectorVersionV0 is the dense VECTOR envelope version supported here.
+	vectorVersionV0 = 0
+	// vectorBaseHeaderBytes is the header size without the optional norm field.
 	vectorBaseHeaderBytes = 9
-	vectorFloat64Bytes    = 8
-	vectorFloat32Bytes    = 4
-	vectorNormBytes       = vectorFloat64Bytes
-	vectorHeaderBytes     = vectorBaseHeaderBytes + vectorNormBytes
-	vectorBitsPerByte     = 8
+	// vectorFloat64Bytes is the size of a FLOAT64 value.
+	vectorFloat64Bytes = 8
+	// vectorFloat32Bytes is the size of a FLOAT32 value.
+	vectorFloat32Bytes = 4
+	// vectorNormBytes is the size of the reserved norm field.
+	vectorNormBytes = vectorFloat64Bytes
+	// vectorHeaderBytes includes the base header and reserved norm field.
+	vectorHeaderBytes = vectorBaseHeaderBytes + vectorNormBytes
+	// vectorBitsPerByte is the number of BINARY dimensions packed into one byte.
+	vectorBitsPerByte = 8
 
-	// VECTOR envelope flags.
-	vectorFlagOptional   = 0x8000
-	vectorFlagLittle     = 0x0001
-	vectorFlagNorm       = 0x0002
-	vectorFlagIEEE       = 0x0008
+	// vectorFlagOptional indicates unsupported optional envelope flags.
+	vectorFlagOptional = 0x8000
+	// vectorFlagLittle indicates little-endian floating-point dimension bytes.
+	vectorFlagLittle = 0x0001
+	// vectorFlagNorm indicates norm metadata is present.
+	vectorFlagNorm = 0x0002
+	// vectorFlagIEEE indicates IEEE-754 rather than Oracle ordered floating-point bytes.
+	vectorFlagIEEE = 0x0008
+	// vectorFlagNormSource indicates a reserved norm field is present.
 	vectorFlagNormSource = 0x0010
-	vectorFlagSparse     = 0x0020
+	// vectorFlagSparse identifies an unsupported sparse VECTOR.
+	vectorFlagSparse = 0x0020
 
-	// VECTOR element type codes.
+	// vectorTypeFloat32 identifies FLOAT32 dimensions.
 	vectorTypeFloat32 = 0x02
+	// vectorTypeFloat64 identifies FLOAT64 dimensions.
 	vectorTypeFloat64 = 0x03
-	vectorTypeInt8    = 0x04
-	vectorTypeBinary  = 0x05
+	// vectorTypeInt8 identifies INT8 dimensions.
+	vectorTypeInt8 = 0x04
+	// vectorTypeBinary identifies packed BINARY dimensions.
+	vectorTypeBinary = 0x05
 )
 
 /*
@@ -105,8 +120,7 @@ func EncodeVectorFloat64(v driver.Value) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorDimensions {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
 	}
-	out := make(driverCommon.B1Array, vectorHeaderBytes+len(values)*vectorFloat64Bytes)
-	writeVectorHeader(out, vectorVersionV0, vectorFlagNorm|vectorFlagNormSource, vectorTypeFloat64, uint32(len(values)))
+	out := newVectorEnvelope(len(values)*vectorFloat64Bytes, vectorFlagNorm|vectorFlagNormSource, vectorTypeFloat64, uint32(len(values)))
 	for i, value := range values {
 		start := vectorHeaderBytes + i*vectorFloat64Bytes
 		putOracleBinaryDouble(out[start:start+vectorFloat64Bytes], value)
@@ -135,8 +149,7 @@ func EncodeVectorFloat32(v driver.Value) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorDimensions {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
 	}
-	out := make(driverCommon.B1Array, vectorHeaderBytes+len(values)*vectorFloat32Bytes)
-	writeVectorHeader(out, vectorVersionV0, vectorFlagNorm|vectorFlagNormSource, vectorTypeFloat32, uint32(len(values)))
+	out := newVectorEnvelope(len(values)*vectorFloat32Bytes, vectorFlagNorm|vectorFlagNormSource, vectorTypeFloat32, uint32(len(values)))
 	for i, value := range values {
 		start := vectorHeaderBytes + i*vectorFloat32Bytes
 		putOracleBinaryFloat(out[start:start+vectorFloat32Bytes], value)
@@ -165,8 +178,7 @@ func EncodeVectorInt8(v driver.Value) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorDimensions {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65535")
 	}
-	out := make(driverCommon.B1Array, vectorHeaderBytes+len(values))
-	writeVectorHeader(out, vectorVersionV0, vectorFlagNorm|vectorFlagNormSource, vectorTypeInt8, uint32(len(values)))
+	out := newVectorEnvelope(len(values), vectorFlagNorm|vectorFlagNormSource, vectorTypeInt8, uint32(len(values)))
 	for i, value := range values {
 		out[vectorHeaderBytes+i] = byte(value)
 	}
@@ -195,10 +207,16 @@ func EncodeVectorBinary(v driver.Value) (driverCommon.B1Array, error) {
 	if len(values) > maxVectorBinaryDimensions/8 {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Encode", driverCommon.ReasonOutOfRange, "dimensions<=65528")
 	}
-	out := make(driverCommon.B1Array, vectorHeaderBytes+len(values))
-	writeVectorHeader(out, vectorVersionV0, vectorFlagNormSource, vectorTypeBinary, uint32(len(values))*vectorBitsPerByte)
+	out := newVectorEnvelope(len(values), vectorFlagNormSource, vectorTypeBinary, uint32(len(values))*vectorBitsPerByte)
 	copy(out[vectorHeaderBytes:], values)
 	return out, nil
+}
+
+// newVectorEnvelope allocates an encoded value and initializes its common header.
+func newVectorEnvelope(payloadBytes int, flags uint16, typeCode byte, dimensions uint32) driverCommon.B1Array {
+	out := make(driverCommon.B1Array, vectorHeaderBytes+payloadBytes)
+	writeVectorHeader(out, vectorVersionV0, flags, typeCode, dimensions)
+	return out
 }
 
 /*

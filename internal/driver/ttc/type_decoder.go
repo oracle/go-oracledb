@@ -647,6 +647,12 @@ func DecodeVectorColumn(columnContext columnContext, value any) (driver.Value, e
 	return decoded, nil
 }
 
+// GetScanTypeForVectorColumn reports an interface because the Go slice type
+// depends on the element type in the VECTOR value.
+func GetScanTypeForVectorColumn(_ columnContext) reflect.Type {
+	return reflect.TypeFor[any]()
+}
+
 // rawColumnData returns the raw TTC payload required by scalar decoders.
 func rawColumnData(value any) (driverCommon.B1Array, error) {
 	data, ok := value.(driverCommon.B1Array)

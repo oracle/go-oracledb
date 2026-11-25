@@ -293,6 +293,7 @@ func TestTTCRowsColumnTypeScanType(t *testing.T) {
 		{name: "extended TIMESTAMP WITH LOCAL TIME ZONE", dtype: DtyEsitz, want: reflect.TypeFor[time.Time]()},
 
 		{name: "RAW", dtype: DtyBin, want: reflect.TypeFor[[]byte]()},
+		{name: "VECTOR", dtype: DtyVec, want: reflect.TypeFor[any]()},
 
 		{name: "CLOB", dtype: DtyClob, want: reflect.TypeFor[string]()},
 		{name: "BLOB", dtype: DtyBlob, want: reflect.TypeFor[[]byte]()},
