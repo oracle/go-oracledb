@@ -1655,41 +1655,25 @@ func (s statementExecutorOperationNotSupported) QueryContext(_ context.Context, 
 		s.kind.String(), "Query")
 }
 
-// decodeOutColumn preserves constructed values and decodes only wire images.
+// decodeOutColumn preserves constructed values and dispatches wire images to
+// the registered decoder for the returned TTC datatype.
 func decodeOutColumn(factory codecFactory, column columnContext, payload columnPayload) (sqldriver.Value, error) {
-	if column.objectType != nil {
-		if payload.data == nil {
-			if column.objectType.Collection {
-				value, err := column.objectType.NewCollection()
-				if err != nil {
-					return nil, err
-				}
-				value.SetNull()
-				return value, nil
-			}
-			value, err := column.objectType.NewObject()
-			if err != nil {
-				return nil, err
-			}
-			value.SetNull()
-			return *value, nil
-		}
-		data, ok := payload.data.(driverCommon.B1Array)
-		if !ok {
+	if payload.data == nil && column.DataType != common.DtyNty && column.DataType != common.DtyINty {
+		return nil, nil
+	}
+	if payload.data != nil {
+		if _, raw := payload.data.(driverCommon.B1Array); !raw {
 			return payload.data, nil
 		}
-		if column.objectType.Collection {
-			return decodeCollectionImage(data, column.objectType, factory)
-		}
-		return decodeObjectImage(data, column.objectType, factory)
 	}
-	data, raw := payload.data.(driverCommon.B1Array)
-	if !raw {
-		return payload.data, nil
+	if factory == nil {
+		common.Odl.Error("decodeOutColumn: codec factory is unavailable")
+		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 	}
 	decoder, err := factory.getDecoder(column.DataType)
 	if err != nil {
 		return nil, err
 	}
-	return decoder.decodeToType(column, data)
+	column.codecFactory = factory
+	return decoder.decode(column, payload.data)
 }

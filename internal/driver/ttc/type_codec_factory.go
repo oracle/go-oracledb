@@ -133,6 +133,9 @@ func (e *typeEncoder) encode(value driver.Value, factory codecFactory) (driverCo
 // expected to return the decoded database value or an error.
 type decoderFunc func(columnContext, any) (driver.Value, error)
 
+// nullDecoderFunc decodes a SQL NULL when a datatype needs a typed NULL value.
+type nullDecoderFunc func(columnContext) (driver.Value, error)
+
 // bindOacFunc defines the signature for bind OAC constructor functions registered
 // with the codec factory. The function receives the requested maximum bind length
 // and must return a TTC OAC descriptor suitable for marshalling bind metadata.
@@ -159,6 +162,7 @@ type scanTypeFunc func(columnContext) reflect.Type
 type typeDecoder struct {
 	unwrapColumn columnUnwrapFunc
 	decodeToType decoderFunc
+	decodeNull   nullDecoderFunc
 	getScanType  scanTypeFunc
 }
 
@@ -167,6 +171,24 @@ type typeDecoder struct {
 // decoder that requires raw wire bytes validates them with rawColumnData.
 func newTypeDecoder(decode decoderFunc, sf scanTypeFunc, unwrap columnUnwrapFunc) *typeDecoder {
 	return &typeDecoder{decodeToType: decode, getScanType: sf, unwrapColumn: unwrap}
+}
+
+// newTypeDecoderWithNull associates a decoder with typed SQL NULL handling.
+func newTypeDecoderWithNull(decode decoderFunc, decodeNull nullDecoderFunc, sf scanTypeFunc, unwrap columnUnwrapFunc) *typeDecoder {
+	return &typeDecoder{decodeToType: decode, decodeNull: decodeNull, getScanType: sf, unwrapColumn: unwrap}
+}
+
+// decode dispatches a payload through the registered decoder, preserving SQL
+// NULL for scalar types while allowing types such as ADTs to construct a typed
+// NULL value.
+func (d *typeDecoder) decode(column columnContext, value any) (driver.Value, error) {
+	if value == nil {
+		if d.decodeNull != nil {
+			return d.decodeNull(column)
+		}
+		return nil, nil
+	}
+	return d.decodeToType(column, value)
 }
 
 /*

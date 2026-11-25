@@ -659,6 +659,62 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 	return collection, nil
 }
 
+// decodeNamedTypeColumn decodes a registered named-type column using the ADT
+// descriptor retained in the column context. A descriptor is optional for an
+// unknown named type, in which case the raw image is preserved.
+//
+// Parameters:
+//   - column: Named-type column metadata, including the optional ADT descriptor.
+//   - value: Raw named-type image supplied by the named-type wire unwrapping path.
+//
+// Returns:
+//   - driver.Value: Decoded Object or ObjectCollection, or raw data when unknown.
+//   - error: Error if typed image decoding fails.
+func decodeNamedTypeColumn(column columnContext, value any) (driver.Value, error) {
+	typ := column.objectType
+	if typ == nil {
+		return value, nil
+	}
+	data, ok := value.(driverCommon.B1Array)
+	if !ok {
+		return value, nil
+	}
+	if typ.Collection {
+		return decodeCollectionImage(data, typ, column.codecFactory)
+	}
+	return decodeObjectImage(data, typ, column.codecFactory)
+}
+
+// decodeNullNamedTypeColumn constructs a typed NULL value for a named-type
+// column so an OUT destination retains its ADT descriptor.
+//
+// Parameters:
+//   - column: Named-type column metadata, including the optional ADT descriptor.
+//
+// Returns:
+//   - driver.Value: NULL Object or ObjectCollection when a descriptor is known.
+//   - error: Error if the descriptor cannot construct its public value.
+func decodeNullNamedTypeColumn(column columnContext) (driver.Value, error) {
+	typ := column.objectType
+	if typ == nil {
+		return nil, nil
+	}
+	if typ.Collection {
+		value, err := typ.NewCollection()
+		if err != nil {
+			return nil, err
+		}
+		value.SetNull()
+		return value, nil
+	}
+	value, err := typ.NewObject()
+	if err != nil {
+		return nil, err
+	}
+	value.SetNull()
+	return *value, nil
+}
+
 // readCollectionIndex reads one signed associative-array index from data.
 //
 // Parameters:

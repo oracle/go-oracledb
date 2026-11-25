@@ -104,6 +104,7 @@ type columnContext struct {
 	NamedTypeTOID        driverCommon.B1Array
 	NamedTypeVersion     uint16
 	objectType           *datatype.ObjectType
+	codecFactory         codecFactory
 	LobContext           *lobColumnContext
 	serverTimeZoneOffset int16
 	// skipRxdPayloadUnmarshal identifies a descriptor-only column. Oracle can
@@ -196,31 +197,29 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	payload := r.rowData[r.currentRowIdx][i]
 	colCtx.LobContext = payload.lob
 	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
-	// Handle Oracle SQL NULL (typically raw length zero is NULL).
-	if payload.data == nil {
+	if (dtype == common.DtyINty || dtype == common.DtyNty) && len(colCtx.NamedTypeTOID) != 0 {
+		colCtx.objectType = r.shelf.adtByTOID[string(colCtx.NamedTypeTOID)]
+	}
+	// Preserve ordinary SQL NULL handling. Named types are dispatched to their
+	// registered decoder so they can retain their descriptor in a typed NULL.
+	if payload.data == nil && colCtx.objectType == nil {
 		return r.handleNull(i, dtype, scale), nil
 	}
 
-	data, raw := payload.data.(driverCommon.B1Array)
-	if !raw {
-		return payload.data, nil
-	}
-	if (dtype == common.DtyINty || dtype == common.DtyNty) && len(colCtx.NamedTypeTOID) != 0 {
-		if typ := r.shelf.adtByTOID[string(colCtx.NamedTypeTOID)]; typ != nil {
-			if typ.Collection {
-				return decodeCollectionImage(data, typ, r.shelf.GetCodecFactory())
-			}
-			return decodeObjectImage(data, typ, r.shelf.GetCodecFactory())
+	if payload.data != nil {
+		if _, raw := payload.data.(driverCommon.B1Array); !raw {
+			return payload.data, nil
 		}
 	}
 
 	decoder, err := r.shelf.GetCodecFactory().getDecoder(dtype)
 	if err != nil || decoder == nil {
 		// Preserve unknown types as raw bytes
-		return data, nil
+		return payload.data, nil
 	}
 
-	val, err := decoder.decodeToType(colCtx, data)
+	colCtx.codecFactory = r.shelf.GetCodecFactory()
+	val, err := decoder.decode(colCtx, payload.data)
 	if err != nil {
 		// Preserve the decoder error for localization.
 		return nil, r.shelf.LocalizeError(err)

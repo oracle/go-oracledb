@@ -99,6 +99,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestObjectCollectionImageRoundTrip", Categories: "unitary", Exclusive: false, Fn: TestObjectCollectionImageRoundTrip},
 	{Name: "TestPolymorphicObjectImageRoundTrip", Categories: "unitary", Exclusive: false, Fn: TestPolymorphicObjectImageRoundTrip},
 	{Name: "TestNamedTypeOACCarriesTOIDAndVersion", Categories: "unitary", Exclusive: false, Fn: TestNamedTypeOACCarriesTOIDAndVersion},
+	{Name: "TestDecodeOutColumnUsesRegisteredNamedTypeDecoder", Categories: "unitary", Exclusive: false, Fn: TestDecodeOutColumnUsesRegisteredNamedTypeDecoder},
 	{Name: "TestADTTransportBindHelpersAndValidation", Categories: "unitary", Exclusive: false, Fn: TestADTTransportBindHelpersAndValidation},
 	{Name: "TestADTTransportPickleAndMalformedImages", Categories: "unitary", Exclusive: false, Fn: TestADTTransportPickleAndMalformedImages},
 	{Name: "TestADTTransportObjectValidation", Categories: "unitary", Exclusive: false, Fn: TestADTTransportObjectValidation},

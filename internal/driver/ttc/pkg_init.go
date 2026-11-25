@@ -1027,12 +1027,12 @@ func init() {
 		GetScanTypeForBinaryColumn, unwrapCLRColumn)); err != nil {
 		common.Odl.Warn("Failed to register binary decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(common.DtyNty, MinTTCProtocolVersion, newTypeDecoder(
-		DecodeBinaryColumn, GetScanTypeForBinaryColumn, unwrapNamedTypeColumn)); err != nil {
+	if err := DecoderRegistry.Register(common.DtyNty, MinTTCProtocolVersion, newTypeDecoderWithNull(
+		decodeNamedTypeColumn, decodeNullNamedTypeColumn, GetScanTypeForBinaryColumn, unwrapNamedTypeColumn)); err != nil {
 		common.Odl.Warn("Failed to register named-type decoder", "error", err)
 	}
-	if err := DecoderRegistry.Register(common.DtyINty, MinTTCProtocolVersion, newTypeDecoder(
-		DecodeBinaryColumn, GetScanTypeForBinaryColumn, unwrapNamedTypeColumn)); err != nil {
+	if err := DecoderRegistry.Register(common.DtyINty, MinTTCProtocolVersion, newTypeDecoderWithNull(
+		decodeNamedTypeColumn, decodeNullNamedTypeColumn, GetScanTypeForBinaryColumn, unwrapNamedTypeColumn)); err != nil {
 		common.Odl.Warn("Failed to register internal named-type decoder", "error", err)
 	}
 

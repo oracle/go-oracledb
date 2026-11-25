@@ -671,6 +671,50 @@ func TestNamedTypeOACCarriesTOIDAndVersion(t *testing.T) {
 	}
 }
 
+func TestDecodeOutColumnUsesRegisteredNamedTypeDecoder(t *testing.T) {
+	typ := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
+		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	}}
+	object, err := typ.NewObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setObjectField(t, object, "ID", int64(42))
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	image, err := encodeObjectImage(object, factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	column := columnContext{DataType: common.DtyNty, objectType: typ}
+	value, err := decodeOutColumn(factory, column, columnPayload{data: image})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, ok := value.(datatype.Object)
+	if !ok || objectField(t, decoded, "ID") != int64(42) {
+		t.Fatalf("decoded named OUT value = %#v", value)
+	}
+
+	value, err = decodeOutColumn(factory, column, columnPayload{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nullObject, ok := value.(datatype.Object)
+	if !ok || !nullObject.IsNull() || nullObject.ObjectType != typ {
+		t.Fatalf("decoded NULL named OUT value = %#v", value)
+	}
+
+	collectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum}
+	value, err = decodeOutColumn(factory, columnContext{DataType: common.DtyNty, objectType: collectionType}, columnPayload{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nullCollection, ok := value.(datatype.ObjectCollection)
+	if !ok || !nullCollection.IsNull() || nullCollection.ObjectType != collectionType {
+		t.Fatalf("decoded NULL named collection OUT value = %#v", value)
+	}
+}
+
 func TestADTTransportBindHelpersAndValidation(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
 	objectType := &datatype.ObjectType{TOID: make([]byte, 16), Attributes: map[string]datatype.ObjectAttribute{
