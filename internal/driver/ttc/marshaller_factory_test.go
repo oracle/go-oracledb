@@ -44,9 +44,8 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-// 1. Create a factory and check that the same default marshaller is returned
-// 2. Create a factory with a nil default and check that nil is returned
-func TestMarshallerFactory_GetMarshaller(t *testing.T) {
+// TestMarshallerFactory_ReturnsDefault verifies default lookup with and without a marshaller.
+func TestMarshallerFactory_ReturnsDefault(t *testing.T) {
 	t.Parallel()
 	marshaller := newMockMarshaller()
 	factory := NewMarshallerFactory(marshaller)

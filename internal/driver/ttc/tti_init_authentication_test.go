@@ -219,8 +219,8 @@ func (s *ttiInitAuthTestStreamer) Pull(ctx context.Context, types ...driverCommo
 	return s.mockStreamer.Pull(ctx, types...)
 }
 
-// TestTTIInitPasswordAuthenticateFallsBack verifies that TTIRENEG ends password authentication after OSESSKEY.
-func TestTTIInitPasswordAuthenticateFallsBack(t *testing.T) {
+// TestTTIInitPasswordAuthenticateReturnsTTIRENEG verifies that TTIRENEG ends password authentication after OSESSKEY.
+func TestTTIInitPasswordAuthenticateReturnsTTIRENEG(t *testing.T) {
 	t.Parallel()
 	shelf, _, _ := newAuthTestShelf(1 << 16)
 	streamer := &ttiInitAuthTestStreamer{mockStreamer: mockStreamer{
