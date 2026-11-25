@@ -18,6 +18,17 @@ const (
 	namedTypeCharsetID driverCommon.UB2 = 2
 )
 
+// newTTIOacNamedType creates the OAC descriptor used to bind an ADT value.
+// Named-type OACs carry the descriptor TOID and type version. Their wire
+// maximum is fixed by the protocol, so maxLength is intentionally not used.
+//
+// Parameters:
+//   - typ: Public descriptor for the object or collection type being bound.
+//   - maxLength: Requested bind length; ignored for named-type OACs.
+//
+// Returns:
+//   - *tTIoac: OAC containing the named type TOID, version, and charset.
+//   - error: Error if typ has invalid TOID or version metadata.
 func newTTIOacNamedType(typ *datatype.ObjectType, maxLength driverCommon.UB4) (*tTIoac, error) {
 	if typ == nil || len(typ.TOID) != 16 {
 		common.Odl.Error("ADT metadata error")
@@ -38,6 +49,15 @@ func newTTIOacNamedType(typ *datatype.ObjectType, maxLength driverCommon.UB4) (*
 	return oac, nil
 }
 
+// namedTypeForBind returns the ADT descriptor retained by an object or
+// collection bind value.
+//
+// Parameters:
+//   - v: Candidate bind value in pointer or value form.
+//
+// Returns:
+//   - *datatype.ObjectType: Descriptor associated with v.
+//   - bool: True when v is an ADT value with a descriptor.
 func namedTypeForBind(v any) (*datatype.ObjectType, bool) {
 	switch value := v.(type) {
 	case datatype.ObjectCollection:
@@ -58,6 +78,16 @@ func namedTypeForBind(v any) (*datatype.ObjectType, bool) {
 	return nil, false
 }
 
+// encodeObjectCollectionBind encodes a collection bind value as an ADT image.
+// It returns a nil image for values that are not ObjectCollection values.
+//
+// Parameters:
+//   - value: Driver bind value to inspect and encode.
+//   - factory: Codec factory used for collection element encoding.
+//
+// Returns:
+//   - driverCommon.B1Array: Encoded collection image, or nil for another value type.
+//   - error: Error returned while encoding the collection or its elements.
 func encodeObjectCollectionBind(value driver.Value, factory codecFactory) (driverCommon.B1Array, error) {
 	collection, ok := collectionForBind(value)
 	if !ok {
@@ -66,6 +96,16 @@ func encodeObjectCollectionBind(value driver.Value, factory codecFactory) (drive
 	return encodeCollectionImage(collection, factory)
 }
 
+// encodeObjectBind encodes an object bind value as an ADT image. It returns a
+// nil image for values that are not Object values.
+//
+// Parameters:
+//   - value: Driver bind value to inspect and encode.
+//   - factory: Codec factory used for object attribute encoding.
+//
+// Returns:
+//   - driverCommon.B1Array: Encoded object image, or nil for another value type.
+//   - error: Error returned while encoding the object or its attributes.
 func encodeObjectBind(value driver.Value, factory codecFactory) (driverCommon.B1Array, error) {
 	object, ok := objectForBind(value)
 	if !ok {
@@ -74,6 +114,15 @@ func encodeObjectBind(value driver.Value, factory codecFactory) (driverCommon.B1
 	return encodeObjectImage(object, factory)
 }
 
+// newNamedTypeBindOAC creates an ADT bind OAC from normalized bind metadata.
+//
+// Parameters:
+//   - metadata: Normalized metadata containing the ADT descriptor.
+//   - maxLength: Requested bind length passed to the named OAC constructor.
+//
+// Returns:
+//   - driverCommon.Marshallable: Named-type OAC for the bind.
+//   - error: Error if ADT descriptor metadata is unavailable or invalid.
 func newNamedTypeBindOAC(metadata bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
 	if metadata.objectType == nil {
 		common.Odl.Error("Named ADT bind is missing type metadata")
@@ -82,6 +131,11 @@ func newNamedTypeBindOAC(metadata bindValueMetadata, maxLength driverCommon.UB4)
 	return newTTIOacNamedType(metadata.objectType, maxLength)
 }
 
+// resolveNamedTypeMetadata supplies a known ADT descriptor to untyped named
+// OUT binds in the same call.
+//
+// Parameters:
+//   - metadata: Bind metadata to update in place.
 func resolveNamedTypeMetadata(metadata []bindValueMetadata) {
 	var typ *datatype.ObjectType
 	for _, item := range metadata {
@@ -100,10 +154,25 @@ func resolveNamedTypeMetadata(metadata []bindValueMetadata) {
 	}
 }
 
+// isNamedTypeGoType reports whether goType represents a public ADT value.
+//
+// Parameters:
+//   - goType: Go type derived from a normalized bind value.
+//
+// Returns:
+//   - bool: True for Object and ObjectCollection values.
 func isNamedTypeGoType(goType reflect.Type) bool {
 	return goType == reflect.TypeFor[datatype.Object]() || goType == reflect.TypeFor[datatype.ObjectCollection]()
 }
 
+// collectionForBind extracts a non-zero collection value from v.
+//
+// Parameters:
+//   - v: Candidate collection value in pointer or value form.
+//
+// Returns:
+//   - datatype.ObjectCollection: Extracted collection value.
+//   - bool: True when v contains a collection descriptor.
 func collectionForBind(v any) (datatype.ObjectCollection, bool) {
 	switch value := v.(type) {
 	case datatype.ObjectCollection:
@@ -116,6 +185,14 @@ func collectionForBind(v any) (datatype.ObjectCollection, bool) {
 	return datatype.ObjectCollection{}, false
 }
 
+// objectForBind extracts a non-collection object value from v.
+//
+// Parameters:
+//   - v: Candidate object value in pointer or value form.
+//
+// Returns:
+//   - *datatype.Object: Extracted non-collection object.
+//   - bool: True when v is an object with a descriptor.
 func objectForBind(v any) (*datatype.Object, bool) {
 	switch object := v.(type) {
 	case *datatype.Object:
@@ -127,9 +204,17 @@ func objectForBind(v any) (*datatype.Object, bool) {
 	}
 }
 
-// encodeCollectionImage emits the 8.1 collection image used by the Thin
-// protocol. Scalar elements reuse the driver's codecs; object elements carry
-// a complete object image selected by CollectionOf.
+// encodeCollectionImage emits the inline 8.1 collection image used by the TTC
+// protocol. Scalar elements reuse the driver's codecs; object elements carry a
+// complete object image selected by CollectionOf.
+//
+// Parameters:
+//   - collection: Public collection value to encode.
+//   - factory: Codec factory used to encode scalar and object elements.
+//
+// Returns:
+//   - driverCommon.B1Array: Complete inline collection image, or nil for NULL.
+//   - error: Error if collection metadata, values, or element encoding is invalid.
 func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFactory) (driverCommon.B1Array, error) {
 	if collection.Object == nil || collection.ObjectType == nil || !collection.ObjectType.Collection {
 		common.Odl.Error("ADT collection type error")
@@ -216,15 +301,31 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 	return driverCommon.B1Array(data), nil
 }
 
+// appendCollectionIndex appends an associative-array PLS_INTEGER index in
+// network byte order.
+//
+// Parameters:
+//   - data: Image bytes to extend.
+//   - index: Associative-array index to encode.
+//
+// Returns:
+//   - []byte: data with the four-byte signed index appended.
 func appendCollectionIndex(data []byte, index int32) []byte {
 	value := uint32(index)
 	return append(data, byte(value>>24), byte(value>>16), byte(value>>8), byte(value))
 }
 
-// encodeObjectImage emits an inline 8.1 image for an object with scalar
-// attributes. Attribute order is the declaration order retained by the public
-// descriptor; attribute values reuse the scalar codec registered for each
-// declared Oracle datatype.
+// encodeObjectImage emits an inline 8.1 image for an object. Attribute order
+// comes from the public descriptor, and scalar attributes reuse their declared
+// Oracle datatype codec.
+//
+// Parameters:
+//   - object: Public object value to encode.
+//   - factory: Codec factory used to encode object attributes.
+//
+// Returns:
+//   - driverCommon.B1Array: Complete inline object image, or nil for NULL.
+//   - error: Error if object metadata, state, or attribute encoding is invalid.
 func encodeObjectImage(object *datatype.Object, factory codecFactory) (driverCommon.B1Array, error) {
 	if object == nil || object.Closed || object.ObjectType == nil || !object.ObjectType.IsObject() {
 		common.Odl.Error("ADT object type error")
@@ -270,6 +371,18 @@ func encodeObjectImage(object *datatype.Object, factory codecFactory) (driverCom
 	return driverCommon.B1Array(data), nil
 }
 
+// encodeObjectRecord appends an object's attributes in declaration order to an
+// enclosing object image. depth tracks recursive embedded-object records.
+//
+// Parameters:
+//   - data: Object image bytes to extend.
+//   - object: Object whose attributes are encoded.
+//   - factory: Codec factory used for scalar attribute encoding.
+//   - depth: Embedded-object nesting depth.
+//
+// Returns:
+//   - []byte: data with the encoded object record appended.
+//   - error: Error if object metadata, reflected values, or codecs are invalid.
 func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFactory, depth byte) ([]byte, error) {
 	for index, name := range object.ObjectType.AttributeNames() {
 		attributeType := object.ObjectType.Attributes[name].ObjectType
@@ -341,10 +454,26 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 	return data, nil
 }
 
+// isEmbeddedObject reports whether typ is an object attribute represented by
+// an inline object record rather than a collection or scalar value.
+//
+// Parameters:
+//   - typ: Attribute descriptor to classify.
+//
+// Returns:
+//   - bool: True when typ represents an embedded object record.
 func isEmbeddedObject(typ *datatype.ObjectType) bool {
 	return typ != nil && !typ.Collection && typ.ElementType == 0
 }
 
+// objectValue extracts an object from either its pointer or value form.
+//
+// Parameters:
+//   - value: Candidate object value.
+//
+// Returns:
+//   - *datatype.Object: Extracted object pointer.
+//   - bool: True when value is an object.
 func objectValue(value any) (*datatype.Object, bool) {
 	switch object := value.(type) {
 	case *datatype.Object:
@@ -356,6 +485,14 @@ func objectValue(value any) (*datatype.Object, bool) {
 	}
 }
 
+// appendPickleLength appends length using the 8.1 image pickle-length format.
+//
+// Parameters:
+//   - data: Image bytes to extend.
+//   - length: Number of bytes represented by the encoded length.
+//
+// Returns:
+//   - []byte: data with a compact or extended pickle length appended.
 func appendPickleLength(data []byte, length int) []byte {
 	if length <= 245 {
 		return append(data, byte(length))
@@ -363,6 +500,17 @@ func appendPickleLength(data []byte, length int) []byte {
 	return append(data, 254, byte(length>>24), byte(length>>16), byte(length>>8), byte(length))
 }
 
+// decodeCollectionImage decodes a dense, inline 8.1 collection image using
+// the supplied collection descriptor and scalar codec factory.
+//
+// Parameters:
+//   - data: Raw inline collection image.
+//   - typ: Collection descriptor used to interpret elements and indexes.
+//   - factory: Codec factory used to decode scalar and object elements.
+//
+// Returns:
+//   - driver.Value: Decoded ObjectCollection value.
+//   - error: Error if the image framing, metadata, or elements are invalid.
 func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, factory codecFactory) (driver.Value, error) {
 	const (
 		pickle81ImageFlag      = 0x80
@@ -511,6 +659,16 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 	return collection, nil
 }
 
+// readCollectionIndex reads one signed associative-array index from data.
+//
+// Parameters:
+//   - data: Collection image containing the index.
+//   - pos: Offset of the four-byte index.
+//
+// Returns:
+//   - int32: Decoded signed index.
+//   - int: Offset immediately after the index.
+//   - error: Error if fewer than four index bytes remain.
 func readCollectionIndex(data driverCommon.B1Array, pos int) (int32, int, error) {
 	if pos < 0 || pos+4 > len(data) {
 		common.Odl.Error("ADT collection image error")
@@ -521,8 +679,17 @@ func readCollectionIndex(data driverCommon.B1Array, pos int) (int32, int, error)
 }
 
 // decodeObjectImage decodes an inline 8.1 object image. Scalar attributes use
-// their registered codec, collection attributes carry a complete collection
-// image, and embedded object attributes use recursive ADT records.
+// their registered codec, collection attributes carry complete collection
+// images, and embedded object attributes use recursive ADT records.
+//
+// Parameters:
+//   - data: Raw inline object image.
+//   - typ: Declared object descriptor used to interpret the image.
+//   - factory: Codec factory used to decode scalar attributes.
+//
+// Returns:
+//   - driver.Value: Decoded Object value.
+//   - error: Error if the image framing, subtype, metadata, or attributes are invalid.
 func decodeObjectImage(data driverCommon.B1Array, typ *datatype.ObjectType, factory codecFactory) (driver.Value, error) {
 	const (
 		pickle81ImageFlag  = 0x80
@@ -567,6 +734,20 @@ func decodeObjectImage(data driverCommon.B1Array, typ *datatype.ObjectType, fact
 	return *object, nil
 }
 
+// decodeObjectRecord decodes attributes at pos and returns the populated object
+// with the position immediately following its inline record.
+//
+// Parameters:
+//   - data: Object image containing the record.
+//   - pos: Offset of the first attribute record.
+//   - typ: Descriptor for the record being decoded.
+//   - factory: Codec factory used for scalar attributes.
+//   - depth: Embedded-object nesting depth.
+//
+// Returns:
+//   - *datatype.Object: Decoded object value.
+//   - int: Offset immediately after the decoded record.
+//   - error: Error if record metadata, framing, or attributes are invalid.
 func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.ObjectType, factory codecFactory, depth byte) (*datatype.Object, int, error) {
 	object, err := typ.NewObject()
 	if err != nil {
@@ -660,6 +841,16 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 	return object, pos, nil
 }
 
+// setReflectedObjectField assigns value to one dynamically generated object
+// field, preserving a nil value as a NULL attribute.
+//
+// Parameters:
+//   - object: Object whose reflected field is updated.
+//   - index: Declaration-order field index.
+//   - value: Decoded attribute value, or nil for a NULL attribute.
+//
+// Returns:
+//   - error: Error if object state or field mutability is invalid.
 func setReflectedObjectField(object *datatype.Object, index int, value any) error {
 	if object == nil || object.Closed || !object.Value.IsValid() || object.Value.Kind() != reflect.Struct || index < 0 || index >= object.Value.NumField() {
 		common.Odl.Error("ADT object image error")
@@ -678,6 +869,16 @@ func setReflectedObjectField(object *datatype.Object, index int, value any) erro
 	return nil
 }
 
+// namedImageEnd returns the end position of the complete named-type image at
+// pos after validating its 8.1 image header and pickle length.
+//
+// Parameters:
+//   - data: Buffer containing a named-type image.
+//   - pos: Offset of the image header.
+//
+// Returns:
+//   - int: Offset immediately after the complete image.
+//   - error: Error if the header or length is invalid or truncated.
 func namedImageEnd(data driverCommon.B1Array, pos int) (int, error) {
 	if pos+3 > len(data) || data[pos]&0x80 == 0 {
 		common.Odl.Error("ADT object image error")
@@ -691,6 +892,17 @@ func namedImageEnd(data driverCommon.B1Array, pos int) (int, error) {
 	return pos + length, nil
 }
 
+// readPickleLength reads an 8.1 image pickle length and returns its value and
+// the position immediately following its encoding.
+//
+// Parameters:
+//   - data: Buffer containing a pickle length.
+//   - pos: Offset of the length encoding.
+//
+// Returns:
+//   - int: Decoded byte length.
+//   - int: Offset immediately after the length encoding.
+//   - error: Error if the length encoding is invalid or truncated.
 func readPickleLength(data []byte, pos int) (int, int, error) {
 	if pos >= len(data) {
 		common.Odl.Error("ADT collection image error")
