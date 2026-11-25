@@ -135,7 +135,7 @@ func (b *blobExecutor) createTemporaryLob(ctx context.Context, cache bool, durat
 	def := newLobDefinitionForTemporaryCreate(
 		tempSize,
 		blobFormOfUse,
-		driverCommon.UB8(DtyBlob),
+		driverCommon.UB8(common.DtyBlob),
 		duration,
 		cache,
 		blobCharsetIDPlaceholder,

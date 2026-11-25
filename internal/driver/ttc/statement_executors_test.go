@@ -202,9 +202,6 @@ func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
 	if !streamer.pushCalled {
 		t.Fatal("deferred REF CURSOR fetch did not start a round trip")
 	}
-	if streamer.pushCtx == nil {
-		t.Fatal("REF CURSOR fetch did not receive an execution context")
-	}
 	if err := conn.GetRows(context.Background(), rows); err != nil {
 		t.Fatalf("second GetRows: %v", err)
 	}

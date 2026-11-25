@@ -46,6 +46,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -61,7 +62,7 @@ func TestBlobExecutor_CreateTemporaryLob(t *testing.T) {
 	def := newLobDefinitionForTemporaryCreate(
 		kolllTempWithSignature,
 		blobFormOfUse,
-		driverCommon.UB8(DtyBlob),
+		driverCommon.UB8(common.DtyBlob),
 		duration,
 		true,
 		blobCharsetIDPlaceholder,
@@ -72,8 +73,8 @@ func TestBlobExecutor_CreateTemporaryLob(t *testing.T) {
 	if def.sourceLocator.offset != driverCommon.UB8(blobFormOfUse) {
 		t.Fatalf("form-of-use = %d, want %d", def.sourceLocator.offset, blobFormOfUse)
 	}
-	if def.destinationLocator.offset != driverCommon.UB8(DtyBlob) {
-		t.Fatalf("LOB type = %d, want DtyBlob (%d)", def.destinationLocator.offset, DtyBlob)
+	if def.destinationLocator.offset != driverCommon.UB8(common.DtyBlob) {
+		t.Fatalf("LOB type = %d, want DtyBlob (%d)", def.destinationLocator.offset, common.DtyBlob)
 	}
 	if def.charsetID != blobCharsetIDPlaceholder {
 		t.Fatalf("charset ID = %d, want BLOB protocol placeholder %d", def.charsetID, blobCharsetIDPlaceholder)

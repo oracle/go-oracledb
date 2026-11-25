@@ -43,7 +43,6 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"slices"
 	"strconv"
