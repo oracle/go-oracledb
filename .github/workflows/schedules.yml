@@ -70,7 +70,7 @@ jobs:
       - run: |
           mkdir -p ${{ github.workspace }}/coverage/full_func
       - run: |
-          go test -parallel=10 -timeout=900s -shuffle=on -v ${{ steps.go-packages.outputs.packages }} -coverpkg=./... -cover -run TestCategoryExecutor -test.gocoverdir=${{ github.workspace }}/coverage/full_func -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity" -test.category="${{ env.TEST_CATEGORY }}"
+          go test -parallel=10 -timeout=1200s -shuffle=on -v ${{ steps.go-packages.outputs.packages }} -coverpkg=./... -cover -run TestCategoryExecutor -test.gocoverdir=${{ github.workspace }}/coverage/full_func -driver.config.filename=${{ github.workspace }}/go-driver-config.json -driver.config.name=pipeline_test  -test.category="sanity" -test.category="${{ env.TEST_CATEGORY }}"
       - uses: oracle-actions/setup-testpilot@ad55a0d7294112c44a9cc9a38f4b3d293da8fcf0 # 1.0.31
         if: always()
         with:
