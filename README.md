@@ -319,16 +319,18 @@ conversion options, and null handling. For an example of JSON usage, see the
 
 ### Unsupported Column Types
 
-| Oracle type | Query result support | Recommended replacement  |
-|-------------|----------------------|--------------------------|
-| `LONG`      | Not supported        | `CLOB`                   |
-| `LONG RAW`  | Not supported        | `BLOB`                   |
-| `ROWID`     | Not supported        |                          |
-| `UROWID`    | Not supported        |                          |
-| `BFILE`     | Not supported        |                          |
-| `VECTOR`    | Not supported        |                          |
+The driver does not yet support all Oracle Database data types. The types below are examples of unsupported types.
 
-Support these types will be added in a later release.
+- `LONG`
+- `LONG RAW`
+- `ROWID`
+- `UROWID`
+- `BFILE`
+- `VECTOR`
+- `XMLType`
+- Collections
+
+This list is not exhaustive. Support for additional data types will continue to be added in future releases.
 
 ---
 
