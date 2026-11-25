@@ -317,14 +317,18 @@ conversion options, and null handling. For an example of JSON usage, see the
 
 ---
 
-### Unsupported Legacy Column Types
+### Unsupported Column Types
 
-| Oracle type | Query result support | Recommended replacement |
+| Oracle type | Query result support | Recommended replacement  |
 |-------------|----------------------|--------------------------|
 | `LONG`      | Not supported        | `CLOB`                   |
 | `LONG RAW`  | Not supported        | `BLOB`                   |
+| `ROWID`     | Not supported        |                          |
+| `UROWID`    | Not supported        |                          |
+| `BFILE`     | Not supported        |                          |
+| `VECTOR`    | Not supported        |                          |
 
-Support for Oracle `LONG` and `LONG RAW` columns will be added in a later release.
+Support these types will be added in a later release.
 
 ---
 
