@@ -115,10 +115,12 @@ func TestColumnUnwrapSelection(t *testing.T) {
 }
 
 // TestColumnDecoderRegistrations checks every built-in decoder version has an
-// explicit wire reader and that only CLOB, BLOB and JSON use specialized framing.
+// explicit wire reader and that specialized types use their expected framing.
 func TestColumnDecoderRegistrations(t *testing.T) {
 	t.Parallel()
 	specialized := map[common.DtyType]map[int8]columnUnwrapFunc{
+		common.DtyNty:  {MinTTCProtocolVersion: unwrapNamedTypeColumn},
+		common.DtyINty: {MinTTCProtocolVersion: unwrapNamedTypeColumn},
 		common.DtyClob: {MinTTCProtocolVersion: unwrapClobColumn},
 		common.DtyBlob: {MinTTCProtocolVersion: unwrapBlobColumn},
 		common.DtyJSON: {MinTTCProtocolVersion: unwrapJSONColumn},
@@ -177,8 +179,8 @@ func TestColumnUnwrapWire(t *testing.T) {
 		{"clob-null", common.DtyClob, []byte{0}, nil, true, 0},
 		{"blob", common.DtyBlob, blob, driverCommon.B1Array{42}, true, 0},
 		{"blob-null", common.DtyBlob, []byte{0}, nil, true, 0},
-		{"json", common.DtyJSON, []byte{1, 1, 1, 1, 1, 1, 1, 42, 1, 7, 0, 0}, driverCommon.B1Array{42}, true, 0},
-		{"json-null", common.DtyJSON, []byte{0, 0, 0}, nil, true, 0},
+		{"json", common.DtyJSON, []byte{1, 1, 1, 1, 1, 1, 1, 42, 1, 7}, driverCommon.B1Array{42}, true, 0},
+		{"json-null", common.DtyJSON, []byte{0}, nil, true, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			decoder, err := factory.getDecoder(tc.dty)
@@ -249,9 +251,7 @@ func TestColumnUnwrapDispatch(t *testing.T) {
 	rxd.setCodecFactory(factory)
 	rxd.setNumberofReturningArgs(1)
 	rxd.setColumnContexts([]columnContext{{DataType: common.DtyJSON}})
-	// BLOB-compatible JSON carries a value byte and SB2 null indicator inside
-	// its framing; the final byte is the outer PL/SQL indicator.
-	mar := createMarshaller([]byte{0, 0, 0, 0, 0x55}, 0, 0)
+	mar := createMarshaller([]byte{0, 0, 0x55}, 0, 0)
 	if err := rxd.UnmarshalFrom(ctx, mar); err != nil {
 		t.Fatal(err)
 	}
