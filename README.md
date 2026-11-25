@@ -8,19 +8,19 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
 ## Features
   - Native Go implementation of Go's [sql/driver](https://pkg.go.dev/database/sql/driver) package
   - Supports Oracle Database versions: 19c and higher
-  - Authentication: 
-    - username and password authentication
-    - token authentication
   - Data source: supports Connect Descriptor and EZConnect
   - Protocols: TCP and TCPS
-  - Transactions: standard and [sessionless](documentation/sessionless_transactions.md)
-  - Statements with in parameters and out parameters (using `sql.Out`)
   - PL/SQL In/Out parameters (using `sql.Out`)
-  - Inband notifications
-  - Native Oracle JSON support via `github.com/oracle/go-oracledb/v26/oracle/datatype/json`
+  - Statements with in parameters and out parameters (using `sql.Out`)
   - BLOB support using prefetch and returning `[]byte`
   - CLOB support using prefetch and returning `string`
-
+  - Native Oracle [JSON support](documentation/json.md) via `github.com/oracle/go-oracledb/v26/oracle/datatype/json`
+  - Return query results from PL/SQL [REF_CURSORS](documentation/refcursor.md)
+  - [Authentication](documentation/authentication.md): 
+    - username and password authentication
+    - token authentication
+  - Transactions: standard and [sessionless](documentation/sessionless_transactions.md)
+  - Inband notifications
 
 ## Installation
 Run:
@@ -29,7 +29,7 @@ go get github.com/oracle/go-oracledb/v26@latest
 ```
 
 ## Examples
-For end-to-end examples, go to the examples subdirectory.
+For end-to-end examples, go to the [examples subdirectory](examples/).
 
 ## Usage
 Oracle Database Driver for Go is an implementation of Go's database/sql/driver interface.
@@ -81,8 +81,6 @@ myuser/mypassword@(DESCRIPTION=(ADDRESS=(HOST=my_host)(PORT=1521))(CONNECT_DATA=
 #### Public API contract
 
 Application code should import and depend on `github.com/oracle/go-oracledb/v26/oracle`.
-Packages under `github.com/oracle/go-oracledb/v26/driver/...` are implementation details
-and may change without compatibility guarantees.
 
 The driver supports several sources of configuration. They apply in the following order of precedence:
 
@@ -169,8 +167,8 @@ Note that when this API is used, credentials must be provided using the Credenti
 ``` go
   connectorConfig := oracle.NewOracleDriverConfig()
   connectorConfig.ConnectDescriptor = "(description=(address=(protocol=tcps)(host=127.0.0.1)(port=1521))(connect_data=(service_name=freepdb1)))"
-  connectorConfig.Credentials.User = "scott"
-  connectorConfig.Credentials.Password = "tiger"
+  connectorConfig.Credentials.User = "myuser"
+  connectorConfig.Credentials.Password = "mypassword"
 
   // Optional validation operation. 
   err  := connectorConfig.Validate()
@@ -246,9 +244,10 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 | `NCHAR`      | `string`             |
 | `VARCHAR2`   | `string`             |
 | `NVARCHAR2`  | `string`             |
-| `CLOB`       | `string` or `[]byte` |
+| `CLOB`       | `string`             |
 | `NCLOB`      | `string`             |
-| `XMLTYPE`    | `string`             |
+
+---
 
 ### Numeric Types
 
@@ -263,7 +262,7 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 
 > **Important**  
 > Mapping `NUMBER` to `float64` by default is discouraged due to precision loss.  
-> Returning `string` allows users to choose the correct numeric representation.
+> Use `string` for `NUMBER` values that exceed the range or precision of Go's numeric types, such as integers outside the `int64` range. This preserves the value and lets users choose an appropriate representation.
 
 ---
 
@@ -286,34 +285,16 @@ Errors are returned as `oracle.SQLError` which implements Go's `Error` interface
 |-------------|----------------|
 | `RAW`       | `[]byte`       |
 | `BLOB`      | `[]byte`       |
-| `BFILE`     | `[]byte`       |
-
-### Unsupported Legacy Column Types
-
-| Oracle type | Query result support | Recommended replacement |
-|-------------|----------------------|--------------------------|
-| `LONG`      | Not supported        | `CLOB`                   |
-| `LONG RAW`  | Not supported        | `BLOB`                   |
-
-Support for Oracle `LONG` and `LONG RAW` columns will be added in a later release.
 
 ---
 
 ### Boolean Types
 
-| Oracle Type        | Driver returns |
-|--------------------|----------------|
-| `BOOLEAN` (PL/SQL) | `bool`         |
-
----
-
-### ROWID Types
-
-| Oracle Type | Driver returns |
-|-------------|----------------|
-| `ROWID`     | `string`       |
-| `UROWID`    | `string`       |
-
+| Oracle Type            | Driver returns | Supported values       |
+|------------------------|----------------|------------------------|
+| `SQL BOOLEAN` (23ai)   | `bool`         | true, false            |
+| `NUMBER(1)`            | `bool`         | 0 and 1                |
+| `VARCHAR2`             | `bool`         | 'TRUE' and 'FALSE'     |
 ---
 
 ### Advanced and Complex Types
@@ -333,6 +314,25 @@ conversion options, and null handling. For an example of JSON usage, see the
 | Oracle Type   | Driver returns       |
 |---------------|----------------------|
 | `JSON` (21c+) | `oracle/datatype/json.JSON`   |
+
+---
+
+### Unsupported Column Types
+
+The driver does not yet support all Oracle Database data types. The types below are examples of unsupported types.
+
+- `LONG`
+- `LONG RAW`
+- `ROWID`
+- `UROWID`
+- `BFILE`
+- `VECTOR`
+- `XMLType`
+- Collections
+
+This list is not exhaustive. Support for additional data types will continue to be added in future releases.
+
+---
 
 ## Help
 Are you having trouble with Oracle Database Driver for Go? We want to help!

@@ -62,7 +62,6 @@ func initMessagesFr() {
 		{oracleErrors.ChannelReadFailed, "fin de flux détectée. Le pair distant a fermé la connexion."},
 		{oracleErrors.ChannelWriteFailed, "échec de l'écriture sur le canal."},
 		{oracleErrors.UnknownHost, "hôte spécifié inconnu."},
-		{oracleErrors.LogonDenied, "identifiants invalides ou autorisation refusée"},
 		{oracleErrors.InvalidServiceName, "impossible de se connecter à la base de données. Le service %s n'est pas enregistré auprès de l'écouteur sur l'hôte %s, port %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.NoAvailableHandler, "impossible de se connecter à la base de données. Aucun gestionnaire %s disponible pour le service demandé %s sur l'hôte %s, port %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.UnknownInstance, "impossible de se connecter à la base de données. L'instance %s du service %s n'est pas connue de l'écouteur sur l'hôte %s, port %d. (CONNECTION_ID=%s)"},
