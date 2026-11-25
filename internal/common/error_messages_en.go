@@ -694,4 +694,10 @@ func initMessagesEn() {
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.SessionlessTransactionTimeoutOutOfRange), "sessionless transaction timeout must be between 0 and 65535 seconds")
 
+	// Document: No
+	// Cause:    The driver performed an invalid operation on an internal buffer.
+	// Action:   Enable FINEST logging to see the failing buffer operation.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidBufferOperation), "invalid buffer operation")
+
 }
