@@ -131,7 +131,7 @@ func objectForBind(v any) (*datatype.Object, bool) {
 // protocol. Scalar elements reuse the driver's codecs; object elements carry
 // a complete object image selected by CollectionOf.
 func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFactory) (driverCommon.B1Array, error) {
-	if collection.ObjectType == nil || !collection.ObjectType.Collection {
+	if collection.Object == nil || collection.ObjectType == nil || !collection.ObjectType.Collection {
 		common.Odl.Error("ADT collection type error")
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
@@ -288,7 +288,11 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 				if index == 0 && depth > 0 {
 					return append(data, 252, depth), nil
 				}
-				return append(data, 253), nil
+				// A NULL embedded object occupies one attribute slot; it does not
+				// terminate the containing object record. Later attributes still
+				// need to be encoded in declaration order.
+				data = append(data, 253)
+				continue
 			}
 			var err error
 			data, err = encodeObjectRecord(data, child, factory, depth+1)
