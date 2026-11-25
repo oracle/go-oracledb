@@ -435,6 +435,16 @@ func getKeyValueFromKeyword(nlsKeys [64]string, keyword keywordValuePair) (strin
 			roleNames := strings.TrimSpace(driverCommon.B1ArrayToString(textValue.value))
 			return al8kwEnabledRoleNamesStr, roleNames
 		}
+	} else if intValue == al8kwSessionlessGlobalTransactionID {
+		// GTRID sync session property
+		if binaryValue.value != nil {
+			sessionlessGlobalTransactionIDSync, err := newSessionlessGlobalTransactionIDSync(binaryValue.value)
+			if err == nil {
+				return sessionlessGlobalTransactionIDProperty, sessionlessGlobalTransactionIDSync
+			} else {
+				common.Odl.Debug("An error occured while decoding GTRID sync property", "error", err)
+			}
+		}
 	}
 
 	return "", nil
@@ -486,4 +496,159 @@ func (kve *keywordValuePairWithName) MarshalTo(ctx context.Context, engine drive
 		return _wrapError(err, "marshal DTYKVE")
 	}
 	return nil
+}
+
+const (
+	al8kwSessionlessGlobalTransactionID    = 201
+	sessionlessGlobalTransactionIDProperty = "SESSIONLESS_GTRID"
+)
+
+// sessionlessTxSyncReason identifies which side caused a sessionless
+// transaction synchronization event.
+type sessionlessTxSyncReason byte
+
+const (
+	// sessionlessGlobalTransactionIDSyncMode selects the set/unset mode bits.
+	sessionlessGlobalTransactionIDSyncMode byte = 0xC0
+	// sessionlessGlobalTransactionIDSyncSet marks the transaction as active.
+	sessionlessGlobalTransactionIDSyncSet byte = 0x40
+	// sessionlessGlobalTransactionIDSyncUnset marks the transaction as inactive.
+	sessionlessGlobalTransactionIDSyncUnset byte = 0x80
+	// sessionlessGlobalTransactionIDSyncReason masks the reason bits.
+	sessionlessGlobalTransactionIDSyncReason byte = 0x3F
+	// sessionlessGlobalTransactionIDSyncVersion is the supported payload version.
+	sessionlessGlobalTransactionIDSyncVersion byte = 1
+
+	// sessionlessSyncStartSuspendServer identifies a server-started or server-suspended transaction.
+	sessionlessSyncStartSuspendServer sessionlessTxSyncReason = 1
+	// sessionlessSyncStartSuspendClient identifies a client-started or client-suspended transaction.
+	sessionlessSyncStartSuspendClient sessionlessTxSyncReason = 2
+	// sessionlessSyncEnded identifies a transaction ended by commit or rollback.
+	sessionlessSyncEnded sessionlessTxSyncReason = 3
+)
+
+// sessionlessGlobalTransactionIDSync is an immutable decoded view of the
+// SESSIONLESS_GTRID session property returned by the server.
+type sessionlessGlobalTransactionIDSync struct {
+	raw                 driverCommon.B1Array // defensive copy of the complete server payload
+	globalTransactionID []byte               // payload bytes preceding the flags and version
+	flags               byte                 // transaction mode and synchronization reason
+	version             byte                 // payload format version from the server
+}
+
+// newSessionlessGlobalTransactionIDSync splits the trailing flags and version
+// bytes from a SESSIONLESS_GTRID payload and copies the payload into an
+// immutable value object. It rejects payloads shorter than those two bytes,
+// identifiers longer than the supported limit, and unsupported versions. It
+// does not validate the flag value.
+//
+// Parameters:
+//   - raw: SESSIONLESS_GTRID payload containing a global transaction ID, flags,
+//     and version.
+//
+// Returns:
+//   - SessionlessGlobalTransactionIDSync: Decoded synchronization value.
+//   - error: Error if the payload is too short, the identifier exceeds the
+//     supported limit, or the version is unsupported.
+func newSessionlessGlobalTransactionIDSync(raw driverCommon.B1Array) (*sessionlessGlobalTransactionIDSync, error) {
+	common.Odl.Finest("Decoding GTRID sync session property", "raw value", raw)
+	if len(raw) < 2 {
+		return nil, common.NewOracleError(oracleErrors.FailUnmarshal, nil, "GlobalTransactionID")
+	}
+
+	rawCopy := append(driverCommon.B1Array(nil), raw...)
+	globalTransactionIDLength := len(rawCopy) - 2
+	flags := rawCopy[globalTransactionIDLength]
+	version := rawCopy[globalTransactionIDLength+1]
+
+	if globalTransactionIDLength > maxSessionlessGlobalTransactionIDSize ||
+		version != sessionlessGlobalTransactionIDSyncVersion {
+		return nil, common.NewOracleError(oracleErrors.FailUnmarshal, nil, "GlobalTransactionID")
+	}
+
+	return &sessionlessGlobalTransactionIDSync{
+		raw:                 rawCopy,
+		globalTransactionID: append([]byte(nil), rawCopy[:globalTransactionIDLength]...),
+		flags:               flags,
+		version:             version,
+	}, nil
+}
+
+// Raw returns the original immutable SESSIONLESS_GTRID payload bytes.
+//
+// Returns:
+//   - driverCommon.B1Array: Copy of the original payload.
+func (s *sessionlessGlobalTransactionIDSync) Raw() driverCommon.B1Array {
+	return append(driverCommon.B1Array(nil), s.raw...)
+}
+
+// GlobalTransactionID returns the decoded global transaction ID carried by the
+// session property.
+//
+// Returns:
+//   - []byte: Copy of the decoded global transaction ID.
+func (s *sessionlessGlobalTransactionIDSync) GlobalTransactionID() []byte {
+	return append([]byte(nil), s.globalTransactionID...)
+}
+
+// Version returns the serialization version byte carried by the session property.
+//
+// Returns:
+//   - byte: Serialization version.
+func (s *sessionlessGlobalTransactionIDSync) Version() byte {
+	return s.version
+}
+
+// Mode returns the high-bit mode portion of the sessionless sync flags.
+//
+// Returns:
+//   - byte: Synchronization mode.
+func (s *sessionlessGlobalTransactionIDSync) Mode() byte {
+	return s.flags & sessionlessGlobalTransactionIDSyncMode
+}
+
+// Reason returns the low-bit reason portion of the sessionless sync flags.
+//
+// Returns:
+//   - SessionlessTxSyncReason: Synchronization reason.
+func (s *sessionlessGlobalTransactionIDSync) Reason() sessionlessTxSyncReason {
+	return sessionlessTxSyncReason(s.flags & sessionlessGlobalTransactionIDSyncReason)
+}
+
+// isSet reports whether the server indicates a sessionless transaction is active.
+//
+// Returns:
+//   - bool: True when the synchronization mode indicates an active transaction.
+func (s *sessionlessGlobalTransactionIDSync) isSet() bool {
+	return s.Mode() == sessionlessGlobalTransactionIDSyncSet
+}
+
+// isUnset reports whether the server indicates no sessionless transaction is active.
+//
+// Returns:
+//   - bool: True when the synchronization mode indicates no active transaction.
+func (s *sessionlessGlobalTransactionIDSync) isUnset() bool {
+	return s.Mode() == sessionlessGlobalTransactionIDSyncUnset
+}
+
+// isStartSuspendServer indicates that the sessionless transaction start/suspend happened on the server.
+//
+// Returns:
+//   - bool: True when the server caused the synchronization event.
+func (s *sessionlessGlobalTransactionIDSync) isStartSuspendServer() bool {
+	return s.Reason() == sessionlessSyncStartSuspendServer
+}
+
+// isStartSuspendClient indicates that the sessionless transaction start/suspend happened on the client.
+//
+// Returns:
+//   - bool: True when the client caused the synchronization event.
+func (s *sessionlessGlobalTransactionIDSync) isStartSuspendClient() bool {
+	return s.Reason() == sessionlessSyncStartSuspendClient
+}
+
+// isEnded reports whether the synchronization reason indicates a completed
+// commit or rollback.
+func (s *sessionlessGlobalTransactionIDSync) isEnded() bool {
+	return s.Reason() == sessionlessSyncEnded
 }

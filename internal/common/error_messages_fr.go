@@ -182,6 +182,7 @@ func initMessagesFr() {
 		{oracleErrors.AlreadyInTransaction, "niveau d'isolation non pris en charge"},
 		{oracleErrors.ErrorInTransaction, "une erreur s'est produite pendant l'opération de transaction %s"},
 		{oracleErrors.ConfigureTransactionError, "échec de la configuration de la transaction"},
+		{oracleErrors.StartResumeTransactionFailure, "échec du démarrage ou de la reprise de la transaction"},
 		{oracleErrors.AuthenticatorError, "une erreur s'est produite pendant l'authentification"},
 		{oracleErrors.NegotiatorError, "une erreur s'est produite pendant la négociation de la connexion"},
 		{oracleErrors.MarshalEngineError, "une erreur s'est produite pendant la sérialisation ou la désérialisation d'une valeur de type %s"},
@@ -207,11 +208,14 @@ func initMessagesFr() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "clé privée de jeton signé non valide"},
 		{oracleErrors.ExpiredToken, "le jeton d'accès a expiré"},
 		{oracleErrors.ProviderNotFound, "aucun fournisseur du type demandé n'a été trouvé"},
+		{oracleErrors.InvalidGlobalTransactionIDValue, "valeur non valide de l'identifiant global de transaction"},
+		{oracleErrors.InvalidSessionlessTransactionTimeout, "le délai de démarrage de la transaction sans session doit être supérieur à zéro"},
 		{oracleErrors.ImplicitResultMessageCreationFailed, "échec de création du message de résultat implicite"},
 		{oracleErrors.RefCursorConnectionMismatch, "le REF CURSOR doit être récupéré à l’aide de la connexion sur laquelle il a été ouvert"},
 		{oracleErrors.InvalidRefCursorOutParameter, "les liaisons OUT REF CURSOR nécessitent *datatype.Cursor"},
 		{oracleErrors.InvalidRefCursorArgument, "argument REF CURSOR non valide"},
 		{oracleErrors.MissingReadPrivilege, "privilège READ manquant"},
+		{oracleErrors.SessionlessTransactionTimeoutOutOfRange, "le délai de la transaction sans session doit être compris entre 0 et 65535 secondes"},
 	}
 
 	for _, translation := range translations {

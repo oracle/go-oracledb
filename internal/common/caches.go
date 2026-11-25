@@ -104,10 +104,10 @@ func (c *TTLCache[T]) Get(key string) (value T, found bool) {
 	entry, ok := c.entries[key]
 	if !ok {
 		var zero T
-		Odl.Debug("cache miss", "key", key)
+		Odl.Finest("cache miss", "key", key)
 		return zero, false
 	}
-
+	Odl.Finest("cache hit", "key", key)
 	return entry.value, true
 }
 
@@ -119,7 +119,7 @@ func (c *TTLCache[T]) Put(key string, value T) T {
 	}
 
 	if len(c.entries) == c.maxSize {
-		Odl.Debug("cache overflow")
+		Odl.Finest("cache overflow")
 		c.removeOldest()
 	}
 
