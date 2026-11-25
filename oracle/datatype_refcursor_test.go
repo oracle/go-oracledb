@@ -44,7 +44,9 @@ import (
 	"database/sql/driver"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
@@ -81,6 +83,18 @@ func (refCursorTestConnector) Driver() driver.Driver                          { 
 type refCursorTestConn struct {
 	query string
 	rows  driver.Rows
+}
+
+var _ canBeWrapped = (*refCursorTestConn)(nil)
+
+func (*refCursorTestConn) PrepareForSessionlessStartOperation(context.Context, time.Duration) (common.SessionlessTransaction, error) {
+	return nil, nil
+}
+func (*refCursorTestConn) ClearPrepareForSessionlessStartOperation() {}
+func (*refCursorTestConn) PrepareForSessionlessResumeOperation(context.Context, []byte, time.Duration) (common.SessionlessTransaction, error) {
+	return nil, nil
+}
+func (*refCursorTestConn) ClearPrepareForSessionlessResumeOperation(common.SessionlessTransaction, error) {
 }
 
 func (*refCursorTestConn) Prepare(string) (driver.Stmt, error) {

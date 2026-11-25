@@ -386,7 +386,7 @@ func TestNCharAL16UTF16_OddLength_ReturnsOracleError(t *testing.T) {
 		}
 		var sqle oracleErrors.SQLError
 		if !errors.As(err, &sqle) {
-			t.Fatalf("expected common.SQLError, got %T: %v", err, err)
+			t.Fatalf("expected oracleErrors.SQLError, got %T: %v", err, err)
 		}
 		if sqle.ErrorCode() != string(oracleErrors.ConverterExpectedFormat) {
 			t.Fatalf("unexpected error code %s, want %s", sqle.ErrorCode(), oracleErrors.ConverterExpectedFormat)
@@ -408,7 +408,7 @@ func TestDecodeUTF16BEToString_OddLength_ReturnsOracleError(t *testing.T) {
 	}
 	var sqle oracleErrors.SQLError
 	if !errors.As(err, &sqle) {
-		t.Fatalf("expected common.SQLError, got %T: %v", err, err)
+		t.Fatalf("expected oracleErrors.SQLError, got %T: %v", err, err)
 	}
 	if sqle.ErrorCode() != string(oracleErrors.ConverterExpectedFormat) {
 		t.Fatalf("unexpected error code %s, want %s", sqle.ErrorCode(), oracleErrors.ConverterExpectedFormat)
