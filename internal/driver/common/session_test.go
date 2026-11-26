@@ -40,6 +40,8 @@ package common
 
 import "testing"
 
+// TestNewSessionContext verifies a new session has initialized session
+// properties and is ready for use.
 func TestNewSessionContext(t *testing.T) {
 	t.Parallel()
 
@@ -53,6 +55,8 @@ func TestNewSessionContext(t *testing.T) {
 	}
 }
 
+// TestSessionContext_SetTimeZoneVersionNumber verifies the client time-zone
+// version is stored with the expected byte value.
 func TestSessionContext_SetTimeZoneVersionNumber(t *testing.T) {
 	t.Parallel()
 
@@ -69,6 +73,8 @@ func TestSessionContext_SetTimeZoneVersionNumber(t *testing.T) {
 
 }
 
+// TestSessionContext_SetSessionCharacterSets verifies both database character
+// set values are retained by the session context.
 func TestSessionContext_SetSessionCharacterSets(t *testing.T) {
 	t.Parallel()
 
@@ -84,6 +90,8 @@ func TestSessionContext_SetSessionCharacterSets(t *testing.T) {
 	}
 }
 
+// TestSessionContext_UpdateSessionProperties verifies updates change the
+// existing properties object and preserve all supplied key/value pairs.
 func TestSessionContext_UpdateSessionProperties(t *testing.T) {
 	t.Parallel()
 

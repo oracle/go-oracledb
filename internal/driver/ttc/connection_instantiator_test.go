@@ -260,7 +260,8 @@ func TestGetConnectionQueuesInitialRequestBegin(t *testing.T) {
 	}
 }
 
-// TestGetConnectionMissingLocalizationService verifies connection creation fails with the expected error when localization is unavailable.
+// TestGetConnectionMissingLocalizationService verifies connection creation
+// fails with the documented error when localization is unavailable.
 func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

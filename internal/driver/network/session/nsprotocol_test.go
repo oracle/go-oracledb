@@ -206,6 +206,8 @@ func TestNewNetworkSession(t *testing.T) {
 	}
 }
 
+// TestGetRemoteEndpoint verifies TCP and TCPS adapters expose their remote
+// address and port, while an unknown adapter returns zero values.
 func TestGetRemoteEndpoint(t *testing.T) {
 	t.Parallel()
 
@@ -258,7 +260,7 @@ func TestTransportConnect(t *testing.T) {
 
 	// Test TCP connection attempt (will fail without real server)
 	address := transport.Address{
-		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 9999},
+		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "127.0.0.1", Port: 0},
 	}
 	err := ns.transportConnect(context.Background(), address)
 	if err == nil {

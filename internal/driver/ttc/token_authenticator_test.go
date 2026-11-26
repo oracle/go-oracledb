@@ -248,9 +248,8 @@ func TestGetAuthenticator_SelectionLogic(t *testing.T) {
 	}
 }
 
-// TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken verifies that when
-// a signed-token provider is registered and that no username or password as
-// passed the authenticator selected in a the token authenticator.
+// TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken verifies a signed
+// token provider selects the token authenticator.
 func TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken(t *testing.T) {
 	t.Parallel()
 
@@ -270,9 +269,8 @@ func TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken(t *testing.T) {
 	}
 }
 
-// TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken verifies that when
-// a OAuth provider is registered and that no username or password as passed
-// the authenticator selected in a the token authenticator.
+// TestGetAuthenticator_UsesTokenAuthenticatorForOAuth verifies an OAuth token
+// provider selects the token authenticator.
 func TestGetAuthenticator_UsesTokenAuthenticatorForOAuth(t *testing.T) {
 	t.Parallel()
 
@@ -290,8 +288,8 @@ func TestGetAuthenticator_UsesTokenAuthenticatorForOAuth(t *testing.T) {
 	}
 }
 
-// TestProviderRegistryReturnsFirstRegisteredTokenProvider verifies that the
-// first matching token provider is returned from the registry.
+// TestProviderRegistryReturnsFirstRegisteredTokenProvider verifies provider
+// lookup uses the first registered token provider.
 func TestProviderRegistryReturnsFirstRegisteredTokenProvider(t *testing.T) {
 	t.Parallel()
 
@@ -315,8 +313,8 @@ func TestProviderRegistryReturnsFirstRegisteredTokenProvider(t *testing.T) {
 	}
 }
 
-// TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature verifies that
-// token, header, and signature values are encoded in the message.
+// TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature verifies OAuth
+// credentials, headers, and a valid encoded signature are stored.
 func TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature(t *testing.T) {
 	t.Parallel()
 
@@ -352,8 +350,8 @@ func TestOAuthSetTokenKeyValsForOAUTHAddsTokenHeaderAndSignature(t *testing.T) {
 	}
 }
 
-// TestSignedTokenProviderGenerateTokenHeader verifies that a signed provider's
-// header contains the service name, host, port, and GMT timestamp.
+// TestSignedTokenProviderGenerateTokenHeader verifies the signed-token header
+// contains the service, remote host, and GMT date values.
 func TestSignedTokenProviderGenerateTokenHeader(t *testing.T) {
 	t.Parallel()
 
@@ -382,8 +380,8 @@ func TestSignedTokenProviderGenerateTokenHeader(t *testing.T) {
 	}
 }
 
-// TestProviderRegistryReturnsNilWhenTokenProviderMissing verifies that lookup
-// returns no provider when the registry has no token provider.
+// TestProviderRegistryReturnsNilWhenTokenProviderMissing verifies a registry
+// without a token provider returns nil without an error.
 func TestProviderRegistryReturnsNilWhenTokenProviderMissing(t *testing.T) {
 	t.Parallel()
 
@@ -400,8 +398,8 @@ func TestProviderRegistryReturnsNilWhenTokenProviderMissing(t *testing.T) {
 	}
 }
 
-// TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader verifies that an
-// unsigned OAuth message contains only the token value.
+// TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader verifies an OAuth
+// token is still stored when optional header and signature inputs are absent.
 func TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader(t *testing.T) {
 	t.Parallel()
 
@@ -425,8 +423,8 @@ func TestOAuthSetTokenKeyValsForOAUTHAddsTokenOnlyWithoutHeader(t *testing.T) {
 	}
 }
 
-// TestTokenAuthenticatorSignHeaderForSignedProvider verifies that signed
-// providers produce a base64-encoded signature and receive the token.
+// TestTokenAuthenticatorSignHeaderForSignedProvider verifies a signed provider
+// receives the token and returns a non-empty base64 signature.
 func TestTokenAuthenticatorSignHeaderForSignedProvider(t *testing.T) {
 	t.Parallel()
 
@@ -463,8 +461,8 @@ func TestTokenAuthenticatorSignHeaderForSignedProvider(t *testing.T) {
 	}
 }
 
-// TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty verifies that
-// OAuth providers do not produce a separate signature header.
+// TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty verifies OAuth
+// providers do not produce a signed header.
 func TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -485,7 +483,8 @@ func TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty(t *testing.T) 
 	}
 }
 
-// TestValidateJWTExpirationExpired verifies that an expired JWT is rejected.
+// TestValidateJWTExpirationExpired verifies an expired JWT is rejected with an
+// error identifying the expiration condition.
 func TestValidateJWTExpirationExpired(t *testing.T) {
 	t.Parallel()
 

@@ -44,7 +44,6 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -1747,52 +1746,99 @@ func TestDriver_Select_NullFromComputedExpression(t *testing.T) {
 	}
 }
 
-// TestDriver_Select_EmptySlice
-// Checks that we can insert empty byte array and fetch it back.
-func TestDriver_Select_EmptySlice(t *testing.T) {
+// TestDriver_Select_NamedArgMultipleSameParamRefs verifies one named bind can
+// be used three times and the driver returns the matching row.
+func TestDriver_Select_NamedArgMultipleSameParamRefs(t *testing.T) {
 	t.Parallel()
-
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
 
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
-		t.Fatalf("failed to open DB: %v", err)
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	table := createObjectName("t_named_arg_multi_ref")
+	if err := createTable(ctx, db, table, map[string]string{
+		"id":   "NUMBER PRIMARY KEY",
+		"name": "VARCHAR2(100)",
+	}); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO "+table+" (id, name) VALUES (:1, :2)",
+		int64(1), "multi-ref",
+	); err != nil {
+		t.Fatalf("insert seed row failed: %v", err)
+	}
+
+	var id int64
+	var name string
+	if err := db.QueryRowContext(ctx,
+		`SELECT id, name FROM `+table+` WHERE :name = :name AND name = :name`,
+		sql.Named("name", "multi-ref"),
+	).Scan(&id, &name); err != nil {
+		t.Fatalf("named-arg multi-ref query failed: %v", err)
+	}
+
+	if id != 1 || name != "multi-ref" {
+		t.Fatalf("unexpected named-arg multi-ref row: got (%d, %q), want (%d, %q)", id, name, 1, "multi-ref")
+	}
+}
+
+// TestDriver_Select_EmptySlice checks that an empty byte slice can be inserted
+// and fetched back through the driver.
+func TestDriver_Select_EmptySlice(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
 	}
 	defer db.Close()
 
 	ctx := context.Background()
 	table := createObjectName("t_empty_slice")
-
 	cols := map[string]string{
 		"id":      "NUMBER PRIMARY KEY",
 		"payload": "RAW(30)",
 	}
-
 	if err := createTable(ctx, db, table, cols); err != nil {
 		t.Fatalf("create table failed: %v", err)
 	}
-	defer dropTable(ctx, db, table)
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
 
 	payload := []byte{}
-
-	ins := "INSERT INTO " + table + "  (id, payload) VALUES (1, :payload)"
-	insStmt, err := db.PrepareContext(ctx, ins)
-	if _, err := insStmt.ExecContext(ctx,
-		sql.Named("payload", payload),
-	); err != nil {
+	ins, err := db.PrepareContext(ctx, "INSERT INTO "+table+" (id, payload) VALUES (1, :payload)")
+	if err != nil {
+		t.Fatalf("prepare insert failed: %v", err)
+	}
+	defer ins.Close()
+	if _, err := ins.ExecContext(ctx, sql.Named("payload", payload)); err != nil {
 		t.Fatalf("insert failed: %v", err)
 	}
 
-	var ppayload []byte
-	err = db.QueryRow("SELECT payload FROM " + table + " WHERE id = 1").Scan(&ppayload)
-	if err != nil {
+	var got []byte
+	if err := db.QueryRowContext(ctx, "SELECT payload FROM "+table+" WHERE id = 1").Scan(&got); err != nil {
 		t.Fatalf("select failed: %v", err)
 	}
-	if !bytes.Equal(payload, ppayload) {
-		t.Fatalf("payload mismatch")
+	if !bytes.Equal(payload, got) {
+		t.Fatalf("payload mismatch: got %v, want %v", got, payload)
 	}
-	t.Logf("payload type: %v, size: %v", reflect.TypeOf(ppayload), len(ppayload))
-
 }

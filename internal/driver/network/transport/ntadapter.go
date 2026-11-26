@@ -45,9 +45,20 @@ import (
 )
 
 type NTAdapter interface {
+	// Connect opens a network connection to address. It returns an error if the
+	// connection cannot be established, the context ends, or transport setup
+	// fails.
 	Connect(ctx context.Context, address Address) error
+	// Send writes all bytes in buf to the network connection. It returns an
+	// error if a write fails or the context is cancelled or reaches its deadline.
 	Send(ctx context.Context, buf []byte) error
+	// Receive reads bytes2Read bytes into buf and returns the number of bytes
+	// read. It returns an error if bytes2Read exceeds len(buf), a read fails, or
+	// the context is cancelled or reaches its deadline. On a read error, the
+	// returned byte count may be less than bytes2Read.
 	Receive(ctx context.Context, buf []byte, bytes2Read int) (int, error)
+	// Disconnect closes the network connection, if one is open. It returns any
+	// error from closing the connection; if no connection is open, it succeeds.
 	Disconnect() error
 }
 
