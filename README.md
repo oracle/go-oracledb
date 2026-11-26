@@ -13,6 +13,7 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
     - token authentication
   - Data source: supports Connect Descriptor and EZConnect
   - Protocols: TCP and TCPS
+  - TTIINIT fast authentication for faster connection establishment on supported servers
   - Transactions: standard and [sessionless](documentation/sessionless_transactions.md)
   - Statements with in parameters and out parameters (using `sql.Out`)
   - PL/SQL In/Out parameters (using `sql.Out`)
