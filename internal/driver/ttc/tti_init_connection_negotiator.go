@@ -63,11 +63,20 @@ func newTTIInitConnectionNegotiator(buffer driverCommon.DataBuffer, connectionPr
 	}
 }
 
+// newTTIInitPro prepares the initial PRO before TTIINIT receives server capabilities.
+func newTTIInitPro() *tTIpro {
+	pro := newTTIpro().(*tTIpro)
+	fieldVersion := pro.serverCaps.knownUsedCompileTimeCapabilities[kpccapCtTtcFldVsn]
+	pro.serverCaps.compileTimeCapabilities[fieldVersion.index] = ttiInitInitialFieldVersion
+	pro.clientCaps.adjustCapabilityFrom(pro.serverCaps)
+	return pro
+}
+
 // Negotiate queues TTIINIT and TTIDTY without flushing. Authentication appends
 // its first request and sends the combined batch.
 func (n *ttiInitConnectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.SessionContext, *ttiShelf[driverCommon.MessageType], error) {
 	shelf, sessCtx, streamer, _ := n.initializeNegotiationResources()
-	pro := newTTIpro().(*tTIpro)
+	pro := newTTIInitPro()
 	dty := NewTTIdty().(*tTIdty)
 	dty.SetNegotiatedCapabilities(pro.clientCaps)
 	initialFactory := NewMessageFactoryForProtocol(int8(ttiInitInitialFieldVersion), pro.clientCaps.toMap())
@@ -87,7 +96,7 @@ func (n *ttiInitConnectionNegotiator) Negotiate(ctx context.Context) (*driverCom
 
 	// Responses arrive during authentication. The instantiator removes these
 	// callbacks when connection setup ends, including errors and fallback.
-	n.registerTTIInitNegotiationCallbacks(streamer, shelf, sessCtx, dty)
+	n.registerTTIInitNegotiationCallbacks(streamer, shelf, sessCtx)
 	return sessCtx, shelf, nil
 }
 
@@ -95,7 +104,6 @@ func (n *ttiInitConnectionNegotiator) registerTTIInitNegotiationCallbacks(
 	streamer MessageStreamerInterface,
 	shelf *ttiShelf[driverCommon.MessageType],
 	sessCtx *driverCommon.SessionContext,
-	dty *tTIdty,
 ) {
 	var pro *tTIpro
 	receiveProtocolResponse := func(msg driverCommon.Message[driverCommon.MessageType], decodeErr error) (bool, error) {
@@ -110,7 +118,9 @@ func (n *ttiInitConnectionNegotiator) registerTTIInitNegotiationCallbacks(
 		if pro == nil {
 			return nil, common.NewOracleError(oracleErrors.InternalError, nil)
 		}
-
+		// Decode DTY using the client capabilities adjusted by the PRO response.
+		dty := NewTTIdty().(*tTIdty)
+		dty.SetNegotiatedCapabilities(pro.clientCaps)
 		return dty, nil
 	}
 	completeNegotiation := func(msg driverCommon.Message[driverCommon.MessageType], decodeErr error) (bool, error) {

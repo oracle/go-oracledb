@@ -245,7 +245,7 @@ func TestTTIInitGetConnectionCleansUpOnReneg(t *testing.T) {
 	shelf.RegisterMessageStreamer(streamer)
 	sessCtx := driverCommon.NewSessionContext()
 	negotiator := &ttiInitConnectionNegotiator{}
-	negotiator.registerTTIInitNegotiationCallbacks(streamer, shelf, sessCtx, &tTIdty{})
+	negotiator.registerTTIInitNegotiationCallbacks(streamer, shelf, sessCtx)
 	ci := &ttiInitConnectionInstantiator{
 		connectionInstantiatorCommon: &connectionInstantiatorCommon{
 			negotiator:          &mockNegotiator{sessCtx: sessCtx, shelf: shelf},
