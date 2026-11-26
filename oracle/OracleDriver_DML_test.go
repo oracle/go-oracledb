@@ -42,7 +42,9 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -878,4 +880,72 @@ func TestDriver_Prepared_SelectMultipleRows_Re_exec_BindTypeChange(t *testing.T)
 			t.Fatalf("row count mismatch (case %q): got %d want %d", bc.label, i, len(bc.expIDs))
 		}
 	}
+}
+
+// TestDriver_Table_Insert_LargeNumber checks that the driver can decode NUMBER
+// with high count of digits.
+// expectation : the driver can insert and select NUMBER from 15 to max (38) amount of  digits.
+func TestDriver_Table_Insert_LargeNumber(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const minDigits, maxDigits = 15, 38
+
+	db, err := openTestDBWithConfig(TestingConfig)
+	if err != nil {
+		t.Fatalf("failed to open test DB: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	table := createObjectName("t_dml_insert_large_number")
+	cols := map[string]string{
+		"digits": "NUMBER(2)",
+		"n":      "NUMBER",
+	}
+	if err := createTable(ctx, db, table, cols); err != nil {
+		t.Fatalf("create table failed: %v", err)
+	}
+	defer func() {
+		if err := dropTable(ctx, db, table); err != nil {
+			t.Errorf("cleanup drop table %s failed: %v", table, err)
+		}
+	}()
+
+	for d := minDigits; d <= maxDigits; d++ {
+		insert := fmt.Sprintf(`INSERT INTO %s (digits, n) VALUES (%d, %s)`, table, d, strings.Repeat("9", d))
+		if _, err := db.Exec(insert); err != nil {
+			t.Fatalf("insert failed for digit length %d: %v", d, err)
+		}
+	}
+
+	for d := minDigits; d <= maxDigits; d++ {
+		sel := fmt.Sprintf(`SELECT n FROM %s WHERE digits = %d`, table, d)
+		rows, err := db.Query(sel)
+		if err != nil {
+			t.Fatalf("select persisted row failed: %v", err)
+		}
+		defer rows.Close()
+		colTypes, err := rows.ColumnTypes()
+		if err != nil {
+			t.Fatalf("cannot fetch column type: %v", err)
+		}
+
+		t.Logf("type name %v", colTypes[0].DatabaseTypeName())
+
+		if !rows.Next() {
+			if err := rows.Err(); err != nil {
+				t.Fatalf("cannot get column : %v", err)
+			}
+		}
+
+		var bigN any
+		if err := rows.Scan(&bigN); err != nil {
+			t.Fatalf("cannot scan  column : %v", err)
+		}
+
+		t.Logf("type %T digit length: %f", bigN, bigN)
+	}
+
 }
