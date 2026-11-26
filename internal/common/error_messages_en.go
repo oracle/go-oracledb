@@ -110,11 +110,6 @@ func initMessagesEn() {
 	// Action:   N/A
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.UnknownHost), "unknown host specified.")
-	// Document: No
-	// Cause:    N/A
-	// Action:   N/A
-	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.LogonDenied), "invalid credential or not authorized")
 	// Document: Yes
 	// Cause:    The service name specified in the connect descriptor is not registered with the listener.
 	// Action:   Verify the service name in the connect string and ensure it's correctly configured in the listener.
@@ -693,5 +688,11 @@ func initMessagesEn() {
 	// Action:   Provide a timeout between 0 and 65535 seconds.
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.SessionlessTransactionTimeoutOutOfRange), "sessionless transaction timeout must be between 0 and 65535 seconds")
+
+	// Document: No
+	// Cause:    The driver performed an invalid operation on an internal buffer.
+	// Action:   Enable FINEST logging to see the failing buffer operation.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidBufferOperation), "invalid buffer operation")
 
 }
