@@ -333,46 +333,48 @@ func TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess(t *test
 // TODO: Add live server rejection coverage once Oracle Net supports NSPDAFAPP.
 func TestConnectorConnectFallsBackOnTTIRENEG(t *testing.T) {
 	t.Parallel()
-	ns := &mockConnectorNetworkSession{}
-	factoryCalls := 0
-	connector, err := newOracleConnector(
-		newConnectorTestConfig(t),
-		NewOracleDriverConfig(),
-		func(context.Context, *naming.ConnectionOption, string) (driverCommon.NetworkSession, error) {
-			return ns, nil
-		},
-		func(_ *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, _ common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
-			factoryCalls++
-			if connectedNS != ns {
-				t.Fatal("fallback must reuse the original network session")
+	for _, tc := range []struct {
+		name     string
+		fallback mockConnectorConnectionInstantiator
+	}{
+		{"success", mockConnectorConnectionInstantiator{conn: mockConnectorDriverConn{}}},
+		{"authentication failure", mockConnectorConnectionInstantiator{err: errors.New("fallback authentication failed")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ns := &mockConnectorNetworkSession{}
+			factoryCalls := 0
+			connector, err := newOracleConnector(
+				newConnectorTestConfig(t),
+				NewOracleDriverConfig(),
+				func(context.Context, *naming.ConnectionOption, string) (driverCommon.NetworkSession, error) {
+					return ns, nil
+				},
+				func(_ *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, _ common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
+					factoryCalls++
+					if connectedNS != ns {
+						t.Fatal("fallback must reuse the original network session")
+					}
+					if serverProPending != (factoryCalls == 2) || factoryCalls > 2 {
+						t.Fatalf("factory call %d: unexpected pending PRO = %t", factoryCalls, serverProPending)
+					}
+					if serverProPending {
+						return tc.fallback, nil
+					}
+					return mockConnectorConnectionInstantiator{err: driverCommon.ErrTTIRENEG}, nil
+				},
+			)
+			if err != nil {
+				t.Fatalf("create connector: %v", err)
 			}
-			switch factoryCalls {
-			case 1:
-				if serverProPending {
-					t.Fatal("first attempt must start without a pending server PRO")
-				}
-				return mockConnectorConnectionInstantiator{err: driverCommon.ErrTTIRENEG}, nil
-			case 2:
-				if !serverProPending {
-					t.Fatal("fallback must read the pending server PRO")
-				}
-				return mockConnectorConnectionInstantiator{conn: mockConnectorDriverConn{}}, nil
-			default:
-				t.Fatal("connector retried more than once")
-				return nil, nil
-			}
-		},
-	)
-	if err != nil {
-		t.Fatalf("create connector: %v", err)
-	}
 
-	conn, err := connector.Connect(context.Background())
-	if err != nil || conn == nil {
-		t.Fatalf("Connect() = (%v, %v), want a successful fallback connection", conn, err)
-	}
-	if factoryCalls != 2 || ns.disconnectCalled {
-		t.Fatalf("factory calls = %d, session disconnected = %t", factoryCalls, ns.disconnectCalled)
+			conn, err := connector.Connect(context.Background())
+			if !errors.Is(err, tc.fallback.err) || conn != tc.fallback.conn {
+				t.Fatalf("Connect() = (%v, %v), want (%v, %v)", conn, err, tc.fallback.conn, tc.fallback.err)
+			}
+			if factoryCalls != 2 || ns.disconnectCalled != (tc.fallback.err != nil) {
+				t.Fatalf("factory calls = %d, session disconnected = %t", factoryCalls, ns.disconnectCalled)
+			}
+		})
 	}
 }
 
