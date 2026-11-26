@@ -138,7 +138,7 @@ func assertNoTokenProviderRegistered(t *testing.T, providerRegistry common.Regis
 func TestDriver_ConnectorDriver(t *testing.T) {
 	t.Parallel()
 	drv := NewDriver()
-	connector, err := drv.openConnector("localhost:1521/service")
+	connector, err := drv.OpenConnector("localhost:1521/service")
 	if err != nil {
 		t.Fatalf("openConnector returned error: %v", err)
 	}

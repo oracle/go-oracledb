@@ -100,6 +100,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestEncodeStringLengthForms", Categories: "unitary", Fn: TestEncodeStringLengthForms},
 	{Name: "TestEncodeBinaryLengthForms", Categories: "unitary", Fn: TestEncodeBinaryLengthForms},
 	{Name: "TestEncodeTimeOptions", Categories: "unitary", Fn: TestEncodeTimeOptions},
+	{Name: "TestEncodeInvalidTemporalYears", Categories: "unitary", Fn: TestEncodeInvalidTemporalYears},
 
 	// Encode objects and arrays across child-count, field-ID, dictionary, and
 	// child-offset width boundaries, then verify nested values round trip.

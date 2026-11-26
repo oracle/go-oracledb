@@ -248,7 +248,7 @@ func TestDecodeLobColumns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeBlob returned error: %v", err)
 	}
-	if !reflect.DeepEqual(gotBlob, blob) {
+	if !reflect.DeepEqual(gotBlob, []byte(blob)) {
 		t.Fatalf("DecodeBlob = %v, want %v", gotBlob, blob)
 	}
 }

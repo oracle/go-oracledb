@@ -613,7 +613,7 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 	case float64:
 		enc.writeBinaryDouble(tree, v)
 	case time.Time:
-		enc.writeTime(tree, v)
+		return enc.writeTime(tree, v)
 	case []byte:
 		return enc.writeBinary(tree, drvCommon.B1Array(v))
 	case stdjson.Number:
@@ -627,19 +627,38 @@ func (enc *osonEncoder) writeScalarNode(tree *osonWriteBuffer, value any) error 
 }
 
 // writeTime writes value using the configured OSON temporal scalar.
-func (enc *osonEncoder) writeTime(tree *osonWriteBuffer, value time.Time) {
+func (enc *osonEncoder) writeTime(tree *osonWriteBuffer, value time.Time) error {
 	switch enc.options.TimeEncoding {
 	case drvCommon.JSONTimeAsDate:
-		payload, _ := converters.EncodeDate(value)
+		payload, err := converters.EncodeDate(value)
+		if err != nil {
+			common.Odl.Debug("osonEncoder.writeTime: failed", "reason", "encode Oracle DATE", "error", err)
+			return common.NewOracleError(oracleErrors.OsonEncodingError, err)
+		}
 		tree.writeUB1(osonOpDate)
 		tree.writeBytes(payload)
+		return nil
 	case drvCommon.JSONTimeAsTimestampTZ:
-		payload := encodeTimestampTZ(value)
+		payload, err := encodeTimestampTZ(value)
+		if err != nil {
+			common.Odl.Debug("osonEncoder.writeTime: failed", "reason", "encode Oracle TIMESTAMP WITH TIME ZONE", "error", err)
+			return common.NewOracleError(oracleErrors.OsonEncodingError, err)
+		}
 		tree.writeUB1(osonOpTimestampTZ)
 		tree.writeBytes(payload)
-	default:
-		enc.writeTimestamp(tree, value)
+		return nil
 	}
+
+	// Timestamp
+	payload, err := converters.EncodeTimestamp(value)
+	if err != nil {
+		common.Odl.Debug("osonEncoder.writeTime: failed", "reason", "encode Oracle TIMESTAMP", "error", err)
+		return common.NewOracleError(oracleErrors.OsonEncodingError, err)
+	}
+	tree.writeUB1(osonOpTimestamp)
+	tree.writeBytes(payload)
+
+	return nil
 }
 
 // writeString writes one UTF-8 string scalar node.
@@ -810,20 +829,6 @@ func (enc *osonEncoder) writeBinary(tree *osonWriteBuffer, value drvCommon.B1Arr
 			"payloadLength", len(value))
 	}
 	return nil
-}
-
-// writeTimestamp writes an Oracle TIMESTAMP scalar.
-func (enc *osonEncoder) writeTimestamp(tree *osonWriteBuffer, value time.Time) {
-	payload, _ := converters.EncodeTimestamp(value)
-
-	tree.writeUB1(osonOpTimestamp)
-	tree.writeBytes(payload)
-
-	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
-		common.Odl.Finest("osonEncoder.writeTimestamp: completed",
-			"opcode", osonOpTimestamp,
-			"payloadLength", len(payload))
-	}
 }
 
 // containerOpcode builds the container opcode from the base type, child count, and child-offset size.

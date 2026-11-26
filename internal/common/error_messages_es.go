@@ -51,6 +51,7 @@ func initMessagesEs() {
 		message string
 	}{
 		{oracleErrors.InvalidCredential, "credenciales no válidas o usuario no autorizado: %s"},
+		{oracleErrors.InvalidDateYear, "el año completo debe estar entre -4713 y +9999, y no puede ser 0"},
 		{oracleErrors.ConnectionLost, "conexión a la base de datos cerrada por el extremo remoto"},
 		{oracleErrors.AliasNotFound, "no se puede conectar a la base de datos. No se encontró el alias %s."},
 		{oracleErrors.NoListenerAvailable, "no se puede conectar. No hay ningún listener en %s"},
@@ -61,7 +62,6 @@ func initMessagesEs() {
 		{oracleErrors.ChannelReadFailed, "se detectó el fin del flujo. El extremo remoto cerró la conexión."},
 		{oracleErrors.ChannelWriteFailed, "no se pudo escribir en el canal."},
 		{oracleErrors.UnknownHost, "se especificó un host desconocido."},
-		{oracleErrors.LogonDenied, "credenciales no válidas o usuario no autorizado"},
 		{oracleErrors.InvalidServiceName, "no se puede conectar a la base de datos. El servicio %s no está registrado en el listener del host %s, puerto %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.NoAvailableHandler, "no se puede conectar a la base de datos. No hay ningún manejador %s disponible para el servicio solicitado %s en el host %s, puerto %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.UnknownInstance, "no se puede conectar a la base de datos. El listener no conoce la instancia %s del servicio %s en el host %s, puerto %d. (CONNECTION_ID=%s)"},
@@ -89,6 +89,7 @@ func initMessagesEs() {
 		{oracleErrors.FailMarshal, "no se pudo serializar el mensaje: %s"},
 		{oracleErrors.FailUnmarshal, "no se pudo deserializar el mensaje: %s"},
 		{oracleErrors.InvalidLOBBuffer, "configuración no válida del búfer LOB durante %s (%s): %s"},
+		{oracleErrors.InvalidBufferOperation, "operación de búfer no válida"},
 		{oracleErrors.LobExecError, "no se pudo realizar la operación LOB durante %s."},
 		{oracleErrors.UnsupportedCharacterSet, "conjunto de caracteres no compatible: %d"},
 		{oracleErrors.InvalidNetworkValue, "valor no válido para %s: %v"},
@@ -181,6 +182,7 @@ func initMessagesEs() {
 		{oracleErrors.AlreadyInTransaction, "nivel de aislamiento no compatible"},
 		{oracleErrors.ErrorInTransaction, "se produjo un error al realizar la operación de transacción %s"},
 		{oracleErrors.ConfigureTransactionError, "no se pudo configurar la transacción"},
+		{oracleErrors.StartResumeTransactionFailure, "no se pudo iniciar o reanudar la transacción"},
 		{oracleErrors.AuthenticatorError, "se produjo un error durante la autenticación"},
 		{oracleErrors.NegotiatorError, "se produjo un error al negociar la conexión"},
 		{oracleErrors.MarshalEngineError, "se produjo un error al serializar o deserializar un valor de tipo %s"},
@@ -206,6 +208,9 @@ func initMessagesEs() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "clave privada del token firmado no válida"},
 		{oracleErrors.ExpiredToken, "el token de acceso ha caducado"},
 		{oracleErrors.ProviderNotFound, "no se encontró ningún proveedor del tipo solicitado"},
+		{oracleErrors.InvalidGlobalTransactionIDValue, "valor no válido del identificador global de transacción"},
+		{oracleErrors.InvalidSessionlessTransactionTimeout, "el tiempo de espera para iniciar la transacción sin sesión debe ser mayor que cero"},
+		{oracleErrors.SessionlessTransactionTimeoutOutOfRange, "el timeout de la transaccion sin sesion debe estar entre 0 y 65535 segundos"},
 	}
 
 	for _, translation := range translations {

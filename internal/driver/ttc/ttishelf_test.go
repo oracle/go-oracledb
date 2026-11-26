@@ -300,64 +300,20 @@ type testCodecFactory struct {
 	defineOac driverCommon.Marshallable
 }
 
-func (t *testCodecFactory) getEncoder(_ normalizedBindValue) (encoderFunc, error) {
-	return func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }, nil
+func (t *testCodecFactory) getEncoderForGoType(_ bindValueMetadata) (*typeEncoder, error) {
+	return newCLRBindEncoder(func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }), nil
+}
+func (t *testCodecFactory) getEncoderForDtyType(_ DtyType, _ bindValueMetadata) (*typeEncoder, error) {
+	return newCLRBindEncoder(func(driver.Value) (driverCommon.B1Array, error) { return t.encode, nil }), nil
 }
 func (t *testCodecFactory) getDecoder(_ DtyType) (*typeDecoder, error) {
 	return newTypeDecoder(func(columnContext, any) (driver.Value, error) {
 		return t.decode, nil
 	}, nil, unwrapCLRColumn), nil
 }
-func (t *testCodecFactory) getBindOac(_ normalizedBindValue, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+func (t *testCodecFactory) getBindOac(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
 	return t.bindOac, nil
 }
 func (t *testCodecFactory) getDefineOac(_ DtyType, _ columnContext, _ driverCommon.DriverProperties) driverCommon.Marshallable {
 	return t.defineOac
-}
-
-// TestTTIShelf_StatementDrain test GetStatements API
-// expectations:
-//   - it returns all statements previously added
-//   - second call return an empty slice
-func TestTTIShelf_StatementDrain(t *testing.T) {
-	t.Parallel()
-	shelf := newShelf[driverCommon.MessageType]()
-	sessCtx := driverCommon.NewSessionContext()
-	s1, _ := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")
-	s2, _ := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")
-	s3, _ := newStatement(shelf, sessCtx, "SELECT * FROM DUAL")
-	statements := []*Statement{s1, s2, s3}
-
-	shelf.AddStatement(s1)
-	shelf.AddStatement(s2)
-	shelf.AddStatement(s3)
-
-	drainedOnes := shelf.GetStatements(false)
-	var found uint = 0
-	for _, st := range drainedOnes {
-		if s1 == st {
-			found++
-		}
-		if s2 == st {
-			found++
-		}
-		if s3 == st {
-			found++
-		}
-	}
-
-	if found != 3 {
-		for _, st := range drainedOnes {
-			t.Logf("drained stmt [%+v]", st)
-		}
-		for _, st := range statements {
-			t.Logf("statements stmt [%+v]", st)
-		}
-		t.Fatalf("Statements do not match expected [%d] [%+v], got [%+v]", found, statements, drainedOnes)
-	}
-
-	emptyOnes := shelf.GetStatements(true)
-	if len(emptyOnes) == 0 {
-		t.Fatalf("statements in the shelf should not have been drained")
-	}
 }

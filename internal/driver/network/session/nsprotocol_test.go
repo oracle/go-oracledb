@@ -260,7 +260,7 @@ func TestTransportConnect(t *testing.T) {
 
 	// Test TCP connection attempt (will fail without real server)
 	address := transport.Address{
-		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "localhost", Port: 9999},
+		Address: naming.Address{Protocol: driverCommon.ProtocolTCP, Host: "127.0.0.1", Port: 0},
 	}
 	err := ns.transportConnect(context.Background(), address)
 	if err == nil {

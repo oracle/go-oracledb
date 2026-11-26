@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -124,7 +125,58 @@ func TestConnectionPinger_IsValid(t *testing.T) {
 	if !isValid {
 		t.Errorf("Connection should be valid")
 	}
+	if got := mockStr.pushedMsg.Len(); got != 0 {
+		t.Errorf("pushed message count = %d, want 0 when session-state operations are unsupported", got)
+	}
 
+}
+
+// TestConnectionPinger_IsValidPushesRequestEnd verifies that IsValid queues the
+// end-request boundary and rejects the connection if queuing fails.
+func TestConnectionPinger_IsValidPushesRequestEnd(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name                   string
+		explicitBoundSupported bool
+		pushErr                error
+		wantValid              bool
+		wantFlags              common.UB8
+	}{
+		{
+			name:                   "explicit bound supported",
+			explicitBoundSupported: true,
+			wantValid:              true,
+			wantFlags:              common.UB8(sessionStateExplBound | sessionStateRequestEnd),
+		},
+		{
+			name:      "explicit bound unsupported",
+			wantValid: true,
+			wantFlags: common.UB8(sessionStateRequestEnd),
+		},
+		{
+			name:                   "push failure invalidates connection",
+			explicitBoundSupported: true,
+			pushErr:                fmt.Errorf("push failed"),
+			wantValid:              false,
+			wantFlags:              common.UB8(sessionStateExplBound | sessionStateRequestEnd),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			connection, streamer := newSessionStateTestConnection(18, common.Capability{IsSet: true}, tt.explicitBoundSupported)
+			streamer.pushErr = tt.pushErr
+
+			if got := connection.IsValid(); got != tt.wantValid {
+				t.Fatalf("IsValid() = %t, want %t", got, tt.wantValid)
+			}
+			got := pushedSessionStateFlags(t, streamer)
+			if len(got) != 1 || got[0] != tt.wantFlags {
+				t.Fatalf("pushed flags = %v, want [%d]", got, tt.wantFlags)
+			}
+		})
+	}
 }
 
 func TestConnectionPinger_IsValidWithInband(t *testing.T) {
@@ -154,4 +206,54 @@ func TestConnectionPinger_IsValidWithInband(t *testing.T) {
 		t.Errorf("Connection should be invalid")
 	}
 
+}
+
+// TestConnectionValidator_RollsBackActiveTransaction verifies that IsValid runs
+// the request-end rollback callback for a transaction reported as active by the
+// server without unregistering it until an end-of-call status confirms it ended.
+func TestConnectionValidator_RollsBackActiveTransaction(t *testing.T) {
+	t.Parallel()
+
+	streamer := &mockStreamer{pullMsg: &mockOer{}}
+	connection := newTransactionTestConnection(streamer)
+	connection.sessCtx = common.NewSessionContext()
+	connection.ns = &mockNetworkSession{
+		inband: false,
+	}
+	callbacks := buildRequestBoundaryCallbacks(connection)
+	connection.initializeRequestBoundaryCallbacks(callbacks.requestStartCallbacks, callbacks.requestEndCallbacks)
+	transaction := newTransaction(connection, context.Background())
+	transaction.transactionState(transactionStartedServer)
+	connection.shelf.registerTransaction(transaction)
+
+	if !connection.IsValid() {
+		t.Fatalf("IsValid should have returned true")
+	}
+
+	assertTransactionFunction(t, streamer, common.SB4(otxenAbort), k2cmdAbort)
+	if !connection.shelf.isInTransaction() {
+		t.Fatal("rollback without end-of-call status unregistered the transaction")
+	}
+}
+
+// TestConnectionValidator_RollbackFailureInvalidatesConnection verifies that a
+// failed rollback prevents a connection from being returned to the pool.
+func TestConnectionValidator_RollbackFailureInvalidatesConnection(t *testing.T) {
+	t.Parallel()
+
+	streamer := &mockStreamer{pullMsg: &mockOer{err: errors.New("rollback failed")}}
+	connection := newTransactionTestConnection(streamer)
+	connection.sessCtx = common.NewSessionContext()
+	connection.ns = &mockNetworkSession{
+		inband: false,
+	}
+	callbacks := buildRequestBoundaryCallbacks(connection)
+	connection.initializeRequestBoundaryCallbacks(callbacks.requestStartCallbacks, callbacks.requestEndCallbacks)
+	transaction := newTransaction(connection, context.Background())
+	transaction.transactionState(transactionStartedServer)
+	connection.shelf.registerTransaction(transaction)
+
+	if connection.IsValid() {
+		t.Fatalf("IsValid should be false")
+	}
 }

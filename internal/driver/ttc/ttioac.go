@@ -121,7 +121,7 @@ func newTTIoac(typ DtyType, maxLength driverCommon.UB4) *tTIoac {
 	   For each typ, we need the network representation. For most of the types,
 	   there is a direct match so we set datatype = _type.
 	   However for some types, we choose a different
-	   representation on the network. The network represenation for each
+	   representation on the network. The network representation for each
 	   DTY type is negotiated with server during the TTC handshake.
 	   For example:
 
@@ -210,6 +210,9 @@ func newTTIOacNumber() driverCommon.Marshallable {
 
 // newTTIOacBytes creates an OAC descriptor for raw byte bind values.
 func newTTIOacBytes(maxLength driverCommon.UB4) driverCommon.Marshallable {
+	if maxLength == 0 {
+		maxLength = converters.EmptyBytesOacLength
+	}
 	return newTTIoac(DtyVbi, maxLength)
 }
 

@@ -41,9 +41,6 @@ package ttc
 import (
 	"context"
 
-	"maps"
-	"weak"
-
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	common "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -68,9 +65,8 @@ type ttiShelf[T any] struct {
 	*common.Shelf[T]
 	codecFactory             codecFactory
 	_providerRegistry        internalCommon.Registry[providers.Provider]
-	_statements              map[*Statement]weak.Pointer[Statement]
 	_refCursors              map[*ttcRowsRefCursor]struct{}
-	_currentTransaction      *transaction
+	_currentTransaction      oracleTx
 	_cancelExecutionFunction StmtCancellationFunction
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
@@ -85,7 +81,6 @@ func newShelf[T any]() *ttiShelf[T] {
 	return &ttiShelf[T]{
 		Shelf:              base,
 		codecFactory:       nil,
-		_statements:        make(map[*Statement]weak.Pointer[Statement]),
 		_refCursors:        make(map[*ttcRowsRefCursor]struct{}),
 		_eventService:      newEventService(),
 		_validatorRegistry: internalCommon.NewRegistry[stateValidator](),
@@ -142,62 +137,41 @@ func (s *ttiShelf[T]) getProviderRegistry() internalCommon.Registry[providers.Pr
 	return s._providerRegistry
 }
 
-// GetStatements gets all opened statements
+// isInTransaction reports whether a transaction is in progress.
 //
-//	 parameters:
-//	   - drain : if true, open statement list is also drained out of the shelf
-//		returns a slice of statements
-func (s *ttiShelf[T]) GetStatements(drain bool) []*Statement {
-	ss := make([]*Statement, len(s._statements))
-	var i = 0
-	for v := range maps.Values(s._statements) {
-		if v.Value() != nil {
-			ss[i] = v.Value()
-			i++
-		}
-	}
-	if drain {
-		clear(s._statements)
-	}
-	return ss[:i]
-}
-
-// AddStatement adds a statement to this shelf
-// parameter:
-//
-//	statement the statement to be added
-func (s *ttiShelf[T]) AddStatement(statement *Statement) {
-	s._statements[statement] = weak.Make(statement)
-}
-
-// RemoveStatement removes a statement from this shelf
-// parameter:
-//
-//	statement the statement to be removed
-func (s *ttiShelf[T]) RemoveStatement(statement *Statement) {
-	delete(s._statements, statement)
-}
-
-// isInTransaction returns true if a transaction is in progress, otherwise false
+// Returns:
+//   - bool: True if a transaction is registered; otherwise false.
 func (s *ttiShelf[T]) isInTransaction() bool {
-	return (s._currentTransaction != nil)
+	if s.getTransaction() == nil {
+		return false
+	}
+	sessionlessTx, ok := s.getTransaction().(*sessionlessTransaction)
+	if ok && sessionlessTx.currentTransactionState() == transactionPrepared {
+		return false
+	}
+	return true
 }
 
-// registerTransaction registeres the current transaction
+// registerTransaction registers the current transaction.
 //
 // Parameters:
-//   - t: the transaction
-func (s *ttiShelf[T]) registerTransaction(t *transaction) {
+//   - t: Transaction to register.
+func (s *ttiShelf[T]) registerTransaction(t oracleTx) {
+	internalCommon.Odl.Fine("Transaction registered")
 	s._currentTransaction = t
 }
 
-// unregisterTransaction unregisters the current transaction
+// unregisterTransaction unregisters the current transaction.
 func (s *ttiShelf[T]) unregisterTransaction() {
+	internalCommon.Odl.Fine("Transaction unregistered")
 	s._currentTransaction = nil
 }
 
-// getTransaction returns the current transaction
-func (s *ttiShelf[T]) getTransaction() *transaction {
+// getTransaction returns the current transaction.
+//
+// Returns:
+//   - oracleTx: Current transaction, or nil if none is registered.
+func (s *ttiShelf[T]) getTransaction() oracleTx {
 	return s._currentTransaction
 }
 

@@ -51,6 +51,7 @@ func initMessagesIt() {
 		message string
 	}{
 		{oracleErrors.InvalidCredential, "credenziale non valida o utente non autorizzato: %s"},
+		{oracleErrors.InvalidDateYear, "l'anno completo deve essere compreso tra -4713 e +9999 e non può essere 0"},
 		{oracleErrors.ConnectionLost, "connessione al database chiusa dal peer"},
 		{oracleErrors.AliasNotFound, "impossibile connettersi al database. Alias %s non trovato."},
 		{oracleErrors.NoListenerAvailable, "impossibile connettersi. Nessun listener in %s"},
@@ -61,7 +62,6 @@ func initMessagesIt() {
 		{oracleErrors.ChannelReadFailed, "fine del flusso rilevata. Il peer remoto ha chiuso la connessione."},
 		{oracleErrors.ChannelWriteFailed, "scrittura sul canale non riuscita."},
 		{oracleErrors.UnknownHost, "host specificato sconosciuto."},
-		{oracleErrors.LogonDenied, "credenziale non valida o utente non autorizzato"},
 		{oracleErrors.InvalidServiceName, "impossibile connettersi al database. Il servizio %s non è registrato presso il listener sull'host %s, porta %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.NoAvailableHandler, "impossibile connettersi al database. Nessun handler %s disponibile per il servizio richiesto %s sull'host %s, porta %d. (CONNECTION_ID=%s)"},
 		{oracleErrors.UnknownInstance, "impossibile connettersi al database. L'istanza %s del servizio %s non è nota al listener sull'host %s, porta %d. (CONNECTION_ID=%s)"},
@@ -89,6 +89,7 @@ func initMessagesIt() {
 		{oracleErrors.FailMarshal, "serializzazione del messaggio non riuscita: %s"},
 		{oracleErrors.FailUnmarshal, "deserializzazione del messaggio non riuscita: %s"},
 		{oracleErrors.InvalidLOBBuffer, "configurazione del buffer LOB non valida durante %s (%s): %s"},
+		{oracleErrors.InvalidBufferOperation, "operazione del buffer non valida"},
 		{oracleErrors.LobExecError, "operazione LOB non riuscita durante %s."},
 		{oracleErrors.UnsupportedCharacterSet, "set di caratteri non supportato: %d"},
 		{oracleErrors.InvalidNetworkValue, "valore non valido per %s: %v"},
@@ -181,6 +182,7 @@ func initMessagesIt() {
 		{oracleErrors.AlreadyInTransaction, "transazione già avviata"},
 		{oracleErrors.ErrorInTransaction, "si è verificato un errore durante l'operazione di transazione %s"},
 		{oracleErrors.ConfigureTransactionError, "configurazione della transazione non riuscita"},
+		{oracleErrors.StartResumeTransactionFailure, "impossibile avviare o riprendere la transazione"},
 		{oracleErrors.AuthenticatorError, "si è verificato un errore durante l'autenticazione"},
 		{oracleErrors.NegotiatorError, "si è verificato un errore durante la negoziazione della connessione"},
 		{oracleErrors.MarshalEngineError, "si è verificato un errore durante la serializzazione o deserializzazione di un valore di tipo %s"},
@@ -206,6 +208,9 @@ func initMessagesIt() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "chiave privata del token firmato non valida"},
 		{oracleErrors.ExpiredToken, "il token di accesso è scaduto"},
 		{oracleErrors.ProviderNotFound, "nessun provider del tipo richiesto trovato"},
+		{oracleErrors.InvalidGlobalTransactionIDValue, "valore non valido dell'identificatore globale di transazione"},
+		{oracleErrors.InvalidSessionlessTransactionTimeout, "il timeout di avvio della transazione senza sessione deve essere maggiore di zero"},
+		{oracleErrors.SessionlessTransactionTimeoutOutOfRange, "il timeout della transazione senza sessione deve essere compreso tra 0 e 65535 secondi"},
 	}
 
 	for _, translation := range translations {
