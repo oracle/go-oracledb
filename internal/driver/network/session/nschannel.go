@@ -62,7 +62,11 @@ func (ns *networkSession) PrepareReadBuffer(ctx context.Context) error {
 	//If the current receive packet has no remaining data, it resets
 	if ns.rcvDatapkt.len-ns.rcvDatapkt.offset == 0 {
 		ns.rcvDatapkt.offset = NSPDADAT
-		ns.rcvDatapkt.len = ns.rcvDatapkt.bufLen
+		// No payload remains in the current DATA packet. Keep it logically empty
+		// until recvPacket successfully receives and unmarshals a complete new
+		// DATA packet; buffer capacity and partial or failed receive contents are
+		// not readable TTC data.
+		ns.rcvDatapkt.len = NSPDADAT
 		// fillReadBuffer to populate the buffer with new data from the network.
 		return ns.fillReadBuffer(ctx)
 	}
@@ -364,20 +368,41 @@ func (ns *networkSession) SkipNBytes(ctx context.Context, n int) error {
 
 // CancelOperation cancels the current operation in the server.
 //
-// Sends Break marker packet followed by reset and ignores all packets received
-// from the server until a reset packet is received.
+// The cancellation goroutine never reads from the connection. If the main
+// goroutine is blocked in a receive, it sends only Interrupt so that Oracle can
+// release that read. Otherwise it records a pending cancellation. The main
+// goroutine owns Reset, marker draining, and the following TTC response.
 func (ns *networkSession) CancelOperation(ctx context.Context) error {
-	if ns.isBreak {
+	ns.cancelMu.Lock()
+	if ns.cancelState != cancellationIdle {
+		ns.cancelMu.Unlock()
 		return nil
 	}
 	if !ns.connected {
 		ns.isBreak = true
 		ns.breakPosted = true
+		ns.cancelMu.Unlock()
+		return nil
+	}
+	ns.cancelCtx = ctx
+	if !ns.inRead {
+		ns.cancelState = cancellationBreakPending
+		ns.cancelMu.Unlock()
 		return nil
 	}
 
-	// Build and send break packet
-	ns.isBreak = true
+	err := ns.sendInterruptPacket(ctx)
+	if err == nil {
+		ns.cancelState = cancellationBreakSent
+	} else {
+		ns.cancelState = cancellationIdle
+		ns.cancelCtx = nil
+	}
+	ns.cancelMu.Unlock()
+	return err
+}
+
+func (ns *networkSession) sendInterruptPacket(ctx context.Context) error {
 	var markerPkt = &markerPacket{}
 	err := markerPkt.marshal(nil, ns.sAtts, NIQIMARK)
 	if err != nil {
@@ -389,12 +414,6 @@ func (ns *networkSession) CancelOperation(ctx context.Context) error {
 		common.Odl.Info("An error occurred while sending the break packet", "error", err)
 		return err
 	}
-	// Call reset
-	err = ns.Reset(ctx)
-	if err != nil {
-		common.Odl.Info("An error occurred on reset", "error", err)
-		return err
-	}
 	return nil
 }
 
@@ -403,13 +422,17 @@ func (ns *networkSession) SendReset(ctx context.Context) error {
 }
 
 func (ns *networkSession) Flush(ctx context.Context) error {
-	if ns.isBreak {
+	stop, err := ns.prepareMainSend(ctx)
+	if err != nil {
+		return err
+	}
+	if stop {
 		return nil
 	}
 	if ns.sndDatapkt.offset <= NSPDADAT {
 		return nil
 	}
-	err := ns.sndDatapkt.Prepare2Send(0, ns.sAtts)
+	err = ns.sndDatapkt.Prepare2Send(0, ns.sAtts)
 	if err != nil {
 		return err
 	}
@@ -424,6 +447,87 @@ func (ns *networkSession) Flush(ctx context.Context) error {
 	return nil
 }
 
+// IsInBreakReset reports whether marker processing or cancellation recovery is
+// active, so callers do not start normal application I/O on the connection.
 func (ns *networkSession) IsInBreakReset() bool {
-	return ns.isBreak || ns.isReset
+	ns.cancelMu.Lock()
+	defer ns.cancelMu.Unlock()
+	return ns.isBreak || ns.isReset || ns.cancelState != cancellationIdle
+}
+
+// hasPendingCancellationWork reports whether the main goroutine must complete
+// an Interrupt/Reset exchange before returning a received packet to TTC.
+func (ns *networkSession) hasPendingCancellationWork() bool {
+	ns.cancelMu.Lock()
+	defer ns.cancelMu.Unlock()
+	return ns.cancelState == cancellationBreakPending || ns.cancelState == cancellationBreakSent
+}
+
+// prepareMainSend completes pending cancellation work and prevents application
+// data from being sent while Break/Reset or the following TTC response is active.
+func (ns *networkSession) prepareMainSend(ctx context.Context) (bool, error) {
+	handled, err := ns.handlePendingCancellation(ctx)
+	return handled || ns.IsInBreakReset(), err
+}
+
+// beginRead atomically marks the main goroutine as receiving. It refuses a new
+// read when Interrupt or Reset work must be handled first.
+func (ns *networkSession) beginRead() bool {
+	ns.cancelMu.Lock()
+	defer ns.cancelMu.Unlock()
+	if ns.cancelState != cancellationIdle && ns.cancelState != cancellationAwaitingTTC {
+		return false
+	}
+	ns.inRead = true
+	return true
+}
+
+// endRead clears the main goroutine's receiving flag after the complete Oracle
+// Net packet has been read or the receive has failed.
+func (ns *networkSession) endRead() {
+	ns.cancelMu.Lock()
+	ns.inRead = false
+	ns.cancelMu.Unlock()
+}
+
+// handlePendingCancellation is called only by the main execution goroutine.
+// It performs the Interrupt/Reset exchange and leaves the following DATA packet
+// for TTC decoding on that same goroutine.
+func (ns *networkSession) handlePendingCancellation(ctx context.Context) (bool, error) {
+	ns.cancelMu.Lock()
+	if ns.cancelState != cancellationBreakPending && ns.cancelState != cancellationBreakSent {
+		ns.cancelMu.Unlock()
+		return false, nil
+	}
+
+	interruptNeeded := ns.cancelState == cancellationBreakPending
+	if ns.cancelCtx != nil {
+		ctx = ns.cancelCtx
+	}
+	ns.cancelState = cancellationAwaitingTTC
+	ns.cancelMu.Unlock()
+
+	var err error
+	if interruptNeeded {
+		err = ns.sendInterruptPacket(ctx)
+	}
+	if err == nil {
+		err = ns.Reset(ctx)
+	}
+
+	if err != nil {
+		ns.finishCancellation()
+	}
+	return true, err
+}
+
+// finishCancellation returns the session to normal I/O after TTC DATA arrives,
+// or abandons the cancellation state when recovery fails.
+func (ns *networkSession) finishCancellation() {
+	ns.cancelMu.Lock()
+	if ns.cancelState == cancellationAwaitingTTC {
+		ns.cancelState = cancellationIdle
+		ns.cancelCtx = nil
+	}
+	ns.cancelMu.Unlock()
 }

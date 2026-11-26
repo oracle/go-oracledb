@@ -49,6 +49,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -75,6 +76,295 @@ type mockNTAdapter struct {
 	secondSendErr error
 	receiveCalls  int
 	lastAddress   transport.Address
+}
+
+// cancellationNTAdapter gives tests a deterministic blocked receive while
+// allowing CancelOperation to write an Interrupt concurrently.
+type cancellationNTAdapter struct {
+	mockNTAdapter
+	mu          sync.Mutex
+	readStarted chan struct{}
+	releaseRead chan struct{}
+	blockFirst  bool
+	startOnce   sync.Once
+}
+
+func (m *cancellationNTAdapter) Send(_ context.Context, data []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sentData = append(m.sentData, append([]byte(nil), data...))
+	return nil
+}
+
+func (m *cancellationNTAdapter) Receive(_ context.Context, buf []byte, size int) (int, error) {
+	if m.blockFirst {
+		m.startOnce.Do(func() {
+			close(m.readStarted)
+			<-m.releaseRead
+		})
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.receiveCalls++
+	remaining := len(m.receivedData) - m.recvPos
+	if remaining <= 0 {
+		return 0, io.EOF
+	}
+	toCopy := size
+	if toCopy > len(buf) {
+		toCopy = len(buf)
+	}
+	if toCopy > remaining {
+		toCopy = remaining
+	}
+	copy(buf, m.receivedData[m.recvPos:m.recvPos+toCopy])
+	m.recvPos += toCopy
+	return toCopy, nil
+}
+
+func (m *cancellationNTAdapter) sentPackets() [][]byte {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	packets := make([][]byte, len(m.sentData))
+	for i, packet := range m.sentData {
+		packets[i] = append([]byte(nil), packet...)
+	}
+	return packets
+}
+
+func cancellationTestResetPacket() []byte {
+	buf := make([]byte, NSPMKDAT+1)
+	binary.BigEndian.PutUint16(buf, uint16(len(buf)))
+	buf[4] = NSPTMK
+	buf[NSPMKTYP] = NSPMKTD1
+	buf[NSPMKDAT] = NIQRMARK
+	return buf
+}
+
+func cancellationTestDataPacket(value byte) []byte {
+	buf := make([]byte, NSPDADAT+1)
+	binary.BigEndian.PutUint16(buf, uint16(len(buf)))
+	buf[4] = NSPTDA
+	buf[NSPDADAT] = value
+	return buf
+}
+
+func newCancellationNetworkSession(adapter *cancellationNTAdapter) *networkSession {
+	ns := newNetworkSession()
+	ns.connected = true
+	ns.sAtts = &sessionAtts{sdu: 8192}
+	ns.ntAdapter = adapter
+	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.sndBuf = make([]byte, ns.sAtts.sdu)
+	_ = ns.sndDatapkt.marshal(ns.sndBuf, ns.sAtts, 0)
+	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT, buf: ns.rcvBuf}
+	return ns
+}
+
+func assertCancellationPacketOrder(t *testing.T, packets [][]byte, resetCount int) {
+	t.Helper()
+	if len(packets) != 1+resetCount {
+		t.Fatalf("sent %d packets, want Interrupt and %d Reset packet(s)", len(packets), resetCount)
+	}
+	for i := range packets {
+		wantMarker := uint8(NIQRMARK)
+		if i == 0 {
+			wantMarker = NIQIMARK
+		}
+		if len(packets[i]) <= NSPMKDAT || packets[i][4] != NSPTMK || packets[i][NSPMKDAT] != wantMarker {
+			t.Fatalf("packet %d = %v, want marker %d", i, packets[i], wantMarker)
+		}
+	}
+}
+
+func assertCancellationState(t *testing.T, ns *networkSession, want cancellationState) {
+	t.Helper()
+	ns.cancelMu.Lock()
+	got := ns.cancelState
+	ns.cancelMu.Unlock()
+	if got != want {
+		t.Fatalf("cancellation state = %d, want %d", got, want)
+	}
+}
+
+func TestCancelDuringReadLeavesResetToMain(t *testing.T) {
+	for _, extraReset := range []bool{false, true} {
+		name := "single-server-reset"
+		if extraReset {
+			name = "additional-server-reset"
+		}
+		t.Run(name, func(t *testing.T) {
+			adapter := &cancellationNTAdapter{
+				readStarted: make(chan struct{}),
+				releaseRead: make(chan struct{}),
+				blockFirst:  true,
+			}
+			adapter.receivedData = append(adapter.receivedData, cancellationTestResetPacket()...)
+			if extraReset {
+				adapter.receivedData = append(adapter.receivedData, cancellationTestResetPacket()...)
+			}
+			adapter.receivedData = append(adapter.receivedData, cancellationTestDataPacket(2)...)
+			ns := newCancellationNetworkSession(adapter)
+
+			recvDone := make(chan error, 1)
+			go func() {
+				_, err := ns.recvPacket(context.Background())
+				recvDone <- err
+			}()
+
+			select {
+			case <-adapter.readStarted:
+			case <-time.After(time.Second):
+				t.Fatal("main goroutine did not enter network read")
+			}
+			if err := ns.CancelOperation(context.Background()); err != nil {
+				t.Fatalf("CancelOperation returned error: %v", err)
+			}
+			assertCancellationState(t, ns, cancellationBreakSent)
+			packets := adapter.sentPackets()
+			if len(packets) != 1 || packets[0][NSPMKDAT] != NIQIMARK {
+				t.Fatalf("cancellation goroutine sent %v, want only Interrupt", packets)
+			}
+			close(adapter.releaseRead)
+
+			select {
+			case err := <-recvDone:
+				if err != nil {
+					t.Fatalf("main receive returned error: %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("main receive did not finish Interrupt/Reset")
+			}
+			resetCount := 1
+			if extraReset {
+				resetCount++
+			}
+			assertCancellationPacketOrder(t, adapter.sentPackets(), resetCount)
+			assertCancellationState(t, ns, cancellationIdle)
+		})
+	}
+}
+
+func TestCancelOutsideReadIsHandledByMain(t *testing.T) {
+	adapter := &cancellationNTAdapter{}
+	adapter.receivedData = append(adapter.receivedData, cancellationTestResetPacket()...)
+	adapter.receivedData = append(adapter.receivedData, cancellationTestDataPacket(2)...)
+	ns := newCancellationNetworkSession(adapter)
+
+	if err := ns.CancelOperation(context.Background()); err != nil {
+		t.Fatalf("CancelOperation returned error: %v", err)
+	}
+	assertCancellationState(t, ns, cancellationBreakPending)
+	if packets := adapter.sentPackets(); len(packets) != 0 {
+		t.Fatalf("cancellation outside read sent %d packets, want none", len(packets))
+	}
+	if _, err := ns.recvPacket(context.Background()); err != nil {
+		t.Fatalf("main receive returned error: %v", err)
+	}
+	assertCancellationPacketOrder(t, adapter.sentPackets(), 1)
+	assertCancellationState(t, ns, cancellationIdle)
+}
+
+func TestCancellationPreservesDataThatReleasesRead(t *testing.T) {
+	adapter := &cancellationNTAdapter{
+		readStarted: make(chan struct{}),
+		releaseRead: make(chan struct{}),
+		blockFirst:  true,
+	}
+	adapter.receivedData = append(adapter.receivedData, cancellationTestDataPacket(0x5a)...)
+	adapter.receivedData = append(adapter.receivedData, cancellationTestResetPacket()...)
+	ns := newCancellationNetworkSession(adapter)
+
+	recvDone := make(chan error, 1)
+	go func() {
+		_, err := ns.recvPacket(context.Background())
+		recvDone <- err
+	}()
+	select {
+	case <-adapter.readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("main goroutine did not enter network read")
+	}
+	if err := ns.CancelOperation(context.Background()); err != nil {
+		t.Fatalf("CancelOperation returned error: %v", err)
+	}
+	assertCancellationState(t, ns, cancellationBreakSent)
+	close(adapter.releaseRead)
+	select {
+	case err := <-recvDone:
+		if err != nil {
+			t.Fatalf("main receive returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("main receive did not preserve TTC data through Reset")
+	}
+	value, err := ns.rcvDatapkt.ReadByte()
+	if err != nil {
+		t.Fatalf("read preserved TTC byte: %v", err)
+	}
+	if value != 0x5a {
+		t.Fatalf("preserved TTC byte = %#x, want 0x5a", value)
+	}
+	assertCancellationPacketOrder(t, adapter.sentPackets(), 1)
+	assertCancellationState(t, ns, cancellationIdle)
+}
+
+func TestCancelOutsideReadIsHandledBeforeSend(t *testing.T) {
+	adapter := &cancellationNTAdapter{}
+	adapter.receivedData = append(adapter.receivedData, cancellationTestResetPacket()...)
+	adapter.receivedData = append(adapter.receivedData, cancellationTestDataPacket(0x6b)...)
+	ns := newCancellationNetworkSession(adapter)
+
+	if err := ns.CancelOperation(context.Background()); err != nil {
+		t.Fatalf("CancelOperation returned error: %v", err)
+	}
+	assertCancellationState(t, ns, cancellationBreakPending)
+	if err := ns.Send(context.Background(), []byte{0xff}, 0, 1); err != nil {
+		t.Fatalf("main send failed while resolving cancellation: %v", err)
+	}
+	assertCancellationPacketOrder(t, adapter.sentPackets(), 1)
+	assertCancellationState(t, ns, cancellationAwaitingTTC)
+
+	if _, err := ns.recvPacket(context.Background()); err != nil {
+		t.Fatalf("receive TTC data after send-side cancellation handling: %v", err)
+	}
+	value, err := ns.rcvDatapkt.ReadByte()
+	if err != nil {
+		t.Fatalf("read TTC byte: %v", err)
+	}
+	if value != 0x6b {
+		t.Fatalf("TTC byte = %#x, want 0x6b", value)
+	}
+	if ns.IsInBreakReset() {
+		t.Fatal("cancellation state remained set after TTC data")
+	}
+	assertCancellationState(t, ns, cancellationIdle)
+}
+
+func TestFailedReceiveLeavesDataPacketEmpty(t *testing.T) {
+	ns := newNetworkSession()
+	ns.sAtts = &sessionAtts{sdu: 8192}
+	mock := &mockNTAdapter{receiveErr: context.DeadlineExceeded}
+	ns.ntAdapter = mock
+	ns.rcvBuf = make([]byte, ns.sAtts.sdu)
+	ns.rcvDatapkt = &dataPacket{offset: NSPDADAT, len: NSPDADAT, buf: ns.rcvBuf, bufLen: len(ns.rcvBuf)}
+
+	if err := ns.PrepareReadBuffer(context.Background()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("PrepareReadBuffer error = %v, want context deadline exceeded", err)
+	}
+	if remaining := ns.rcvDatapkt.Remaining(); remaining != 0 {
+		t.Fatalf("failed receive left %d stale bytes readable, want 0", remaining)
+	}
+
+	mock.receiveErr = nil
+	mock.receivedData = cancellationTestDataPacket(0x4a)
+	if err := ns.PrepareReadBuffer(context.Background()); err != nil {
+		t.Fatalf("retry PrepareReadBuffer returned error: %v", err)
+	}
+	value, err := ns.rcvDatapkt.ReadByte()
+	if err != nil || value != 0x4a {
+		t.Fatalf("retried receive = %#x, %v; want 0x4a, nil", value, err)
+	}
 }
 
 type timeoutTestError struct{}

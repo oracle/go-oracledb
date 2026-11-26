@@ -49,6 +49,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -57,6 +58,22 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/transport"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+)
+
+type cancellationState uint8
+
+const (
+	// cancellationIdle means no cancellation exchange is active.
+	cancellationIdle cancellationState = iota
+	// cancellationBreakPending means cancellation was requested outside a read;
+	// the main goroutine must send Interrupt followed by Reset.
+	cancellationBreakPending
+	// cancellationBreakSent means CancelOperation sent Interrupt while the main
+	// goroutine was reading; the main goroutine must now send Reset.
+	cancellationBreakSent
+	// cancellationAwaitingTTC means the main goroutine owns Reset processing and
+	// must keep receiving until Oracle returns the TTC error response.
+	cancellationAwaitingTTC
 )
 
 // networkSession represents a network session for communication with the server
@@ -81,6 +98,10 @@ type networkSession struct {
 	sndBuf              []byte
 	pendingPacket       []byte // to store pushed back packet from CheckinbandNotification
 	resetInProgress     bool
+	cancelMu            sync.Mutex
+	inRead              bool
+	cancelState         cancellationState
+	cancelCtx           context.Context
 }
 
 // cidSanitizer prevents OS-provided CID values from changing the naming structure.
@@ -627,8 +648,22 @@ func (ns *networkSession) sendConnect(ctx context.Context, connectPkt *connectPa
 	return nil
 }
 
-// recvPacket receives a packet from the network and returns its unmarshaled struct
+// recvPacket receives a packet from the network and returns its unmarshaled struct.
 func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
+retry:
+	ns.cancelMu.Lock()
+	if ns.cancelState == cancellationAwaitingTTC && ns.cancelCtx != nil {
+		ctx = ns.cancelCtx
+	}
+	ns.cancelMu.Unlock()
+	handled, err := ns.handlePendingCancellation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if handled {
+		goto retry
+	}
+
 	// Handle pending packet from inband notification check
 	if ns.pendingPacket != nil {
 		buf := ns.pendingPacket
@@ -638,7 +673,11 @@ func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ns.processPacket(buf, hdr)
+		packet, err := ns.processPacket(buf, hdr)
+		if _, ok := packet.(*dataPacket); ok {
+			ns.finishCancellation()
+		}
+		return packet, err
 	}
 
 	if ns.sndDatapkt.offset > NSPDADAT { /* Flush any data left in send buffer */
@@ -652,11 +691,15 @@ func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
 		}
 		ns.sndDatapkt.Reset()
 	}
+	if !ns.beginRead() {
+		goto retry
+	}
 	const PACKET_HEADER_SIZE = 8
 	var packetLen int
 	//read packet header first
 	n, err := ns.ntAdapter.Receive(ctx, ns.rcvBuf, PACKET_HEADER_SIZE)
 	if err != nil {
+		ns.endRead()
 		return nil, err
 	}
 	// get packetLen
@@ -667,18 +710,22 @@ func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
 	}
 
 	if packetLen < PACKET_HEADER_SIZE || packetLen > len(ns.rcvBuf) {
+		ns.endRead()
 		return nil, common.NewOracleError(oracleErrors.InvalidNetworkLength, nil, "packet", packetLen)
 	}
 	bodyLen := packetLen - PACKET_HEADER_SIZE
 	if bodyLen > 0 {
 		n, err = ns.ntAdapter.Receive(ctx, ns.rcvBuf[PACKET_HEADER_SIZE:packetLen], bodyLen)
 		if err != nil {
+			ns.endRead()
 			return nil, err
 		}
 		if n != bodyLen {
+			ns.endRead()
 			return nil, common.NewOracleError(oracleErrors.InvalidNetworkExpectedLength, nil, "packet body", n, bodyLen)
 		}
 	}
+	ns.endRead()
 	buf := ns.rcvBuf[:packetLen]
 
 	common.Odl.PacketDump(buf[0:packetLen])
@@ -693,21 +740,38 @@ func (ns *networkSession) recvPacket(ctx context.Context) (any, error) {
 		return nil, err
 	}
 
-	// Handle reset when break is received and reset has not yet been received.
-	if hdr.typ == NSPTMK && ns.isBreak && !ns.isReset {
-		common.Odl.Fine("Received break packet from server")
-		if ns.resetInProgress {
-			// Reset is already draining packets until NIQRMARK is received.
-			// Return this marker to the Reset loop instead of recursively
-			// starting another Reset.
-			return packet, nil
+	if ns.hasPendingCancellationWork() {
+		var savedData []byte
+		if data, ok := packet.(*dataPacket); ok {
+			savedData = append([]byte(nil), data.buf[:data.len]...)
 		}
-		if err := ns.Reset(ctx); err != nil {
+		_, err := ns.handlePendingCancellation(ctx)
+		if err != nil {
 			return nil, err
 		}
-		return ns.recvPacket(ctx)
+		if savedData != nil {
+			ns.pendingPacket = savedData
+		}
+		goto retry
 	}
 
+	if hdr.typ == NSPTMK {
+		ns.cancelMu.Lock()
+		awaitingTTC := ns.cancelState == cancellationAwaitingTTC
+		ns.cancelMu.Unlock()
+		if ns.resetInProgress {
+			return packet, nil
+		}
+		if awaitingTTC || (ns.isBreak && !ns.isReset) {
+			if err := ns.Reset(ctx); err != nil {
+				return nil, err
+			}
+			goto retry
+		}
+	}
+	if _, ok := packet.(*dataPacket); ok {
+		ns.finishCancellation()
+	}
 	return packet, nil
 }
 
@@ -867,7 +931,11 @@ func (ns *networkSession) SendPacket(ctx context.Context, buf []byte) error {
 // Send transmits the provided user data (userBuf) starting from the given offset for the specified length.
 // It handles breaking the data into packets if necessary, using the send data packet (sndDatapkt) for buffering.
 func (ns *networkSession) Send(ctx context.Context, userBuf []byte, offset, len int) error {
-	if ns.isBreak {
+	stop, err := ns.prepareMainSend(ctx)
+	if err != nil {
+		return err
+	}
+	if stop {
 		return nil
 	}
 	if len <= 0 {
@@ -883,7 +951,7 @@ func (ns *networkSession) Send(ctx context.Context, userBuf []byte, offset, len 
 		offset += bytesCopied
 	}
 	for len > 0 {
-		err := ns.sndDatapkt.Prepare2Send(0, ns.sAtts)
+		err = ns.sndDatapkt.Prepare2Send(0, ns.sAtts)
 		if err != nil {
 			return err
 		}
@@ -892,7 +960,11 @@ func (ns *networkSession) Send(ctx context.Context, userBuf []byte, offset, len 
 		if err != nil {
 			return err
 		}
-		if ns.isBreak {
+		stop, err = ns.prepareMainSend(ctx)
+		if err != nil {
+			return err
+		}
+		if stop {
 			return nil
 		}
 		bytesCopied = ns.sndDatapkt.FillBuf(userBuf, offset, len)
@@ -908,9 +980,7 @@ func (ns *networkSession) Reset(ctx context.Context) error {
 		return nil
 	}
 	ns.resetInProgress = true
-	defer func() {
-		ns.resetInProgress = false
-	}()
+	defer func() { ns.resetInProgress = false }()
 
 	var markerPkt = &markerPacket{}
 	if ns.breakPosted {
@@ -940,7 +1010,6 @@ func (ns *networkSession) Reset(ctx context.Context) error {
 			common.Odl.Error("An error occurred while receiving packet", "error", err)
 			return err
 		}
-		common.Odl.Fine("Packet received", "isReset", ns.isReset)
 	}
 	//reset sndDatapkt
 	ns.sndDatapkt.Reset()
