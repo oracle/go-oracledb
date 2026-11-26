@@ -114,13 +114,15 @@ func TestColumnUnwrapSelection(t *testing.T) {
 }
 
 // TestColumnDecoderRegistrations checks every built-in decoder version has an
-// explicit wire reader and that only CLOB, BLOB and JSON use specialized framing.
+// explicit wire reader and that CLOB, BLOB, JSON, VECTOR, and REF CURSOR use
+// specialized framing.
 func TestColumnDecoderRegistrations(t *testing.T) {
 	t.Parallel()
 	specialized := map[DtyType]map[int8]columnUnwrapFunc{
 		DtyClob: {MinTTCProtocolVersion: unwrapClobColumn},
 		DtyBlob: {MinTTCProtocolVersion: unwrapBlobColumn},
 		DtyJSON: {MinTTCProtocolVersion: unwrapJSONColumn},
+		DtyVec:  {MinTTCProtocolVersion: unwrapVectorColumn},
 		DtyCur: {
 			MinTTCProtocolVersion: unwrapRefCursorColumn12,
 			17:                    unwrapRefCursorColumn17,

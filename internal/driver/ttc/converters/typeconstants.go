@@ -77,4 +77,9 @@ const (
 	// MaxVarcharLength is the maximum TTC byte length used for VARCHAR2-style
 	// variable-width character payloads, including space for the TTC length prefix.
 	MaxVarcharLength common.UB4 = 32768
+
+	// MaxVectorLength is 512 KiB plus 20 bytes: 65,535 FLOAT64 dimensions use
+	// 512 KiB minus 8 bytes and the VECTOR envelope adds 28 bytes. It is the
+	// fixed prefetch size that keeps supported dense VECTOR values inline.
+	MaxVectorLength common.UB4 = 512*1024 + 20
 )

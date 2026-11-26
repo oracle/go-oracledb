@@ -366,12 +366,17 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 	return c.shelf.LocalizeError(checkNamedValue(nv))
 }
 
-// checkNamedValue validates sql.Out destinations and returns shelf-localized
-// Oracle errors for binding problems.
+// checkNamedValue preserves driver-native bind values, validates sql.Out
+// destinations, and returns Oracle errors for invalid output binds.
 func checkNamedValue(nv *driver.NamedValue) error {
-	// connectionWrapper.Fetch passes an already-decoded driver.Rows to the internal
-	// REF CURSOR statement executor. This is not a REF CURSOR OUT-bind destination.
-	if _, ok := nv.Value.(driver.Rows); ok {
+	if nv == nil {
+		return driver.ErrSkip
+	}
+	// Preserve named driver values that require a registered encoder. Add future
+	// native bind types here instead of giving each type its own checker.
+	switch nv.Value.(type) {
+	case datatype.VectorFloat64, datatype.VectorFloat32,
+		datatype.VectorInt8, datatype.VectorBinary, driver.Rows:
 		return nil
 	}
 	if out, ok := nv.Value.(sql.Out); ok {

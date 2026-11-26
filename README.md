@@ -12,6 +12,7 @@ Oracle Database Driver for Go is a native Go driver for Go's [database/sql](http
   - Protocols: TCP and TCPS
   - PL/SQL In/Out parameters (using `sql.Out`)
   - Statements with in parameters and out parameters (using `sql.Out`)
+  - Native dense VECTOR support using `github.com/oracle/go-oracledb/v26/oracle/datatype`
   - BLOB support using prefetch and returning `[]byte`
   - CLOB support using prefetch and returning `string`
   - Native Oracle [JSON support](documentation/json.md) via `github.com/oracle/go-oracledb/v26/oracle/datatype/json`
@@ -315,6 +316,33 @@ conversion options, and null handling. For an example of JSON usage, see the
 |---------------|----------------------|
 | `JSON` (21c+) | `oracle/datatype/json.JSON`   |
 
+#### VECTOR
+
+Oracle Database `VECTOR` support requires Oracle Database 23c or higher. Bind
+vectors with the named types in `oracle/datatype`; fetched values scan into the
+corresponding ordinary Go slice type.
+
+```go
+import "github.com/oracle/go-oracledb/v26/oracle/datatype"
+
+value := datatype.VectorFloat32{1.5, -2.25, 3.75}
+_, err := db.ExecContext(ctx,
+    "INSERT INTO vectors (id, value) VALUES (:1, :2)", 1, value)
+
+var fetched []float32
+err = db.QueryRowContext(ctx,
+    "SELECT value FROM vectors WHERE id = :1", 1).Scan(&fetched)
+```
+
+| Oracle VECTOR type | Bind type | Scanned type |
+|--------------------|-----------|--------------|
+| `VECTOR(*, FLOAT64)` | `datatype.VectorFloat64` | `[]float64` |
+| `VECTOR(*, FLOAT32)` | `datatype.VectorFloat32` | `[]float32` |
+| `VECTOR(*, INT8)` | `datatype.VectorInt8` | `[]int8` |
+| `VECTOR(*, BINARY)` | `datatype.VectorBinary` | `[]byte` (packed bits) |
+
+For a runnable example, see [examples/vector](./examples/vector/main.go).
+
 ---
 
 ### Unsupported Column Types
@@ -326,7 +354,6 @@ The driver does not yet support all Oracle Database data types. The types below 
 - `ROWID`
 - `UROWID`
 - `BFILE`
-- `VECTOR`
 - `XMLType`
 - Collections
 

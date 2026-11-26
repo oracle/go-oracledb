@@ -100,6 +100,13 @@ type tTIoac struct {
 	requestedtype int16
 }
 
+// newTTIOacVectorBind ensures NULL VECTOR binds still advertise enough space
+// for the nine-byte header and eight-byte norm field.
+func newTTIOacVectorBind(maxLength driverCommon.UB4) driverCommon.Marshallable {
+	const minimumVectorBindLength = 9 + 8
+	return newTTIoac(DtyVec, max(maxLength, minimumVectorBindLength))
+}
+
 /*
 newTTIoac creates TTIoac instance with type and buffer length metadata for a column.
 It sets all protocol-relevant fields (dataType, maxLength, flags, etc.) according to the provided type
@@ -245,6 +252,12 @@ func newTTIOacTime() driverCommon.Marshallable {
 func newTTIOacJSONDefine(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
 	// for JSON we want to fetch all the doc
 	return newTTIOAcDefine(DtyJSON, max_lob_length, columnContext, uacfsald, _jsonPrefetchSize)
+}
+
+// newTTIOacVectorDefine creates a define OAC descriptor for VECTOR values with LOB prefetch enabled.
+// The fixed prefetch covers the largest dense FLOAT64 VECTOR envelope.
+func newTTIOacVectorDefine(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
+	return newTTIOAcDefine(DtyVec, converters.MaxVectorLength, columnContext, uacfsald, converters.MaxVectorLength)
 }
 
 // newTTIOacClobDefine creates a define OAC descriptor for CLOB values using column metadata and LOB prefetch settings.
