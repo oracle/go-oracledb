@@ -332,7 +332,6 @@ func TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess(t *test
 
 // TestConnectorConnectFallsBackOnTTIRENEG verifies that the connector asks
 // the same factory for normal fallback on the original network session.
-// TODO: Add live server rejection coverage once Oracle Net supports NSPDAFAPP.
 func TestConnectorConnectFallsBackOnTTIRENEG(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

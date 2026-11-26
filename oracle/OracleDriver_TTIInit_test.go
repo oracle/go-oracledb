@@ -88,6 +88,12 @@ func TestDriver_TTIInitOCIToken(t *testing.T) {
 	checkTTIInitConnection(t, connector)
 }
 
+// TODO: Once Oracle Net supports NSPDAFAPP, verify that the driver can run
+// a query after the server sends TTIRENEG.
+func TestDriver_TTIInitRenegFallback(t *testing.T) {
+	t.Skip("Waiting for Oracle Net support for NSPDAFAPP to trigger server-side TTIRENEG")
+}
+
 func checkTTIInitConnection(t *testing.T, connector driver.Connector) {
 	t.Helper()
 	c := connector.(*oracleConnector)

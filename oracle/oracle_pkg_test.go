@@ -332,6 +332,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_TTIInitConnectionTiming", Categories: "performance", Exclusive: true, Fn: TestDriver_TTIInitConnectionTiming},
 	{Name: "TestDriver_TTIInitPassword", Categories: "functional", Exclusive: true, Fn: TestDriver_TTIInitPassword},
 	{Name: "TestDriver_TTIInitOCIToken", Categories: "functional", Exclusive: true, Fn: TestDriver_TTIInitOCIToken},
+	{Name: "TestDriver_TTIInitRenegFallback", Categories: "functional", Exclusive: true, Fn: TestDriver_TTIInitRenegFallback},
 }
 
 func TestCategoryExecutor(t *testing.T) {
