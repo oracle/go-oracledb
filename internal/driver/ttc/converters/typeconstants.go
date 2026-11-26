@@ -48,6 +48,11 @@ const (
 	// Empty strings still require an OAC length of 4.
 	EmptyStringOacLength common.UB4 = 4
 
+	// EmptyBytesOacLength is the minimum TTC OAC length to use for DtyBin binds.
+	// The minimum usable minimum for DTYBIN is 1 byte.
+	// 0 is special: it means the peer expects no data.
+	EmptyBytesOacLength common.UB4 = 1
+
 	// MaxBoolLength is the maximum number of bytes needed to encode a Go bool
 	// as a TTC DtyBol value. The on-wire form typically uses 1–2 bytes, but 4 is
 	// used here to align with UB4 and provide headroom when constructing OACs.
