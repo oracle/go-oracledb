@@ -1083,7 +1083,7 @@ func init() {
 		reflect.TypeOf(datatype.VectorBinary(nil)),
 	} {
 		if err := BindOacRegistry.Register(vectorType, MinTTCProtocolVersion, bindOacType{
-			bindOacFunc: func(maxLength driverCommon.UB4) driverCommon.Marshallable { return newTTIoac(DtyVec, maxLength) },
+			bindOacFunc: newTTIOacVectorBind,
 			maxLength:   converters.MaxVarcharLength,
 		}); err != nil {
 			common.Odl.Warn("Failed to register VECTOR bind OAC", "goType", vectorType, "error", err)

@@ -77,6 +77,27 @@ func TestPrepareVectorBinds(t *testing.T) {
 	}
 }
 
+// TestPrepareNullVectorBinds verifies typed NULL vectors retain their VECTOR
+// descriptor and advertise a nonzero length even without encoded payload.
+func TestPrepareNullVectorBinds(t *testing.T) {
+	args := []driver.Value{datatype.VectorFloat64(nil), datatype.VectorFloat32(nil), datatype.VectorInt8(nil), datatype.VectorBinary(nil)}
+	shelf := newShelf[driverCommon.MessageType]()
+	shelf.RegisterCodecFactory(NewCodecFactoryForProtocol(20))
+	rows, _, oacs, err := prepareBindDataForTest(&statementProcessor{shelf: shelf}, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, payload := range rows[0] {
+		if payload != nil {
+			t.Fatalf("bind %d: expected NULL payload, got %v", i, payload)
+		}
+		oac := oacs[i].(*tTIoac)
+		if oac.dataType != driverCommon.UB1(DtyVec) || oac.maxLength != 17 {
+			t.Fatalf("bind %d: type=%d length=%d, want VECTOR and length 17", i, oac.dataType, oac.maxLength)
+		}
+	}
+}
+
 // TestWrapVectorColumn verifies native VECTOR bind framing contains locator then payload.
 func TestWrapVectorColumn(t *testing.T) {
 	payload := driverCommon.B1Array{0xAA, 0xBB, 0xCC}
@@ -89,7 +110,13 @@ func TestWrapVectorColumn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read locator length: %v", err)
 	}
-	wantLocator := buildVectorQuasiLocator(len(payload))
+	wantLocator := driverCommon.B1Array{
+		0x00, 0x26, 0x00, 0x04, 0x61, 0x08, 0x00, 0x00,
+		0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
 	if int(locatorLen) != len(wantLocator) {
 		t.Fatalf("locator length=%d, want %d", locatorLen, len(wantLocator))
 	}
@@ -100,6 +127,25 @@ func TestWrapVectorColumn(t *testing.T) {
 	value, _, err := reader.UnmarshalCLRColumnData(context.Background())
 	if err != nil || !bytes.Equal(value, payload) {
 		t.Fatalf("payload mismatch: %v, err=%v", value, err)
+	}
+}
+
+// TestVectorQuasiLocatorPayloadLength verifies the eight-byte length field and
+// reserved bytes independently of the marshalling code.
+func TestVectorQuasiLocatorPayloadLength(t *testing.T) {
+	got, err := buildVectorQuasiLocator(0x010203)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := driverCommon.B1Array{
+		0x00, 0x26, 0x00, 0x04, 0x61, 0x08, 0x00, 0x00,
+		0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+		0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("locator=%x want=%x", got, want)
 	}
 }
 

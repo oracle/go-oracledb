@@ -64,7 +64,10 @@ func wrapVectorColumn(ctx context.Context, engine driverCommon.Marshaller, paylo
 		return engine.MarshalUB4(ctx, 0)
 	}
 
-	locator := buildVectorQuasiLocator(len(payload))
+	locator, err := buildVectorQuasiLocator(len(payload))
+	if err != nil {
+		return err
+	}
 	locLen := len(locator)
 	if err := engine.MarshalUB4(ctx, driverCommon.UB4(locLen)); err != nil {
 		return err

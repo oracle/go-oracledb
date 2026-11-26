@@ -100,6 +100,13 @@ type tTIoac struct {
 	requestedtype int16
 }
 
+// newTTIOacVectorBind ensures NULL VECTOR binds still advertise enough space
+// for the nine-byte header and eight-byte norm field.
+func newTTIOacVectorBind(maxLength driverCommon.UB4) driverCommon.Marshallable {
+	const minimumVectorBindLength = 9 + 8
+	return newTTIoac(DtyVec, max(maxLength, minimumVectorBindLength))
+}
+
 /*
 newTTIoac creates TTIoac instance with type and buffer length metadata for a column.
 It sets all protocol-relevant fields (dataType, maxLength, flags, etc.) according to the provided type

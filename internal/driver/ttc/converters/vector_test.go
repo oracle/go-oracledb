@@ -39,7 +39,9 @@
 package converters
 
 import (
+	"encoding/binary"
 	"math"
+	"reflect"
 	"testing"
 
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -204,6 +206,80 @@ func TestVectorIEEEAndLittleEndianDimensions(t *testing.T) {
 	}
 	if _, err := decodeFloat32Dimension(nil, 0); err == nil {
 		t.Fatal("expected invalid float32 width")
+	}
+}
+
+// TestVectorDecodeEndianRepresentations checks complete envelopes containing
+// multiple ordered or IEEE dimensions in both supported byte orders.
+func TestVectorDecodeEndianRepresentations(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		width  int
+		ieee   bool
+		little bool
+	}{
+		{"float32 ordered big", 4, false, false},
+		{"float32 ordered little", 4, false, true},
+		{"float32 IEEE big", 4, true, false},
+		{"float32 IEEE little", 4, true, true},
+		{"float64 ordered big", 8, false, false},
+		{"float64 ordered little", 8, false, true},
+		{"float64 IEEE big", 8, true, false},
+		{"float64 IEEE little", 8, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			flags := uint16(vectorFlagNormSource)
+			if tc.ieee {
+				flags |= vectorFlagIEEE
+			}
+			if tc.little {
+				flags |= vectorFlagLittle
+			}
+			typeCode := byte(vectorTypeFloat32)
+			if tc.width == 8 {
+				typeCode = vectorTypeFloat64
+			}
+			wire := make([]byte, vectorHeaderBytes+2*tc.width)
+			writeVectorHeader(wire, vectorVersionV0, flags, typeCode, 2)
+			values := []float64{1.25, -2.5}
+			for i, value := range values {
+				dst := wire[vectorHeaderBytes+i*tc.width:]
+				if tc.width == 4 {
+					bits := math.Float32bits(float32(value))
+					if !tc.ieee {
+						encoded, _ := EncodeBinaryFloat(float32(value))
+						bits = binary.BigEndian.Uint32(encoded)
+					}
+					if tc.little {
+						binary.LittleEndian.PutUint32(dst, bits)
+					} else {
+						binary.BigEndian.PutUint32(dst, bits)
+					}
+				} else {
+					bits := math.Float64bits(value)
+					if !tc.ieee {
+						encoded, _ := EncodeBinaryDouble(value)
+						bits = binary.BigEndian.Uint64(encoded)
+					}
+					if tc.little {
+						binary.LittleEndian.PutUint64(dst, bits)
+					} else {
+						binary.BigEndian.PutUint64(dst, bits)
+					}
+				}
+			}
+			got, err := DecodeVector(wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var want any = values
+			if tc.width == 4 {
+				want = []float32{1.25, -2.5}
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("got %v want %v", got, want)
+			}
+		})
 	}
 }
 

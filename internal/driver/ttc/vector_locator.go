@@ -42,39 +42,32 @@ import driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 
 // buildVectorQuasiLocator builds a value-based BLOB quasi-locator for a VECTOR bind.
 // payloadLength is the complete encoded VECTOR envelope length.
-func buildVectorQuasiLocator(payloadLength int) driverCommon.B1Array {
-	locatorSize := kolblTempLocatorMaxLength
-	locator := make(driverCommon.B1Array, locatorSize)
-
-	length := locatorSize - kolbLocatorLengthHeaderBytes
-	locator[kolbLocatorLengthOffset] = byte(length >> 8)
-	locator[kolbLocatorLengthOffset+1] = byte(length)
-
-	locator[kolbVersionOffset] = 0
-	locator[kolbVersionOffset+1] = quasiLocatorVersion
-
-	locator[koll1FlagOffset] = (kolblBlobFlag | kolblValueBasedLocatorFlag) | kolblAbstractLocatorFlag
-	locator[koll2FlagOffset] = kolblInitializedFlag
-	locator[koll3FlagOffset] = 0
-	locator[koll4FlagOffset] = 0
-
-	// Byte width (BYTL) for binary payloads.
-	locator[8] = 0
-	locator[9] = 1
-
-	lobLen := driverCommon.UB8(payloadLength)
-	locator[10] = byte(lobLen >> 56)
-	locator[11] = byte(lobLen >> 48)
-	locator[12] = byte(lobLen >> 40)
-	locator[13] = byte(lobLen >> 32)
-	locator[14] = byte(lobLen >> 24)
-	locator[15] = byte(lobLen >> 16)
-	locator[16] = byte(lobLen >> 8)
-	locator[17] = byte(lobLen)
-
-	// Character set id remains zero for binary locators.
-	locator[20] = 0
-	locator[21] = 0
-
-	return locator
+func buildVectorQuasiLocator(payloadLength int) (driverCommon.B1Array, error) {
+	writer := driverCommon.NewGrowableWriteBufferWithCapacity(driverCommon.BIG_ENDIAN, kolblTempLocatorMaxLength)
+	if err := writer.WriteUB2(driverCommon.UB2(kolblTempLocatorMaxLength - kolbLocatorLengthHeaderBytes)); err != nil {
+		return nil, err
+	}
+	if err := writer.WriteUB2(quasiLocatorVersion); err != nil {
+		return nil, err
+	}
+	if err := writer.WriteUB1(driverCommon.UB1(kolblBlobFlag | kolblValueBasedLocatorFlag | kolblAbstractLocatorFlag)); err != nil {
+		return nil, err
+	}
+	if err := writer.WriteUB1(driverCommon.UB1(kolblInitializedFlag)); err != nil {
+		return nil, err
+	}
+	if err := writer.WriteUB2(0); err != nil { // Remaining locator flag bytes.
+		return nil, err
+	}
+	if err := writer.WriteUB2(1); err != nil { // Byte width for binary payloads.
+		return nil, err
+	}
+	if err := writer.WriteUB8(driverCommon.UB8(payloadLength)); err != nil {
+		return nil, err
+	}
+	// The remaining reserved bytes include the zero character-set ID.
+	if _, err := writer.Reserve(kolblTempLocatorMaxLength - writer.Position()); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
 }

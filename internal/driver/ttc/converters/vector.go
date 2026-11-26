@@ -260,14 +260,30 @@ func DecodeVector(data driverCommon.B1Array) (driver.Value, error) {
 	if len(data) < vectorBaseHeaderBytes {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, ">="+strconv.Itoa(vectorBaseHeaderBytes))
 	}
-	if data[0] != vectorMagic {
+	reader := driverCommon.NewReadBuffer(data, driverCommon.BIG_ENDIAN)
+	magic, err := reader.ReadUB1()
+	if err != nil {
+		return nil, err
+	}
+	if magic != vectorMagic {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidFormat, "magic=0xDB")
 	}
-
-	version := data[1]
-	flags := binary.BigEndian.Uint16(data[2:4])
-	typeCode := data[4]
-	dimensionCount := binary.BigEndian.Uint32(data[5:9])
+	version, err := reader.ReadUB1()
+	if err != nil {
+		return nil, err
+	}
+	flags, err := reader.ReadUB2()
+	if err != nil {
+		return nil, err
+	}
+	typeCode, err := reader.ReadUB1()
+	if err != nil {
+		return nil, err
+	}
+	dimensionCount, err := reader.ReadUB4()
+	if err != nil {
+		return nil, err
+	}
 
 	if flags&vectorFlagOptional != 0 {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidFormat, "optional-flags-unsupported")
@@ -279,11 +295,11 @@ func DecodeVector(data driverCommon.B1Array) (driver.Value, error) {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidValue, "version=0")
 	}
 
-	valueBytes, err := vectorValueByteLength(typeCode, dimensionCount)
+	valueBytes, err := vectorValueByteLength(byte(typeCode), uint32(dimensionCount))
 	if err != nil {
 		return nil, err
 	}
-	payloadOffset := vectorBaseHeaderBytes
+	payloadOffset := reader.Position()
 	if flags&(vectorFlagNorm|vectorFlagNormSource) != 0 {
 		// The norm field is present whenever either flag is set. Accepting both
 		// forms keeps decoding compatible with clients that omit norm metadata.
@@ -294,14 +310,20 @@ func DecodeVector(data driverCommon.B1Array) (driver.Value, error) {
 		return nil, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, "=="+strconv.Itoa(expected))
 	}
 
-	payload := data[payloadOffset:]
+	if err := reader.Seek(payloadOffset - reader.Position()); err != nil {
+		return nil, err
+	}
+	payload, err := reader.ReadBytes(valueBytes)
+	if err != nil {
+		return nil, err
+	}
 	switch typeCode {
 	case vectorTypeFloat64:
-		return decodeVectorFloat64(payload, dimensionCount, flags)
+		return decodeVectorFloat64(payload, uint32(dimensionCount), uint16(flags))
 	case vectorTypeFloat32:
-		return decodeVectorFloat32(payload, dimensionCount, flags)
+		return decodeVectorFloat32(payload, uint32(dimensionCount), uint16(flags))
 	case vectorTypeInt8:
-		return decodeVectorInt8(payload, dimensionCount), nil
+		return decodeVectorInt8(payload, uint32(dimensionCount)), nil
 	case vectorTypeBinary:
 		return append([]byte(nil), payload...), nil
 	}
@@ -361,9 +383,9 @@ Output:
 */
 func decodeVectorFloat64(payload []byte, dimensions uint32, flags uint16) ([]float64, error) {
 	out := make([]float64, dimensions)
+	reader := driverCommon.NewReadBuffer(payload, vectorByteOrder(flags))
 	for i := range out {
-		start := i * vectorFloat64Bytes
-		value, err := decodeFloat64Dimension(payload[start:start+vectorFloat64Bytes], flags)
+		value, err := readVectorFloat64(reader, flags)
 		if err != nil {
 			return nil, err
 		}
@@ -385,9 +407,9 @@ Output:
 */
 func decodeVectorFloat32(payload []byte, dimensions uint32, flags uint16) ([]float32, error) {
 	out := make([]float32, dimensions)
+	reader := driverCommon.NewReadBuffer(payload, vectorByteOrder(flags))
 	for i := range out {
-		start := i * vectorFloat32Bytes
-		value, err := decodeFloat32Dimension(payload[start:start+vectorFloat32Bytes], flags)
+		value, err := readVectorFloat32(reader, flags)
 		if err != nil {
 			return nil, err
 		}
@@ -428,11 +450,7 @@ func decodeFloat64Dimension(raw []byte, flags uint16) (float64, error) {
 	if len(raw) != 8 {
 		return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, 8)
 	}
-	ordered := orderVectorBytes(raw, flags)
-	if (flags & vectorFlagIEEE) != 0 {
-		return math.Float64frombits(binary.BigEndian.Uint64(ordered)), nil
-	}
-	return DecodeBinaryDouble(ordered)
+	return readVectorFloat64(driverCommon.NewReadBuffer(raw, vectorByteOrder(flags)), flags)
 }
 
 /*
@@ -449,32 +467,43 @@ func decodeFloat32Dimension(raw []byte, flags uint16) (float32, error) {
 	if len(raw) != 4 {
 		return 0, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, vectorTypeName, "Decode", driverCommon.ReasonInvalidLength, 4)
 	}
-	ordered := orderVectorBytes(raw, flags)
-	if (flags & vectorFlagIEEE) != 0 {
-		return math.Float32frombits(binary.BigEndian.Uint32(ordered)), nil
-	}
-	return DecodeBinaryFloat(ordered)
+	return readVectorFloat32(driverCommon.NewReadBuffer(raw, vectorByteOrder(flags)), flags)
 }
 
-/*
-orderVectorBytes normalizes one VECTOR dimension to big-endian byte order.
-
-Input:
-  - raw: Encoded bytes for one numeric dimension.
-  - flags: VECTOR byte-order flags.
-
-Output:
-  - raw unchanged for big-endian vectors, or a reversed copy for little-endian vectors.
-*/
-func orderVectorBytes(raw []byte, flags uint16) []byte {
-	ordered := raw
-	if (flags & vectorFlagLittle) != 0 {
-		ordered = make([]byte, len(raw))
-		for i := range raw {
-			ordered[len(raw)-1-i] = raw[i]
-		}
+// vectorByteOrder selects the byte order used for numeric dimensions.
+func vectorByteOrder(flags uint16) driverCommon.ByteOrder {
+	if flags&vectorFlagLittle != 0 {
+		return driverCommon.LITTLE_ENDIAN
 	}
-	return ordered
+	return driverCommon.BIG_ENDIAN
+}
+
+// readVectorFloat64 reads one dimension and applies the selected representation.
+func readVectorFloat64(reader *driverCommon.ReadBuffer, flags uint16) (float64, error) {
+	bits, err := reader.ReadUB8()
+	if err != nil {
+		return 0, err
+	}
+	if flags&vectorFlagIEEE != 0 {
+		return math.Float64frombits(uint64(bits)), nil
+	}
+	var ordered [vectorFloat64Bytes]byte
+	binary.BigEndian.PutUint64(ordered[:], uint64(bits))
+	return DecodeBinaryDouble(ordered[:])
+}
+
+// readVectorFloat32 reads one dimension and applies the selected representation.
+func readVectorFloat32(reader *driverCommon.ReadBuffer, flags uint16) (float32, error) {
+	bits, err := reader.ReadUB4()
+	if err != nil {
+		return 0, err
+	}
+	if flags&vectorFlagIEEE != 0 {
+		return math.Float32frombits(uint32(bits)), nil
+	}
+	var ordered [vectorFloat32Bytes]byte
+	binary.BigEndian.PutUint32(ordered[:], uint32(bits))
+	return DecodeBinaryFloat(ordered[:])
 }
 
 /*
