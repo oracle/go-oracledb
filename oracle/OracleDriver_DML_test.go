@@ -891,7 +891,6 @@ func TestDriver_Table_Insert_LargeNumber(t *testing.T) {
 		t.Skip("No configuration available")
 	}
 
-
 	const minDigits, maxDigits = 15, 38
 
 	db, err := openTestDBWithConfig(TestingConfig)
@@ -902,8 +901,8 @@ func TestDriver_Table_Insert_LargeNumber(t *testing.T) {
 	ctx := context.Background()
 	table := createObjectName("t_dml_insert_large_number")
 	cols := map[string]string{
-		"digits":   "NUMBER(2)",
-		"n": "NUMBER",
+		"digits": "NUMBER(2)",
+		"n":      "NUMBER",
 	}
 	if err := createTable(ctx, db, table, cols); err != nil {
 		t.Fatalf("create table failed: %v", err)
@@ -914,14 +913,13 @@ func TestDriver_Table_Insert_LargeNumber(t *testing.T) {
 		}
 	}()
 
-
 	for d := minDigits; d <= maxDigits; d++ {
 		insert := fmt.Sprintf(`INSERT INTO %s (digits, n) VALUES (%d, %s)`, table, d, strings.Repeat("9", d))
 		if _, err := db.Exec(insert); err != nil {
-			t.Fatalf("insert failed for digit length %d: %v", d,err)
+			t.Fatalf("insert failed for digit length %d: %v", d, err)
 		}
 	}
-	
+
 	for d := minDigits; d <= maxDigits; d++ {
 		sel := fmt.Sprintf(`SELECT n FROM %s WHERE digits = %d`, table, d)
 		rows, err := db.Query(sel)
@@ -934,7 +932,7 @@ func TestDriver_Table_Insert_LargeNumber(t *testing.T) {
 			t.Fatalf("cannot fetch column type: %v", err)
 		}
 
-		t.Logf("type name %v",colTypes[0].DatabaseTypeName())
+		t.Logf("type name %v", colTypes[0].DatabaseTypeName())
 
 		if !rows.Next() {
 			if err := rows.Err(); err != nil {
@@ -947,7 +945,7 @@ func TestDriver_Table_Insert_LargeNumber(t *testing.T) {
 			t.Fatalf("cannot scan  column : %v", err)
 		}
 
-		t.Logf("type %T digit length: %f", bigN,bigN)
+		t.Logf("type %T digit length: %f", bigN, bigN)
 	}
 
 }
