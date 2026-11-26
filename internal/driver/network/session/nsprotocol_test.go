@@ -93,8 +93,9 @@ func TestHandleAcceptFastAuthentication(t *testing.T) {
 		flags   uint32
 		want    bool
 	}{
-		{name: "advertised", version: TNS_VERSION_MIN_DATA_FLAGS, flags: TNS_ACCEPT_FLAG_FAST_AUTH, want: true},
-		{name: "not advertised", version: TNS_VERSION_MIN_DATA_FLAGS, flags: TNS_ACCEPT_FLAG_HAS_END_OF_REQUEST},
+		{name: "318 ignores fast auth flag", version: 318, flags: TNS_ACCEPT_FLAG_FAST_AUTH},
+		{name: "319 with fast auth flag", version: 319, flags: TNS_ACCEPT_FLAG_FAST_AUTH, want: true},
+		{name: "319 without fast auth flag", version: 319, flags: TNS_ACCEPT_FLAG_HAS_END_OF_REQUEST},
 		{name: "older protocol", version: TNS_VERSION_MIN_DATA_FLAGS - 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -274,7 +274,10 @@ func (ns *networkSession) handleAccept(ctx context.Context, p *acceptPacket) err
 		}
 		acceptFlag2 := binary.BigEndian.Uint32(p.buf[NSPACFL2:])
 		ns.endOfRequestSupport = (acceptFlag2&TNS_ACCEPT_FLAG_HAS_END_OF_REQUEST != 0)
-		ns.supportsFastAuth = (acceptFlag2&TNS_ACCEPT_FLAG_FAST_AUTH != 0)
+
+		if ns.sAtts.version >= TNS_VERSION_MIN_FAST_AUTH {
+			ns.supportsFastAuth = acceptFlag2&TNS_ACCEPT_FLAG_FAST_AUTH != 0
+		}
 	}
 
 	tlsadapter, ok := ns.ntAdapter.(interface {
