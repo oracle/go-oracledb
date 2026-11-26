@@ -11,50 +11,40 @@ This example shows how to use Oracle Database Resident Connection Pooling (DRCP)
 
 At least one DRCP pool should be started on the remote server.
 
-Start the default DRCP pool (SYS_DEFAULT_CONNECTION_POOL).
+The default DRCP pool (SYS_DEFAULT_CONNECTION_POOL) can be started with the following commands.
+
 ```sql
 sqlplus /nolog
 SQL> connect / as sysdba
 SQL> execute dbms_connection_pool.start_pool()
 ```
 
-Start a named DRCP pool `MYPOOL`.
+The customPool example uses a user-defined pool named MYPOOL. To configure and start the pool, connect to the remote database as SYSDBA and run the following commands:
 
 ```sql
 sqlplus /nolog
 SQL> connect / as sysdba
+SQL> execute dbms_connection_pool.add_pool('MYPOOL')
+SQL> execute dbms_connection_pool.configure_pool(pool_name => 'MYPOOL',minsize => 4,maxsize => 40,incrsize => 2,session_cached_cursors => 20,inactivity_timeout => 300,max_think_time => 600,max_use_session => 500000,max_lifetime_session => 86400)
 SQL> execute dbms_connection_pool.start_pool('MYPOOL')
-```
-
-To run the customPool example, create and configure the MYPOOL pool with these commands:
-
-Log in to the remote server as SYSDBA and run:
-```sql
-
-exec dbms_connection_pool.add_pool('MYPOOL')
-exec dbms_connection_pool.configure_pool(pool_name => 'MYPOOL',minsize => 4,maxsize => 40,incrsize => 2,session_cached_cursors => 20,inactivity_timeout => 300,max_think_time => 600,max_use_session => 500000,max_lifetime_session => 86400)
-exec dbms_connection_pool.start_pool('MYPOOL')
 ```
 
 ## Configure the connection
 
-Set these environment variables:
+The following environment variables must be set accordingly:
 
 - `ORACLE_DSN`: an Oracle connect descriptor or Easy Connect string for the DRCP-enabled service.
 - `ORACLE_USER`: the database username.
 - `ORACLE_PASSWORD`: the database password.
 
-For example, on macOS or Linux:
+For example, on Linux platforms:
 
 ```sh
 # The ':pooled' suffix must be added to the DSN to activate DRCP.
-export ORACLE_DSN='tcp://127.0.0.1:1521/freepdb1:pooled'
+export ORACLE_DSN='tcps://127.0.0.1:1521/freepdb1:pooled'
 export ORACLE_USER='myuser'
 export ORACLE_PASSWORD='mypassword'
 ```
-
-Replace the example values with values for your database. The pool name is hardcoded within the code sample to `MYPOOL`
-
 
 ## Run the example
 

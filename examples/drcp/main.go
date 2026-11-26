@@ -66,7 +66,7 @@ func main() {
 	cfg.Credentials.Password = password
 
 	// Set DRCP related properties
-	//  Sets the connection class
+	//  Sets the connection class to 'Sales'
 	cfg.ConnectionProperties.Drcp.ClassName = "Sales"
 
 	// Runs the basic example
@@ -78,7 +78,7 @@ func main() {
 
 func customPool(cfg *oracleconfig.OracleDriverConfig) {
 
-	//  Uses the custom pool.
+	//  Uses the custom DRCP pool.
 	cfg.ConnectionProperties.Drcp.PoolName = "MYPOOL"
 
 	// Create the connector from user configuration
@@ -91,12 +91,13 @@ func customPool(cfg *oracleconfig.OracleDriverConfig) {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	// this connection is now attached to 'MYPOOL'
+	// this connection will be attached to 'MYPOOL'
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// When the connection is released back to the pool, the driver detaches it from the DRCP pool
 	defer conn.Close()
 
 }

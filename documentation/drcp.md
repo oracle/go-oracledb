@@ -48,7 +48,7 @@ Note: The DRCP specification defines parameters that the Go driver does not use 
 
 ## How to enable DRCP?
 
-The server type is either DEDICATED (the default), SHARED or POOLED. To use DRCP, set the server type to POOLED. You can do this in any of the following ways:
+The server type is either _DEDICATED_ (the default), _SHARED_ or _POOLED_. To use DRCP, set the server type to _POOLED_. You can do this in any of the following ways:
 
 - Set `OracleConnectionProperties.ServerType` in the driver configuration.
 - Add `:pooled` to the EZConnect string, for example: `tcp://localhost:1521/freepdb1:pooled`.
@@ -56,7 +56,7 @@ The server type is either DEDICATED (the default), SHARED or POOLED. To use DRCP
 
   ```text
   (DESCRIPTION=
-    (ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))
+    (ADDRESS=(PROTOCOL=TCPS)(HOST=localhost)(PORT=1521))
     (CONNECT_DATA=(SERVICE_NAME=freepdb1)(SERVER=POOLED))
   )
   ```
@@ -75,7 +75,7 @@ import (
 
 func main() {
 	cfg := oracle.NewOracleDriverConfig()
-	cfg.ConnectDescriptor = "tcp://localhost:1521/freepdb1"
+	cfg.ConnectDescriptor = "tcps://localhost:1521/freepdb1"
 	cfg.Credentials.User = "myuser"
 	cfg.Credentials.Password = "mypassword"
 
@@ -89,7 +89,7 @@ func main() {
 #### Using the Data Source Name (DSN) parameters
 
 ```go
-dsn := fmt.Sprintf("myuser/mypassword@tcp://localhost:1521/freepdb1:pooled?pool_connection_class=%s&pool_purity=%s",
+dsn := fmt.Sprintf("myuser/mypassword@tcps://localhost:1521/freepdb1:pooled?pool_connection_class=%s&pool_purity=%s",
             "Sales",
             "SELF")
 db := sql.OpenDB(dsn)
