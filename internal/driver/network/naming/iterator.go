@@ -91,30 +91,40 @@ type DescriptionAttempts struct {
 
 // ConnectionIterator manages iteration through connection attempts.
 // Uses lazy iteration with addresses stored once per description to optimize memory.
-// DNS resolution is performed once during iterator creation.
+// Direct hostnames are resolved once during iterator creation; proxied
+// hostnames remain unresolved for the proxy to resolve.
 type ConnectionIterator struct {
-	rootNode         *Node
-	context          *ConnectionContext
-	callerCtx        context.Context
-	descAttempts     []DescriptionAttempts
-	currentDescIndex int
-	exhausted        bool
-	rng              *rand.Rand
+	rootNode               *Node
+	context                *ConnectionContext
+	callerCtx              context.Context
+	defaultProxyConfigured bool
+	descAttempts           []DescriptionAttempts
+	currentDescIndex       int
+	exhausted              bool
+	rng                    *rand.Rand
 	// dnsErrors     []error  // TODO
 }
 
 // NewConnectionIterator creates an iterator from parsed connection context.
 // Addresses are stored once per description and iterated based on retry count.
-// DNS resolution happens during iterator creation - hostnames are resolved to IPs,
-// and each IP becomes a separate connection attempt.
+// Hostnames without a proxy are resolved during iterator creation, and each IP
+// becomes a separate connection attempt. Proxied hostnames remain unresolved so
+// the proxy can resolve them.
 func NewConnectionIterator(ctx context.Context, rootNode *Node, connCtx *ConnectionContext) *ConnectionIterator {
+	return NewConnectionIteratorWithProxy(ctx, rootNode, connCtx, false)
+}
+
+// NewConnectionIteratorWithProxy creates an iterator with an optional
+// connection-wide proxy. Address-level proxies are read from each Address.
+func NewConnectionIteratorWithProxy(ctx context.Context, rootNode *Node, connCtx *ConnectionContext, defaultProxyConfigured bool) *ConnectionIterator {
 	iter := &ConnectionIterator{
-		rootNode:         rootNode,
-		context:          connCtx, // extracted properties context(different from the passed context)
-		callerCtx:        ctx,
-		currentDescIndex: 0,
-		exhausted:        false,
-		rng:              rand.New(rand.NewSource(time.Now().UnixNano())),
+		rootNode:               rootNode,
+		context:                connCtx, // extracted properties context(different from the passed context)
+		callerCtx:              ctx,
+		defaultProxyConfigured: defaultProxyConfigured,
+		currentDescIndex:       0,
+		exhausted:              false,
+		rng:                    rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
 	iter.descAttempts = iter.buildDescriptionAttempts(ctx)
@@ -347,11 +357,11 @@ func (ci *ConnectionIterator) buildFromDescription(ctx context.Context, desc *De
 		return nil
 	}
 
-	// DNS RESOLUTION HAPPENS HERE
-	// Resolve all hostnames to IPs - this expands the address list
+	// Resolve direct hostnames to IPs. Proxied hostnames stay as one address so
+	// the proxy can resolve them.
 	resolvedAddresses := make([]Address, 0, len(addresses)*2)
 	for _, addr := range addresses {
-		expanded, err := resolveAddress(ctx, addr)
+		expanded, err := resolveAddress(ctx, addr, ci.defaultProxyConfigured)
 		if err != nil {
 			// Context cancelled/expired: stop resolution but keep what we already resolved.
 			break
@@ -396,16 +406,15 @@ func (ci *ConnectionIterator) buildFromDescription(ctx context.Context, desc *De
 }
 
 // buildFromAddresses handles simple ADDRESS-only strings without DESCRIPTION wrapper
-// DNS resolution is performed here
+// Direct hostname resolution is performed here; proxy hostnames stay intact.
 func (ci *ConnectionIterator) buildFromAddresses(ctx context.Context, addresses []Address) []DescriptionAttempts {
 	if len(addresses) == 0 {
 		return []DescriptionAttempts{}
 	}
 
-	// DNS RESOLUTION HAPPENS HERE
 	resolvedAddresses := make([]Address, 0, len(addresses)*2)
 	for _, addr := range addresses {
-		expanded, err := resolveAddress(ctx, addr)
+		expanded, err := resolveAddress(ctx, addr, ci.defaultProxyConfigured)
 		if err != nil {
 			// Context cancelled/expired: stop resolution but keep what we already resolved.
 			break

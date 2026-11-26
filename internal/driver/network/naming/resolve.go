@@ -48,18 +48,23 @@ import (
 
 type lookupIPAddrFunc func(context.Context, string) ([]net.IPAddr, error)
 
-// resolveAddress resolves a single Address.
-//
-// If Host is a hostname, it is resolved via DNS and expanded to one Address per resolved IP.
-// If Host is already an IP literal, it bypasses DNS and sets ResolvedIP=Host.
-//
-// The caller is responsible for setting any overall timeout on ctx before calling this.
-func resolveAddress(ctx context.Context, address Address) ([]Address, error) {
+// resolveAddress resolves a database address for a connection attempt. Direct
+// hostnames are expanded to one address per resolved IP. If a proxy is
+// configured, addresses are preserved for the proxy to resolve or use. For
+// direct routes, IP literals bypass DNS and set ResolvedIP to Host. The caller
+// is responsible for setting any overall timeout on ctx before calling this.
+func resolveAddress(ctx context.Context, address Address, defaultProxyConfigured bool) ([]Address, error) {
+	if defaultProxyConfigured || address.HTTPSProxy != "" {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return []Address{address}, nil
+	}
 	return resolveAddressWithLookup(ctx, address, net.DefaultResolver.LookupIPAddr)
 }
 
-// resolveAddressWithLookup is identical to resolveAddress but takes an explicit DNS lookup
-// function. This is used by tests to avoid real DNS/network calls without mutating global state.
+// resolveAddressWithLookup expands an address using the given DNS lookup
+// function. Tests use it to avoid real DNS calls without mutating global state.
 func resolveAddressWithLookup(ctx context.Context, address Address, lookupIPAddr lookupIPAddrFunc) ([]Address, error) {
 	if err := ctx.Err(); err != nil {
 		// Context cancelled/expired: stop resolution.
