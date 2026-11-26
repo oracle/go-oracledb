@@ -1077,6 +1077,7 @@ type mockStreamer struct {
 	pushErr     error
 	flushErr    error
 	flushCalled bool
+	flushHook   func()
 	pullCalled  bool
 	pullTypes   []common.MessageType
 	pullMsg     common.Message[common.MessageType]
@@ -1178,6 +1179,9 @@ func (m *mockStreamer) Pull(_ context.Context, types ...common.MessageType) (com
 
 func (m *mockStreamer) Flush(_ context.Context) error {
 	m.flushCalled = true
+	if m.flushHook != nil {
+		m.flushHook()
+	}
 	return m.flushErr
 }
 

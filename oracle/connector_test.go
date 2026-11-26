@@ -77,12 +77,14 @@ func (m mockConnectorDriverConn) Begin() (driver.Tx, error) {
 }
 
 type mockConnectorNetworkSession struct {
-	disconnectCalled bool
-	disconnectFlags  int
-	disconnectCtx    context.Context
-	disconnectErr    error
-	cancelCalled     bool
-	inband           bool
+	driverCommon.DataBuffer // Required by the TTC constructors; selection performs no I/O.
+	fastAuth                bool
+	disconnectCalled        bool
+	disconnectFlags         int
+	disconnectCtx           context.Context
+	disconnectErr           error
+	cancelCalled            bool
+	inband                  bool
 }
 
 func (m *mockConnectorNetworkSession) Disconnect(ctx context.Context, flags int) error {
@@ -106,7 +108,7 @@ func (m *mockConnectorNetworkSession) GetRemoteAddress() string {
 }
 
 func (m *mockConnectorNetworkSession) SupportsFastAuthentication() bool {
-	return false
+	return m.fastAuth
 }
 
 func (m *mockConnectorNetworkSession) GetRemotePort() int {
@@ -378,16 +380,6 @@ func TestConnectorConnectFallsBackOnTTIRENEG(t *testing.T) {
 	}
 }
 
-type instantiatorSelectionSession struct {
-	mockConnectorNetworkSession
-	driverCommon.DataBuffer
-	fastAuth bool
-}
-
-func (s *instantiatorSelectionSession) SupportsFastAuthentication() bool {
-	return s.fastAuth
-}
-
 // TestConnectionInstantiatorSelection verifies that only an eligible initial attempt selects TTIINIT.
 func TestConnectionInstantiatorSelection(t *testing.T) {
 	t.Parallel()
@@ -406,7 +398,7 @@ func TestConnectionInstantiatorSelection(t *testing.T) {
 			cfg.Credentials.User = "user"
 			cfg.Credentials.Password = "password"
 			cfg.DriverProperties.TTIInitOptimizationEnabled = tc.enabled
-			ns := &instantiatorSelectionSession{fastAuth: tc.fastAuth}
+			ns := &mockConnectorNetworkSession{fastAuth: tc.fastAuth}
 			instantiator, err := internalDriver.GetConnectionInstantiator(cfg, ns, nil, tc.proPending)
 			if err != nil {
 				t.Fatalf("select instantiator: %v", err)

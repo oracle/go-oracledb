@@ -198,34 +198,34 @@ func TestReadTTIInitAuthenticationResponseFailure(t *testing.T) {
 	}
 }
 
-// ttiInitAuthTestStreamer only releases the scripted reply after the request is flushed.
-type ttiInitAuthTestStreamer struct {
-	mockStreamer
-	flushed bool
-}
-
-func (s *ttiInitAuthTestStreamer) Flush(ctx context.Context) error {
-	if s.pushedMsg.Len() != 1 {
-		return errors.New("expected one authentication request before flush")
+// Release the server replies when the expected authentication request is flushed.
+func authReplyOnFlush(t *testing.T, want driverCommon.FunctionType, replies ...driverCommon.Message[driverCommon.MessageType]) *mockStreamer {
+	t.Helper()
+	streamer := &mockStreamer{pullErr: io.EOF}
+	streamer.flushHook = func() {
+		t.Helper()
+		if got := streamer.pushedMsg.Len(); got != 1 {
+			t.Fatalf("flushed %d messages, want one authentication request", got)
+		}
+		msg := *streamer.pushedMsg.Front().Value.(*driverCommon.Message[driverCommon.MessageType])
+		if fn, ok := msg.(driverCommon.Function); !ok || fn.GetFuncCode() != want {
+			t.Fatalf("flushed %T, want authentication function %v", msg, want)
+		}
+		streamer.pullMsgs = replies
 	}
-	s.flushed = true
-	return s.mockStreamer.Flush(ctx)
-}
-
-func (s *ttiInitAuthTestStreamer) Pull(ctx context.Context, types ...driverCommon.MessageType) (driverCommon.Message[driverCommon.MessageType], error) {
-	if !s.flushed {
-		return nil, errors.New("authentication reply read before flush")
-	}
-	return s.mockStreamer.Pull(ctx, types...)
+	t.Cleanup(func() {
+		if got := streamer.pushedMsg.Len(); got > 1 {
+			t.Errorf("authentication queued %d requests, want one", got)
+		}
+	})
+	return streamer
 }
 
 // TestTTIInitPasswordAuthenticateReturnsTTIRENEG verifies that TTIRENEG ends password authentication after OSESSKEY.
 func TestTTIInitPasswordAuthenticateReturnsTTIRENEG(t *testing.T) {
 	t.Parallel()
 	shelf, _, _ := newAuthTestShelf(1 << 16)
-	streamer := &ttiInitAuthTestStreamer{mockStreamer: mockStreamer{
-		pullMsgs: []driverCommon.Message[driverCommon.MessageType]{&tTIReneg{}},
-	}}
+	streamer := authReplyOnFlush(t, oSesskey, &tTIReneg{})
 	shelf.RegisterMessageStreamer(streamer)
 	authenticator := newTTIInitPasswordAuthenticator("user", "password", 0, "connect")
 	authenticator.SetShelf(shelf)
@@ -236,13 +236,6 @@ func TestTTIInitPasswordAuthenticateReturnsTTIRENEG(t *testing.T) {
 	if !errors.Is(err, driverCommon.ErrTTIRENEG) {
 		t.Fatalf("Authenticate returned %v, want ErrTTIRENEG", err)
 	}
-	if streamer.pushedMsg.Len() != 1 {
-		t.Fatalf("pushed %d messages, want one OSESSKEY", streamer.pushedMsg.Len())
-	}
-	msg := *streamer.pushedMsg.Front().Value.(*driverCommon.Message[driverCommon.MessageType])
-	if _, ok := msg.(*oSessionKey); !ok {
-		t.Fatalf("pushed %T, want *oSessionKey", msg)
-	}
 }
 
 // TestTTIInitTokenAuthenticateAppliesSessionProperties verifies that token OAUTH stores the server session properties.
@@ -251,9 +244,7 @@ func TestTTIInitTokenAuthenticateAppliesSessionProperties(t *testing.T) {
 	shelf, _, _ := newAuthTestShelf(1 << 16)
 	const sessionID = "42"
 	properties := driverCommon.NewPropertiesWithSource(map[string]any{"SESSION_ID": sessionID})
-	streamer := &ttiInitAuthTestStreamer{mockStreamer: mockStreamer{
-		pullMsgs: []driverCommon.Message[driverCommon.MessageType]{&OAuthRPA{connectionValues: properties}, &mockOer{}},
-	}}
+	streamer := authReplyOnFlush(t, oauth, &OAuthRPA{connectionValues: properties}, &mockOer{})
 	shelf.RegisterMessageStreamer(streamer)
 	sessCtx := driverCommon.NewSessionContext()
 	authenticator := newTTIInitTokenAuthenticator(mockTokenAuthenticationProvider{token: "token-value"})
@@ -264,13 +255,6 @@ func TestTTIInitTokenAuthenticateAppliesSessionProperties(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("Authenticate failed: %v", err)
-	}
-	if streamer.pushedMsg.Len() != 1 {
-		t.Fatalf("pushed %d messages, want one OAUTH", streamer.pushedMsg.Len())
-	}
-	msg := *streamer.pushedMsg.Front().Value.(*driverCommon.Message[driverCommon.MessageType])
-	if _, ok := msg.(*oAuth); !ok {
-		t.Fatalf("pushed %T, want *oAuth", msg)
 	}
 	if got := sessCtx.GetSessionProperties().GetProperty("SESSION_ID"); got != sessionID {
 		t.Fatalf("SESSION_ID = %v, want %s", got, sessionID)
