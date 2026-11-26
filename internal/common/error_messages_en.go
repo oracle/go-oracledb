@@ -110,11 +110,6 @@ func initMessagesEn() {
 	// Action:   N/A
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.UnknownHost), "unknown host specified.")
-	// Document: No
-	// Cause:    N/A
-	// Action:   N/A
-	// Comment:  N/A
-	message.SetString(language.English, string(oracleErrors.LogonDenied), "invalid credential or not authorized")
 	// Document: Yes
 	// Cause:    The service name specified in the connect descriptor is not registered with the listener.
 	// Action:   Verify the service name in the connect string and ensure it's correctly configured in the listener.
@@ -697,4 +692,10 @@ func initMessagesEn() {
 	message.SetString(language.English, string(oracleErrors.DeepDataSecurityNotSupported), "database does not support Deep Data Security")
 	message.SetString(language.English, string(oracleErrors.DeepDataSecurityRequiresTLS), "Deep Data Security requires a TLS connection")
 	message.SetString(language.English, string(oracleErrors.InvalidEndUserSecurityContext), "invalid end-user security context")
+	// Document: No
+	// Cause:    The driver performed an invalid operation on an internal buffer.
+	// Action:   Enable FINEST logging to see the failing buffer operation.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.InvalidBufferOperation), "invalid buffer operation")
+
 }
