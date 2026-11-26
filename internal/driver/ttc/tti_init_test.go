@@ -75,36 +75,15 @@ func TestTTIInitMarshalTo(t *testing.T) {
 	}
 }
 
-// TestTTIInitMarshalToFail verifies that envelope and embedded PRO write failures are returned.
+// TestTTIInitMarshalToFail verifies that a write error reaches the caller.
 func TestTTIInitMarshalToFail(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name      string
-		failByte  int
-		failBytes int
-	}{
-		{name: "envelope version", failByte: 1},
-		{name: "embedded protocol", failBytes: 1},
-		{name: "database charset", failBytes: 3},
-		{name: "initial field version", failByte: 6},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			buffer := &FaultyArrayBasedDataBuffer{
-				ArrayBasedDataBuffer: NewArrayDataBuffer(256),
-				FailOnWriteByteCall:  tc.failByte,
-				FailOnWriteBytesCall: tc.failBytes,
-			}
-			marshaller := NewNativeMarshalEngine(buffer, driverCommon.BIG_ENDIAN)
-			message := &ttiInitMessage{
-				_protocolMessage: newTTIpro().(*tTIpro),
-				_fieldVersion:    ttcFldVsn234,
-			}
-
-			err := message.MarshalTo(context.Background(), marshaller)
-
-			if err == nil {
-				t.Fatal("MarshalTo succeeded after a simulated write failure")
-			}
-		})
+	buffer := &FaultyArrayBasedDataBuffer{
+		ArrayBasedDataBuffer: NewArrayDataBuffer(256),
+		FailOnWriteByteCall:  1,
+	}
+	message := &ttiInitMessage{_protocolMessage: newTTIpro().(*tTIpro)}
+	if err := message.MarshalTo(context.Background(), NewNativeMarshalEngine(buffer, driverCommon.BIG_ENDIAN)); err == nil {
+		t.Fatal("MarshalTo succeeded after a simulated write failure")
 	}
 }

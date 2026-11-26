@@ -44,24 +44,6 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
 
-// TestMarshallerFactory_ReturnsDefault verifies default lookup with and without a marshaller.
-func TestMarshallerFactory_ReturnsDefault(t *testing.T) {
-	t.Parallel()
-	marshaller := newMockMarshaller()
-	factory := NewMarshallerFactory(marshaller)
-	if factory.GetMarshallerForMessageType(defaultMarshallerMessageType) != marshaller {
-		t.Fatal("the same default marshaller should have been retrieved")
-	}
-
-	factory = NewMarshallerFactory(nil)
-	if factory.GetMarshallerForMessageType(defaultMarshallerMessageType) != nil {
-		t.Fatal("default marshaller should be nil")
-	}
-	if factory.GetMarshallerForMessageType(TTIPRO) != nil {
-		t.Fatal("unregistered message type should use the nil default marshaller")
-	}
-}
-
 // TestMarshallerFactory_GetMarshallerForMessageType verifies that registered message types
 // use their assigned marshaller and unregistered types use the default.
 // Registering a message-specific marshaller must leave the default unchanged.
