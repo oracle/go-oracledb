@@ -13,6 +13,10 @@ This folder contains code samples for the Oracle Database Driver for Go.
 
 ## Feature-specific examples
 
+- [Deep Data Security](deep_data_security/README.md) — Runs one employee query as
+  different end users. Set the context explicitly or have a
+  [provider supply it for each query](deep_data_security/provider/README.md).
+  See the [OCI IAM and Autonomous Database setup](deep_data_security/SETUP.md).
 - [Oracle JSON](json/main.go) — Creates a table with a native JSON column,
   inserts JSON text and Go values, and reads JSON documents back.
   See the [JSON guide](../documentation/json.md)
