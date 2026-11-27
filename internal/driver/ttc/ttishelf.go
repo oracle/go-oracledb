@@ -190,15 +190,21 @@ func (s *ttiShelf[T]) cancelExecution(ctx context.Context) error {
 	return s._cancelExecutionFunction(ctx)
 }
 
+// registerServerTimeZoneDuration stores the server's timezone offset and marks
+// it as initialized.
 func (s *ttiShelf[T]) registerServerTimeZoneDuration(serverTimeZoneDuration time.Duration) {
 	s._serverTimeZoneDuration = serverTimeZoneDuration
 	s._serverTimeZoneDurationSet = true
 }
 
+// getServerTimeZoneDuration returns the stored server timezone offset. It is
+// zero when no duration has been registered.
 func (s *ttiShelf[T]) getServerTimeZoneDuration() time.Duration {
 	return s._serverTimeZoneDuration
 }
 
+// hasServerTimeZoneDuration reports whether a server timezone duration has
+// been registered, including when its value is zero.
 func (s *ttiShelf[T]) hasServerTimeZoneDuration() bool {
 	return s._serverTimeZoneDurationSet
 }

@@ -323,11 +323,13 @@ func _createAndRegisterMarshaller(
 // timeZoneToDuration converts the canonical INTERVAL DAY TO SECOND string
 // returned by DecodeIntervalDayToSecond into a time.Duration.
 func timeZoneToDuration(timeZone string) (time.Duration, error) {
+	// The decoder formats intervals as a day field followed by an HH:MM:SS[.fraction] field.
 	parts := strings.Fields(timeZone)
 	if len(parts) != 2 {
 		return 0, fmt.Errorf("invalid day-to-second timezone %q", timeZone)
 	}
 
+	// Keep the interval's overall sign from the day field while parsing its magnitude.
 	sign := 1
 	daysText := parts[0]
 	if strings.HasPrefix(daysText, "-") {
@@ -345,6 +347,7 @@ func timeZoneToDuration(timeZone string) (time.Duration, error) {
 	if len(timeParts) != 3 {
 		return 0, fmt.Errorf("invalid time component in timezone %q", timeZone)
 	}
+	// Parse the clock fields as a duration so fractional seconds are retained at nanosecond precision.
 	timeOfDay, err := time.ParseDuration(timeParts[0] + "h" + timeParts[1] + "m" + timeParts[2] + "s")
 	if err != nil || timeOfDay < 0 {
 		return 0, fmt.Errorf("invalid time component in timezone %q", timeZone)
@@ -352,6 +355,7 @@ func timeZoneToDuration(timeZone string) (time.Duration, error) {
 
 	const dayDuration = 24 * time.Hour
 	maxDuration := time.Duration(1<<63 - 1)
+	// Check the day contribution before multiplying or adding to avoid duration overflow.
 	if days > int64((maxDuration-timeOfDay)/dayDuration) {
 		return 0, fmt.Errorf("timezone duration overflows time.Duration: %q", timeZone)
 	}
