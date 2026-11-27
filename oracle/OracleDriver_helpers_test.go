@@ -238,3 +238,90 @@ func parseTimeZone(timezone string) (int, int) {
 	TZM, _ := strconv.Atoi(items[1])
 	return sign * TZH, sign * TZM
 }
+
+type DatabaseVersion struct {
+	Major                 int
+	ReleaseUpdate         int
+	ReleaseUpdateRevision int
+	Increment             int
+	Extension             int
+}
+
+func (v DatabaseVersion) String() string {
+	return fmt.Sprintf("%d.%d.%d.%d.%d",
+		v.Major,
+		v.ReleaseUpdate,
+		v.ReleaseUpdateRevision,
+		v.Increment,
+		v.Extension,
+	)
+}
+
+type DBInfo struct {
+	SessionID    string
+	ProductName  string
+	Version      DatabaseVersion
+	Name         string
+	User         string
+	Schema       string
+	Instance     string
+	IsPrivileged bool
+}
+
+func (bdi *DBInfo) String() string {
+	return fmt.Sprintf("DBInfo{sessionID=%s, ProductName=%s, Version=%s, Name=%s, User=%s, Schema=%s, Instance=%s, IsPrivileged=%v}",
+		bdi.SessionID, bdi.ProductName, bdi.Version, bdi.Name, bdi.User, bdi.Schema, bdi.Instance, bdi.IsPrivileged)
+}
+
+var componentInfoSQL = "SELECT PRODUCT, VERSION_FULL FROM product_component_version;"
+var userEnvSQL = "SELECT SYS_CONTEXT('USERENV', 'DB_NAME') AS db_name,  SYS_CONTEXT('USERENV', 'INSTANCE_NAME') AS instance_name,  SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS current_schema , SYS_CONTEXT('USERENV', 'SESSION_USER') AS username,  SYS_CONTEXT('USERENV', 'SID') AS sid FROM DUAL;"
+var dbaSql = "SELECT SYS_CONTEXT('USERENV', 'ISDBA') AS is_sysdba FROM DUAL;"
+
+// getRemoteDBDetails return information about the connected database
+func getRemoteDBDetails(db *sql.DB) (DBInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result = DBInfo{}
+
+	row := db.QueryRowContext(ctx, componentInfoSQL)
+	err := row.Err()
+	if err != nil {
+		return DBInfo{}, err
+	}
+	var ver string
+	err = row.Scan(&result.ProductName, &ver)
+	if err != nil {
+		return DBInfo{}, err
+	}
+
+	components := strings.Split(ver, ".")
+	result.Version = DatabaseVersion{}
+	result.Version.Major, err = strconv.Atoi(components[0])
+	result.Version.ReleaseUpdate, err = strconv.Atoi(components[1])
+	result.Version.ReleaseUpdateRevision, err = strconv.Atoi(components[2])
+	result.Version.Increment, err = strconv.Atoi(components[3])
+	result.Version.Extension, err = strconv.Atoi(components[4])
+
+	row = db.QueryRowContext(ctx, userEnvSQL)
+	err = row.Err()
+	if err != nil {
+		return DBInfo{}, err
+	}
+	err = row.Scan(&result.Name, &result.Instance, &result.Schema, &result.User, &result.SessionID)
+	if err != nil {
+		return DBInfo{}, err
+	}
+
+	row = db.QueryRowContext(ctx, dbaSql)
+	err = row.Err()
+	if err != nil {
+		return DBInfo{}, err
+	}
+	err = row.Scan(&result.IsPrivileged)
+	if err != nil {
+		return DBInfo{}, err
+	}
+
+	return result, nil
+}

@@ -65,7 +65,7 @@ func TestCategoryExecutor(t *testing.T) {
 	oracleTest.RunCategoryExecutor(t, oracleTest.TestCategories, testCases)
 }
 
-type Version = oracleTest.Version
+
 type TestConfig = oracleTest.TestConfig
 type TestingEnvironment = oracleTest.TestingEnvironment
 

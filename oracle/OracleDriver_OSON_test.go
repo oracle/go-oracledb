@@ -371,15 +371,17 @@ func setupOSONTable(t *testing.T) (*sql.DB, context.Context, string) {
 	if TestingConfig == nil {
 		t.Skip("no database configuration available")
 	}
-	if TestingConfig.DatabaseVersion.Major < 21 {
-		t.Skip("native JSON requires Oracle Database 21c or later")
-	}
 
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("open database failed: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 21 {
+		t.Skip("native JSON requires Oracle Database 21c or later")
+	}
 
 	ctx := context.Background()
 	// A unique name allows the functional category to run tests concurrently.

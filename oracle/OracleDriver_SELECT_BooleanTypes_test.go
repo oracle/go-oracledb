@@ -55,9 +55,7 @@ func TestDriver_Select_BooleanTypes_23c(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion.Major < 23 {
-		t.Skip("Boolean Type is not supported for DB < 23")
-	}
+
 	config := TestingConfig.Clone()
 	config.ConnectionProperties.StrictNullValueHandling = "false"
 
@@ -67,6 +65,11 @@ func TestDriver_Select_BooleanTypes_23c(t *testing.T) {
 	}
 	// Ensure the connection pool is closed when the test finishes to avoid leaks across tests.
 	t.Cleanup(func() { _ = db.Close() })
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 23 {
+		t.Skip("Boolean Type is not supported for DB < 23")
+	}
 
 	ctx := context.Background()
 	table := createObjectName("bool_types_23c_test")
@@ -249,14 +252,16 @@ func TestDriver_Select_BooleanTypes_23c_Prepared_Statement(t *testing.T) {
 		t.Skip("No configuration available")
 	}
 
-	if TestingConfig.DatabaseVersion.Major < 23 {
-		t.Skip("Boolean Type is not supported for DB < 23")
-	}
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 23 {
+		t.Skip("Boolean Type is not supported for DB < 23")
+	}
 
 	ctx := context.Background()
 	table := createObjectName("bool_types_23c_test_ps")
@@ -377,14 +382,17 @@ func TestDriver_Select_BooleanTypes_23c_Prepared_Statement_Named(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion.Major < 23 {
-		t.Skip("Boolean Type is not supported for DB < 23")
-	}
+
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 23 {
+		t.Skip("Boolean Type is not supported for DB < 23")
+	}
 
 	ctx := context.Background()
 	table := createObjectName("bool_types_23c_test_ps_named")
