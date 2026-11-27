@@ -183,8 +183,6 @@ func newStatement(
 		execStatementExecutor:  execExecutor,
 		_rows:                  nil,
 	}
-	// register myself to the shelf so connection close can garbage me.
-	stmt.shelf.AddStatement(stmt)
 	return stmt, nil
 }
 
@@ -211,7 +209,7 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 		// if in a transaction, add an after function on the transaction context
 		// that will cancel the statements context if the transaction context is
 		// cancelled triggering the break/reset protocol
-		stopTransAfterFunction := context.AfterFunc(s.shelf.getTransaction().getTransactionContext(), func() {
+		stopTransAfterFunction := context.AfterFunc(s.shelf.getTransaction().transactionContext(), func() {
 			cancelSubContext()
 		})
 		defer stopTransAfterFunction()
@@ -273,8 +271,6 @@ func (s *Statement) Close() error {
 		finalErr = s.shelf.LocalizeError(common.NewOracleError(oracleErrors.StatementCloseFailed, err)).(oracleErrors.SQLError)
 	}
 
-	s.shelf.RemoveStatement(s)
-
 	return finalErr
 }
 
@@ -312,7 +308,7 @@ func (s *Statement) ExecContext(ctx context.Context, args []driver.NamedValue) (
 		// if in a transaction, add an after function on the transaction context
 		// that will cancel the statements context if the transaction context is
 		// cancelled triggering the break/reset protocol
-		stopTransAfterFunction := context.AfterFunc(s.shelf.getTransaction().getTransactionContext(), func() {
+		stopTransAfterFunction := context.AfterFunc(s.shelf.getTransaction().transactionContext(), func() {
 			cancelSubContext()
 		})
 		defer stopTransAfterFunction()

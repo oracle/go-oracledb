@@ -99,18 +99,20 @@ const (
 //     the exact numeric value and relies on the server for rounding/truncation per p.
 //   - The returned float64 is subject to IEEE-754 53-bit mantissa precision limits.
 func DecodeFloat(inputData []byte, precision, scale int) (float64, error) {
-	// Decode NUMBER wire directly to mantissa/sign/exponent to avoid any
-	// presentation rounding based on (p,s). FLOAT should not be rounded per scale.
-	mantissa, negative, exponent, _, err := FromNumber(inputData)
-	if err != nil {
-		return 0, err
-	}
+
 	// Oracle zero wire => 0.0
 	if len(inputData) == 1 && inputData[0] == _numberZeroWireByte {
 		return 0, nil
 	}
+
+	// Decode NUMBER wire directly to mantissa/sign/exponent to avoid any
+	// presentation rounding based on (p,s). FLOAT should not be rounded per scale.
+	mantissa, negative, exponent, _, err := _fromNumberBig(inputData)
+	if err != nil {
+		return 0, err
+	}
 	// decoding has to go through string, to not lose precision.
-	mantissaStr := strconv.FormatUint(mantissa, 10)
+	mantissaStr := strconv.FormatUint(mantissa.Uint64(), 10)
 	if exponent > 0 {
 		mantissaStr += strings.Repeat("0", exponent)
 	} else if exponent < 0 {

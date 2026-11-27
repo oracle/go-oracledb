@@ -50,15 +50,19 @@ import (
 
 // *** Pinger ***
 
-// Ping pings the database to check if the connection is in a valid state
-//
-// Returns: driver.ErrBadConn if the connection is not in a valid state,
-//
-//	otherwise nil
+// Ping sends a ping request to the database. It returns driver.ErrBadConn if
+// the connection is invalid before or after the request, the ping error if the
+// request fails, or nil if it succeeds.
 func (c *connection) Ping(ctx context.Context) error {
-	err := c.runFunctionWithFunHeader(ctx, ping)
-	if err != nil {
+	if !c.isValid() {
 		return driver.ErrBadConn
+	}
+	err := c.runFunctionWithFunHeader(ctx, ping)
+	if !c.isValid() {
+		return driver.ErrBadConn
+	}
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -66,22 +70,24 @@ func (c *connection) Ping(ctx context.Context) error {
 // *** Validator ***
 
 const (
-	// timeout duration to prevent the IsValid function from blocking indefinitely
-	_pingTimeout time.Duration = 10000000000 // 10s
+	// _isValidTimeout timeout duration to prevent the IsValid function from
+	// blocking indefinitely. If there is an active transaction, IsValid will
+	// rollback the transaction before returning it to the pool.
+	_isValidTimeout time.Duration = 10000000000 // 10s
 )
 
-// IsValid checks whether the connection is valid and runs its request-end
-// callbacks before it is returned to the pool.
+// IsValid checks if the connection is valid. This method is used by the connection
+// pool prior to placing the connection into the connection pool. If the server
+// has reported an ongoing transaction, it will be rolled back.
 //
 // It returns false if the connection is invalid or a callback returns
 // driver.ErrBadConn.
 func (c *connection) IsValid() bool {
 
-	// Check if inband notification has been received.
-	c._isValid = c._isValid && !c.ns.CheckInbandNotification()
+	c.isValid()
 
 	// Use one timeout context for all request-end callbacks.
-	ctx, cancel := context.WithTimeout(common.BackgroundContext, _pingTimeout)
+	ctx, cancel := context.WithTimeout(common.BackgroundContext, _isValidTimeout)
 	defer cancel()
 	// Run request-end callbacks. A bad-connection error invalidates the connection.
 	common.Odl.Finest("Running request-end callbacks on IsValid")
@@ -89,5 +95,12 @@ func (c *connection) IsValid() bool {
 		return false
 	}
 
+	return c._isValid
+}
+
+// isValid checks connection status without ending active transactions
+func (c *connection) isValid() bool {
+	// Check if inband notification has been received.
+	c._isValid = c._isValid && !c.ns.CheckInbandNotification()
 	return c._isValid
 }
