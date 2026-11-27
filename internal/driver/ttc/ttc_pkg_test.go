@@ -436,6 +436,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIrxd_BvcCarriedNullKeepsLobContextAligned", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_BvcCarriedNullKeepsLobContextAligned},
 	{Name: "TestTTIrxd_BvcCarriedClobPreservesLobContext", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_BvcCarriedClobPreservesLobContext},
 	{Name: "TestTTIrxd_MarshalTo_Success", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_MarshalTo_Success},
+	{Name: "TestTTIrxd_LongBindOrderingAndEncoderPairing", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_LongBindOrderingAndEncoderPairing},
 	{Name: "TestTTIrxd_MarshalTo_FailOnNullIndicator", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_MarshalTo_FailOnNullIndicator},
 	{Name: "TestTTIrxd_MarshalTo_FailOnCLRDataWrite", Categories: "unitary", Exclusive: false, Fn: TestTTIrxd_MarshalTo_FailOnCLRDataWrite},
 	{Name: "TestTTIrxhConstructor", Categories: "unitary", Exclusive: false, Fn: TestTTIrxhConstructor},
@@ -490,6 +491,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 
 	{Name: "TestPrepareBindsAndOAC_Normalize_Supported", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_Normalize_Supported},
 	{Name: "TestPrepareBindsAndOAC_Normalize_Errors", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_Normalize_Errors},
+	{Name: "TestPrepareBindsAndOAC_LongBindOACLengths", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_LongBindOACLengths},
+	{Name: "TestPrepareBinds_EmptyLongPayloadsAndNullMetadata", Categories: "unitary", Exclusive: false, Fn: TestPrepareBinds_EmptyLongPayloadsAndNullMetadata},
 	{Name: "TestPrepareBindsAndOAC_Encode_Supported", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_Encode_Supported},
 	{Name: "TestPrepareBindsAndOAC_Encode_Errors", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_Encode_Errors},
 	{Name: "TestPushBindRowsIfAny_EncodeBindValues_Error", Categories: "unitary", Exclusive: false, Fn: TestPushBindRowsIfAny_EncodeBindValues_Error},

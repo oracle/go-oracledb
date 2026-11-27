@@ -216,6 +216,48 @@ func newTTIOacBytes(maxLength driverCommon.UB4) driverCommon.Marshallable {
 	return newTTIoac(DtyVbi, maxLength)
 }
 
+// newTTIOacLong creates a character LONG bind OAC.
+func newTTIOacLong(maxLength driverCommon.UB4) driverCommon.Marshallable {
+	if maxLength == 0 {
+		// Match the VARCHAR OAC convention for an empty text bind.
+		maxLength = converters.EmptyStringOacLength
+	}
+	return newTTIoac(DtyLng, maxLength)
+}
+
+// newTTIOacLongRaw creates a binary LONG RAW bind OAC without character-set
+// metadata.
+func newTTIOacLongRaw(maxLength driverCommon.UB4) driverCommon.Marshallable {
+	if maxLength == 0 {
+		// Use a one-byte OAC width when the LONG RAW payload is empty.
+		maxLength = 1
+	}
+	oac := newTTIoac(DtyLbi, maxLength)
+	// LONG RAW is binary data; zero charset fields prevent character conversion.
+	oac.characterSetID = 0
+	oac.characterSetForm = 0
+	return oac
+}
+
+// newTTIOacLongDefine creates a LONG define OAC using the column character set.
+func newTTIOacLongDefine(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
+	oac := newTTIoac(DtyLng, define_maxlength_scalar)
+	if charsetID := driverCommon.UB2(columnContext.CharsetID); charsetID != 0 {
+		oac.characterSetID = charsetID
+	}
+	return oac
+}
+
+// newTTIOacLongRawDefine creates a LONG RAW define OAC without character-set
+// metadata.
+func newTTIOacLongRawDefine(_ columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
+	oac := newTTIoac(DtyLbi, define_maxlength_scalar)
+	// LONG RAW is binary data, so it has no character set or character-set form.
+	oac.characterSetID = 0
+	oac.characterSetForm = 0
+	return oac
+}
+
 // newTTIOacNull creates an OAC descriptor for null bind values using the driver's null placeholder length.
 func newTTIOacNull() driverCommon.Marshallable {
 	return newTTIoac(DtyVCS, converters.MaxNullLength)

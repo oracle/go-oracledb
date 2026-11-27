@@ -77,4 +77,9 @@ const (
 	// MaxVarcharLength is the maximum TTC byte length used for VARCHAR2-style
 	// variable-width character payloads, including space for the TTC length prefix.
 	MaxVarcharLength common.UB4 = 32768
+
+	// LONG and LONG RAW value-size limits used by the TTC driver.
+	// MaxLongValueLength is the driver's maximum bind and fetch length for
+	// LONG and LONG RAW, in bytes (2^31 - 1).
+	MaxLongValueLength common.UB4 = 2_147_483_647
 )

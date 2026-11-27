@@ -268,7 +268,7 @@ func (t *testObject) UnmarshalSB4(context.Context) (SB4, error) {
 func (t *testObject) UnmarshalCLR(context.Context, B1Array, int) (int, error) {
 	return -1, nil
 }
-func (t *testObject) UnmarshalCLRColumnData(context.Context) (B1Array, int, error) {
+func (t *testObject) UnmarshalCLRColumnData(context.Context, int64) (B1Array, int, error) {
 	return nil, -1, nil
 }
 func (t *testObject) UnmarshalB1Array(context.Context, int) (B1Array, error) {

@@ -209,12 +209,16 @@ type Marshaller interface {
 	//  - An error if the marshaling operation fails.
 	UnmarshalCLR(context.Context, B1Array, int) (int, error)
 
-	// UnmarshalCLRColumnData Reads a CLR
+	// UnmarshalCLRColumnData reads a CLR column value in short, NULL, or chunked
+	// form using the supplied maximum length.
+	// Parameters:
+	//   - context: Request context used while reading.
+	//   - maxLength: Maximum payload length, including the configured LOB prefetch allowance when applicable.
 	// Returns:
-	//  - The address of a B1Array containing the bytes
-	//  - The actual length read
-	//  - An error if the marshaling operation fails.
-	UnmarshalCLRColumnData(context.Context) (B1Array, int, error)
+	//   - data: Raw value bytes; NULL returns nil.
+	//   - length: Number of value bytes read; NULL returns zero.
+	//   - err: Non-nil if the wire data is malformed, truncated, or exceeds the supplied maximum length.
+	UnmarshalCLRColumnData(context.Context, int64) (B1Array, int, error)
 
 	// UnmarshalB1Array Reads an array of bytes
 	// Parameters:

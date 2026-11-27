@@ -41,6 +41,7 @@ package ttc
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	sqldriver "database/sql/driver"
 	"errors"
 	"maps"
@@ -51,6 +52,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -476,5 +478,96 @@ func TestPrepareBindsAndOAC_OAC_Errors(t *testing.T) {
 	_, _, _, err := prepareBindDataForTest(sp, []sqldriver.Value{map[string]int{"x": 1}})
 	if err == nil || !strings.Contains(err.Error(), "internal error occurred") {
 		t.Fatalf("expected type encode error containing 'bind-type', got %v", err)
+	}
+}
+
+// TestPrepareBindsAndOAC_LongBindOACLengths verifies that LONG-family binds use
+// their registered maximum size and ordinary types retain prior widths.
+func TestPrepareBindsAndOAC_LongBindOACLengths(t *testing.T) {
+	t.Parallel()
+	shelf := newShelf[common.MessageType]()
+	registerTestCodecs(shelf, 20)
+	sp := &statementProcessor{
+		shelf: shelf,
+		previousOacs: []common.Marshallable{
+			newTTIoac(DtyLng, 7),
+			newTTIoac(DtyLbi, 8),
+			newTTIoac(DtyLng, 9),
+			newTTIoac(DtyLbi, 10),
+			newTTIoac(DtyVCS, 20),
+			newTTIoac(DtyVbi, 21),
+		},
+	}
+
+	_, _, oacs, err := prepareBindDataForTest(sp, []sqldriver.Value{
+		datatype.Long(strings.Repeat("x", 40_000)),
+		datatype.LongRaw(bytes.Repeat([]byte{0xA5}, 40_000)),
+		sql.Out{Dest: new(datatype.Long), In: false},
+		sql.Out{Dest: new(datatype.LongRaw), In: false},
+		"ordinary string",
+		[]byte{0x01, 0x02},
+	})
+	if err != nil {
+		t.Fatalf("bind preparation returned error: %v", err)
+	}
+
+	gotTypes := make([]DtyType, len(oacs))
+	gotLengths := make([]common.UB4, len(oacs))
+	for i, descriptor := range oacs {
+		oac := descriptor.(*tTIoac)
+		gotTypes[i] = DtyType(oac.dataType)
+		gotLengths[i] = oac.maxLength
+	}
+	wantTypes := []DtyType{DtyLng, DtyLbi, DtyLng, DtyLbi, DtyChr, DtyBin}
+	if !reflect.DeepEqual(gotTypes, wantTypes) {
+		t.Fatalf("OAC types = %v, want %v", gotTypes, wantTypes)
+	}
+	wantLongLengths := []common.UB4{
+		converters.MaxLongValueLength,
+		converters.MaxLongValueLength,
+		converters.MaxLongValueLength,
+		converters.MaxLongValueLength,
+	}
+	if !reflect.DeepEqual(gotLengths[:4], wantLongLengths) {
+		t.Fatalf("LONG-family OAC lengths = %v, want %v", gotLengths[:4], wantLongLengths)
+	}
+	if gotLengths[4] != 20 || gotLengths[5] != 21 {
+		t.Fatalf("ordinary OAC lengths = %v, want retained widths [20 21]", gotLengths[4:])
+	}
+}
+
+// TestPrepareBinds_EmptyLongPayloadsAndNullMetadata checks that empty LONG and
+// LONG RAW binds retain their distinct encoded payloads and types, untyped nil
+// remains NULL, and an ordinary empty string retains its string type.
+func TestPrepareBinds_EmptyLongPayloadsAndNullMetadata(t *testing.T) {
+	t.Parallel()
+	shelf := newShelf[common.MessageType]()
+	registerTestCodecs(shelf, 20)
+	sp := &statementProcessor{shelf: shelf}
+
+	args := []sqldriver.Value{datatype.Long(""), datatype.LongRaw(nil), nil, ""}
+	rows, metadata, _, err := prepareBindDataForTest(sp, args)
+	if err != nil {
+		t.Fatalf("bind preparation returned error: %v", err)
+	}
+	if len(rows) != 1 || len(rows[0]) != len(args) {
+		t.Fatalf("encoded row dimensions = %v, want one row with %d binds", rows, len(args))
+	}
+	wantLong, err := converters.EncodeVarchar("")
+	if err != nil {
+		t.Fatalf("encode expected empty LONG: %v", err)
+	}
+	wantLongRaw, err := converters.EncodeBinary([]byte(nil))
+	if err != nil {
+		t.Fatalf("encode expected empty LONG RAW: %v", err)
+	}
+	if !bytes.Equal(rows[0][0], wantLong) || !bytes.Equal(rows[0][1], wantLongRaw) {
+		t.Fatalf("empty LONG payloads changed: got (%v, %v), want (%v, %v)", rows[0][0], rows[0][1], wantLong, wantLongRaw)
+	}
+	if metadata[0].goType != reflect.TypeFor[datatype.Long]() || metadata[1].goType != reflect.TypeFor[datatype.LongRaw]() {
+		t.Fatalf("empty LONG bind types = (%v, %v), want (datatype.Long, datatype.LongRaw)", metadata[0].goType, metadata[1].goType)
+	}
+	if !metadata[2].isNull || metadata[2].goType != nil || metadata[3].goType != reflect.TypeFor[string]() {
+		t.Fatalf("ordinary NULL/empty metadata changed: null=%+v empty=%+v", metadata[2], metadata[3])
 	}
 }

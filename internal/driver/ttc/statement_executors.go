@@ -48,6 +48,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -786,21 +787,29 @@ func (e *statementProcessor) encodeBindValues(args []sqldriver.Value, metadata [
 	return rows, nil
 }
 
-// prepareOACs creates one bind OAC per normalized position using the largest
-// encoded payload length across the supplied rows.
+// prepareOACs creates one bind OAC per normalized position. Variable-width
+// types use their payload size and retain the prior OAC width; LONG-family
+// types use their registered maximum size. OUT bind OACs are expanded to the
+// registered maximum size by the codec factory.
 func (e *statementProcessor) prepareOACs(rows [][]driverCommon.B1Array, metadata []bindValueMetadata) ([]driverCommon.Marshallable, error) {
 	oacs := make([]driverCommon.Marshallable, len(metadata))
 	for col, normalized := range metadata {
 		maxLength := 0
-		for _, row := range rows {
-			if len(row[col]) > maxLength {
-				maxLength = len(row[col])
+		// LONG OACs advertise the registered maximum, regardless of payload size.
+		if isLongBindType(normalized.goType) {
+			maxLength = int(converters.MaxLongValueLength)
+		} else {
+			for _, row := range rows {
+				if len(row[col]) > maxLength {
+					maxLength = len(row[col])
+				}
 			}
 		}
+		oacLength := e.getMaxLengthForOac(col, maxLength)
 		var err error
 		oacs[col], err = e.shelf.GetCodecFactory().getBindOac(
 			normalized,
-			e.getMaxLengthForOac(col, maxLength),
+			oacLength,
 		)
 		if err != nil {
 			return nil, err

@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"container/list"
+	"database/sql/driver"
 	"reflect"
 	"strconv"
 	"time"
@@ -877,6 +878,19 @@ func init() {
 	if err != nil {
 		common.Odl.Warn("Failed to register string bool (v>=18) encoder", "error", err)
 	}
+	// LONG and LONG RAW encoder entry
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeFor[datatype.Long]()}, MinTTCProtocolVersion,
+		newCLRBindEncoder(func(value driver.Value) (driverCommon.B1Array, error) {
+			return converters.EncodeVarchar(string(value.(datatype.Long)))
+		})); err != nil {
+		common.Odl.Warn("Failed to register LONG encoder", "error", err)
+	}
+	if err := EncoderRegistry.Register(encoderKey{goType: reflect.TypeFor[datatype.LongRaw]()}, MinTTCProtocolVersion,
+		newCLRBindEncoder(func(value driver.Value) (driverCommon.B1Array, error) {
+			return converters.EncodeBinary([]byte(value.(datatype.LongRaw)))
+		})); err != nil {
+		common.Odl.Warn("Failed to register LONG RAW encoder", "error", err)
+	}
 
 	// Register default decoders with explicit wire readers. Scalar types use CLR;
 	// CLOB, JSON, and BLOB supply their specialized framing readers.
@@ -974,6 +988,16 @@ func init() {
 		common.Odl.Warn("Failed to register binary decoder", "error", err)
 	}
 
+	// LONG and LONG RAW decoder entry
+	if err := DecoderRegistry.Register(DtyLng, MinTTCProtocolVersion, newTypeDecoder(DecodeVarcharColumn,
+		GetScanTypeForVarcharColumn, unwrapLongColumn)); err != nil {
+		common.Odl.Warn("Failed to register LONG decoder", "error", err)
+	}
+	if err := DecoderRegistry.Register(DtyLbi, MinTTCProtocolVersion, newTypeDecoder(DecodeBinaryColumn,
+		GetScanTypeForBinaryColumn, unwrapLongColumn)); err != nil {
+		common.Odl.Warn("Failed to register LONG RAW decoder", "error", err)
+	}
+
 	if err := DecoderRegistry.Register(DtyClob, MinTTCProtocolVersion,
 		newTypeDecoder(DecodeClob, GetScanTypeForCLOBColumn, unwrapClobColumn)); err != nil {
 		common.Odl.Warn("Failed to register CLOB decoder", "error", err)
@@ -1060,6 +1084,13 @@ func init() {
 	if err := BindOacRegistry.Register(reflect.TypeOf([]byte(nil)), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacBytes, maxLength: 32767}); err != nil {
 		common.Odl.Warn("Failed to register []byte bind OAC", "error", err)
 	}
+	// LONG and LONG RAW bind OACs
+	if err := BindOacRegistry.Register(reflect.TypeFor[datatype.Long](), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacLong, maxLength: converters.MaxLongValueLength}); err != nil {
+		common.Odl.Warn("Failed to register LONG bind OAC", "error", err)
+	}
+	if err := BindOacRegistry.Register(reflect.TypeFor[datatype.LongRaw](), MinTTCProtocolVersion, bindOacType{bindOacFunc: newTTIOacLongRaw, maxLength: converters.MaxLongValueLength}); err != nil {
+		common.Odl.Warn("Failed to register LONG RAW bind OAC", "error", err)
+	}
 
 	if err := BindOacRegistry.Register(reflect.TypeOf(nil), MinTTCProtocolVersion, bindOacType{bindOacFunc: func(driverCommon.UB4) driverCommon.Marshallable { return newTTIOacNull() }, maxLength: converters.MaxNullLength}); err != nil {
 		common.Odl.Warn("Failed to register nil bind OAC", "error", err)
@@ -1097,6 +1128,12 @@ func init() {
 		return newTTIOacVarcharDefine(columnContext)
 	}); err != nil {
 		common.Odl.Warn("Failed to register VARCHAR define OAC", "error", err)
+	}
+	if err := DefineOacRegistry.Register(DtyLng, MinTTCProtocolVersion, newTTIOacLongDefine); err != nil {
+		common.Odl.Warn("Failed to register LONG define OAC", "error", err)
+	}
+	if err := DefineOacRegistry.Register(DtyLbi, MinTTCProtocolVersion, newTTIOacLongRawDefine); err != nil {
+		common.Odl.Warn("Failed to register LONG RAW define OAC", "error", err)
 	}
 
 	_sqlKindMap["select"] = select_

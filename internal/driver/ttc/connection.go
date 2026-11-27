@@ -369,6 +369,14 @@ func (c *connection) CheckNamedValue(nv *driver.NamedValue) error {
 // checkNamedValue validates sql.Out destinations and returns shelf-localized
 // Oracle errors for binding problems.
 func checkNamedValue(nv *driver.NamedValue) error {
+	// Keep the named types intact: database/sql's default converter would turn
+	// them into string or []byte, losing the type TTC uses to select the
+	// LONG/LONG RAW OAC and encoder.
+	switch nv.Value.(type) {
+	case datatype.Long, datatype.LongRaw:
+		return nil
+	}
+
 	// connectionWrapper.Fetch passes an already-decoded driver.Rows to the internal
 	// REF CURSOR statement executor. This is not a REF CURSOR OUT-bind destination.
 	if _, ok := nv.Value.(driver.Rows); ok {

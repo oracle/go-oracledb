@@ -262,6 +262,12 @@ func (m *MarshalEngine) setDefaultLobPrefetchSize(prefetchSize int64) {
 	m._defaultLobPrefetchSize = prefetchSize
 }
 
+// defaultLobPrefetchSize returns the connection-level default LOB prefetch
+// size, in bytes.
+func (m *MarshalEngine) defaultLobPrefetchSize() int64 {
+	return m._defaultLobPrefetchSize
+}
+
 // marshalSeqNo marshals the next sequence number from the engine's internal
 // counter and returns the value written to the buffer.
 //
@@ -888,22 +894,19 @@ func (m *MarshalEngine) UnmarshalCLR(ctx context.Context, bytes driverCommon.B1A
 //   - If the chunk length is zero, decoding stops.
 //   - Otherwise the chunk data is read and appended to the result slice.
 //
+// The total payload length must not exceed maxLength. Chunk framing bytes are
+// not included in that limit.
+//
 // Returns:
-//   - A B1Array containing the unmarshaled value.
-//   - The length of the unmarshaled value.
-//   - An error if the unmarshaling operation fails.
+//   - A B1Array containing the unmarshaled value; NULL returns nil.
+//   - The length of the unmarshaled value; NULL returns zero.
+//   - An error if the unmarshaling operation fails or the payload exceeds
+//     maxLength.
 //
 // Parameters:
 //   - ctx: The request context used for buffer reads.
-func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context) (driverCommon.B1Array, int, error) {
-	// Long CLR data should stay within _maximumLongCLRAggregateLength for scalar
-	// data or the configured LOB prefetch allowance, including the shared
-	// _longCLRAggregateLengthMultiplier headroom. Larger payloads suggest the
-	// server is possibly compromised.
-	maxAllowedCLRLength := math.Max(
-		_maximumLongCLRAggregateLength,
-		float64(m._defaultLobPrefetchSize)*_longCLRAggregateLengthMultiplier,
-	)
+//   - maxLength: Maximum total payload length to accept.
+func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context, maxLength int64) (driverCommon.B1Array, int, error) {
 	// first byte is either length or marker (0xFE)
 	lenflag, err := m.UnmarshalUB1(ctx)
 	if err != nil {
@@ -918,12 +921,15 @@ func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context) (driverCommo
 	}
 
 	if byte(lenflag) <= _maximumShortValueLength { // Smaller than MAX length
+		if int64(lenflag) > maxLength {
+			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
+		}
 		bytes := make(driverCommon.B1Array, lenflag)
 		err := m._unmarshalBuffer(ctx, bytes, 0, int(lenflag))
 		return bytes, int(lenflag), _wrapError(err, "CLR")
 	}
 	// Got FE marker, long chunks
-	nbBytesWritten := 0
+	nbBytesWritten := int64(0)
 	var bytes driverCommon.B1Array
 	for {
 		length, err := m.UnmarshalSB4(ctx)
@@ -942,22 +948,21 @@ func (m *MarshalEngine) UnmarshalCLRColumnData(ctx context.Context) (driverCommo
 				"length", length, "maxLength", _maximumLongCLRChunkLength)
 			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
 		}
+		if int64(length) > maxLength-nbBytesWritten {
+			common.Odl.Finest("CLR data length exceeds maximum allowed size",
+				"length", nbBytesWritten+int64(length), "maxLength", maxLength)
+			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
+		}
 
 		currentBytes := make(driverCommon.B1Array, length)
 		err = m._unmarshalBuffer(ctx, currentBytes, 0, int(length))
 		if err != nil {
 			return nil, 0, _wrapError(err, "CLR")
 		}
-		nbBytesWritten += int(length)
-
-		if nbBytesWritten > int(maxAllowedCLRLength) {
-			common.Odl.Finest("CLR data length exceeds maximum allowed size",
-				"length", nbBytesWritten, "maxLength", _maximumLongCLRChunkLength)
-			return nil, -1, _wrapError(common.NewOracleError(oracleErrors.ProtocolViolation, nil), "CLR")
-		}
+		nbBytesWritten += int64(length)
 		bytes = append(bytes, currentBytes...)
 	}
-	return bytes, nbBytesWritten, nil
+	return bytes, int(nbBytesWritten), nil
 }
 
 // Flush flushes the data buffer.
