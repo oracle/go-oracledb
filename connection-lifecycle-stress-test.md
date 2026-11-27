@@ -4,7 +4,7 @@ Owner: @yashgarg. Updated October 29, 2026.
 
 ## Purpose and current status
 
-The network workload repeatedly constructs a connector, establishes a physical TCPS connection, authenticates, initializes the session, executes a validated query, and closes the connection. The purpose is to investigate accumulation of network/TLS objects, heap memory, goroutines, sockets, and Oracle sessions during sustained connection churn.
+The network workload repeatedly constructs a connector, establishes a physical connection using the selected TCP or TCPS configuration, authenticates, initializes the session, executes a validated query, and closes the connection. The purpose is to investigate accumulation of network/TLS objects, heap memory, goroutines, sockets, and Oracle sessions during sustained connection churn.
 
 The lifecycle implementation uses one connection operation, a small worker runner, raw runtime samples, and ordinary checked file writes/closure. All lifecycle helpers, fakes, and database-free unit tests are consolidated in oracle/OracleDriver_connection_lifecycle_stress_test.go; the separate OracleDriver_direct_connection_test.go file has been removed after relocating its required symbols. This reduces navigation and makes ownership explicit; it does not by itself reduce algorithmic complexity. There are no stage callbacks, injectable session initializers, artifact-state framework, metadata subprocesses, or allocation-delta calculations. External collection remains separate.
 
@@ -18,7 +18,7 @@ Each iteration performs:
 
 1. Call a connector factory exactly once.
 2. Call its Connector.Connect exactly once.
-3. Verify SELECT SYS_CONTEXT('USERENV', 'NETWORK_PROTOCOL') FROM DUAL returns one tcps value and close its rows.
+3. Verify SELECT SYS_CONTEXT('USERENV', 'NETWORK_PROTOCOL') FROM DUAL returns the configured protocol and close its rows.
 4. Set CLIENT_IDENTIFIER to the run ID and MODULE to go-connection-lifecycle-stress.
 5. Execute SELECT 1 FROM DUAL on the same driver connection, consume exactly one value of 1, and close its rows.
 6. Close the driver connection, release local references, and repeat.
@@ -29,13 +29,12 @@ Session initialization occurs after the raw Connect succeeds, so a later protoco
 
 Use the existing TestDriver_SimpleConnection and TestDriver_Functional_SelectDual tests as functional prerequisites with the selected TCPS profile. They validate basic connection/query behavior through database/sql; they do not execute the exact direct-Connector cycle, protocol-verification query, or session tagging. The lifecycle smoke test covers that combined stress operation. The additional TestDriver_DirectConnectionLifecycle functional test and its registration have been removed; the direct-cycle helper and database-free stress tests remain.
 
-TestDriver_TCPS_Pipeline_SelectDual provides existing TCPS functional coverage when its dedicated pipeline_test_tcps configuration, wallet, and certificate DN are available. It does not use an arbitrary selected profile, so a skipped pipeline test is not TCPS evidence. BenchmarkSimpleOpen demonstrates direct non-pooled opening but is a benchmark, not a functional prerequisite or sustained soak test. The stress entry point continues to reject TCP.
+TestDriver_TCPS_Pipeline_SelectDual provides existing TCPS functional coverage when its dedicated pipeline_test_tcps configuration, wallet, and certificate DN are available. It does not use an arbitrary selected profile, so a skipped pipeline test is not TCPS evidence. BenchmarkSimpleOpen demonstrates direct non-pooled opening but is a benchmark, not a functional prerequisite or sustained soak test.
 
 ## Environment prerequisites
 
-- A valid TCPS listener: host, actual TLS port, service, and valid credentials.
-- A configured wallet/trust store and expected certificate name or DN.
-- Explicit ssl_server_dn_match=on; weak DN matching disabled.
+- A reachable listener and valid host, port, service, credentials, and protocol in the selected database configuration.
+- For TCPS, a trusted server certificate and explicit ssl_server_dn_match=on with weak DN matching disabled. Supply a wallet if the endpoint requires one.
 - A dedicated workload account with SELECT access and permission to identify its own sessions through DBMS_SESSION/DBMS_APPLICATION_INFO.
 - A separate monitoring account with DBA-approved access to the required GV$ views in the workload PDB.
 - A stable network/VPN route throughout the normal workload.
@@ -47,7 +46,9 @@ The driver verifies trust and certificate matching during connection establishme
 
 ## Configuration and profiles
 
-All settings remain under stress.connection_lifecycle in the selected JSON entry. Existing fixed-count profiles remain valid.
+The weekly heavy_driver job already selects the stress category with TestPilot's pipeline_test configuration. When an entry omits a stress profile, the corresponding test uses a short workload with the selected database settings. Connection lifecycle uses 4 workers with 16 cycles each (64 measured cycles). Resource retention uses 4 workers, 4 pool connections, and 256 measured SELECT 1 FROM DUAL operations. Both defaults use a 15-second per-operation deadline and a one-minute overall deadline. Warm-up is counted separately.
+
+Set stress.connection_lifecycle in the selected JSON entry to override the short workload, or select TCPS in the connection settings for a TLS run. The rules below describe explicit profiles.
 
 | Field | Meaning | Default/rule |
 | --- | --- | --- |
@@ -114,7 +115,7 @@ go test -count=1 -timeout=15m -v ./oracle \
   -driver.config.name=phoenix_tcps
 ```
 
-For the 24-hour JSON profile use the same command with -timeout=27h; for 48 hours use -timeout=51h. The test remains manually selected and exclusive; it has no Go-discoverable stress function and is not added to the weekly workflow. A missing lifecycle profile is an explicit skip.
+For the 24-hour JSON profile use the same command with -timeout=27h; for 48 hours use -timeout=51h. The test runs exclusively through the stress category. Run the same selector with an existing database configuration and no lifecycle profile to exercise the short defaults used by the weekly workflow.
 
 On Windows PowerShell, quote native arguments using an array (including dotted flags). Set the wallet-password environment variable in the same session first, and use a Windows wallet path in the private JSON:
 
@@ -160,7 +161,7 @@ Context deadlines are cooperative: if a driver call or Close ignores cancellatio
 
 The final result records workload_elapsed_ns for worker execution through joining, including drain time. For a successful duration run, active_ns is the configured admission duration and drain_ns is the excess worker elapsed time. For a successful fixed-count run, active_ns equals worker elapsed time and drain_ns is zero. For failed/not-started workloads, active_ns and drain_ns are null: early failure and cancellation cleanup do not support that precise split. Terminal output labels them unavailable.
 
-observation_ns records actual time spent in the drained observation wait; observation_completed is true only when its requested timer completes. A skipped observation has zero duration and false completion. The result record's elapsed_ns is time from run initialization to record writing, before that record and file Sync/Close complete. Terminal wall time is captured after file cleanup and failure diagnostics. No throughput or latency pass/fail threshold is set. Network/Oracle failures fail this normal run and must be investigated using the recorded environment.
+Duration runs wait two minutes for drained observation after a successful workload. Fixed-count runs proceed directly to final reporting. observation_ns records the actual wait and observation_completed is true only when the timer completes. The result record's elapsed_ns is time from run initialization to record writing, before that record and file Sync/Close complete. Terminal wall time is captured after file cleanup and failure diagnostics. No throughput or latency pass/fail threshold is set. Network/Oracle failures fail this normal run and must be investigated using the recorded environment.
 
 ## Measurements and artifacts
 
@@ -181,7 +182,7 @@ Checkpoint sequence:
 3. Continuous natural samples every configured interval.
 4. All measured workers finish and the sampler is stopped and joined.
 5. final_natural, then final_post_gc and final-heap.pprof.
-6. observation_start; keep the test process visible for two minutes without new connections.
+6. For duration runs, observation_start keeps the process visible for two minutes without new connections.
 7. settled_post_gc and settled-heap.pprof.
 8. Write one flat workload result with counts, separate warmup_counts, workload_elapsed_ns, active_ns/drain_ns (or null), observation_ns/observation_completed, result-write elapsed_ns, and a redacted error. Synchronize and close samples.jsonl, checking both errors, before returning to the terminal summary and Go PASS/FAIL. On an unexpected error, join workers and attempt endpoint diagnostics without the normal observation delay.
 
@@ -262,7 +263,7 @@ Live execution prerequisites still needed: actual TCPS listener/trust settings, 
 
 Lifecycle owns its direct-cycle helper, worker runner, measurements, unit tests and this document. Retention owns its pooled workload implementation. The following current dependencies remain shared contracts, despite retention-oriented names:
 
-- validateRetentionTLS: TCPS required, explicit certificate-name matching, weak matching disabled.
+- stressConnectionProtocol and validateRetentionTLS: check the configured protocol and require strict certificate identity matching for TCPS.
 - newRetentionRunID: unique run-ID generation; lifecycle retains its distinct cnx- prefix.
 - writeRetentionProfile and redactRetentionText: profile format/no-overwrite/error handling and error-secret redaction.
 - retentionFakeConnector, its connection/rows/driver fakes and hooks: shared database-free verification infrastructure.

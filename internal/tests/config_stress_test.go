@@ -141,8 +141,8 @@ func TestResourceRetentionConfigValidation(t *testing.T) {
 }
 
 // TestResourceRetentionJSONCompatibility verifies that legacy JSON still loads,
-// incomplete retention profiles fail with a contextual error, and an omitted or
-// null memory target stays unset.
+// missing stress profiles resolve to short runs, incomplete profiles fail with
+// a contextual error, and an omitted or null memory target stays unset.
 func TestResourceRetentionJSONCompatibility(t *testing.T) {
 	valid, err := json.Marshal(retentionConfigForTest())
 	if err != nil {
@@ -203,7 +203,7 @@ func TestResourceRetentionJSONCompatibility(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if name == "valid retention" && !reflect.DeepEqual(*config.Stress.ResourceRetention, retentionConfigForTest()) {
+			if name == "valid retention" && !reflect.DeepEqual(config.Stress.ResourceRetentionProfile(), retentionConfigForTest()) {
 				t.Fatal("profile was not preserved")
 			}
 			if (name == "missing memory_limit_mib" || name == "null memory") && config.Stress.ResourceRetention.MemoryLimitMiB != nil {
@@ -211,6 +211,19 @@ func TestResourceRetentionJSONCompatibility(t *testing.T) {
 			}
 			if name == "legacy" && config.Stress != nil {
 				t.Fatal("legacy configuration gained stress defaults")
+			}
+			if name == "legacy" || name == "empty stress" {
+				lifecycle := config.Stress.ConnectionLifecycleProfile()
+				if err := lifecycle.Validate(); err != nil || lifecycle.Workers != 4 || lifecycle.CyclesPerWorker != 16 ||
+					lifecycle.Duration != "" || lifecycle.Timeout != "1m" || lifecycle.OperationTimeout != "15s" || lifecycle.ProfilesEnabled() {
+					t.Fatalf("unexpected lifecycle default: %+v, err=%v", lifecycle, err)
+				}
+				retention := config.Stress.ResourceRetentionProfile().Normalized()
+				if err := retention.Validate(); err != nil || retention.Workers != 4 || retention.TotalOperations != 256 || retention.MaxOpenConnections != 4 ||
+					retention.Workload != "select_dual" || retention.Duration != "" || retention.Timeout != "1m" || retention.OperationTimeout != "15s" ||
+					retention.MemoryLimitMiB != nil || retention.DiagnosticProfiles {
+					t.Fatalf("unexpected retention default: %+v, err=%v", retention, err)
+				}
 			}
 		})
 	}
@@ -290,7 +303,8 @@ func TestConnectionLifecycleDefaultsAndDurationJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Stress.ConnectionLifecycle.ProfilesEnabled() || loaded.Stress.ConnectionLifecycle.Duration != "48h" {
+	profile := loaded.Stress.ConnectionLifecycleProfile()
+	if profile.ProfilesEnabled() || profile.Duration != "48h" || profile.Workers != 16 || profile.Timeout != "50h" {
 		t.Fatal("duration or explicit false not preserved")
 	}
 	clone := loaded.Clone()

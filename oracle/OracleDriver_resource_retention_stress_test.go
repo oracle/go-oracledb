@@ -86,7 +86,7 @@ type resourceRetentionResult struct {
 }
 
 // TestDriver_ResourceRetentionMemoryLeakStress validates repeated query results
-// and cleanup under concurrent load through a shared database/sql pool over TCPS.
+// and cleanup under concurrent load through a shared database/sql pool.
 // It checks for outstanding checkouts at drained checkpoints and records post-GC
 // heap measurements for review.
 func TestDriver_ResourceRetentionMemoryLeakStress(t *testing.T) {
@@ -94,23 +94,24 @@ func TestDriver_ResourceRetentionMemoryLeakStress(t *testing.T) {
 	if !resourceRetentionStressEnabled() {
 		t.Skip("requires explicit -test.category=stress")
 	}
-	if TestingConfig == nil || TestingConfig.Stress == nil || TestingConfig.Stress.ResourceRetention == nil {
-		t.Fatal("resource-retention stress requires stress.resource_retention in the selected JSON configuration")
+	if TestingConfig == nil {
+		t.Fatal("resource-retention stress requires a selected database configuration")
 	}
-	config := *TestingConfig.Stress.ResourceRetention
+	config := TestingConfig.Stress.ResourceRetentionProfile()
 	if err := config.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateRetentionTLS(TestingConfig); err != nil {
+	protocol, err := stressConnectionProtocol(TestingConfig)
+	if err != nil {
 		t.Fatal(err)
 	}
 	config = config.Normalized()
 	timeout, _ := time.ParseDuration(config.Timeout)
 	if deadline, ok := t.Deadline(); ok && time.Until(deadline) <= timeout {
-		t.Fatalf("Go test timeout must exceed JSON timeout %s", config.Timeout)
+		t.Fatalf("Go test timeout must exceed workload timeout %s", config.Timeout)
 	}
 	runID := newRetentionRunID()
-	t.Logf("starting run_id=%s workload=%s artifacts=%s (startup metadata is outside heap checkpoints)", runID, config.Workload, config.OutputDirectory)
+	t.Logf("starting run_id=%s workload=%s protocol=%s artifacts=%s (startup metadata is outside heap checkpoints)", runID, config.Workload, protocol, config.OutputDirectory)
 	result, err := executeExpandedResourceRetention(config, runID, TestingConfig, func(ctx context.Context) (*sql.DB, error) {
 		connector, err := openTestConnectorWithConfig(TestingConfig)
 		if err != nil {
@@ -118,7 +119,7 @@ func TestDriver_ResourceRetentionMemoryLeakStress(t *testing.T) {
 		}
 		// OpenDB is lazy. Warm-up below bounds physical connection creation with
 		// the configured context, unlike the existing helper's unbounded Ping.
-		return sql.OpenDB(retentionTaggedConnector{Connector: connector, runID: runID}), nil
+		return sql.OpenDB(retentionTaggedConnector{Connector: connector, runID: runID, protocol: protocol}), nil
 	})
 	// Delay reporting until after the final sample so these log strings do not
 	// themselves become retained allocations in the measured workload.
@@ -588,6 +589,20 @@ func validateRetentionJSON(document string, id int) error {
 	return nil
 }
 
+// stressConnectionProtocol uses the selected environment's transport and
+// requires certificate identity checks for TCPS runs.
+func stressConnectionProtocol(config *TestConfig) (string, error) {
+	protocol := strings.ToLower(strings.TrimSpace(config.Database.Protocol))
+	switch protocol {
+	case "tcp":
+		return protocol, nil
+	case "tcps":
+		return protocol, validateRetentionTLS(config)
+	default:
+		return "", errors.New("stress requires database.protocol to be tcp or tcps")
+	}
+}
+
 func validateRetentionTLS(config *TestConfig) error {
 	if config == nil || !strings.EqualFold(strings.TrimSpace(config.Database.Protocol), "tcps") {
 		return errors.New("stress requires database.protocol=tcps; TCP is not TLS signoff coverage")
@@ -605,7 +620,8 @@ func validateRetentionTLS(config *TestConfig) error {
 // the original Conn preserves all optional database/sql driver interfaces.
 type retentionTaggedConnector struct {
 	driver.Connector
-	runID string
+	runID    string
+	protocol string
 }
 
 func (c retentionTaggedConnector) Connect(ctx context.Context) (conn driver.Conn, err error) {
@@ -641,8 +657,8 @@ func (c retentionTaggedConnector) Connect(ctx context.Context) (conn driver.Conn
 	}
 	values := make([]driver.Value, 1)
 	err = rows.Next(values)
-	if err == nil && !strings.EqualFold(fmt.Sprint(values[0]), "tcps") {
-		err = errors.New("server connection is not TCPS")
+	if err == nil && !strings.EqualFold(fmt.Sprint(values[0]), c.protocol) {
+		err = fmt.Errorf("server network protocol %q, want %q", values[0], c.protocol)
 	}
 	if err == nil {
 		e = rows.Next(values)
@@ -682,7 +698,7 @@ func TestDriver_ResourceRetentionLargeDataBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db := sql.OpenDB(retentionTaggedConnector{Connector: connector, runID: newRetentionRunID()})
+	db := sql.OpenDB(retentionTaggedConnector{Connector: connector, runID: newRetentionRunID(), protocol: "tcps"})
 	defer func() {
 		if err := db.Close(); err != nil {
 			t.Error(err)
@@ -818,7 +834,7 @@ func TestDriver_ResourceRetentionFixtureSetup(t *testing.T) {
 	if err != nil {
 		t.Fatal(redactRetentionText(err.Error(), TestingConfig))
 	}
-	db := sql.OpenDB(retentionTaggedConnector{Connector: connector, runID: newRetentionRunID()})
+	db := sql.OpenDB(retentionTaggedConnector{Connector: connector, runID: newRetentionRunID(), protocol: "tcps"})
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	defer func() {
@@ -1519,8 +1535,15 @@ func executeExpandedResourceRetention(config oracleTest.ResourceRetentionConfig,
 	if err != nil {
 		return
 	}
-	if err = recorder.event(map[string]any{"phase": "tls_verified", "run_id": runID, "protocol": "tcps", "fixture_fingerprint": fingerprint}); err != nil {
-		return
+	if testConfig != nil {
+		protocol := strings.ToLower(strings.TrimSpace(testConfig.Database.Protocol))
+		phase := "protocol_verified"
+		if protocol == "tcps" {
+			phase = "tls_verified"
+		}
+		if err = recorder.event(map[string]any{"phase": phase, "run_id": runID, "protocol": protocol, "fixture_fingerprint": fingerprint}); err != nil {
+			return
+		}
 	}
 
 	indices := make([]int, config.Workers)

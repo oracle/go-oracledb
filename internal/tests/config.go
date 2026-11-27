@@ -129,6 +129,31 @@ type StressConfig struct {
 	ConnectionLifecycle *ConnectionLifecycleConfig `json:"connection_lifecycle,omitempty"`
 }
 
+// ConnectionLifecycleProfile returns the configured workload or a short
+// fixed-count run when the database configuration omits this profile.
+func (c *StressConfig) ConnectionLifecycleProfile() ConnectionLifecycleConfig {
+	if c != nil && c.ConnectionLifecycle != nil {
+		return *c.ConnectionLifecycle
+	}
+	profiles := false
+	return ConnectionLifecycleConfig{
+		Workers: 4, CyclesPerWorker: 16, Timeout: "1m",
+		OperationTimeout: "15s", DiagnosticProfiles: &profiles,
+	}
+}
+
+// ResourceRetentionProfile returns the configured workload or a short
+// DUAL workload when the database configuration omits this profile.
+func (c *StressConfig) ResourceRetentionProfile() ResourceRetentionConfig {
+	if c != nil && c.ResourceRetention != nil {
+		return *c.ResourceRetention
+	}
+	return ResourceRetentionConfig{
+		Workers: 4, TotalOperations: 256, MaxOpenConnections: 4,
+		Timeout: "1m", OperationTimeout: "15s",
+	}
+}
+
 // ConnectionLifecycleConfig describes one manual direct-connection stress run.
 // Each cycle constructs a fresh connector. Choose a fixed count for smoke
 // validation or a duration for a continuous network soak.

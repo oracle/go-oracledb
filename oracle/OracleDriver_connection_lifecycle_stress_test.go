@@ -128,30 +128,35 @@ type connectionLifecycleRunResult struct {
 }
 
 // runDriverConnectionLifecycleStress checks concurrent cycles that open a fresh
-// TCPS connection through the driver connector, validate SELECT 1 FROM DUAL, and
+// connection using the configured protocol, validate SELECT 1 FROM DUAL, and
 // close rows and connections, requiring matching completion counts and no errors.
-// Only the manually selected exclusive stress category launches this potentially
-// multi-day run; ordinary Go test discovery cannot start it.
+// The exclusive stress category runs a short workload by default and accepts
+// an explicit profile for longer runs.
 func runDriverConnectionLifecycleStress(t *testing.T) {
-	if TestingConfig == nil || TestingConfig.Stress == nil || TestingConfig.Stress.ConnectionLifecycle == nil {
-		t.Skip("no stress.connection_lifecycle profile; stress workload did not run")
+	if TestingConfig == nil {
+		t.Fatal("connection lifecycle stress requires a selected database configuration")
 	}
-	config, err := resolveLifecycleConfig(*TestingConfig.Stress.ConnectionLifecycle)
+	config, err := resolveLifecycleConfig(TestingConfig.Stress.ConnectionLifecycleProfile())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validateRetentionTLS(TestingConfig); err != nil {
+	protocol, err := stressConnectionProtocol(TestingConfig)
+	if err != nil {
 		t.Fatal(err)
 	}
 	timeout, _ := time.ParseDuration(config.Timeout)
 	if deadline, ok := t.Deadline(); ok && time.Until(deadline) <= timeout {
-		t.Fatalf("Go test timeout must exceed JSON timeout %s", config.Timeout)
+		t.Fatalf("Go test timeout must exceed workload timeout %s", config.Timeout)
+	}
+	var observeFor time.Duration
+	if config.Duration != "" {
+		observeFor = 2 * time.Minute
 	}
 	runID := newLifecycleRunID()
-	t.Logf("connection_lifecycle run_id=%s pid=%d samples=%s workers=%d cycles_per_worker=%d duration=%s; external evidence required for leak sign-off",
-		runID, os.Getpid(), filepath.Join(config.OutputDirectory, runID, "samples.jsonl"), config.Workers, config.CyclesPerWorker, config.Duration)
-	result, err := executeConnectionLifecycleStress(context.Background(), config, runID, TestingConfig,
-		func() (driver.Connector, error) { return openTestConnectorWithConfig(TestingConfig) }, 2*time.Minute)
+	t.Logf("connection_lifecycle run_id=%s pid=%d protocol=%s samples=%s workers=%d cycles_per_worker=%d duration=%s; external evidence required for leak sign-off",
+		runID, os.Getpid(), protocol, filepath.Join(config.OutputDirectory, runID, "samples.jsonl"), config.Workers, config.CyclesPerWorker, config.Duration)
+	result, err := executeConnectionLifecycleStress(context.Background(), config, runID, protocol, TestingConfig,
+		func() (driver.Connector, error) { return openTestConnectorWithConfig(TestingConfig) }, observeFor)
 	// The coordinator has checked file Sync/Close before returning. Go's test
 	// outcome, not the last JSON record, is authoritative for the complete run.
 	active, drain := "unavailable", "unavailable"
@@ -178,7 +183,7 @@ type lifecycleConnectorFactory func() (driver.Connector, error)
 // Each call constructs a new connector and owns one physical connection. The
 // separate defers close rows before the connection, even on an early return or
 // panic. They finish before another iteration starts; panics are not recovered.
-func executeDirectConnectionCycle(ctx context.Context, factory lifecycleConnectorFactory, runID string) (result directConnectionCycle, err error) {
+func executeDirectConnectionCycle(ctx context.Context, factory lifecycleConnectorFactory, runID, protocol string) (result directConnectionCycle, err error) {
 	defer func() {
 		if err == nil && ctx.Err() != nil {
 			err = fmt.Errorf("operation deadline: %w", ctx.Err())
@@ -210,7 +215,7 @@ func executeDirectConnectionCycle(ctx context.Context, factory lifecycleConnecto
 		return result, errors.New("connect: returned nil without an error")
 	}
 	result.Connected = true
-	if err = initializeLifecycleSession(ctx, conn, runID); err != nil {
+	if err = initializeLifecycleSession(ctx, conn, runID, protocol); err != nil {
 		return result, err
 	}
 
@@ -261,8 +266,8 @@ const lifecycleModule = "go-connection-lifecycle-stress"
 
 func newLifecycleRunID() string { return "cnx-" + strings.TrimPrefix(newRetentionRunID(), "ret-") }
 
-func initializeLifecycleSession(ctx context.Context, conn driver.Conn, runID string) error {
-	if err := verifyLifecycleTCPS(ctx, conn); err != nil {
+func initializeLifecycleSession(ctx context.Context, conn driver.Conn, runID, protocol string) error {
+	if err := verifyLifecycleProtocol(ctx, conn, protocol); err != nil {
 		return err
 	}
 	execer, ok := conn.(driver.ExecerContext)
@@ -278,7 +283,7 @@ func initializeLifecycleSession(ctx context.Context, conn driver.Conn, runID str
 	return nil
 }
 
-func verifyLifecycleTCPS(ctx context.Context, conn driver.Conn) (err error) {
+func verifyLifecycleProtocol(ctx context.Context, conn driver.Conn, protocol string) (err error) {
 	queryer, ok := conn.(driver.QueryerContext)
 	if !ok {
 		return errors.New("protocol verification: connection lacks driver.QueryerContext")
@@ -304,8 +309,8 @@ func verifyLifecycleTCPS(ctx context.Context, conn driver.Conn) (err error) {
 	if err = rows.Next(values); err != nil {
 		return fmt.Errorf("protocol verification: %w", err)
 	}
-	if !strings.EqualFold(fmt.Sprint(values[0]), "tcps") {
-		return errors.New("protocol verification: server connection is not TCPS")
+	if !strings.EqualFold(fmt.Sprint(values[0]), protocol) {
+		return fmt.Errorf("protocol verification: server network protocol %q, want %q", values[0], protocol)
 	}
 	if err = rows.Next(values); err != io.EOF {
 		if err == nil {
@@ -318,7 +323,7 @@ func verifyLifecycleTCPS(ctx context.Context, conn driver.Conn) (err error) {
 
 // The caller validates/normalizes config and supplies the run's safety context.
 // The admission deadline never cancels an otherwise healthy in-flight cycle.
-func runConnectionLifecycleWorkers(parent context.Context, config oracleTest.ConnectionLifecycleConfig, factory lifecycleConnectorFactory, runID string, progress *lifecycleProgress) (result connectionLifecycleRunResult, err error) {
+func runConnectionLifecycleWorkers(parent context.Context, config oracleTest.ConnectionLifecycleConfig, factory lifecycleConnectorFactory, runID, protocol string, progress *lifecycleProgress) (result connectionLifecycleRunResult, err error) {
 	ctx, cancel := context.WithCancelCause(parent)
 	defer cancel(nil)
 	operationTimeout, _ := time.ParseDuration(config.OperationTimeout)
@@ -350,7 +355,7 @@ func runConnectionLifecycleWorkers(parent context.Context, config oracleTest.Con
 				}
 				progress.start()
 				opCtx, stop := context.WithTimeout(ctx, operationTimeout)
-				c, cycleErr := executeDirectConnectionCycle(opCtx, factory, runID)
+				c, cycleErr := executeDirectConnectionCycle(opCtx, factory, runID, protocol)
 				stop()
 				progress.add(c, cycleErr)
 				if cycleErr != nil {
@@ -559,7 +564,7 @@ func resolveLifecycleConfig(config oracleTest.ConnectionLifecycleConfig) (oracle
 
 // config has already been validated and normalized. No production APIs, pool,
 // platform subprocesses, or generic collection framework are involved here.
-func executeConnectionLifecycleStress(parent context.Context, config oracleTest.ConnectionLifecycleConfig, runID string, testConfig *TestConfig, factory lifecycleConnectorFactory, observeFor time.Duration) (result lifecycleStressResult, err error) {
+func executeConnectionLifecycleStress(parent context.Context, config oracleTest.ConnectionLifecycleConfig, runID, protocol string, testConfig *TestConfig, factory lifecycleConnectorFactory, observeFor time.Duration) (result lifecycleStressResult, err error) {
 	began := time.Now()
 	result.WorkloadStatus = "not_started"
 	timeout, _ := time.ParseDuration(config.Timeout)
@@ -615,7 +620,7 @@ func executeConnectionLifecycleStress(parent context.Context, config oracleTest.
 	build, _ := debug.ReadBuildInfo()
 	if err = encoder.Encode(map[string]any{
 		"phase": "configuration", "run_id": runID, "pid": os.Getpid(), "timestamp_utc": began.UTC(),
-		"go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "config_name": configName, "profile": config,
+		"go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "config_name": configName, "profile": config, "protocol": protocol,
 		"executable_path": executable, "build": lifecycleBuildMetadata(build),
 	}); err != nil {
 		return
@@ -623,7 +628,7 @@ func executeConnectionLifecycleStress(parent context.Context, config oracleTest.
 
 	warmupConfig := config
 	warmupConfig.Duration, warmupConfig.CyclesPerWorker = "", 1
-	result.Warmup, err = runConnectionLifecycleWorkers(ctx, warmupConfig, factory, runID, &lifecycleProgress{})
+	result.Warmup, err = runConnectionLifecycleWorkers(ctx, warmupConfig, factory, runID, protocol, &lifecycleProgress{})
 	err = joinLifecycleErrors(err, encoder.Encode(map[string]any{"phase": "warmup", "run_id": runID, "counts": result.Warmup.Counts}))
 	if err != nil {
 		return
@@ -638,7 +643,7 @@ func executeConnectionLifecycleStress(parent context.Context, config oracleTest.
 
 	interval, _ := time.ParseDuration(config.SampleInterval)
 	stopSamples := startLifecycleSampler(ctx, interval, file, runID, began, p, cancel)
-	result.Workload, err = runConnectionLifecycleWorkers(ctx, config, factory, runID, p)
+	result.Workload, err = runConnectionLifecycleWorkers(ctx, config, factory, runID, protocol, p)
 	result.WorkloadStatus = "complete"
 	if err != nil {
 		result.WorkloadStatus = "failed"
@@ -813,7 +818,7 @@ func TestDirectConnectionCycleUnit(t *testing.T) {
 			if tc.configure != nil {
 				tc.configure(c)
 			}
-			result, err := executeDirectConnectionCycle(context.Background(), lifecycleTestFactory(c), "cnx-unit")
+			result, err := executeDirectConnectionCycle(context.Background(), lifecycleTestFactory(c), "cnx-unit", "tcps")
 			if tc.stage == "" {
 				if err != nil || !result.Attempted || !result.Connected || !result.Queried || !result.RowsClosed || !result.Closed {
 					t.Fatalf("result=%+v err=%v", result, err)
@@ -847,7 +852,7 @@ func TestDirectConnectionCycleUnit(t *testing.T) {
 					return lifecycleSessionConnector{&retentionFakeConn{connector: c}, primary}, nil
 				}
 			}
-			result, err := executeDirectConnectionCycle(context.Background(), factory, "cnx-unit")
+			result, err := executeDirectConnectionCycle(context.Background(), factory, "cnx-unit", "tcps")
 			if err == nil || result.Connected {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
@@ -880,7 +885,7 @@ func TestConnectionLifecycleWorkersUnit(t *testing.T) {
 			mu.Unlock()
 			return lifecycleTestConnector{c}, nil
 		}
-		result, err := runConnectionLifecycleWorkers(context.Background(), lifecycleUnitConfig(), factory, "cnx-unit", &lifecycleProgress{})
+		result, err := runConnectionLifecycleWorkers(context.Background(), lifecycleUnitConfig(), factory, "cnx-unit", "tcps", &lifecycleProgress{})
 		if err != nil || result.Counts.CompletedCycles != 20 || len(connectors) != 20 {
 			t.Fatalf("result=%+v factories=%d err=%v", result, len(connectors), err)
 		}
@@ -911,7 +916,7 @@ func TestConnectionLifecycleWorkersUnit(t *testing.T) {
 			},
 			query: func(context.Context, int64) (driver.Rows, error) { return nil, primary },
 		}
-		result, err := runConnectionLifecycleWorkers(context.Background(), lifecycleUnitConfig(), lifecycleTestFactory(c), "cnx-unit", &lifecycleProgress{})
+		result, err := runConnectionLifecycleWorkers(context.Background(), lifecycleUnitConfig(), lifecycleTestFactory(c), "cnx-unit", "tcps", &lifecycleProgress{})
 		if !errors.Is(err, primary) || !strings.Contains(err.Error(), "worker ") || !strings.Contains(err.Error(), "cycle ") || !strings.Contains(err.Error(), "query") {
 			t.Fatalf("missing original worker/cycle/stage: %v", err)
 		}
@@ -939,7 +944,7 @@ func TestConnectionLifecycleWorkersUnit(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			result, err = runConnectionLifecycleWorkers(context.Background(), config, lifecycleTestFactory(c), "cnx-unit", &lifecycleProgress{})
+			result, err = runConnectionLifecycleWorkers(context.Background(), config, lifecycleTestFactory(c), "cnx-unit", "tcps", &lifecycleProgress{})
 		}()
 		select {
 		case <-started:
@@ -970,7 +975,7 @@ func TestConnectionLifecycleWorkersUnit(t *testing.T) {
 				config.OperationTimeout = "2s"
 			}
 			c := &retentionFakeConnector{connect: func(ctx context.Context, _ int64) error { <-ctx.Done(); return ctx.Err() }}
-			result, err := runConnectionLifecycleWorkers(ctx, config, lifecycleTestFactory(c), "cnx-unit", &lifecycleProgress{})
+			result, err := runConnectionLifecycleWorkers(ctx, config, lifecycleTestFactory(c), "cnx-unit", "tcps", &lifecycleProgress{})
 			if !errors.Is(err, context.DeadlineExceeded) || result.Counts.WorkersFinished != 1 {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
@@ -1029,7 +1034,7 @@ func TestConnectionLifecycleWorkersUnit(t *testing.T) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		result, err := runConnectionLifecycleWorkers(ctx, config, factory, "cnx-unit", &lifecycleProgress{})
+		result, err := runConnectionLifecycleWorkers(ctx, config, factory, "cnx-unit", "tcps", &lifecycleProgress{})
 		var queryDetail *lifecycleUnitQueryError
 		if !errors.Is(err, primary) || !errors.As(err, &queryDetail) || queryDetail != independent ||
 			!errors.Is(err, rowClose) || !errors.Is(err, connClose) || !errors.Is(err, context.Canceled) {
@@ -1103,17 +1108,21 @@ func TestConnectionLifecycleWorkersUnit(t *testing.T) {
 	})
 }
 
-// TestConnectionLifecycleSessionUnit checks TCPS verification and session tagging.
+// TestConnectionLifecycleSessionUnit checks protocol verification and session tagging.
 // It asserts failed initialization prevents the query, attempts connection cleanup,
 // and preserves initialization and cleanup errors.
 func TestConnectionLifecycleSessionUnit(t *testing.T) {
-	for _, kind := range []string{"success", "tcp", "empty", "extra", "protocol query", "protocol close", "tag"} {
+	for _, kind := range []string{"tcps success", "tcp success", "protocol mismatch", "empty", "extra", "protocol query", "protocol close", "tag"} {
 		t.Run(kind, func(t *testing.T) {
 			primary, cleanup := errors.New("initialization failed"), errors.New("connection cleanup failed")
 			c := &retentionFakeConnector{}
 			conn := &lifecycleSessionFake{retentionFakeConn: &retentionFakeConn{connector: c}, protocol: []driver.Value{"tcps"}}
+			protocol := "tcps"
 			switch kind {
-			case "tcp":
+			case "tcp success":
+				protocol = "tcp"
+				conn.protocol = []driver.Value{"TCP"}
+			case "protocol mismatch":
 				conn.protocol = []driver.Value{"tcp"}
 			case "empty":
 				conn.protocol = nil
@@ -1126,14 +1135,15 @@ func TestConnectionLifecycleSessionUnit(t *testing.T) {
 			case "tag":
 				conn.tagError, c.closeError = primary, cleanup
 			}
-			result, err := executeDirectConnectionCycle(context.Background(), func() (driver.Connector, error) { return lifecycleSessionConnector{conn: conn}, nil }, "cnx-unit")
-			if (kind == "success") != (err == nil) || !result.Connected || c.closed.Load() != 1 {
+			result, err := executeDirectConnectionCycle(context.Background(), func() (driver.Connector, error) { return lifecycleSessionConnector{conn: conn}, nil }, "cnx-unit", protocol)
+			success := kind == "tcps success" || kind == "tcp success"
+			if success != (err == nil) || !result.Connected || c.closed.Load() != 1 {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
-			if kind == "success" && (!conn.tagged || !result.Queried || !result.RowsClosed || c.rowsClosed.Load() != 2) {
+			if success && (!conn.tagged || !result.Queried || !result.RowsClosed || c.rowsClosed.Load() != 2) {
 				t.Fatal("initialization/query cleanup missing")
 			}
-			if kind != "success" && (result.Queried || c.queries.Load() != 0) {
+			if !success && (result.Queried || conn.tagged && kind != "tag" || c.queries.Load() != 0) {
 				t.Fatal("query ran after failed initialization")
 			}
 			if kind == "tag" && (!errors.Is(err, primary) || !errors.Is(err, cleanup)) {
@@ -1192,7 +1202,7 @@ func TestConnectionLifecycleMeasurementsUnit(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			result, runErr = executeConnectionLifecycleStress(ctx, config, "cnx-observation", nil, lifecycleTestFactory(&retentionFakeConnector{}), time.Minute)
+			result, runErr = executeConnectionLifecycleStress(ctx, config, "cnx-observation", "tcps", nil, lifecycleTestFactory(&retentionFakeConnector{}), time.Minute)
 		}()
 		// Cancel only after the drained observation begins, not during workers
 		// or their final endpoint. This tests outcome separation, not timing.
@@ -1251,7 +1261,7 @@ func TestConnectionLifecycleMeasurementsUnit(t *testing.T) {
 				hookErr = os.WriteFile(filepath.Join(config.OutputDirectory, "cnx-reporting", "final-heap.pprof"), []byte("existing evidence"), 0600)
 			}
 		}
-		result, runErr := executeConnectionLifecycleStress(context.Background(), config, "cnx-reporting", nil, lifecycleTestFactory(c), time.Minute)
+		result, runErr := executeConnectionLifecycleStress(context.Background(), config, "cnx-reporting", "tcps", nil, lifecycleTestFactory(c), time.Minute)
 		if hookErr != nil {
 			t.Fatal(hookErr)
 		}
@@ -1276,7 +1286,7 @@ func TestConnectionLifecycleMeasurementsUnit(t *testing.T) {
 			}
 			return nil
 		}}
-		result, runErr := executeConnectionLifecycleStress(context.Background(), config, "cnx-timing", nil, lifecycleTestFactory(c), 0)
+		result, runErr := executeConnectionLifecycleStress(context.Background(), config, "cnx-timing", "tcps", nil, lifecycleTestFactory(c), 0)
 		if !errors.Is(runErr, primary) || result.WorkloadStatus != "failed" || result.Workload.Elapsed <= 0 {
 			t.Fatalf("%+v %v", result, runErr)
 		}
@@ -1311,7 +1321,7 @@ func TestConnectionLifecycleMeasurementsUnit(t *testing.T) {
 		defer cancel(nil)
 		stop := startLifecycleSampler(ctx, time.Millisecond, lifecycleFailWriter{}, "cnx-unit", time.Now(), p, cancel)
 		c := &retentionFakeConnector{connect: func(ctx context.Context, _ int64) error { <-ctx.Done(); return ctx.Err() }}
-		result, err := runConnectionLifecycleWorkers(ctx, lifecycleUnitConfig(), lifecycleTestFactory(c), "cnx-unit", p)
+		result, err := runConnectionLifecycleWorkers(ctx, lifecycleUnitConfig(), lifecycleTestFactory(c), "cnx-unit", "tcps", p)
 		if !errors.Is(err, io.ErrClosedPipe) || !errors.Is(stop(), io.ErrClosedPipe) || result.Counts.WorkersFinished != 4 {
 			t.Fatalf("sampler failure did not stop/join workers: %+v %v", result, err)
 		}
@@ -1341,7 +1351,7 @@ func TestConnectionLifecycleMeasurementsUnit(t *testing.T) {
 					}
 				}}}, nil
 			}
-			result, err := executeConnectionLifecycleStress(context.Background(), resolved, "cnx-artifact", nil, factory, time.Millisecond)
+			result, err := executeConnectionLifecycleStress(context.Background(), resolved, "cnx-artifact", "tcps", nil, factory, time.Millisecond)
 			if err != nil || result.Warmup.Counts.CompletedCycles != 2 || result.Workload.Counts.CompletedCycles != 6 || result.WorkloadStatus != "complete" {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
@@ -1396,7 +1406,7 @@ func TestConnectionLifecycleMeasurementsUnit(t *testing.T) {
 					t.Fatalf("disabled profile %s exists", name)
 				}
 			}
-			if _, err := executeConnectionLifecycleStress(context.Background(), resolved, "cnx-artifact", nil, factory, 0); err == nil {
+			if _, err := executeConnectionLifecycleStress(context.Background(), resolved, "cnx-artifact", "tcps", nil, factory, 0); err == nil {
 				t.Fatal("overwrote evidence")
 			}
 		}
@@ -1412,7 +1422,7 @@ func TestConnectionLifecycleMeasurementsUnit(t *testing.T) {
 		testConfig := &TestConfig{}
 		testConfig.Credentials.Password, testConfig.Security.WalletLocation = "secret-test-password", "/secret/wallet"
 		c := &retentionFakeConnector{connect: func(context.Context, int64) error { return primary }}
-		result, err := executeConnectionLifecycleStress(context.Background(), config, "cnx-failure", testConfig, lifecycleTestFactory(c), time.Minute)
+		result, err := executeConnectionLifecycleStress(context.Background(), config, "cnx-failure", "tcps", testConfig, lifecycleTestFactory(c), time.Minute)
 		if !errors.Is(err, primary) || result.WorkloadStatus != "not_started" || result.Workload.Counts.CyclesStarted != 0 {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}

@@ -1106,8 +1106,8 @@ func (retentionBrokenWriter) Write([]byte) (int, error) {
 	return 0, errors.New("artifact disk failure")
 }
 
-// TestResourceRetentionTLSAndMixedSchedule checks TCPS configuration and cleanup
-// on failed session initialization with a fake driver. It also verifies workload
+// TestResourceRetentionTLSAndMixedSchedule checks protocol configuration and
+// cleanup on failed session initialization with a fake driver. It also verifies workload
 // scheduling and that warm-up leaves measured counts and indices untouched.
 func TestResourceRetentionTLSAndMixedSchedule(t *testing.T) {
 	for _, workers := range []int{1, 4, 16} {
@@ -1187,19 +1187,23 @@ func TestResourceRetentionTLSAndMixedSchedule(t *testing.T) {
 		}
 	})
 	c := &TestConfig{}
-	if validateRetentionTLS(c) == nil {
-		t.Fatal("TCP accepted")
+	if _, err := stressConnectionProtocol(c); err == nil {
+		t.Fatal("missing protocol accepted")
+	}
+	c.Database.Protocol = "tcp"
+	if protocol, err := stressConnectionProtocol(c); err != nil || protocol != "tcp" {
+		t.Fatalf("TCP configuration: protocol=%q err=%v", protocol, err)
 	}
 	c.Database.Protocol = "tcps"
-	if validateRetentionTLS(c) == nil {
+	if _, err := stressConnectionProtocol(c); err == nil {
 		t.Fatal("missing identity policy accepted")
 	}
 	c.Security.SslServerDnMatch = "on"
-	if err := validateRetentionTLS(c); err != nil {
-		t.Fatal(err)
+	if protocol, err := stressConnectionProtocol(c); err != nil || protocol != "tcps" {
+		t.Fatalf("TCPS configuration: protocol=%q err=%v", protocol, err)
 	}
 	c.Security.SslAllowWeakDnMatch = "on"
-	if validateRetentionTLS(c) == nil {
+	if _, err := stressConnectionProtocol(c); err == nil {
 		t.Fatal("weak matching accepted")
 	}
 	counts := map[string]int{}
@@ -1212,16 +1216,20 @@ func TestResourceRetentionTLSAndMixedSchedule(t *testing.T) {
 	if retentionVariant("mixed", 1, 0) == retentionVariant("mixed", 0, 0) {
 		t.Fatal("worker offsets missing")
 	}
-	for _, stage := range []string{"success", "tcp", "protocol query", "protocol close", "tag"} {
+	for _, stage := range []string{"tcps success", "tcp success", "protocol mismatch", "protocol query", "protocol close", "tag"} {
 		t.Run(stage, func(t *testing.T) {
 			fake := &retentionFakeConnector{}
 			cause := errors.New(stage)
+			expectedProtocol := "tcps"
+			if stage == "tcp success" {
+				expectedProtocol = "tcp"
+			}
 			fake.request = func(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
 				if stage == "protocol query" {
 					return nil, cause
 				}
-				protocol := "tcps"
-				if stage == "tcp" {
+				protocol := expectedProtocol
+				if stage == "protocol mismatch" {
 					protocol = "tcp"
 				}
 				r := &retentionSyntheticRows{columns: []string{"protocol"}, count: 1, closed: &fake.rowsClosed, row: func(int) []driver.Value { return []driver.Value{protocol} }}
@@ -1236,15 +1244,15 @@ func TestResourceRetentionTLSAndMixedSchedule(t *testing.T) {
 				}
 				return nil
 			}
-			conn, err := (retentionTaggedConnector{Connector: fake, runID: "test"}).Connect(context.Background())
-			if stage == "success" {
+			conn, err := (retentionTaggedConnector{Connector: fake, runID: "test", protocol: expectedProtocol}).Connect(context.Background())
+			if stage == "tcps success" || stage == "tcp success" {
 				if err != nil || conn == nil {
 					t.Fatal(err)
 				}
 				conn.Close()
 			} else {
 				if err == nil || conn != nil || fake.closed.Load() != 1 {
-					t.Fatalf("failed TLS setup cleanup: conn=%v err=%v", conn, err)
+					t.Fatalf("failed session setup cleanup: conn=%v err=%v", conn, err)
 				}
 			}
 		})
