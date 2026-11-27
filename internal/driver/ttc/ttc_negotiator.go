@@ -129,7 +129,7 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 		if err != nil {
 			common.Odl.Debug("Could not convert server timezone interval to duration", "timezone", decodedTimeZone, "error", err)
 		} else {
-			shelf.registerServerTimeZoneDuration(&timeZoneDuration)
+			shelf.registerServerTimeZoneDuration(timeZoneDuration)
 			common.Odl.Fine("Decoded server timezone interval", "timezone", decodedTimeZone, "duration", timeZoneDuration)
 		}
 	}

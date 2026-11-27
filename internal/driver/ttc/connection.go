@@ -420,7 +420,7 @@ func addFetchServerTimezoneDuration(callbacks *requestCallbacks, conn *connectio
 
 	// if the capability was not negotiated or the client failed to retrieve or
 	// parse the timezone, fetch the server timezone using a SQL statement
-	if !isTimeZoneInfoSupported || conn.shelf.getServerTimeZoneDuration() == nil {
+	if !isTimeZoneInfoSupported || !conn.shelf.hasServerTimeZoneDuration() {
 		callbacks.appendNewConnectionCallback(&requestBoundaryCallback{
 			description: "Fetch server timezone",
 			function: func(ctx context.Context) error {
@@ -449,7 +449,7 @@ func (c *connection) _registerServerTimezoneDuration(ctx context.Context) error 
 	if err != nil {
 		return err
 	}
-	c.shelf.registerServerTimeZoneDuration(&serverTimeZoneDuration)
+	c.shelf.registerServerTimeZoneDuration(serverTimeZoneDuration)
 	return nil
 }
 

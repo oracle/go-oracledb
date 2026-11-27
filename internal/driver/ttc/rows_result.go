@@ -187,7 +187,7 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	scale := colCtx.Scale
 	payload := r.rowData[r.currentRowIdx][i]
 	colCtx.LobContext = payload.lob
-	colCtx.serverTimeZoneDuration = *r.shelf.getServerTimeZoneDuration()
+	colCtx.serverTimeZoneDuration = r.shelf.getServerTimeZoneDuration()
 	// Handle Oracle SQL NULL (typically raw length zero is NULL).
 	if payload.data == nil {
 		return r.handleNull(i, dtype, scale), nil

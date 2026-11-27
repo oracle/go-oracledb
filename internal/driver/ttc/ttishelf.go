@@ -40,7 +40,6 @@ package ttc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
@@ -65,14 +64,15 @@ type StmtCancellationFunction func(ctx context.Context) error
 // encoders/decoders/OAC makers for the negotiated TTC protocol version.
 type ttiShelf[T any] struct {
 	*common.Shelf[T]
-	codecFactory             codecFactory
-	_providerRegistry        internalCommon.Registry[providers.Provider]
-	_refCursors              map[*ttcRowsRefCursor]struct{}
-	_currentTransaction      oracleTx
-	_cancelExecutionFunction StmtCancellationFunction
-	_serverTimeZoneDuration  *time.Duration
-	_eventService            *eventService
-	_validatorRegistry       internalCommon.Registry[stateValidator]
+	codecFactory               codecFactory
+	_providerRegistry          internalCommon.Registry[providers.Provider]
+	_refCursors                map[*ttcRowsRefCursor]struct{}
+	_currentTransaction        oracleTx
+	_cancelExecutionFunction   StmtCancellationFunction
+	_serverTimeZoneDuration    time.Duration
+	_serverTimeZoneDurationSet bool
+	_eventService              *eventService
+	_validatorRegistry         internalCommon.Registry[stateValidator]
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
@@ -190,13 +190,17 @@ func (s *ttiShelf[T]) cancelExecution(ctx context.Context) error {
 	return s._cancelExecutionFunction(ctx)
 }
 
-func (s *ttiShelf[T]) registerServerTimeZoneDuration(serverTimeZoneDuration *time.Duration) {
-	fmt.Printf("timezone registered %s \n", serverTimeZoneDuration)
+func (s *ttiShelf[T]) registerServerTimeZoneDuration(serverTimeZoneDuration time.Duration) {
 	s._serverTimeZoneDuration = serverTimeZoneDuration
+	s._serverTimeZoneDurationSet = true
 }
 
-func (s *ttiShelf[T]) getServerTimeZoneDuration() *time.Duration {
+func (s *ttiShelf[T]) getServerTimeZoneDuration() time.Duration {
 	return s._serverTimeZoneDuration
+}
+
+func (s *ttiShelf[T]) hasServerTimeZoneDuration() bool {
+	return s._serverTimeZoneDurationSet
 }
 
 func (s *ttiShelf[T]) getEventService() *eventService {
