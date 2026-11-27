@@ -45,6 +45,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -80,12 +81,13 @@ func TestIsRefCursorDestination(t *testing.T) {
 func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name      string
-		input     string
-		wantValid bool
+		name         string
+		input        string
+		wantDuration time.Duration
+		wantValid    bool
 	}{
-		{name: "valid positive timezone", input: "+05:30", wantValid: true},
-		{name: "valid negative timezone", input: "-08:15", wantValid: true},
+		{name: "valid positive timezone", input: "+05:30", wantDuration: 5*time.Hour + 30*time.Minute, wantValid: true},
+		{name: "valid negative timezone", input: "-08:15", wantDuration: -(8*time.Hour + 15*time.Minute), wantValid: true},
 		{name: "empty timezone", input: "", wantValid: false},
 		{name: "sign only timezone", input: "+", wantValid: false},
 		{name: "missing separator", input: "0530", wantValid: false},
@@ -101,12 +103,15 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 				}
 			}()
 
-			h, m, err := parseTimeZone(tt.input)
+			duration, err := parseTimeZone(tt.input)
 			if tt.wantValid {
 				if err != nil {
 					t.Fatalf("parseTimeZone(%q) should be valid: %v", tt.input, err)
 				}
-				fmt.Printf("PASS: accepted valid input %q -> (%d, %d)\n", tt.input, h, m)
+				if duration != tt.wantDuration {
+					t.Fatalf("parseTimeZone(%q) = %v, want %v", tt.input, duration, tt.wantDuration)
+				}
+				fmt.Printf("PASS: accepted valid input %q -> %v\n", tt.input, duration)
 				return
 			}
 
@@ -118,33 +123,6 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 			}
 			fmt.Printf("PASS: rejected malformed input %q with error: %v\n", tt.input, err)
 		})
-	}
-}
-
-// TestNewConnectionReturnsServerTimezoneError verifies that connection setup
-// reports a server timezone initialization failure.
-func TestNewConnectionReturnsServerTimezoneError(t *testing.T) {
-	t.Parallel()
-	shelf := newShelf[driverCommon.MessageType]()
-	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
-	shelf.RegisterMessageStreamer(&mockStreamer{
-		pullMsg: &mockOer{err: common.NewOERMessageError("ORA-12345", "timezone query failed")},
-	})
-	shelf.RegisterLocalizationService(common.NewLocalizationService(language.English))
-
-	conn, err := newConnection(context.Background(), shelf, driverCommon.NewSessionContext(), &mockNetworkSession{})
-	if err == nil {
-		t.Fatal("expected server timezone initialization error")
-	}
-	sqlErr, ok := err.(oracleErrors.SQLError)
-	if !ok {
-		t.Fatalf("expected common.SQLError, got %T", err)
-	}
-	if sqlErr.ErrorCode() != string(oracleErrors.ServerTimeZoneError) {
-		t.Fatalf("expected error code %s, got %s", oracleErrors.ServerTimeZoneError, sqlErr.ErrorCode())
-	}
-	if conn != nil {
-		t.Fatalf("expected nil connection, got %T", conn)
 	}
 }
 

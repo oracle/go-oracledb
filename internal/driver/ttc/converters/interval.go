@@ -79,8 +79,8 @@ const (
 	// not a wire-storage constraint; the years field is stored as a 4-byte signed int.
 	_maxYearPrecisionDigits = 9
 
-	// _intervalDSEncodingLen is the expected wire size for INTERVAL DAY TO SECOND.
-	_intervalDSEncodingLen = 11
+	// IntervalDSEncodingLen is the expected wire size for INTERVAL DAY TO SECOND.
+	IntervalDSEncodingLen = 11
 
 	// Time unit bounds
 	_hoursPerDay      = 24
@@ -355,14 +355,14 @@ func EncodeIntervalYearToMonth(v driver.Value) (driverCommon.B1Array, error) {
 //   - invalid second bias byte: ConverterRange/invalid-second-bias
 //   - invalid fractional nanoseconds (abs > 999,999,999): ConverterRange/invalid-fraction
 func DecodeIntervalDayToSecond(value driverCommon.B1Array) (string, error) {
-	if len(value) != _intervalDSEncodingLen {
+	if len(value) != IntervalDSEncodingLen {
 		common.Odl.Error(
 			"DecodeIntervalDayToSecond: unexpected interval value length",
 			"value",
 			value,
 			"expected-length",
-			_intervalDSEncodingLen)
-		return "", common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, "IntervalDayToSecond", "Decode", driverCommon.ReasonInvalidLength, _intervalDSEncodingLen)
+			IntervalDSEncodingLen)
+		return "", common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, "IntervalDayToSecond", "Decode", driverCommon.ReasonInvalidLength, IntervalDSEncodingLen)
 	}
 
 	// Days: int32 with XOR bias
@@ -592,7 +592,7 @@ func EncodeIntervalDayToSecond(v driver.Value) (driverCommon.B1Array, error) {
 	}
 
 	// Assemble the 11-byte wire encoding using +60 bias for H/M/S and 0x80000000 XOR bias for day and fractional
-	encoded := make(driverCommon.B1Array, _intervalDSEncodingLen)
+	encoded := make(driverCommon.B1Array, IntervalDSEncodingLen)
 	rawDays := uint32(int32(daySigned)) ^ _yearXorBias
 	binary.BigEndian.PutUint32(encoded[_dsDaysStart:_dsDaysStart+_dsDaysLen], rawDays)
 	encoded[_dsHourIdx] = byte(int(_monthBias) + int(hhSigned)) // may be below/above 0x3C due to negative/positive hour

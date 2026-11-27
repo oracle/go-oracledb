@@ -262,7 +262,7 @@ func newCapabilityMetadata() *capability {
 			kpccapCtbXMLCsxxmlt:            {index: 36, value: 0x01, isFlag: true, isDefault: true},          // client can decode CSX XMLType image
 			kpccapCtbXMLLobstrImgOnly:      {index: 36, value: 0x02, isFlag: true, isDefault: true},          // client can understand only lob/string based images
 			kpccapCtbTtc3Colmetadata:       {index: 37, value: 0x01, isFlag: true, isDefault: true},          // column metadata byte
-			kpccapCtbTtc3Tzver:             {index: 37, value: 0x02, isFlag: true, isDefault: true},          // remote to send timezone version
+			kpccapCtbTtc3Tzver:             {index: 37, value: 0x02, isFlag: true, isDefault: false},         // remote to send timezone version
 			kpccapCtbTtc3Implres:           {index: 37, value: 0x10, isFlag: true, isDefault: true},          // Implicit Results feature, 12g
 			kpccapCtbTtc3BigchunkClr:       {index: 37, value: 0x20, isFlag: true, isDefault: true},          // ttcclr supports big chunks
 			kpccapCtbTtc3KeepOutOrder:      {index: 37, value: 0x80, isFlag: true, isDefault: true},          // preserve out bind order
@@ -446,9 +446,10 @@ func (cap *capability) adjustCapabilityFrom(serverCap *capability) {
 	cap.runTimeCapabilities[kpccapRtbTtc.index] |= kpccapRtbTtc.value
 
 	kpccapCtbTtc3Index := int(cap.knownUsedCompileTimeCapabilities[kpccapCtbTtc3Tzver].index)
-	if len(serverCap.compileTimeCapabilities) > kpccapCtbTtc3Index && serverCap.compileTimeCapabilities[kpccapCtbTtc3Index] != cap.knownUsedCompileTimeCapabilities[kpccapCtbTtc3Tzver].value {
-		cap.compileTimeCapabilities[kpccapCtbTtc3Index] &= ^cap.knownUsedCompileTimeCapabilities[kpccapCtbTtc3Tzver].value
-		cap.runTimeCapabilities[kpccapRtTz.index] &= ^kpccapRtTz.value
+	kpccapCtbTtc3TzverFlag := cap.knownUsedCompileTimeCapabilities[kpccapCtbTtc3Tzver].value
+	if len(serverCap.compileTimeCapabilities) > kpccapCtbTtc3Index &&
+		serverCap.compileTimeCapabilities[kpccapCtbTtc3Index]&kpccapCtbTtc3TzverFlag != kpccapCtbTtc3TzverFlag {
+		cap.compileTimeCapabilities[kpccapCtbTtc3Index] &= ^kpccapCtbTtc3TzverFlag
 	}
 }
 

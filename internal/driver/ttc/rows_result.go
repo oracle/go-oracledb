@@ -86,22 +86,22 @@ type lobColumnContext struct {
 // metadata can be appended without impacting existing decode helpers because
 // the struct is passed by value.
 type columnContext struct {
-	Index                int
-	Name                 driverCommon.B1Array
-	SchemaName           driverCommon.B1Array
-	DBTypeName           driverCommon.B1Array
-	ScanType             *reflect.Type
-	Length               int64
-	DataType             DtyType
-	Precision            int64
-	Scale                int8
-	KernelPosition       int
-	ColumnFlags          uint32
-	CharsetForm          uint8
-	CharsetID            uint16
-	Nullable             bool
-	LobContext           *lobColumnContext
-	serverTimeZoneOffset int16
+	Index                  int
+	Name                   driverCommon.B1Array
+	SchemaName             driverCommon.B1Array
+	DBTypeName             driverCommon.B1Array
+	ScanType               *reflect.Type
+	Length                 int64
+	DataType               DtyType
+	Precision              int64
+	Scale                  int8
+	KernelPosition         int
+	ColumnFlags            uint32
+	CharsetForm            uint8
+	CharsetID              uint16
+	Nullable               bool
+	LobContext             *lobColumnContext
+	serverTimeZoneDuration time.Duration
 }
 
 // ttcRows implements database/sql/driver.Rows and optional ColumnType* interfaces.
@@ -187,7 +187,7 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	scale := colCtx.Scale
 	payload := r.rowData[r.currentRowIdx][i]
 	colCtx.LobContext = payload.lob
-	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
+	colCtx.serverTimeZoneDuration = r.shelf.getServerTimeZoneDuration()
 	// Handle Oracle SQL NULL (typically raw length zero is NULL).
 	if payload.data == nil {
 		return r.handleNull(i, dtype, scale), nil

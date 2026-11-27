@@ -48,6 +48,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"reflect"
 
@@ -108,10 +109,6 @@ func newConnection(
 	conn.registerEventListeners(conn.shelf.getEventService())
 	conn._registerHandleEndOfCallStatus()
 	conn.shelf.registerCancelExecution(conn.cancelCurrentExecution)
-	if err := conn._registerServerTimezoneOffset(ctx); err != nil {
-		return nil, err
-	}
-
 	return conn, nil
 }
 
@@ -417,7 +414,21 @@ func isRefCursorDestination(v any) bool {
 	return ok
 }
 
-func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {
+func addFetchServerTimezoneDuration(callbacks *requestCallbacks, conn *connection) {
+	// if the capability was not negotiated or the client failed to retrieve or
+	// parse the timezone, the server timezone wont be set, fetch the server
+	// timezone using a SQL statement
+	if !conn.shelf.hasServerTimeZoneDuration() {
+		callbacks.appendNewConnectionCallback(&requestBoundaryCallback{
+			description: "Fetch server timezone",
+			function: func(ctx context.Context) error {
+				return conn._registerServerTimezoneDuration(ctx)
+			},
+		})
+	}
+}
+
+func (c *connection) _registerServerTimezoneDuration(ctx context.Context) error {
 	// DBTIMEZONE can return either a region name or an offset; TZ_OFFSET normalizes
 	// both forms to the +/-HH:MM format expected by parseTimeZone.
 	rows, err := c.QueryContext(ctx, "SELECT TZ_OFFSET(DBTIMEZONE) FROM SYS.DUAL", nil)
@@ -432,11 +443,11 @@ func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {
 		return c.shelf.LocalizeError(common.NewOracleError(oracleErrors.ServerTimeZoneError, err, "retrieve"))
 	}
 	serverTimeZoneValue := values[0].(string)
-	TZH, TZM, err := parseTimeZone(serverTimeZoneValue)
+	serverTimeZoneDuration, err := parseTimeZone(serverTimeZoneValue)
 	if err != nil {
 		return err
 	}
-	c.shelf.registerServerTimeZoneOffset(int16(TZH*3600 + TZM*60))
+	c.shelf.registerServerTimeZoneDuration(serverTimeZoneDuration)
 	return nil
 }
 
@@ -446,10 +457,9 @@ func (c *connection) _registerServerTimezoneOffset(ctx context.Context) error {
 //   - timezone: The timezone string to parse.
 //
 // Returns:
-//   - hours: The parsed hour offset.
-//   - minutes: The parsed minute offset.
+//   - duration: The parsed signed timezone offset.
 //   - err: An error describing why parsing failed, or nil on success.
-func parseTimeZone(timezone string) (int, int, error) {
+func parseTimeZone(timezone string) (time.Duration, error) {
 	var sign int = 1
 	trimmedTimezone := timezone
 	if strings.HasPrefix(trimmedTimezone, "-") {
@@ -461,19 +471,26 @@ func parseTimeZone(timezone string) (int, int, error) {
 
 	items := strings.Split(trimmedTimezone, ":")
 	if len(items) != 2 {
-		return 0, 0, common.NewOracleError(oracleErrors.ServerTimeZoneError, nil, "parse")
+		return 0, common.NewOracleError(oracleErrors.ServerTimeZoneError, nil, "parse")
 	}
 
 	TZH, err := strconv.Atoi(items[0])
 	if err != nil {
-		return 0, 0, common.NewOracleError(oracleErrors.ServerTimeZoneError, err, "parse")
+		return 0, common.NewOracleError(oracleErrors.ServerTimeZoneError, err, "parse")
 	}
 	TZM, err := strconv.Atoi(items[1])
 	if err != nil {
-		return 0, 0, common.NewOracleError(oracleErrors.ServerTimeZoneError, err, "parse")
+		return 0, common.NewOracleError(oracleErrors.ServerTimeZoneError, err, "parse")
 	}
 
-	return sign * TZH, sign * TZM, nil
+	duration, err := time.ParseDuration(strconv.Itoa(TZH) + "h" + strconv.Itoa(TZM) + "m")
+	if err != nil {
+		return 0, common.NewOracleError(oracleErrors.ServerTimeZoneError, err, "parse")
+	}
+	if sign < 0 {
+		duration = -duration
+	}
+	return duration, nil
 }
 
 // handleSessionPropertyChange applies a sessionless transaction state change

@@ -211,7 +211,7 @@ func TestIntervalDayToSecond_Encode(t *testing.T) {
 func TestIntervalDayToSecond_Decode_Errors(t *testing.T) {
 	t.Parallel()
 	makeBase := func() common.B1Array {
-		b := make([]byte, _intervalDSEncodingLen)
+		b := make([]byte, IntervalDSEncodingLen)
 		// day = 0
 		binary.BigEndian.PutUint32(b[0:4], uint32(int32(0))^_yearXorBias)
 		// hour/minute/second = 0 (monthBias)

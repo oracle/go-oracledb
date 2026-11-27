@@ -40,6 +40,7 @@ package ttc
 
 import (
 	"context"
+	"time"
 
 	internalCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	common "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -63,14 +64,15 @@ type StmtCancellationFunction func(ctx context.Context) error
 // encoders/decoders/OAC makers for the negotiated TTC protocol version.
 type ttiShelf[T any] struct {
 	*common.Shelf[T]
-	codecFactory             codecFactory
-	_providerRegistry        internalCommon.Registry[providers.Provider]
-	_refCursors              map[*ttcRowsRefCursor]struct{}
-	_currentTransaction      oracleTx
-	_cancelExecutionFunction StmtCancellationFunction
-	_serverTimeZoneOffset    int16 // server time zone in seconds
-	_eventService            *eventService
-	_validatorRegistry       internalCommon.Registry[stateValidator]
+	codecFactory               codecFactory
+	_providerRegistry          internalCommon.Registry[providers.Provider]
+	_refCursors                map[*ttcRowsRefCursor]struct{}
+	_currentTransaction        oracleTx
+	_cancelExecutionFunction   StmtCancellationFunction
+	_serverTimeZoneDuration    time.Duration
+	_serverTimeZoneDurationSet bool
+	_eventService              *eventService
+	_validatorRegistry         internalCommon.Registry[stateValidator]
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
@@ -188,12 +190,23 @@ func (s *ttiShelf[T]) cancelExecution(ctx context.Context) error {
 	return s._cancelExecutionFunction(ctx)
 }
 
-func (s *ttiShelf[T]) registerServerTimeZoneOffset(serverTimeZoneOffset int16) {
-	s._serverTimeZoneOffset = serverTimeZoneOffset
+// registerServerTimeZoneDuration stores the server's timezone offset and marks
+// it as initialized.
+func (s *ttiShelf[T]) registerServerTimeZoneDuration(serverTimeZoneDuration time.Duration) {
+	s._serverTimeZoneDuration = serverTimeZoneDuration
+	s._serverTimeZoneDurationSet = true
 }
 
-func (s *ttiShelf[T]) getServerTimeZoneOffset() int16 {
-	return s._serverTimeZoneOffset
+// getServerTimeZoneDuration returns the stored server timezone offset. It is
+// zero when no duration has been registered.
+func (s *ttiShelf[T]) getServerTimeZoneDuration() time.Duration {
+	return s._serverTimeZoneDuration
+}
+
+// hasServerTimeZoneDuration reports whether a server timezone duration has
+// been registered, including when its value is zero.
+func (s *ttiShelf[T]) hasServerTimeZoneDuration() bool {
+	return s._serverTimeZoneDurationSet
 }
 
 func (s *ttiShelf[T]) getEventService() *eventService {
