@@ -269,7 +269,7 @@ func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 					return err
 				}
 				if rxd.numberOfReturningPositions > 0 {
-					if err := rxd._processDMLPlSqlIndicator(ctx, mar, col); err != nil {
+					if err := rxd._processPlSqlBindIndicator(ctx, mar, col); err != nil {
 						return err
 					}
 				}
@@ -287,7 +287,7 @@ func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 				return err
 			}
 			if rxd.numberOfReturningPositions > 0 {
-				if err := rxd._processDMLPlSqlIndicator(ctx, mar, col); err != nil {
+				if err := rxd._processPlSqlBindIndicator(ctx, mar, col); err != nil {
 					return err
 				}
 			}
@@ -325,12 +325,19 @@ Errors:
   - Propagates errors returned by the delegated column unmarshalling helper.
 */
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
+	plSqlBind := rxd.numberOfReturningPositions > 0 && !rxd.isDmlReturning
 	// Preserve CLR framing when the existing decoder lookup has no usable entry.
 	handler := unwrapCLRColumn
 	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unwrapColumn != nil {
 		handler = decoder.unwrapColumn
 	}
-	payload, err := handler(ctx, mar, columnUnwrapContext{column: rxd.columnContexts[col], index: col, sessCharSet: rxd.sessCharSet, sessNCharSet: rxd.sessNCharSet})
+	payload, err := handler(ctx, mar, columnUnwrapContext{
+		column:       rxd.columnContexts[col],
+		index:        col,
+		sessCharSet:  rxd.sessCharSet,
+		sessNCharSet: rxd.sessNCharSet,
+		plSqlBind:    plSqlBind,
+	})
 	if err != nil {
 		return err
 	}
@@ -368,4 +375,16 @@ func (rxd *tTIrxd) _processDMLPlSqlIndicator(ctx context.Context, mar driverComm
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
 	}
 	return nil
+}
+
+// _processPlSqlBindIndicator consumes the generic PL/SQL OUT-bind indicator
+// unless the datatype-specific column reader already consumed its terminator.
+// LONG and LONG RAW readers consume their complete type-specific framing.
+func (rxd *tTIrxd) _processPlSqlBindIndicator(ctx context.Context, mar driverCommon.Marshaller, col int) error {
+	switch rxd.getColumnDataType(col) {
+	case DtyLng, DtyLbi:
+		return nil
+	default:
+		return rxd._processDMLPlSqlIndicator(ctx, mar, col)
+	}
 }

@@ -608,7 +608,7 @@ Parameters:
 
 Returns:
   - common.Marshallable: The selected bind OAC instance.
-  - error: Non-nil if no compatible bind OAC constructor is registered.
+  - error: Non-nil if no compatible candidate is registered.
 
 Errors:
   - Returns a common.OracleError with code common.InternalError when no OAC candidate exists for the bind type.
@@ -627,13 +627,10 @@ func (f *CodecFactoryImpl) getBindOac(metadata bindValueMetadata, maxLength driv
 		// In case of out parameters, we need to override the oac maxlength
 		// scale as per the type we are sending. This must be the max possible
 		// values to enable the server to return the scalar type.
+		// OUT parameters use the registered maximum size and scale so the
+		// server can return values larger than the current input payload.
 		if metadata.isOut {
-			// LONG input/output sizes are selected by the statement context in
-			// prepareOACs. Preserve that fixed type/context size instead of
-			// replacing it with the registry's SQL maximum here.
-			if !isLongBindType(metadata.goType) {
-				oac.(*tTIoac).maxLength = bindOacTypeObj.maxLength
-			}
+			oac.(*tTIoac).maxLength = bindOacTypeObj.maxLength
 			oac.(*tTIoac).scale = bindOacTypeObj.scale
 		}
 		common.Odl.Finest("Bind OAC returned", "candidate", bestCandidate)

@@ -491,8 +491,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 
 	{Name: "TestPrepareBindsAndOAC_Normalize_Supported", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_Normalize_Supported},
 	{Name: "TestPrepareBindsAndOAC_Normalize_Errors", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_Normalize_Errors},
-	{Name: "TestPrepareBindsAndOAC_LongBindOACLengthsByStatementKind", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_LongBindOACLengthsByStatementKind},
-	{Name: "TestPrepareBindsAndOAC_PLSQLLongBindLimit", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_PLSQLLongBindLimit},
+	{Name: "TestPrepareBindsAndOAC_LongBindOACLengths", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_LongBindOACLengths},
 	{Name: "TestPrepareBinds_EmptyLongPayloadsAndNullMetadata", Categories: "unitary", Exclusive: false, Fn: TestPrepareBinds_EmptyLongPayloadsAndNullMetadata},
 	{Name: "TestPrepareBindsAndOAC_Encode_Supported", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_Encode_Supported},
 	{Name: "TestPrepareBindsAndOAC_Encode_Errors", Categories: "unitary", Exclusive: false, Fn: TestPrepareBindsAndOAC_Encode_Errors},
@@ -697,7 +696,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTTIwrnUnmarshalFrom", Categories: "unitary", Exclusive: false, Fn: TestTTIwrnUnmarshalFrom},
 	{Name: "TestTTIwrnUnmarshalFromRejectsTruncatedMessage", Categories: "unitary", Exclusive: false, Fn: TestTTIwrnUnmarshalFromRejectsTruncatedMessage},
 	{Name: "TestUnmarshalCLRColumnData", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalCLRColumnData},
-	{Name: "TestUnmarshalCLRColumnDataEnforcesMaxLength", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalCLRColumnDataEnforcesMaxLength},
 	{Name: "TestUnmarshalCLRColumnDataRejectsAggregateLengthAboveMaximum", Categories: "unitary", Exclusive: false, Fn: TestUnmarshalCLRColumnDataRejectsAggregateLengthAboveMaximum},
 	{Name: "Test_defaultNumericValue", Categories: "unitary", Exclusive: false, Fn: Test_defaultNumericValue},
 	{Name: "Test_defaultValueForNull", Categories: "unitary", Exclusive: false, Fn: Test_defaultValueForNull},

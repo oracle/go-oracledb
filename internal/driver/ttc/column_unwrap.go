@@ -111,6 +111,7 @@ type columnUnwrapContext struct {
 	index        int              // Zero-based column position used in diagnostics.
 	sessCharSet  driverCommon.UB2 // Session database character set used when the LOB omits its charset ID.
 	sessNCharSet driverCommon.UB2 // Session national character set used for the NCLOB charset fallback.
+	plSqlBind    bool             // Column is a PL/SQL OUT bind rather than a SQL result row.
 }
 
 /*
@@ -503,11 +504,32 @@ func byteColumnPayload(data driverCommon.B1Array) columnPayload {
 }
 
 // unwrapLongColumn reads short, NULL, or chunked LONG/LONG RAW CLR data with
-// the SQL LONG size limit, then consumes the two trailing SB2 row fields.
-func unwrapLongColumn(ctx context.Context, mar driverCommon.Marshaller, _ columnUnwrapContext) (columnPayload, error) {
+// the SQL LONG size limit. It consumes the framing fields used by either a
+// SQL result row or a PL/SQL OUT bind.
+func unwrapLongColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
 	data, _, err := mar.UnmarshalCLRColumnData(ctx, int64(converters.MaxLongValueLength))
 	if err != nil {
 		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+
+	if env.plSqlBind {
+		if len(data) == 0 {
+			// A NULL LONG OUT value has an SB2 indicator followed by a UB4 return code.
+			if _, err := mar.UnmarshalSB2(ctx); err != nil {
+				return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+			}
+			if _, err := mar.UnmarshalUB4(ctx); err != nil {
+				return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+			}
+			return columnPayload{}, nil
+		}
+
+		// A non-NULL PL/SQL LONG OUT value has one trailing UB2 before the
+		// next TTC message. Reading a second one consumes that message header.
+		if _, err := mar.UnmarshalUB2(ctx); err != nil {
+			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+		}
+		return byteColumnPayload(data), nil
 	}
 
 	// LONG/LONG RAW carry two trailing SB2 fields after the CLR value, including

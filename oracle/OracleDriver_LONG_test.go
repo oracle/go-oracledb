@@ -50,15 +50,14 @@ import (
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
-// TestDriver_SelectLong covers materialized LONG bind and fetch behavior.
+// TestDriver_LongSelect covers materialized LONG bind and fetch behavior.
 // Cases:
 //   - null: SQL NULL bound and scanned with strict NULL handling.
 //   - short: short non-NULL text.
 //   - chunked_4k_multibyte: UTF-8 text over 4 KiB.
-//   - chunked_over_32767_multibyte: UTF-8 text over the ordinary bind limit.
 //   - chunked_2gib_minus_one: payload of 2,147,483,647 bytes (the LONG maximum).
 //   - chunked_2gib: one byte over the LONG maximum; round-trip is capped at the maximum.
-func TestDriver_SelectLong(t *testing.T) {
+func TestDriver_LongSelect(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
@@ -124,11 +123,6 @@ func TestDriver_SelectLong(t *testing.T) {
 			value:       func() string { return strings.Repeat("LONG-€-", 470) },
 		},
 		{
-			name:        "chunked_over_32767_multibyte",
-			description: "36 KiB UTF-8 text beyond the ordinary bind limit",
-			value:       func() string { return strings.Repeat("LONG-€-", 4_000) },
-		},
-		{
 			name:        "chunked_2gib_minus_one",
 			description: "2,147,483,647-byte LONG maximum payload (2 GiB - 1)",
 			value:       func() string { return strings.Repeat("L", int(twoGiBBytes-1)) },
@@ -149,7 +143,6 @@ func TestDriver_SelectLong(t *testing.T) {
 			if !tc.isNull {
 				value = tc.value()
 			}
-			t.Logf("case: %s; payload bytes: %d", tc.description, len(value))
 			caseDB, err := openTestDBWithConfig(testConfig)
 			if err != nil {
 				t.Fatalf("open case DB: %v", err)
@@ -193,15 +186,14 @@ func TestDriver_SelectLong(t *testing.T) {
 	}
 }
 
-// TestDriver_SelectLongRaw covers materialized LONG RAW bind and fetch behavior.
+// TestDriver_LongRawSelect covers materialized LONG RAW bind and fetch behavior.
 // Cases:
 //   - null: SQL NULL bound and scanned as nil with strict NULL handling.
 //   - short: binary data with zero and high-bit bytes.
 //   - chunked_4k: binary data over 4 KiB.
-//   - chunked_over_32767: binary data over the ordinary bind limit.
 //   - chunked_2gib_minus_one: payload of 2,147,483,647 bytes (the LONG RAW maximum).
 //   - chunked_2gib: one byte over the LONG RAW maximum; round-trip is capped at the maximum.
-func TestDriver_SelectLongRaw(t *testing.T) {
+func TestDriver_LongRawSelect(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
@@ -287,11 +279,6 @@ func TestDriver_SelectLongRaw(t *testing.T) {
 			value:       func() []byte { return makeRawValue(4*1024 + 257) },
 		},
 		{
-			name:        "chunked_over_32767",
-			description: "40 KiB binary value beyond the ordinary bind limit",
-			value:       func() []byte { return makeRawValue(40_000) },
-		},
-		{
 			name:        "chunked_2gib_minus_one",
 			description: "2,147,483,647-byte LONG RAW maximum payload (2 GiB - 1)",
 			value:       func() []byte { return makeRawBoundaryValue(int(twoGiBBytes - 1)) },
@@ -312,7 +299,6 @@ func TestDriver_SelectLongRaw(t *testing.T) {
 			if !tc.isNull {
 				value = tc.value()
 			}
-			t.Logf("case: %s; payload bytes: %d", tc.description, len(value))
 			caseDB, err := openTestDBWithConfig(testConfig)
 			if err != nil {
 				t.Fatalf("open case DB: %v", err)
@@ -355,6 +341,224 @@ func TestDriver_SelectLongRaw(t *testing.T) {
 			}
 		})
 	}
+}
+
+const plsqlLongBaselineLength = 32_760
+const plsqlLongMidTestLength = 33_000
+
+type plsqlLongPLSQLTestCase struct {
+	length      int
+	expectError bool
+}
+
+func plsqlLongPLSQLTestCases() []plsqlLongPLSQLTestCase {
+	return []plsqlLongPLSQLTestCase{
+		{length: plsqlLongBaselineLength},
+		{length: plsqlLongMidTestLength, expectError: true},
+	}
+}
+
+type plsqlLongBindCase struct {
+	name       string
+	column     string
+	columnType string
+	value      any
+}
+
+func plsqlLongBindCases(length int) []plsqlLongBindCase {
+	rawValue := bytes.Repeat([]byte{0x00, 0x80, 0xA5, 0xFF}, (length+3)/4)[:length]
+	return []plsqlLongBindCase{
+		{
+			name:       "LONG",
+			column:     "long_value",
+			columnType: "LONG",
+			value:      datatype.Long(strings.Repeat("L", length)),
+		},
+		{
+			name:       "LONG_RAW",
+			column:     "raw_value",
+			columnType: "LONG RAW",
+			value:      datatype.LongRaw(rawValue),
+		},
+	}
+}
+
+// createPLSQLLongBindTable creates a table for one LONG-family type and
+// registers cleanup on a fresh connection so failed OUT-bind tests can clean up.
+func createPLSQLLongBindTable(t *testing.T, db *sql.DB, tc plsqlLongBindCase) string {
+	t.Helper()
+	ctx := context.Background()
+	table := createObjectName("plsql_long_bind")
+	createSQL := fmt.Sprintf(`CREATE TABLE %s (
+		id NUMBER(9) NOT NULL PRIMARY KEY,
+		%s %s
+	)`, table, tc.column, tc.columnType)
+	if _, err := db.ExecContext(ctx, createSQL); err != nil {
+		t.Fatalf("create %s table failed: %v", tc.columnType, err)
+	}
+	t.Cleanup(func() {
+		// An OUT-bind decode error may leave the execution connection unusable.
+		cleanupDB, err := openTestDBWithConfig(TestingConfig)
+		if err != nil {
+			if t.Failed() {
+				t.Logf("open cleanup connection for %s after test failure: %v", table, err)
+			} else {
+				t.Errorf("open cleanup connection for %s: %v", table, err)
+			}
+			return
+		}
+		defer cleanupDB.Close()
+		if err := dropTable(ctx, cleanupDB, table); err != nil {
+			if t.Failed() {
+				t.Logf("drop table %s after test failure: %v", table, err)
+			} else {
+				t.Errorf("drop table %s: %v", table, err)
+			}
+		}
+	})
+
+	return table
+}
+
+// selectLongBindValue verifies that SQL SELECT returns the complete LONG-family
+// value inserted by the test.
+func selectLongBindValue(t *testing.T, db *sql.DB, table string, tc plsqlLongBindCase) {
+	t.Helper()
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE id = 1", tc.column, table)
+	switch want := tc.value.(type) {
+	case datatype.Long:
+		var got sql.NullString
+		if err := db.QueryRowContext(context.Background(), query).Scan(&got); err != nil {
+			t.Fatalf("SQL SELECT LONG failed: %v", err)
+		}
+		if !got.Valid || got.String != string(want) {
+			t.Fatalf("LONG SELECT mismatch: got %d bytes (valid=%t), want %d bytes", len(got.String), got.Valid, len(want))
+		}
+	case datatype.LongRaw:
+		var got []byte
+		if err := db.QueryRowContext(context.Background(), query).Scan(&got); err != nil {
+			t.Fatalf("SQL SELECT LONG RAW failed: %v", err)
+		}
+		if !bytes.Equal(got, []byte(want)) {
+			t.Fatalf("LONG RAW SELECT mismatch: got %d bytes, want %d bytes", len(got), len(want))
+		}
+	default:
+		t.Fatalf("unsupported LONG bind test value %T", tc.value)
+	}
+}
+
+// TestDriver_LongPLSQLInsertSQLSelect verifies LONG and LONG RAW PL/SQL INSERT
+// behavior at 32,760 bytes and expects an error at 33,000 bytes.
+func TestDriver_LongPLSQLInsertSQLSelect(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+	for _, testCase := range plsqlLongPLSQLTestCases() {
+		length := testCase.length
+		for _, tc := range plsqlLongBindCases(length) {
+			t.Run(fmt.Sprintf("%s/%d_bytes", tc.name, length), func(t *testing.T) {
+				db, err := openTestDBWithConfig(TestingConfig)
+				if err != nil {
+					t.Fatalf("failed to open test DB: %v", err)
+				}
+				t.Cleanup(func() { _ = db.Close() })
+
+				ctx := context.Background()
+				table := createPLSQLLongBindTable(t, db, tc)
+				insertSQL := fmt.Sprintf("BEGIN INSERT INTO %s (id, %s) VALUES (1, :payload); END;", table, tc.column)
+				_, insertErr := db.ExecContext(ctx, insertSQL, sql.Named("payload", tc.value))
+				if testCase.expectError {
+					if insertErr == nil {
+						t.Fatalf("PL/SQL INSERT accepted %s value of %d bytes; want an error", tc.name, length)
+					}
+					t.Logf("PL/SQL INSERT rejected %s value of %d bytes: %v", tc.name, length, insertErr)
+					return
+				}
+				if insertErr != nil {
+					t.Fatalf("PL/SQL INSERT %s (%d bytes) failed: %v", tc.name, length, insertErr)
+				}
+				selectLongBindValue(t, db, table, tc)
+			})
+		}
+	}
+}
+
+// TestDriver_LongPLSQLSelectOut verifies that PL/SQL SELECT INTO
+// OUT binds round-trip LONG and LONG RAW values at 32,760 bytes and return an
+// error when asked to retrieve a 33,000-byte value.
+func TestDriver_LongPLSQLSelectOut(t *testing.T) {
+	t.Parallel()
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+	for _, testCase := range plsqlLongPLSQLTestCases() {
+		length := testCase.length
+		for _, tc := range plsqlLongBindCases(length) {
+			t.Run(fmt.Sprintf("%s/%d_bytes", tc.name, length), func(t *testing.T) {
+				db, err := openTestDBWithConfig(TestingConfig)
+				if err != nil {
+					t.Fatalf("failed to open test DB: %v", err)
+				}
+				t.Cleanup(func() { _ = db.Close() })
+
+				ctx := context.Background()
+				// Seed the row through SQL so this test isolates PL/SQL OUT-bind
+				// decoding for both payload sizes.
+				table := createPLSQLLongBindTable(t, db, tc)
+				insertSQL := fmt.Sprintf("INSERT INTO %s (id, %s) VALUES (1, :payload)", table, tc.column)
+				if _, err := db.ExecContext(ctx, insertSQL, sql.Named("payload", tc.value)); err != nil {
+					t.Fatalf("SQL INSERT %s (%d bytes) failed: %v", tc.name, length, err)
+				}
+				selectLongBindValue(t, db, table, tc)
+
+				selectBlock := fmt.Sprintf("BEGIN SELECT %s INTO :selected FROM %s WHERE id = 1; END;",
+					tc.column, table)
+				switch want := tc.value.(type) {
+				case datatype.Long:
+					// Seed the destination to the expected output length.
+					got := datatype.Long(strings.Repeat("?", len(want)))
+					_, selectErr := db.ExecContext(ctx, selectBlock,
+						sql.Named("selected", sql.Out{Dest: &got}))
+					if testCase.expectError {
+						assertPLSQLLongOutError(t, selectErr, tc.name, length)
+						return
+					}
+					if selectErr != nil {
+						t.Fatalf("PL/SQL SELECT INTO LONG OUT bind (%d bytes) failed: %v", length, selectErr)
+					}
+					if got != want {
+						t.Fatalf("LONG OUT value mismatch: got %d bytes, want %d bytes", len(got), len(want))
+					}
+				case datatype.LongRaw:
+					// Use a different seed so an unchanged destination cannot pass.
+					got := datatype.LongRaw(bytes.Repeat([]byte{0x5A}, len(want)))
+					_, selectErr := db.ExecContext(ctx, selectBlock,
+						sql.Named("selected", sql.Out{Dest: &got}))
+					if testCase.expectError {
+						assertPLSQLLongOutError(t, selectErr, tc.name, length)
+						return
+					}
+					if selectErr != nil {
+						t.Fatalf("PL/SQL SELECT INTO LONG RAW OUT bind (%d bytes) failed: %v", length, selectErr)
+					}
+					if !bytes.Equal(got, []byte(want)) {
+						t.Fatalf("LONG RAW OUT value mismatch: got %d bytes, want %d bytes", len(got), len(want))
+					}
+				default:
+					t.Fatalf("unsupported LONG bind test value %T", tc.value)
+				}
+			})
+		}
+	}
+}
+
+func assertPLSQLLongOutError(t *testing.T, err error, typeName string, length int) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("PL/SQL SELECT INTO accepted %s OUT value of %d bytes; want an error above %d bytes", typeName, length, plsqlLongBaselineLength)
+	}
+	t.Logf("PL/SQL SELECT INTO rejected %s OUT value of %d bytes: %v", typeName, length, err)
 }
 
 // TestDriver_LongBindOrdering verifies named placeholder association when
@@ -528,10 +732,10 @@ func TestDriver_LongBindOrdering(t *testing.T) {
 	}
 }
 
-// TestDriver_SelectLongClobNclob verifies that LONG, CLOB, and NCLOB columns
+// TestDriver_LongClobNclobSelect verifies that LONG, CLOB, and NCLOB columns
 // can be selected and scanned together. It creates a table with one row and
 // checks that all three sql.NullString destinations contain the inserted text.
-func TestDriver_SelectLongClobNclob(t *testing.T) {
+func TestDriver_LongClobNclobSelect(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}

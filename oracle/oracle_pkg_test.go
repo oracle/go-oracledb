@@ -327,9 +327,11 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OpenConnectorPreservesQuotedInParameters", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorPreservesQuotedInParameters},
 	{Name: "TestDriver_Select_BLOB_Type", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BLOB_Type},
 
-	{Name: "TestDriver_SelectLong", Categories: "functional", Exclusive: false, Fn: TestDriver_SelectLong},
-	{Name: "TestDriver_SelectLongClobNclob", Categories: "functional", Exclusive: false, Fn: TestDriver_SelectLongClobNclob},
-	{Name: "TestDriver_SelectLongRaw", Categories: "functional", Exclusive: false, Fn: TestDriver_SelectLongRaw},
+	{Name: "TestDriver_LongSelect", Categories: "functional", Exclusive: false, Fn: TestDriver_LongSelect},
+	{Name: "TestDriver_LongClobNclobSelect", Categories: "functional", Exclusive: false, Fn: TestDriver_LongClobNclobSelect},
+	{Name: "TestDriver_LongRawSelect", Categories: "functional", Exclusive: false, Fn: TestDriver_LongRawSelect},
+	{Name: "TestDriver_LongPLSQLInsertSQLSelect", Categories: "functional", Exclusive: false, Fn: TestDriver_LongPLSQLInsertSQLSelect},
+	{Name: "TestDriver_LongPLSQLSelectOut", Categories: "functional", Exclusive: false, Fn: TestDriver_LongPLSQLSelectOut},
 	{Name: "TestDriver_LongBindOrdering", Categories: "functional", Exclusive: false, Fn: TestDriver_LongBindOrdering},
 }
 

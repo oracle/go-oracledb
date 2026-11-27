@@ -143,14 +143,13 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 	shelf.RegisterCodecFactory(factory)
 }
 
-func prepareBindDataForTest(sp *statementProcessor, args []sqldriver.Value, plsql ...bool) ([][]common.B1Array, []bindValueMetadata, []common.Marshallable, error) {
+func prepareBindDataForTest(sp *statementProcessor, args []sqldriver.Value) ([][]common.B1Array, []bindValueMetadata, []common.Marshallable, error) {
 	metadata := extractBindMetadata(args)
 	rows, err := sp.encodeBindValues(args, metadata)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	isPLSQL := len(plsql) > 0 && plsql[0]
-	oacs, err := sp.prepareOACs(rows, metadata, isPLSQL)
+	oacs, err := sp.prepareOACs(rows, metadata)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -482,115 +481,58 @@ func TestPrepareBindsAndOAC_OAC_Errors(t *testing.T) {
 	}
 }
 
-// TestPrepareBindsAndOAC_LongBindOACLengthsByStatementKind verifies OAC sizing
-// for LONG, LONG RAW, and pure OUT LONG binds.
-// Test cases:
-//   - SQL retains prior OAC widths for shorter LONG and OUT values and grows
-//     LONG RAW to fit its larger payload.
-//   - PL/SQL uses the PL/SQL maximum OAC length for each LONG-family bind.
-func TestPrepareBindsAndOAC_LongBindOACLengthsByStatementKind(t *testing.T) {
+// TestPrepareBindsAndOAC_LongBindOACLengths verifies that LONG-family binds use
+// their registered maximum size and ordinary types retain prior widths.
+func TestPrepareBindsAndOAC_LongBindOACLengths(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name        string
-		plsql       bool
-		wantLengths []common.UB4
-	}{
-		{name: "sql", wantLengths: []common.UB4{7, 12, 9}},
-		{name: "plsql", plsql: true, wantLengths: []common.UB4{
-			converters.MaxPLSQLLongValueLength,
-			converters.MaxPLSQLLongValueLength,
-			converters.MaxPLSQLLongValueLength,
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			shelf := newShelf[common.MessageType]()
-			registerTestCodecs(shelf, 20)
-			sp := &statementProcessor{
-				shelf: shelf,
-				previousOacs: []common.Marshallable{
-					newTTIoac(DtyLng, 7),
-					newTTIoac(DtyLbi, 8),
-					newTTIoac(DtyLng, 9),
-					newTTIoac(DtyVCS, 20),
-					newTTIoac(DtyVbi, 21),
-				},
-			}
-
-			_, _, oacs, err := prepareBindDataForTest(sp, []sqldriver.Value{
-				datatype.Long("x"),
-				datatype.LongRaw{0x00, 0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-				sql.Out{Dest: new(datatype.Long), In: false},
-				"ordinary string",
-				[]byte{0x01, 0x02},
-			}, tc.plsql)
-			if err != nil {
-				t.Fatalf("bind preparation returned error: %v", err)
-			}
-
-			gotTypes := make([]DtyType, len(oacs))
-			gotLengths := make([]common.UB4, len(oacs))
-			for i, descriptor := range oacs {
-				oac := descriptor.(*tTIoac)
-				gotTypes[i] = DtyType(oac.dataType)
-				gotLengths[i] = oac.maxLength
-			}
-			wantTypes := []DtyType{DtyLng, DtyLbi, DtyLng, DtyChr, DtyBin}
-			if !reflect.DeepEqual(gotTypes, wantTypes) {
-				t.Fatalf("OAC types = %v, want %v", gotTypes, wantTypes)
-			}
-			if !reflect.DeepEqual(gotLengths[:3], tc.wantLengths) {
-				t.Fatalf("LONG-family OAC lengths = %v, want %v", gotLengths[:3], tc.wantLengths)
-			}
-			if gotLengths[3] != 20 || gotLengths[4] != 21 {
-				t.Fatalf("ordinary OAC lengths = %v, want retained widths [20 21]", gotLengths[3:])
-			}
-		})
+	shelf := newShelf[common.MessageType]()
+	registerTestCodecs(shelf, 20)
+	sp := &statementProcessor{
+		shelf: shelf,
+		previousOacs: []common.Marshallable{
+			newTTIoac(DtyLng, 7),
+			newTTIoac(DtyLbi, 8),
+			newTTIoac(DtyLng, 9),
+			newTTIoac(DtyLbi, 10),
+			newTTIoac(DtyVCS, 20),
+			newTTIoac(DtyVbi, 21),
+		},
 	}
-}
 
-// TestPrepareBindsAndOAC_PLSQLLongBindLimit verifies that PL/SQL LONG and LONG RAW
-// binds accept Oracle's 32,760-byte server limit and reject larger payloads.
-func TestPrepareBindsAndOAC_PLSQLLongBindLimit(t *testing.T) {
-	t.Parallel()
-	limit := int(converters.MaxPLSQLLongValueLength)
-	for _, tc := range []struct {
-		name    string
-		value   sqldriver.Value
-		wantErr bool
-	}{
-		{name: "LONG_at_limit", value: datatype.Long(strings.Repeat("x", limit))},
-		{name: "LONG_over_limit", value: datatype.Long(strings.Repeat("x", limit+1)), wantErr: true},
-		{name: "LONG_RAW_at_limit", value: datatype.LongRaw(make([]byte, limit))},
-		{name: "LONG_RAW_over_limit", value: datatype.LongRaw(make([]byte, limit+1)), wantErr: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			shelf := newShelf[common.MessageType]()
-			registerTestCodecs(shelf, 20)
-			sp := &statementProcessor{shelf: shelf}
+	_, _, oacs, err := prepareBindDataForTest(sp, []sqldriver.Value{
+		datatype.Long(strings.Repeat("x", 40_000)),
+		datatype.LongRaw(bytes.Repeat([]byte{0xA5}, 40_000)),
+		sql.Out{Dest: new(datatype.Long), In: false},
+		sql.Out{Dest: new(datatype.LongRaw), In: false},
+		"ordinary string",
+		[]byte{0x01, 0x02},
+	})
+	if err != nil {
+		t.Fatalf("bind preparation returned error: %v", err)
+	}
 
-			_, _, oacs, err := prepareBindDataForTest(sp, []sqldriver.Value{tc.value}, true)
-			if !tc.wantErr {
-				if err != nil {
-					t.Fatalf("bind preparation at Oracle's PL/SQL limit failed: %v", err)
-				}
-				if got := oacs[0].(*tTIoac).maxLength; got != converters.MaxPLSQLLongValueLength {
-					t.Fatalf("PL/SQL LONG OAC length = %d, want %d", got, converters.MaxPLSQLLongValueLength)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("bind preparation above Oracle's PL/SQL limit succeeded")
-			}
-			var sqlErr oracleErrors.SQLError
-			if !errors.As(err, &sqlErr) || sqlErr.ErrorCode() != string(oracleErrors.PLSQLLongBindLimitExceeded) {
-				t.Fatalf("error = %v, want %s", err, oracleErrors.PLSQLLongBindLimitExceeded)
-			}
-			if !strings.Contains(err.Error(), "32,760") {
-				t.Fatalf("error does not describe Oracle's PL/SQL limit: %v", err)
-			}
-		})
+	gotTypes := make([]DtyType, len(oacs))
+	gotLengths := make([]common.UB4, len(oacs))
+	for i, descriptor := range oacs {
+		oac := descriptor.(*tTIoac)
+		gotTypes[i] = DtyType(oac.dataType)
+		gotLengths[i] = oac.maxLength
+	}
+	wantTypes := []DtyType{DtyLng, DtyLbi, DtyLng, DtyLbi, DtyChr, DtyBin}
+	if !reflect.DeepEqual(gotTypes, wantTypes) {
+		t.Fatalf("OAC types = %v, want %v", gotTypes, wantTypes)
+	}
+	wantLongLengths := []common.UB4{
+		converters.MaxLongValueLength,
+		converters.MaxLongValueLength,
+		converters.MaxLongValueLength,
+		converters.MaxLongValueLength,
+	}
+	if !reflect.DeepEqual(gotLengths[:4], wantLongLengths) {
+		t.Fatalf("LONG-family OAC lengths = %v, want %v", gotLengths[:4], wantLongLengths)
+	}
+	if gotLengths[4] != 20 || gotLengths[5] != 21 {
+		t.Fatalf("ordinary OAC lengths = %v, want retained widths [20 21]", gotLengths[4:])
 	}
 }
 

@@ -301,10 +301,9 @@ Use `datatype.Long` and `datatype.LongRaw` from `github.com/oracle/go-oracledb/v
 
 `LONG` and `LONG RAW` are materialized as complete Go values; the driver does not stream them. The per-value limit is 2,147,483,647 bytes (2 GiB - 1) and applies to the value buffered by the driver. It does not guarantee that the process has that amount of memory available. The driver currently buffers fetched rows eagerly, so total memory use can grow with the number and size of returned rows.
 
-For PL/SQL binds, Oracle Database imposes a server-side maximum of 32,760 bytes for `LONG` and `LONG RAW` values. The driver rejects larger PL/SQL bind values before sending them.
+Oracle PL/SQL limits `LONG` and `LONG RAW` variables to 32,760 bytes. A value larger than this cannot be retrieved from a `LONG` or `LONG RAW` column into a corresponding PL/SQL variable. See [Oracle PL/SQL data types](https://docs.oracle.com/en/database/oracle/oracle-database/26/lnpls/sql-data-types.html).
 
 Multi-row `UPDATE` operations with `LONG` or `LONG RAW` bind values are not supported yet.
->>>>>>> 8294fbd (LONG and LONG RAW support)
 
 ---
 

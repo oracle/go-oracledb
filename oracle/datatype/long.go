@@ -26,8 +26,11 @@
 
 package datatype
 
-// Long is a value bound as the Oracle LONG data type.
+// Long is a string value bound as the Oracle LONG data type. Use Long instead
+// of string when a bind must retain Oracle's LONG type, including in PL/SQL.
 type Long string
 
-// LongRaw is a value bound as the Oracle LONG RAW data type.
+// LongRaw is a byte slice bound as the Oracle LONG RAW data type. Use LongRaw
+// instead of []byte when a bind must retain Oracle's LONG RAW type, including
+// in PL/SQL.
 type LongRaw []byte
