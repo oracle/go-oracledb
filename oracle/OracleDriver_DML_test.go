@@ -57,15 +57,18 @@ func TestDriver_Table_Insert(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion.Major < 23 {
-		t.Skip("Inserting multiple rows with values is not supported with 19c")
-	}
 
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
 	defer db.Close()
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 21 {
+		t.Skip("Inserting multiple rows with values is not supported with 19c")
+	}
+
 	ctx := context.Background()
 	table := createObjectName("t_dml_insert")
 	cols := map[string]string{

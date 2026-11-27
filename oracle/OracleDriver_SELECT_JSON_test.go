@@ -63,14 +63,17 @@ func TestDriver_Table_Select_JSON(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion.Major < 21 {
-		t.Skip("JSON Type is not supported for DB < 21")
-	}
+
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 21 {
+		t.Skip("JSON Type is not supported for DB < 21")
+	}
 
 	ctx := context.Background()
 	table := createObjectName("t_select_json")
@@ -174,14 +177,17 @@ func TestDriver_Table_Select_NullJSON(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion.Major < 21 {
-		t.Skip("Boolean Type is not supported for DB < 23")
-	}
+
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 21 {
+		t.Skip("JSON Type is not supported for DB < 21")
+	}
 
 	ctx := context.Background()
 	table := createObjectName("t_select_json_null")
@@ -237,15 +243,17 @@ func TestDriver_Table_Insert_Select_JSON_MultiRows(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion.Major < 21 {
-		t.Skip("JSON Type is not supported for DB < 21")
-	}
 
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 21 {
+		t.Skip("JSON Type is not supported for DB < 21")
+	}
 
 	ctx := context.Background()
 	table := createObjectName("t_ins_sel_json_15")

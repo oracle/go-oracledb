@@ -75,6 +75,9 @@ func TestDriver_Functional_SelectDual(t *testing.T) {
 	}
 	defer db.Close()
 
+	dbInfo, _ := getRemoteDBDetails(db)
+	t.Logf("db info: %+v", dbInfo)
+
 	rows, err := db.QueryContext(context.Background(), "SELECT 1 FROM DUAL")
 	if err != nil {
 		t.Fatalf("select from DUAL failed: %v", err)
@@ -139,14 +142,17 @@ func TestDriver_Functional_SelectDualBOOLEAN(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion.Major < 23 {
-		t.Skip("Boolean Type is not supported for DB < 23")
-	}
+
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
 	defer db.Close()
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 23 {
+		t.Skip("Boolean Type is not supported for DB < 23")
+	}
 
 	for _, tc := range []struct {
 		query string

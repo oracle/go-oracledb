@@ -1587,15 +1587,17 @@ func TestDriver_DMLReturning_Insert_BooleanColumn(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
-	if TestingConfig.DatabaseVersion.Major < 23 {
-		t.Skip("Native BOOLEAN RETURNING requires Oracle 23c or later")
-	}
 
 	db, err := openTestDBWithConfig(TestingConfig)
 	if err != nil {
 		t.Fatalf("failed to open test DB: %v", err)
 	}
 	defer db.Close()
+
+	dbInfo, _ := getRemoteDBDetails(db)
+	if dbInfo.Version.Major < 23 {
+		t.Skip("Native BOOLEAN RETURNING requires Oracle 23c or later")
+	}
 
 	ctx := context.Background()
 	table := createObjectName("t_dml_ret_bool")

@@ -41,51 +41,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 )
 
-// Version stores a database version as three numeric parts.
-type Version struct {
-	Major int
-	Minor int
-	Micro int
-}
-
-func (v *Version) UnmarshalJSON(data []byte) error {
-	var dotted string
-	if err := json.Unmarshal(data, &dotted); err != nil {
-		return err
-	}
-
-	parts := strings.Split(dotted, ".")
-	if len(parts) != 3 {
-		return fmt.Errorf("version must contain three dot-separated fields, got %q", dotted)
-	}
-
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return fmt.Errorf("invalid major version: %w", err)
-	}
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return fmt.Errorf("invalid minor version: %w", err)
-	}
-	micro, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return fmt.Errorf("invalid patch version: %w", err)
-	}
-	v.Major = major
-	v.Minor = minor
-	v.Micro = micro
-	return nil
-}
-
 // TestConfig represents one database test configuration entry.
 type TestConfig struct {
-	ConfigName      string  `json:"config_name"`
-	DatabaseVersion Version `json:"database_version"`
-	Enabled         bool
+	ConfigName string `json:"config_name"`
+	Enabled    bool
 
 	Driver struct {
 		Name string
