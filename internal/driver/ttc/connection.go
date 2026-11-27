@@ -415,12 +415,10 @@ func isRefCursorDestination(v any) bool {
 }
 
 func addFetchServerTimezoneDuration(callbacks *requestCallbacks, conn *connection) {
-	// get the capability of receiving the time zone during connection establishement
-	isTimeZoneInfoSupported := conn.shelf.GetCapabilities()[kpccapRtTzEx].IsSet
-
 	// if the capability was not negotiated or the client failed to retrieve or
-	// parse the timezone, fetch the server timezone using a SQL statement
-	if !isTimeZoneInfoSupported || !conn.shelf.hasServerTimeZoneDuration() {
+	// parse the timezone, the server timezone wont be set, fetch the server
+	// timezone using a SQL statement
+	if !conn.shelf.hasServerTimeZoneDuration() {
 		callbacks.appendNewConnectionCallback(&requestBoundaryCallback{
 			description: "Fetch server timezone",
 			function: func(ctx context.Context) error {

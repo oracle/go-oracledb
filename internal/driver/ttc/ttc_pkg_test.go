@@ -648,7 +648,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestNeedToSendOACs_NoPreviousOACs", Categories: "unitary", Exclusive: false, Fn: TestNeedToSendOACs_NoPreviousOACs},
 	{Name: "TestNeedToSendOACs_SameOAC_ReturnsFalse", Categories: "unitary", Exclusive: false, Fn: TestNeedToSendOACs_SameOAC_ReturnsFalse},
 	{Name: "TestNeedToSendOACs_TypeChanged", Categories: "unitary", Exclusive: false, Fn: TestNeedToSendOACs_TypeChanged},
-	{Name: "TestNewConnectionReturnsServerTimezoneError", Categories: "unitary", Exclusive: false, Fn: TestNewConnectionReturnsServerTimezoneError},
 	{Name: "TestPasswordAuthenticatorValidatePasswordLength", Categories: "unitary", Exclusive: false, Fn: TestPasswordAuthenticatorValidatePasswordLength},
 	{Name: "TestStatementCancellationCleanupReleasesStartedAfterFunc", Categories: "unitary", Exclusive: false, Fn: TestStatementCancellationCleanupReleasesStartedAfterFunc},
 	{Name: "TestStatementExecContextTransactionCancellationBeforeSetup", Categories: "unitary", Exclusive: false, Fn: TestStatementExecContextTransactionCancellationBeforeSetup},

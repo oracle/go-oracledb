@@ -43,6 +43,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"testing"
+	"time"
 
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -253,6 +254,7 @@ func TestConnectionInitializeRequestBoundaryCallbacksQueuesInitialBegin(t *testi
 				driverCommon.Capability{IsSet: tt.sessionStateSupported},
 				tt.explicitBoundSupported,
 			)
+			connection.shelf.registerServerTimeZoneDuration(0 * time.Second)
 			callbacks := buildRequestBoundaryCallbacks(connection)
 			connection.initializeRequestBoundaryCallbacks(callbacks.requestStartCallbacks, callbacks.requestEndCallbacks)
 			if err := runRequestBoundaryCallbacks(context.Background(), callbacks.newConnectionCallbacks); err != nil {

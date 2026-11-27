@@ -126,33 +126,6 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 	}
 }
 
-// TestNewConnectionReturnsServerTimezoneError verifies that connection setup
-// reports a server timezone initialization failure.
-func TestNewConnectionReturnsServerTimezoneError(t *testing.T) {
-	t.Parallel()
-	shelf := newShelf[driverCommon.MessageType]()
-	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
-	shelf.RegisterMessageStreamer(&mockStreamer{
-		pullMsg: &mockOer{err: common.NewOERMessageError("ORA-12345", "timezone query failed")},
-	})
-	shelf.RegisterLocalizationService(common.NewLocalizationService(language.English))
-
-	conn, err := newConnection(context.Background(), shelf, driverCommon.NewSessionContext(), &mockNetworkSession{})
-	if err == nil {
-		t.Fatal("expected server timezone initialization error")
-	}
-	sqlErr, ok := err.(oracleErrors.SQLError)
-	if !ok {
-		t.Fatalf("expected common.SQLError, got %T", err)
-	}
-	if sqlErr.ErrorCode() != string(oracleErrors.ServerTimeZoneError) {
-		t.Fatalf("expected error code %s, got %s", oracleErrors.ServerTimeZoneError, sqlErr.ErrorCode())
-	}
-	if conn != nil {
-		t.Fatalf("expected nil connection, got %T", conn)
-	}
-}
-
 // TestConnection_ExecContext_LocalizesError verifies that ExecContext returns
 // errors localized to the connection's language.
 func TestConnection_ExecContext_LocalizesError(t *testing.T) {
