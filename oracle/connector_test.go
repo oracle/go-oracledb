@@ -46,6 +46,7 @@ import (
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	internalDriver "github.com/oracle/go-oracledb/v26/internal/driver"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/network/naming"
 	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
@@ -76,12 +77,14 @@ func (m mockConnectorDriverConn) Begin() (driver.Tx, error) {
 }
 
 type mockConnectorNetworkSession struct {
-	disconnectCalled bool
-	disconnectFlags  int
-	disconnectCtx    context.Context
-	disconnectErr    error
-	cancelCalled     bool
-	inband           bool
+	driverCommon.DataBuffer // Required by the TTC constructors; selection performs no I/O.
+	fastAuth                bool
+	disconnectCalled        bool
+	disconnectFlags         int
+	disconnectCtx           context.Context
+	disconnectErr           error
+	cancelCalled            bool
+	inband                  bool
 }
 
 func (m *mockConnectorNetworkSession) Disconnect(ctx context.Context, flags int) error {
@@ -102,6 +105,10 @@ func (m *mockConnectorNetworkSession) CheckInbandNotification() bool {
 
 func (m *mockConnectorNetworkSession) GetRemoteAddress() string {
 	return ""
+}
+
+func (m *mockConnectorNetworkSession) SupportsFastAuthentication() bool {
+	return m.fastAuth
 }
 
 func (m *mockConnectorNetworkSession) GetRemotePort() int {
@@ -147,7 +154,7 @@ func TestConnectorRegisterProviderMakesProviderAvailableToConnectionFactory(t *t
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			registered, err := providerRegistry.Get(reflect.TypeOf(provider))
 			if err != nil {
 				return nil, err
@@ -192,7 +199,7 @@ func TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails(t *testi
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			if connectedNS != ns {
 				t.Fatalf("got network session %p, want %p", connectedNS, ns)
 			}
@@ -231,7 +238,7 @@ func TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails(t *test
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			if connectedNS != ns {
 				t.Fatalf("got network session %p, want %p", connectedNS, ns)
 			}
@@ -264,7 +271,7 @@ func TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess(t *testing.T) {
 		func(ctx context.Context, option *naming.ConnectionOption, connectionID string) (driverCommon.NetworkSession, error) {
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			assertNoTokenProviderRegistered(t, providerRegistry)
 			return mockConnectorConnectionInstantiator{conn: mockConnectorDriverConn{}}, nil
 		},
@@ -299,7 +306,7 @@ func TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess(t *test
 			}
 			return ns, nil
 		},
-		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
+		func(drvConfig *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], _ bool) (driverCommon.ConnectionInstantiator, error) {
 			if connectedNS != ns {
 				t.Fatalf("got network session %p, want %p", connectedNS, ns)
 			}
@@ -320,5 +327,87 @@ func TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess(t *test
 	}
 	if attempts != 2 {
 		t.Fatalf("expected two connection attempts, got %d", attempts)
+	}
+}
+
+// TestConnectorConnectFallsBackOnTTIRENEG verifies that the connector asks
+// the same factory for normal fallback on the original network session.
+func TestConnectorConnectFallsBackOnTTIRENEG(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		fallback mockConnectorConnectionInstantiator
+	}{
+		{"success", mockConnectorConnectionInstantiator{conn: mockConnectorDriverConn{}}},
+		{"authentication failure", mockConnectorConnectionInstantiator{err: errors.New("fallback authentication failed")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ns := &mockConnectorNetworkSession{}
+			factoryCalls := 0
+			connector, err := newOracleConnector(
+				newConnectorTestConfig(t),
+				NewOracleDriverConfig(),
+				func(context.Context, *naming.ConnectionOption, string) (driverCommon.NetworkSession, error) {
+					return ns, nil
+				},
+				func(_ *oracleconfig.OracleDriverConfig, connectedNS driverCommon.NetworkSession, _ common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
+					factoryCalls++
+					if connectedNS != ns {
+						t.Fatal("fallback must reuse the original network session")
+					}
+					if serverProPending != (factoryCalls == 2) || factoryCalls > 2 {
+						t.Fatalf("factory call %d: unexpected pending PRO = %t", factoryCalls, serverProPending)
+					}
+					if serverProPending {
+						return tc.fallback, nil
+					}
+					return mockConnectorConnectionInstantiator{err: driverCommon.ErrTTIRENEG}, nil
+				},
+			)
+			if err != nil {
+				t.Fatalf("create connector: %v", err)
+			}
+
+			conn, err := connector.Connect(context.Background())
+			if !errors.Is(err, tc.fallback.err) || conn != tc.fallback.conn {
+				t.Fatalf("Connect() = (%v, %v), want (%v, %v)", conn, err, tc.fallback.conn, tc.fallback.err)
+			}
+			if factoryCalls != 2 || ns.disconnectCalled != (tc.fallback.err != nil) {
+				t.Fatalf("factory calls = %d, session disconnected = %t", factoryCalls, ns.disconnectCalled)
+			}
+		})
+	}
+}
+
+// TestConnectionInstantiatorSelection verifies that only an eligible initial attempt selects TTIINIT.
+func TestConnectionInstantiatorSelection(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name                          string
+		enabled, fastAuth, proPending bool
+		want                          string
+	}{
+		{name: "eligible", enabled: true, fastAuth: true, want: "ttiInitConnectionInstantiator"},
+		{name: "disabled", fastAuth: true, want: "connectionInstantiator"},
+		{name: "server lacks fast authentication", enabled: true, want: "connectionInstantiator"},
+		{name: "fallback", enabled: true, fastAuth: true, proPending: true, want: "connectionInstantiator"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := NewOracleDriverConfig()
+			cfg.Credentials.User = "user"
+			cfg.Credentials.Password = "password"
+			cfg.DriverProperties.TTIInitOptimizationEnabled = tc.enabled
+			ns := &mockConnectorNetworkSession{fastAuth: tc.fastAuth}
+			instantiator, err := internalDriver.GetConnectionInstantiator(cfg, ns, nil, tc.proPending)
+			if err != nil {
+				t.Fatalf("select instantiator: %v", err)
+			}
+			if instantiator == nil {
+				t.Fatal("factory returned no instantiator")
+			}
+			if got := reflect.TypeOf(instantiator).Elem().Name(); got != tc.want {
+				t.Fatalf("instantiator = %s, want %s", got, tc.want)
+			}
+		})
 	}
 }

@@ -105,6 +105,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestEventServicePostPreservesData", Categories: "unitary", Exclusive: false, Fn: TestEventServicePostPreservesData},
 	{Name: "TestAuthenticationFactoryWithNilParameters", Categories: "unitary", Exclusive: false, Fn: TestAuthenticationFactoryWithNilParameters},
 	{Name: "TestAuthenticationFactoryBasic", Categories: "unitary", Exclusive: false, Fn: TestAuthenticationFactoryBasic},
+	{Name: "TestAuthenticationFactoryRejectsInvalidLogonMode", Categories: "unitary", Exclusive: false, Fn: TestAuthenticationFactoryRejectsInvalidLogonMode},
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForSignedToken},
 	{Name: "TestGetAuthenticator_UsesTokenAuthenticatorForOAuth", Categories: "unitary", Exclusive: false, Fn: TestGetAuthenticator_UsesTokenAuthenticatorForOAuth},
 	{Name: "TestGetConnection", Categories: "unitary", Exclusive: false, Fn: TestGetConnection},
@@ -273,7 +274,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestTokenAuthenticatorSignHeaderForSignedProvider", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorSignHeaderForSignedProvider},
 	{Name: "TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorSignHeaderForOAuthProviderReturnsEmpty},
 	{Name: "TestValidateJWTExpirationExpired", Categories: "unitary", Exclusive: false, Fn: TestValidateJWTExpirationExpired},
-	{Name: "TestTokenAuthenticatorAuthenticateValidation", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorAuthenticateValidation},
+	{Name: "TestTokenAuthenticatorPrepareOAuthValidation", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorPrepareOAuthValidation},
 	{Name: "TestTokenAuthenticatorHelpers", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorHelpers},
 	{Name: "TestValidateJWTExpirationNonExpiredAndMalformed", Categories: "unitary", Exclusive: false, Fn: TestValidateJWTExpirationNonExpiredAndMalformed},
 	{Name: "TestTokenAuthenticatorAuthenticateBuildsOAuthMessage", Categories: "unitary", Exclusive: false, Fn: TestTokenAuthenticatorAuthenticateBuildsOAuthMessage},
@@ -285,6 +286,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConnectionNegotiator_Negotiate_Fail", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_Fail},
 	{Name: "TestConnectionNegotiatorConfiguredLobPrefetchSize", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiatorConfiguredLobPrefetchSize},
 	{Name: "TestConnectionNegotiator_Negotiate_Success", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_Success},
+	{Name: "TestConnectionNegotiatorReadsPendingPRO", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiatorReadsPendingPRO},
 	{Name: "TestConnectionNegotiator_Negotiate_SelectsEOCSMessages", Categories: "unitary", Exclusive: false, Fn: TestConnectionNegotiator_Negotiate_SelectsEOCSMessages},
 	{Name: "TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey", Categories: "unitary", Exclusive: false, Fn: TestStatement_QueryContext_JSONConstructor_NamedBindAfterQuotedKey},
 	{Name: "TestStatement_QueryContext_JSONConstructor_AdditionalNamedBindShapes", Categories: "unitary", Exclusive: false, Fn: TestStatement_QueryContext_JSONConstructor_AdditionalNamedBindShapes},
@@ -702,6 +704,21 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "Test_ttiSTA_getConnectionShouldBeDropped", Categories: "unitary", Exclusive: false, Fn: Test_ttiSTA_getConnectionShouldBeDropped},
 
 	{Name: "TestTypeRep_UnmarshalFrom_TooManyTypeRepresentations", Categories: "unitary", Exclusive: false, Fn: TestTypeRep_UnmarshalFrom_TooManyTypeRepresentations},
+	{Name: "TestMarshallerFactory_GetMarshallerForMessageType", Categories: "unitary", Exclusive: false, Fn: TestMarshallerFactory_GetMarshallerForMessageType},
+	{Name: "TestMessageStreamer_FlushUsesMessageSpecificMarshallers", Categories: "unitary", Exclusive: false, Fn: TestMessageStreamer_FlushUsesMessageSpecificMarshallers},
+	{Name: "TestMessageStreamer_PullUsesMessageSpecificMarshallers", Categories: "unitary", Exclusive: false, Fn: TestMessageStreamer_PullUsesMessageSpecificMarshallers},
+	{Name: "TestCreateMarshallerFactory", Categories: "unitary", Exclusive: false, Fn: TestCreateMarshallerFactory},
+	{Name: "TestTTIInitGetConnectionCleansUpOnReneg", Categories: "unitary", Exclusive: false, Fn: TestTTIInitGetConnectionCleansUpOnReneg},
+	{Name: "TestTTIInitMarshalTo", Categories: "unitary", Exclusive: false, Fn: TestTTIInitMarshalTo},
+	{Name: "TestTTIInitMarshalToFail", Categories: "unitary", Exclusive: false, Fn: TestTTIInitMarshalToFail},
+	{Name: "TestTTIInitNegotiationQueuesMessages", Categories: "unitary", Exclusive: false, Fn: TestTTIInitNegotiationQueuesMessages},
+	{Name: "TestTTIInitNegotiationProcessesResponses", Categories: "unitary", Exclusive: false, Fn: TestTTIInitNegotiationProcessesResponses},
+	{Name: "TestTTIInitNegotiationDecodeErrors", Categories: "unitary", Exclusive: false, Fn: TestTTIInitNegotiationDecodeErrors},
+	{Name: "TestTTIInitPasswordAuthenticateReturnsTTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestTTIInitPasswordAuthenticateReturnsTTIRENEG},
+	{Name: "TestTTIInitTokenAuthenticateAppliesSessionProperties", Categories: "unitary", Exclusive: false, Fn: TestTTIInitTokenAuthenticateAppliesSessionProperties},
+	{Name: "TestReadTTIInitAuthenticationResponse", Categories: "unitary", Exclusive: false, Fn: TestReadTTIInitAuthenticationResponse},
+	{Name: "TestReadTTIInitAuthenticationResponseTTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestReadTTIInitAuthenticationResponseTTIRENEG},
+	{Name: "TestReadTTIInitAuthenticationResponseFailure", Categories: "unitary", Exclusive: false, Fn: TestReadTTIInitAuthenticationResponseFailure},
 }
 
 // ArrayBasedDataBuffer is an implementation of DataBuffer for testing purposes.
@@ -1060,6 +1077,7 @@ type mockStreamer struct {
 	pushErr     error
 	flushErr    error
 	flushCalled bool
+	flushHook   func()
 	pullCalled  bool
 	pullTypes   []common.MessageType
 	pullMsg     common.Message[common.MessageType]
@@ -1161,6 +1179,9 @@ func (m *mockStreamer) Pull(_ context.Context, types ...common.MessageType) (com
 
 func (m *mockStreamer) Flush(_ context.Context) error {
 	m.flushCalled = true
+	if m.flushHook != nil {
+		m.flushHook()
+	}
 	return m.flushErr
 }
 
@@ -1232,6 +1253,10 @@ func (m *mockNetworkSession) CheckInbandNotification() bool {
 
 func (m *mockNetworkSession) GetRemoteAddress() string {
 	return m.remoteAddress
+}
+
+func (m *mockNetworkSession) SupportsFastAuthentication() bool {
+	return false
 }
 
 func (m *mockNetworkSession) GetRemotePort() int {

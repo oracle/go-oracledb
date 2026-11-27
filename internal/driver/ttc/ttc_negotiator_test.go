@@ -252,7 +252,7 @@ func TestConnectionNegotiator_Negotiate_Fail(t *testing.T) {
 				failWhere: tc.failWhere,
 				failErr:   errors.New(tc.expectedErr),
 			}
-			negotiator := newConnectionNegotiator()
+			negotiator := newConnectionNegotiator(nil, nil, false)
 			var err error
 			switch tc.step {
 			case stepProtocol:
@@ -402,10 +402,8 @@ func TestConnectionNegotiator_Negotiate_Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			negotiator := newConnectionNegotiator()
 			ctx := context.Background()
-			data := tc.buffer()
-			negotiator.SetDataBuffer(data)
+			negotiator := newConnectionNegotiator(tc.buffer(), nil, false)
 			sessCtx, shelf, err := negotiator.Negotiate(ctx)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -424,10 +422,9 @@ func TestConnectionNegotiator_Negotiate_Success(t *testing.T) {
 // negotiated EOCS capabilities are passed to the shelf's message factory and
 // select EOCS-aware TTIOER and TTISTA implementations.
 func TestConnectionNegotiator_Negotiate_SelectsEOCSMessages(t *testing.T) {
-	negotiator := newConnectionNegotiator()
 	data := NewTestDataBuffer()
 	data.OnWriteDefaults = successOnWriteEOCS(6)
-	negotiator.SetDataBuffer(data)
+	negotiator := newConnectionNegotiator(data, nil, false)
 
 	_, shelf, err := negotiator.Negotiate(context.Background())
 	if err != nil {
@@ -457,5 +454,30 @@ func TestConnectionNegotiator_Negotiate_SelectsEOCSMessages(t *testing.T) {
 	}
 	if !staMsg._supportsEndOfCallStatus {
 		t.Error("TTISTA does not support end-of-call status after EOCS negotiation")
+	}
+}
+
+// TestConnectionNegotiatorReadsPendingPRO verifies that fallback starts with the server's PRO and sends only DTY.
+func TestConnectionNegotiatorReadsPendingPRO(t *testing.T) {
+	buffer := NewTestDataBuffer()
+	buffer.WriteBuf(DefaultTTIproSuccessPayloadWithEOCS(6))
+	var sent []byte
+	buffer.OnFlush = func(b *TestDataBuffer) {
+		if b.buf.Len() == 0 {
+			t.Fatal("flushed an empty request")
+		}
+		sent = append(sent, b.buf.Bytes()[0])
+		b.ResetBuf()
+		b.WriteBuf([]byte{byte(TTIDTY), 0, 0})
+	}
+
+	negotiator := GetNegotiator(buffer, nil, common.ConnectionNormal, true)
+	_, _, err := negotiator.Negotiate(context.Background())
+
+	if err != nil {
+		t.Fatalf("negotiate with pending PRO: %v", err)
+	}
+	if len(sent) != 1 || sent[0] != byte(TTIDTY) {
+		t.Fatalf("flushed message types = %v, want only TTIDTY", sent)
 	}
 }

@@ -79,7 +79,6 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestStringFormat", Categories: "unitary", Exclusive: false, Fn: TestStringFormat},
 	{Name: "TestSetBytes_OutOfBounds", Categories: "unitary", Exclusive: false, Fn: TestSetBytes_OutOfBounds},
 	{Name: "TestShelf_NewShelfTest", Categories: "unitary", Exclusive: false, Fn: TestShelf_NewShelfTest},
-	{Name: "TestShelf_GetMarshaller", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetMarshaller},
 	{Name: "TestShelf_GetMessageFactory", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetMessageFactory},
 	{Name: "TestShelf_GetStreamer", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetStreamer},
 	{Name: "TestShelf_GetCapabilities", Categories: "unitary", Exclusive: false, Fn: TestShelf_GetCapabilities},

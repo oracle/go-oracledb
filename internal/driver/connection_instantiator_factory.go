@@ -46,9 +46,17 @@ import (
 	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 )
 
-// GetConnectionInstantiator returns the correct connection instantiator
-// according to the configuration
-func GetConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
-	// Get the correct connection instantiator depending on the configuration. For now we only support TTC
-	return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry)
+// GetConnectionInstantiator selects the TTC connection path. When serverProPending
+// is true, normal negotiation starts by reading the server's pending TTIPRO.
+func GetConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
+	if serverProPending {
+		common.Odl.Fine("Selecting normal TTC instantiator for server-requested renegotiation")
+		return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry, true)
+	}
+	if config.DriverProperties.IsTTIInitOptimizationEnabled() && ns.SupportsFastAuthentication() {
+		common.Odl.Fine("Selecting TTIINIT instantiator")
+		return ttc.NewTTIInitConnectionInstantiator(config, ns, providerRegistry)
+	}
+	common.Odl.Fine("Selecting normal TTC instantiator")
+	return ttc.NewTTCConnectionInstantiator(config, ns, providerRegistry, false)
 }

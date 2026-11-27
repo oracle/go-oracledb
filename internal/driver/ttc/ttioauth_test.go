@@ -658,28 +658,6 @@ func TestOAuth_sanitizeInputCredential(t *testing.T) {
 	}
 }
 
-func TestPasswordAuthenticatorValidatePasswordLength(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name    string
-		length  int
-		wantErr bool
-	}{
-		{"AtLimit", maxPasswordBytes, false},
-		{"OverLimit", maxPasswordBytes + 1, true},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			pa := newPasswordAuthenticator("user", strings.Repeat("a", tc.length), "connect")
-			err := pa.validatePasswordLength()
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("validatePasswordLength error = %v, wantErr %v", err, tc.wantErr)
-			}
-		})
-	}
-}
-
 // TestOAuth_validateO5VerifierType_Success tests successful verifier type validation.
 func TestOAuth_validateO5VerifierType_Success(t *testing.T) {
 	t.Parallel()

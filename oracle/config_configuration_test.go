@@ -372,3 +372,34 @@ func TestConfiguration_InitLoggingWithConfigFileDestination(t *testing.T) {
 		t.Fatalf("expected log file to contain message, got %q", string(data))
 	}
 }
+
+// TestConfiguration_TTIInitOptimization verifies that TTIINIT is enabled by
+// default and can be explicitly enabled or disabled through configuration.
+func TestConfiguration_TTIInitOptimization(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{name: "default", want: true},
+		{name: "enabled", value: "true", want: true},
+		{name: "disabled", value: "false", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := NewOracleDriverConfig()
+
+			if tc.value != "" {
+				if err := conf.AssignFromMap(map[string]string{
+					"oracle.go.DriverProperties.TTIInitOptimizationEnabled": tc.value,
+				}); err != nil {
+					t.Fatalf("AssignFromMap failed: %v", err)
+				}
+			}
+
+			if got := conf.DriverProperties.IsTTIInitOptimizationEnabled(); got != tc.want {
+				t.Fatalf("IsTTIInitOptimizationEnabled() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

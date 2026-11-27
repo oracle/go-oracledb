@@ -83,6 +83,43 @@ func (timeoutTestError) Error() string   { return "timeout" }
 func (timeoutTestError) Timeout() bool   { return true }
 func (timeoutTestError) Temporary() bool { return true }
 
+// TestHandleAcceptFastAuthentication verifies the advertised fast-authentication
+// flag and leaves support disabled for servers without that flag or flag field.
+func TestHandleAcceptFastAuthentication(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		version int
+		flags   uint32
+		want    bool
+	}{
+		{name: "318 ignores fast auth flag", version: 318, flags: TNS_ACCEPT_FLAG_FAST_AUTH},
+		{name: "319 with fast auth flag", version: 319, flags: TNS_ACCEPT_FLAG_FAST_AUTH, want: true},
+		{name: "319 without fast auth flag", version: 319, flags: TNS_ACCEPT_FLAG_HAS_END_OF_REQUEST},
+		{name: "older protocol", version: TNS_VERSION_MIN_DATA_FLAGS - 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ns := newNetworkSession()
+			ns.sAtts = newSessionAtts("")
+			ns.sAtts.version = tc.version
+			packet := &acceptPacket{}
+			if tc.version >= TNS_VERSION_MIN_DATA_FLAGS {
+				packet.buf = make([]byte, NSPACFL2+4)
+				binary.BigEndian.PutUint32(packet.buf[NSPACFL2:], tc.flags)
+			}
+
+			err := ns.handleAccept(context.Background(), packet)
+
+			if err != nil {
+				t.Fatalf("handleAccept failed: %v", err)
+			}
+			if got := ns.SupportsFastAuthentication(); got != tc.want {
+				t.Fatalf("SupportsFastAuthentication() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHandleAcceptRequiredANO(t *testing.T) {
 	ns := newNetworkSession()
 	ns.sAtts = newSessionAtts("")

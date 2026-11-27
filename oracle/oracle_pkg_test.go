@@ -65,6 +65,7 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestConfiguration_AssignFromEmptyMap", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromEmptyMap},
 	{Name: "TestConfiguration_AssignFromMapUnknownKey", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapUnknownKey},
 	{Name: "TestConfiguration_AssignFromMap", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMap},
+	{Name: "TestConfiguration_TTIInitOptimization", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_TTIInitOptimization},
 	{Name: "TestConfiguration_AssignFromMapValidatedIntString", Categories: "unitary", Exclusive: false, Fn: TestConfiguration_AssignFromMapValidatedIntString},
 	{Name: "TestConfiguration_AssignFromEnv", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnv},
 	{Name: "TestConfiguration_AssignFromEnvValidatedIntString", Categories: "unitary", Exclusive: true, Fn: TestConfiguration_AssignFromEnvValidatedIntString},
@@ -281,6 +282,8 @@ var testCases = []oracleTest.CategorizedTestCase{
 
 	{Name: "TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDisconnectsNetworkSessionWhenInstantiatorFails},
 	{Name: "TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDisconnectsNetworkSessionWhenGetConnectionFails},
+	{Name: "TestConnectorConnectFallsBackOnTTIRENEG", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectFallsBackOnTTIRENEG},
+	{Name: "TestConnectionInstantiatorSelection", Categories: "unitary", Exclusive: false, Fn: TestConnectionInstantiatorSelection},
 	{Name: "TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectLeavesNetworkSessionOpenAfterSuccess},
 	{Name: "TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess", Categories: "unitary", Exclusive: false, Fn: TestConnectorConnectDoesNotReturnStaleAttemptErrorAfterLaterSuccess},
 	{Name: "TestDriver_InsertForeignKeyViolation", Categories: "functional", Exclusive: false, Fn: TestDriver_InsertForeignKeyViolation},
@@ -326,6 +329,10 @@ var testCases = []oracleTest.CategorizedTestCase{
 	{Name: "TestDriver_OSON_NullDistinction", Categories: "functional", Exclusive: false, Fn: TestDriver_OSON_NullDistinction},
 	{Name: "TestDriver_OpenConnectorPreservesQuotedInParameters", Categories: "unitary", Exclusive: false, Fn: TestDriver_OpenConnectorPreservesQuotedInParameters},
 	{Name: "TestDriver_Select_BLOB_Type", Categories: "functional", Exclusive: false, Fn: TestDriver_Select_BLOB_Type},
+	{Name: "TestDriver_TTIInitConnectionTiming", Categories: "performance", Exclusive: true, Fn: TestDriver_TTIInitConnectionTiming},
+	{Name: "TestDriver_TTIInitPassword", Categories: "functional", Exclusive: true, Fn: TestDriver_TTIInitPassword},
+	{Name: "TestDriver_TTIInitOCIToken", Categories: "functional", Exclusive: true, Fn: TestDriver_TTIInitOCIToken},
+	{Name: "TestDriver_TTIInitRenegFallback", Categories: "functional", Exclusive: true, Fn: TestDriver_TTIInitRenegFallback},
 }
 
 func TestCategoryExecutor(t *testing.T) {

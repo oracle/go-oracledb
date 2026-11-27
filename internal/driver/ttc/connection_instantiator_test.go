@@ -54,7 +54,7 @@ import (
 func TestAuthenticationFactoryWithNilParameters(t *testing.T) {
 	t.Parallel()
 
-	auth, err := GetAuthenticator(nil, nil)
+	auth, err := GetAuthenticator(nil, nil, driverCommon.ConnectionNormal)
 	if err == nil {
 		t.Fatalf("get authenticator test failed %v", err)
 	}
@@ -63,19 +63,72 @@ func TestAuthenticationFactoryWithNilParameters(t *testing.T) {
 	}
 }
 
-// TestAuthenticationFactoryBasic verifies credentials create an authenticator.
+// TestAuthenticationFactoryBasic verifies both password paths preserve the logon mode.
 func TestAuthenticationFactoryBasic(t *testing.T) {
 	t.Parallel()
-	c := oracleconfig.NewOracleDriverConfig()
-	c.Credentials.User = "foo"
-	c.Credentials.Password = "bar"
-	c.ConnectDescriptor = "connection string"
-	auth, err := GetAuthenticator(c, nil)
-	if err != nil {
-		t.Fatalf("get authenticator test failed %v", err)
+	for _, path := range []struct {
+		name string
+		mode driverCommon.ConnectionMode
+	}{
+		{name: "normal", mode: driverCommon.ConnectionNormal},
+		{name: "ttiinit", mode: driverCommon.ConnectionTTIInit},
+	} {
+		for _, tc := range []struct {
+			name string
+			mode string
+			want common.LogonMode
+		}{
+			{name: "default"},
+			{name: "sysdba", mode: "SYSDBA", want: common.KpzLogonSysdba},
+			{name: "sysoper", mode: "SYSOPER", want: common.KpzLogonSysoper},
+		} {
+			t.Run(path.name+"/"+tc.name, func(t *testing.T) {
+				config := oracleconfig.NewOracleDriverConfig()
+				config.Credentials.User = "foo"
+				config.Credentials.Password = "bar"
+				config.Credentials.LogonMode = tc.mode
+				config.ConnectDescriptor = "connection string"
+				auth, err := GetAuthenticator(config, nil, path.mode)
+				if err != nil {
+					t.Fatalf("create authenticator: %v", err)
+				}
+				var shared *passwordAuthenticatorCommon
+				switch path.mode {
+				case driverCommon.ConnectionNormal:
+					pa, ok := auth.(*passwordAuthenticator)
+					if !ok {
+						t.Fatalf("authenticator = %T, want normal password authenticator", auth)
+					}
+					shared = pa.passwordAuthenticatorCommon
+				case driverCommon.ConnectionTTIInit:
+					pa, ok := auth.(*ttiInitPasswordAuthenticator)
+					if !ok {
+						t.Fatalf("authenticator = %T, want TTIINIT password authenticator", auth)
+					}
+					shared = pa.passwordAuthenticatorCommon
+				}
+				if shared._logonMode != tc.want.Value() {
+					t.Errorf("logon mode = %#x, want %#x", shared._logonMode, tc.want.Value())
+				}
+			})
+		}
 	}
-	if auth == nil {
-		t.Errorf("should have returned an authenticator")
+}
+
+// TestAuthenticationFactoryRejectsInvalidLogonMode verifies that invalid modes fail for both password paths.
+func TestAuthenticationFactoryRejectsInvalidLogonMode(t *testing.T) {
+	t.Parallel()
+
+	config := oracleconfig.NewOracleDriverConfig()
+	config.Credentials.User = "foo"
+	config.Credentials.Password = "bar"
+	config.Credentials.LogonMode = "SYSOPRE"
+
+	for _, mode := range []driverCommon.ConnectionMode{driverCommon.ConnectionNormal, driverCommon.ConnectionTTIInit} {
+		authenticator, err := GetAuthenticator(config, nil, mode)
+		if err == nil || authenticator != nil {
+			t.Errorf("connection mode %v: got (%T, %v), want a logon mode error and no authenticator", mode, authenticator, err)
+		}
 	}
 }
 
@@ -132,17 +185,19 @@ func TestGetConnection(t *testing.T) {
 				DriverProperties: oracleconfig.OracleDriverProperties{},
 			}
 			ci := &connectionInstantiator{
-				negotiator: &mockNegotiator{
-					sessCtx: driverCommon.NewSessionContext(),
-					shelf:   shelf,
-					err:     tt.negotiatorErr,
-				},
-				authenticator:       &mockAuthenticator{err: tt.authErr},
-				ns:                  ns,
-				driverConfig:        oracleconfig,
-				localizationService: common.NewLocalizationService(language.English),
-				newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
-					return newTestConnection(shelf, sessCtx, ns), nil
+				connectionInstantiatorCommon: &connectionInstantiatorCommon{
+					negotiator: &mockNegotiator{
+						sessCtx: driverCommon.NewSessionContext(),
+						shelf:   shelf,
+						err:     tt.negotiatorErr,
+					},
+					authenticator:       &mockAuthenticator{err: tt.authErr},
+					ns:                  ns,
+					driverConfig:        oracleconfig,
+					localizationService: common.NewLocalizationService(language.English),
+					newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
+						return newTestConnection(shelf, sessCtx, ns), nil
+					},
 				},
 			}
 
@@ -177,6 +232,40 @@ func TestGetConnection(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestTTIInitGetConnectionCleansUpOnReneg verifies that normal fallback can
+// proceed after the optimized attempt releases its setup callbacks.
+func TestTTIInitGetConnectionCleansUpOnReneg(t *testing.T) {
+	t.Parallel()
+
+	shelf := newShelf[driverCommon.MessageType]()
+	streamer := NewMessageStreamer(shelf, nil)
+	shelf.RegisterMessageStreamer(streamer)
+	sessCtx := driverCommon.NewSessionContext()
+	negotiator := &ttiInitConnectionNegotiator{}
+	negotiator.registerTTIInitNegotiationCallbacks(streamer, shelf, sessCtx)
+	ci := &ttiInitConnectionInstantiator{
+		connectionInstantiatorCommon: &connectionInstantiatorCommon{
+			negotiator:          &mockNegotiator{sessCtx: sessCtx, shelf: shelf},
+			authenticator:       &mockAuthenticator{err: driverCommon.ErrTTIRENEG},
+			ns:                  &mockNetworkSession{},
+			driverConfig:        &oracleconfig.OracleDriverConfig{},
+			localizationService: common.NewLocalizationService(language.English),
+			newConnectionFunc: func(context.Context, *ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext, driverCommon.NetworkSession) (*connection, error) {
+				t.Fatal("connection creation was called before fallback")
+				return nil, nil
+			},
+		},
+	}
+
+	conn, err := ci.GetConnection(context.Background())
+	if conn != nil || !errors.Is(err, driverCommon.ErrTTIRENEG) {
+		t.Fatalf("GetConnection() = (%v, %v), want (nil, ErrTTIRENEG)", conn, err)
+	}
+	if streamer.postUCallbacks[TTIPRO] != nil || streamer.preUCallbacks[TTIDTY] != nil || streamer.postUCallbacks[TTIDTY] != nil {
+		t.Fatal("TTIINIT negotiation callbacks remained registered after TTIRENEG")
 	}
 }
 
@@ -227,16 +316,18 @@ func TestGetConnectionQueuesInitialRequestBegin(t *testing.T) {
 			shelf.RegisterMessageFactory(NewMessageFactoryForProtocol(18, caps))
 
 			instantiator := &connectionInstantiator{
-				negotiator: &mockNegotiator{
-					sessCtx: driverCommon.NewSessionContext(),
-					shelf:   shelf,
-				},
-				authenticator:       &mockAuthenticator{},
-				ns:                  &mockNetworkSession{},
-				driverConfig:        &oracleconfig.OracleDriverConfig{},
-				localizationService: common.NewLocalizationService(language.English),
-				newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
-					return newTestConnection(shelf, sessCtx, ns), nil
+				connectionInstantiatorCommon: &connectionInstantiatorCommon{
+					negotiator: &mockNegotiator{
+						sessCtx: driverCommon.NewSessionContext(),
+						shelf:   shelf,
+					},
+					authenticator:       &mockAuthenticator{},
+					ns:                  &mockNetworkSession{},
+					driverConfig:        &oracleconfig.OracleDriverConfig{},
+					localizationService: common.NewLocalizationService(language.English),
+					newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
+						return newTestConnection(shelf, sessCtx, ns), nil
+					},
 				},
 			}
 
@@ -273,17 +364,19 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	}
 
 	ci := &connectionInstantiator{
-		negotiator: &mockNegotiator{
-			sessCtx: driverCommon.NewSessionContext(),
-			shelf:   shelf,
+		connectionInstantiatorCommon: &connectionInstantiatorCommon{
+			negotiator: &mockNegotiator{
+				sessCtx: driverCommon.NewSessionContext(),
+				shelf:   shelf,
+			},
+			authenticator: &mockAuthenticator{},
+			ns:            &mockNetworkSession{},
+			newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
+				return newTestConnection(shelf, sessCtx, ns), nil
+			},
+			driverConfig:        oracleconfig,
+			localizationService: nil,
 		},
-		authenticator: &mockAuthenticator{},
-		ns:            &mockNetworkSession{},
-		newConnectionFunc: func(_ context.Context, shelf *ttiShelf[driverCommon.MessageType], sessCtx *driverCommon.SessionContext, ns driverCommon.NetworkSession) (*connection, error) {
-			return newTestConnection(shelf, sessCtx, ns), nil
-		},
-		driverConfig:        oracleconfig,
-		localizationService: nil,
 	}
 
 	conn, err := ci.GetConnection(ctx)
@@ -324,7 +417,7 @@ func TestConnectionNegotiatorConfiguredLobPrefetchSize(t *testing.T) {
 	buffer.OnWriteDefaults = successOnWriteEOCS(6)
 	ns := &lobPrefetchTestNetworkSession{mockNetworkSession: &mockNetworkSession{}, TestDataBuffer: buffer}
 
-	instantiator, err := NewTTCConnectionInstantiator(config, ns, nil)
+	instantiator, err := NewTTCConnectionInstantiator(config, ns, nil, false)
 	if err != nil {
 		t.Fatalf("create instantiator: %v", err)
 	}
@@ -337,7 +430,8 @@ func TestConnectionNegotiatorConfiguredLobPrefetchSize(t *testing.T) {
 	if props == nil || props.GetDefaultLobPrefetchSize() != prefetchSize {
 		t.Fatal("configured connection properties were not installed during negotiation")
 	}
-	marshaller := shelf.GetMarshaller().(*MarshalEngine)
+	streamer := shelf.GetMessageStreamer().(*MessageStreamer)
+	marshaller := streamer.marshallerFactory.GetMarshallerForMessageType(TTIFUN).(*MarshalEngine)
 	if got := marshaller._defaultLobPrefetchSize; got != prefetchSize {
 		t.Fatalf("LOB prefetch size = %d, want %d", got, prefetchSize)
 	}

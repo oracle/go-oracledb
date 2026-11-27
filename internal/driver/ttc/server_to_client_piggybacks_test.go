@@ -89,9 +89,8 @@ func TestRegisterServerToClientPiggybacks(t *testing.T) {
 
 	shelf := newShelf[common.MessageType]()
 	sessionCtx := common.NewSessionContext()
-	messageStreamer := NewMessageStreamer(shelf)
+	messageStreamer := NewMessageStreamer(shelf, NewMarshallerFactory(engine))
 	shelf.RegisterMessageStreamer(messageStreamer)
-	shelf.RegisterMarshaller(engine)
 	shelf.RegisterMessageFactory(messageFactory)
 
 	registerServerToClientPiggybacks(shelf, sessionCtx)

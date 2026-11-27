@@ -41,8 +41,6 @@ package ttc
 import (
 	"context"
 	"database/sql/driver"
-	"fmt"
-	"reflect"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -52,14 +50,7 @@ import (
 )
 
 type connectionInstantiator struct {
-	negotiator          Negotiator
-	authenticator       Authenticator
-	dataBuffer          driverCommon.DataBuffer
-	ns                  driverCommon.NetworkSession
-	driverConfig        *oracleconfig.OracleDriverConfig
-	newConnectionFunc   func(context.Context, *ttiShelf[driverCommon.MessageType], *driverCommon.SessionContext, driverCommon.NetworkSession) (*connection, error)
-	localizationService common.LocalizationService
-	providerRegistry    common.Registry[oracleProviders.Provider]
+	*connectionInstantiatorCommon
 }
 
 // NewTTCConnectionInstantiator creates a new TTC connection instantiator.
@@ -68,29 +59,21 @@ type connectionInstantiator struct {
 //   - config: the Oracle driver configuration for the connection attempt.
 //   - ns: the established network session used by TTC.
 //   - providerRegistry: the provider registry available to the authenticator for this attempt.
+//   - serverProPending: whether negotiation starts by reading a pending server TTIPRO.
 //
 // Returns:
 //   - the TTC connection instantiator bound to ns.
 //   - an error if the authenticator or instantiator cannot be initialized.
-func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider]) (driverCommon.ConnectionInstantiator, error) {
-	dataBuffer := ns.(driverCommon.DataBuffer)
-	negotiator := GetNegotiator(dataBuffer, config.DriverProperties)
-	localizationService := common.NewLocalizationService(config.Locale.ClientLanguage)
-
-	authenticator, err := GetAuthenticator(config, providerRegistry)
+func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, providerRegistry common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
+	buffer := ns.(driverCommon.DataBuffer)
+	negotiator := GetNegotiator(buffer, config.DriverProperties, driverCommon.ConnectionNormal, serverProPending)
+	authenticator, err := GetAuthenticator(config, providerRegistry, driverCommon.ConnectionNormal)
 	if err != nil {
 		return nil, err
 	}
-	return &connectionInstantiator{
-		negotiator:          negotiator,
-		authenticator:       authenticator,
-		dataBuffer:          dataBuffer,
-		ns:                  ns,
-		driverConfig:        config,
-		newConnectionFunc:   newConnection,
-		localizationService: localizationService,
-		providerRegistry:    providerRegistry,
-	}, nil
+
+	shared := newConnectionInstantiatorCommon(config, ns, providerRegistry, negotiator, authenticator)
+	return &connectionInstantiator{connectionInstantiatorCommon: shared}, nil
 }
 
 // GetConnection returns a TTC connection to the database that implements
@@ -102,143 +85,20 @@ func NewTTCConnectionInstantiator(config *oracleconfig.OracleDriverConfig, ns dr
 // Returns:
 //   - the established driver connection.
 //   - an error if negotiation, authentication, or connection creation fails.
-func (connInstantiator *connectionInstantiator) GetConnection(ctx context.Context) (driver.Conn, error) {
-	if connInstantiator.localizationService == nil {
+func (ci *connectionInstantiator) GetConnection(ctx context.Context) (driver.Conn, error) {
+	if ci.localizationService == nil {
 		return nil, common.NewOracleError(oracleErrors.MissingLocalizationService, nil)
 	}
 
 	// Perform wire negotiation; capture session context, shelf and capability
-	sessCtx, shelf, err := connInstantiator.negotiator.Negotiate(ctx)
+	sessCtx, shelf, err := ci.negotiator.Negotiate(ctx)
 	if err != nil {
-		return nil, connInstantiator.localizationService.LocalizeError(err)
+		return nil, ci.localizationService.LocalizeError(err)
 	}
 
-	// After the session context is created, set client properties that will be needed
-	// by the client for authentication
-	sessCtx.GetClientProperties().SetProperty(driverCommon.RemoteAddress, connInstantiator.ns.GetRemoteAddress())
-	sessCtx.GetClientProperties().SetProperty(driverCommon.RemotePort, connInstantiator.ns.GetRemotePort())
-	sessCtx.GetClientProperties().SetProperty(driverCommon.ConnectDescriptor, connInstantiator.driverConfig.ConnectDescriptor)
-
-	// Register connection services for downstream consumers
-	shelf.RegisterLocalizationService(connInstantiator.localizationService)
-	shelf.registerProviderRegistry(connInstantiator.providerRegistry)
-
-	// register server to client piggyback callbacks
-	registerServerToClientPiggybacks(shelf, sessCtx)
-
-	// Initialise authenticator
-	if authenticator, ok := connInstantiator.authenticator.(ttiShelfUser); ok {
-		authenticator.SetShelf(shelf)
-	}
-	if sessionContextUser, ok := connInstantiator.authenticator.(SessionContextUser); ok {
-		sessionContextUser.SetSessionContext(sessCtx)
-	}
-
-	// Authenticate
-	err = connInstantiator.authenticator.Authenticate(ctx)
-	if err != nil {
+	ci.prepareForAuthentication(sessCtx, shelf)
+	if err := ci.authenticator.Authenticate(ctx); err != nil {
 		return nil, err
 	}
-
-	// snapshot session
-	sessCtx.GetSessionProperties().Snapshot()
-
-	common.Odl.Finest("Create the connection")
-	conn, err := connInstantiator.newConnectionFunc(ctx, shelf, sessCtx, connInstantiator.ns)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build and register request-boundary callbacks for the connection.
-	common.Odl.Finest("Build and register request-boundary callbacks")
-	callbacks := buildRequestBoundaryCallbacks(conn)
-	conn.initializeRequestBoundaryCallbacks(callbacks.requestStartCallbacks, callbacks.requestEndCallbacks)
-
-	// Run connection-initialization callbacks
-	common.Odl.Finest("Running connection initialization callbacks")
-	if err := runRequestBoundaryCallbacks(ctx, callbacks.newConnectionCallbacks); err != nil {
-		return nil, err
-	}
-
-	common.Odl.Debug("Connect end")
-	return conn, nil
-}
-
-// buildRequestBoundaryCallbacks builds request-boundary callbacks for the connection.
-func buildRequestBoundaryCallbacks(conn *connection) *requestCallbacks {
-	callbacks := newRequestBoundaryCallbacks()
-
-	// Add end-request callback that rolls back active transaction.
-	addRollbackEndRequestCallback(callbacks, conn)
-	// Add begin-request and end-request callbacks.
-	addBeginEndRequestCallbacks(callbacks, conn)
-
-	return callbacks
-}
-
-// *** Authenticator Factory ***
-
-// GetAuthenticator selects the authenticator to use for the supplied driver
-// configuration and provider registry.
-//
-// Parameters:
-//   - parameters: the Oracle driver configuration to inspect.
-//   - providerRegistry: the provider registry available to token-based authentication.
-//
-// Returns:
-//   - the authenticator matching the supplied configuration.
-//   - an error if no suitable authenticator can be created.
-func GetAuthenticator(parameters *oracleconfig.OracleDriverConfig, providerRegistry common.Registry[oracleProviders.Provider]) (Authenticator, error) {
-	common.Odl.Debug("New authenticator requested for", "parameters", parameters)
-
-	if parameters == nil {
-		// this should never happen
-		return nil, common.NewOracleError(oracleErrors.InternalError, nil)
-	}
-
-	if len(parameters.Credentials.User) > 0 {
-		if len(parameters.Credentials.Password) > 0 {
-			return createPasswordAuthenticator(parameters)
-		}
-	} else {
-		if len(parameters.Credentials.Password) > 0 {
-			// if there is a password but no username
-			return nil, common.NewOracleError(oracleErrors.EmptyUsernameError, nil, nil)
-		}
-		provider, err := providerRegistry.Get(reflect.TypeOf((*oracleProviders.TokenAuthenticationProvider)(nil)).Elem())
-		if err != nil {
-			return nil, common.NewOracleError(oracleErrors.NoAuthenticatorError, err, nil)
-		}
-		if provider != nil {
-			tokenProvider := provider.(oracleProviders.TokenAuthenticationProvider)
-			return newTokenAuthenticator(tokenProvider), nil
-		}
-
-	}
-	return nil, common.NewOracleError(oracleErrors.NoAuthenticatorError, nil, nil)
-}
-
-func createPasswordAuthenticator(parameters *oracleconfig.OracleDriverConfig) (Authenticator, error) {
-	if len(parameters.Credentials.LogonMode) > 0 {
-		var mode, _ = common.GetLogonModeFromString(parameters.Credentials.LogonMode)
-		common.Odl.Debug(fmt.Sprintf("logonMode set to [%s]", mode))
-		return newPasswordAuthenticatorWithLogonMode(parameters.Credentials.User,
-			parameters.Credentials.Password,
-			mode,
-			parameters.ConnectDescriptor), nil
-	}
-	return newPasswordAuthenticator(parameters.Credentials.User,
-		parameters.Credentials.Password,
-		parameters.ConnectDescriptor), nil
-}
-
-// *** Negotiator Factory ***
-
-// GetNegotiator returns the default Negotiator implementation with the connection properties.
-// TODO : we should not have to pass the buffer here...
-func GetNegotiator(transport driverCommon.DataBuffer, connectionProperties driverCommon.DriverProperties) Negotiator {
-	n := newConnectionNegotiator()
-	n.SetDataBuffer(transport)
-	n.SetConnectionProperties(connectionProperties)
-	return n
+	return ci.finishConnection(ctx, shelf, sessCtx)
 }

@@ -71,6 +71,9 @@ type NetworkSession interface {
 	// GetRemotePort returns the remote network port when it is available, or 0
 	// otherwise.
 	GetRemotePort() int
+
+	// SupportsFastAuthentication reports whether the server advertised fast authentication.
+	SupportsFastAuthentication() bool
 }
 
 // DataBuffer The Marshaller uses this interface to marshal data
@@ -88,6 +91,14 @@ type DataBuffer interface {
 	// Flush Flushes the data
 	Flush(context.Context) error
 }
+
+// ConnectionMode selects the connection establishment workflow.
+type ConnectionMode uint8
+
+const (
+	ConnectionNormal  ConnectionMode = iota // Normal TTC negotiation and authentication.
+	ConnectionTTIInit                       // Combine TTC negotiation with the first authentication request.
+)
 
 // ConnectionInstantiator implementors can create connections to the database
 type ConnectionInstantiator interface {

@@ -41,8 +41,14 @@ package oracle
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	oracleconfig "github.com/oracle/go-oracledb/v26/oracle/config"
+	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 )
 
 // BenchmarkPoolOpen measures the cost of checking out a pooled database
@@ -279,4 +285,68 @@ func BenchmarkInsertMultipleValues(b *testing.B) {
 		}
 		conn.Close()
 	}
+}
+
+// TestDriver_TTIInitConnectionTiming compares 30 fresh connections per setting.
+func TestDriver_TTIInitConnectionTiming(t *testing.T) {
+	if TestingConfig == nil {
+		t.Skip("No configuration available")
+	}
+
+	const samples = 30
+	noFastAuth := errors.New("database does not advertise fast authentication")
+
+	newConnector := func(enabled bool) *oracleConnector {
+		t.Helper()
+		c, err := openTestConnectorWithConfig(TestingConfig)
+		if err != nil {
+			t.Fatalf("create connector (TTIINIT enabled=%t): %v", enabled, err)
+		}
+		connector := c.(*oracleConnector)
+		connector.connectorConfig.DriverProperties.TTIInitOptimizationEnabled = enabled
+		return connector
+	}
+
+	disabled, enabled := newConnector(false), newConnector(true)
+	factory := enabled.connInstantiatorFactory
+	enabled.connInstantiatorFactory = func(config *oracleconfig.OracleDriverConfig, ns driverCommon.NetworkSession, registry common.Registry[oracleProviders.Provider], serverProPending bool) (driverCommon.ConnectionInstantiator, error) {
+		if !ns.SupportsFastAuthentication() {
+			return nil, noFastAuth
+		}
+		if serverProPending {
+			return nil, errors.New("server rejected TTIINIT and requested normal negotiation")
+		}
+		return factory(config, ns, registry, serverProPending)
+	}
+
+	measureConnection := func(label string, c *oracleConnector) time.Duration {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		start := time.Now()
+		conn, err := c.Connect(ctx)
+		elapsed := time.Since(start)
+		if errors.Is(err, noFastAuth) {
+			t.Skip("database does not advertise fast authentication; TTIINIT cannot be timed")
+		}
+		if err != nil {
+			t.Fatalf("%s connect: %v", label, err)
+		}
+		if err := conn.Close(); err != nil {
+			t.Fatalf("%s close: %v", label, err)
+		}
+		return elapsed
+	}
+
+	var disabledTotal, enabledTotal time.Duration
+	for range samples {
+		disabledTotal += measureConnection("TTIINIT disabled", disabled)
+		enabledTotal += measureConnection("TTIINIT enabled", enabled)
+	}
+
+	gain := 100 * float64(disabledTotal-enabledTotal) / float64(disabledTotal)
+	t.Logf("TTIINIT disabled average: %v", disabledTotal/samples)
+	t.Logf("TTIINIT enabled average: %v", enabledTotal/samples)
+	t.Logf("TTIINIT optimization gain: %.2f%%", gain)
 }
