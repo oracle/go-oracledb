@@ -42,6 +42,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -225,6 +226,7 @@ func TestGetConnectionQueuesInitialRequestBegin(t *testing.T) {
 			streamer := &mockStreamer{}
 			shelf.RegisterMessageStreamer(streamer)
 			shelf.RegisterMessageFactory(NewMessageFactoryForProtocol(18, caps))
+			shelf.registerServerTimeZoneDuration(0 * time.Second)
 
 			instantiator := &connectionInstantiator{
 				negotiator: &mockNegotiator{
@@ -267,6 +269,7 @@ func TestGetConnectionMissingLocalizationService(t *testing.T) {
 	shelf := newShelf[driverCommon.MessageType]()
 	shelf.RegisterMessageStreamer(&mockStreamer{pullMsg: &mockOer{err: nil}})
 	shelf.RegisterMessageFactory(&mockFactory{returnMsg: NewOall18()})
+	shelf.registerServerTimeZoneDuration(0 * time.Second)
 
 	oracleconfig := &oracleconfig.OracleDriverConfig{
 		DriverProperties: oracleconfig.OracleDriverProperties{},
