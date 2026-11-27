@@ -56,6 +56,9 @@ func (c *connection) ResetSession(ctx context.Context) error {
 		return driver.ErrBadConn
 	}
 
+	// clear the context before the connection is reused
+	c.clearEndUserSecurityContext()
+
 	// Run request-start callbacks. Return if a callback marks the connection bad.
 	common.Odl.Finest("Running request-start callbacks on ResetSession")
 	if err := runRequestBoundaryCallbacks(ctx, c._requestStartCallbacks); err != nil {

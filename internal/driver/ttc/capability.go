@@ -70,83 +70,85 @@ const (
 	kpccapCtbImplicitPool          = "KPCCAP_CTB_IMPLICIT_POOL"
 	kpccapCtbOauthmsgOnerr         = "KPCCAP_CTB_OAUTHMSG_ONERR"
 	// kpccapCtbImplresPrefetch enables TTIIMPLRES row prefetch in the execute response.
-	kpccapCtbImplresPrefetch       = "KPCCAP_CTB_IMPLRES_PREFETCH"
-	kpccapCtScrollableCursor       = "KPCCAP_CT_SCROLLABLE_CURSOR"
-	kpccapCtTtcFldVsn              = "KPCCAP_CT_TTC_FLD_VSN"
-	kpccapCt82pisal8               = "KPCCAP_CT_82PISAL8"
-	kpccapCtDequeuewithselector    = "KPCCAP_CT_DEQUEUEWITHSELECTOR"
-	kpccapCtTypeEvol               = "KPCCAP_CT_TYPE_EVOL"
-	kpccapCt2rt                    = "KPCCAP_CT_2RT"
-	kpccapCtClientidProp           = "KPCCAP_CT_CLIENTID_PROP"
-	kpccapCtLobscnCache            = "KPCCAP_CT_LOBSCN_CACHE"
-	kpccapCtDescribeOpen           = "KPCCAP_CT_DESCRIBE_OPEN"
-	kpccapCtbTtc1Eocs              = "KPCCAP_CTB_TTC1_EOCS"
-	kpccapCtbTtc1Fbvc              = "KPCCAP_CTB_TTC1_FBCV"
-	kpccapCtbTtc1Pblb              = "KPCCAP_CTB_TTC1_PBLB"
-	kpccapCtbTtc1Inrc              = "KPCCAP_CTB_TTC1_INRC"
-	kpccapCtbOci1Fsap              = "KPCCAP_CTB_OCI1_FSAP"
-	kpccapCtbOci1Apctx             = "KPCCAP_CTB_OCI1_APCTX"
-	kpccapCtObjectTdsver           = "KPCCAP_CT_OBJECT_TDSVER"
-	kpccapCtRpcver                 = "KPCCAP_CT_RPCVER"
-	kpccapCtRpcsig                 = "KPCCAP_CT_RPCSIG"
-	kpccapCtRpcflgs                = "KPCCAP_CT_RPCFLGS"
-	kpccapCtDbfver                 = "KPCCAP_CT_DBFVER"
-	kpccapCtPlsql                  = "KPCCAP_CT_PLSQL"
-	koleLobCapUb8Size              = "KOLE_LOB_CAP_UB8_SIZE"
-	koleLobCapEncs                 = "KOLE_LOB_CAP_ENCS"
-	koleLobCapDil                  = "KOLE_LOB_CAP_DIL"
-	koleLobCapTmplocSz             = "KOLE_LOB_CAP_TMPLOC_SZ"
-	koleLobCapRemDataInt           = "KOLE_LOB_CAP_REM_DATA_INT"
-	koleLobCapPrfch                = "KOLE_LOB_CAP_PRFCH"
-	koleLobCap12c                  = "KOLE_LOB_CAP_12C"
-	kpccapCtKpin                   = "KPCCAP_CT_KPIN"
-	kpccapCtAqPropDqa              = "KPCCAP_CT_AQ_PROP_DQA"
-	kpccapCtbTtc2Zlnp              = "KPCCAP_CTB_TTC2_ZLNP"
-	kpccapCtUb2dty                 = "KPCCAP_CT_UB2DTY"
-	kpccapCtReplLcrx2y             = "KPCCAP_CT_REPL_LCRX2Y"
-	kpccapCtAstr                   = "KPCCAP_CT_ASTR"
-	kpccapCtObfuscate              = "KPCCAP_CT_OBFUSCATE"
-	kpccapCtbOci2Cqc               = "KPCCAP_CTB_OCI2_CQC"
-	kpccapCtbOci2Edition           = "KPCCAP_CTB_OCI2_EDITION"
-	kpccapCtbOci2Srvcp             = "KPCCAP_CTB_OCI2_SRVCP"
-	kpccapCtProxy                  = "KPCCAP_CT_PROXY"
-	kpccapCtStrmsCca               = "KPCCAP_CT_STRMS_CCA"
-	kpccapCtMaxocfn                = "KPCCAP_CT_MAXOCFN"
-	kpccapCtbOci3Ocssync           = "KPCCAP_CTB_OCI3_OCSSYNC"
-	kpccapCtbOci3AppcontAuto       = "KPCCAP_CTB_OCI3_APPCONT_AUTO"
-	kpccapCtbXMLCsxxmlt            = "KPCCAP_CTB_XML_CSXXMLT"
-	kpccapCtbXMLLobstrImgOnly      = "KPCCAP_CTB_XML_LOBSTR_IMG_ONLY"
-	kpccapCtbTtc3Colmetadata       = "KPCCAP_CTB_TTC3_COLMETADATA"
-	kpccapCtbTtc3Tzver             = "KPCCAP_CTB_TTC3_TZVER"
-	kpccapCtbTtc3Implres           = "KPCCAP_CTB_TTC3_IMPLRES"
-	kpccapCtbTtc3BigchunkClr       = "KPCCAP_CTB_TTC3_BIGCHUNK_CLR"
-	kpccapCtbTtc3KeepOutOrder      = "KPCCAP_CTB_TTC3_KEEP_OUT_ORDER"
-	kpccapCtXstreamOut             = "KPCCAP_CT_XSTREAM_OUT"
-	kpccapCtDtysesssignRecVsn      = "KPCCAP_CT_DTYSESSSIGN_REC_VSN"
-	kpccapCtbTtc4FastReneg         = "KPCCAP_CTB_TTC4_FAST_RENEG"
-	kpccapCtbTtc4Ibnm              = "KPCCAP_CTB_TTC4_IBNM"
-	kpccapCtbTtc4BigTztc           = "KPCCAP_CTB_TTC4_BIG_TZTC"
-	kpccapCtbTtc4ExplBound         = "KPCCAP_CTB_TTC4_EXPL_BOUND"
-	kpccapCtSqlidLength            = "KPCCAP_CT_SQLID_LENGTH"
-	koleLob2CapQuasi               = "KOLE_LOB2_CAP_QUASI"
-	koleLob2CapVbl32               = "KOLE_LOB2_CAP_VBL32"
-	koleLob2Cap2gbPrefetch         = "KOLE_LOB2_CAP_2GB_PREFETCH"
-	kpccapCtbShrdKeys              = "KPCCAP_CTB_SHRD_KEYS"
-	kpccapCtbTtc5Vector            = "KPCCAP_CTB_TTC5_VECTOR"
-	kpccapCtbTtc5PipelineBreak     = "KPCCAP_CTB_TTC5_PIPELINE_BREAK"
-	kpccapCtbTtc5CqnPull           = "KPCCAP_CTB_TTC5_CQN_PULL"
-	kpccapCtbTtc5SessionlessTxn    = "KPCCAP_CTB_TTC5_SESSIONLESS_TXN"
-	kpccapCtbTtc5PdbParams         = "KPCCAP_CTB_TTC5_PDB_PARAMS"
-	kpccapCtbTtcspareAltsess       = "KPCCAP_CTB_TTCSPARE_ALTSESS"
-	kpccapCtbFeatureBackportSpare2 = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE2"
-	kpccapCtbFeatureBackportSpare3 = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE3"
-	kpccapCtbFeatureBackportSpare4 = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE4"
-	kpccapCtbFeatureBackportSpare5 = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE5"
-	kpccapCtbFeatureBackportSpare6 = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE6"
-	kpccapCtRaft                   = "KPCCAP_CT_RAFT"
-	kpccapCtVectorFeatureBinary    = "KPCCAP_CT_VECTOR_FEATURE_BINARY"
-	kpccapCtVectorFeatureSparse    = "KPCCAP_CT_VECTOR_FEATURE_SPARSE"
-	kpccapCtResetLogin             = "KPCCAP_CT_RESET_LOGIN"
+	kpccapCtbImplresPrefetch           = "KPCCAP_CTB_IMPLRES_PREFETCH"
+	kpccapCtScrollableCursor           = "KPCCAP_CT_SCROLLABLE_CURSOR"
+	kpccapCtTtcFldVsn                  = "KPCCAP_CT_TTC_FLD_VSN"
+	kpccapCt82pisal8                   = "KPCCAP_CT_82PISAL8"
+	kpccapCtDequeuewithselector        = "KPCCAP_CT_DEQUEUEWITHSELECTOR"
+	kpccapCtTypeEvol                   = "KPCCAP_CT_TYPE_EVOL"
+	kpccapCt2rt                        = "KPCCAP_CT_2RT"
+	kpccapCtClientidProp               = "KPCCAP_CT_CLIENTID_PROP"
+	kpccapCtLobscnCache                = "KPCCAP_CT_LOBSCN_CACHE"
+	kpccapCtDescribeOpen               = "KPCCAP_CT_DESCRIBE_OPEN"
+	kpccapCtbTtc1Eocs                  = "KPCCAP_CTB_TTC1_EOCS"
+	kpccapCtbTtc1Fbvc                  = "KPCCAP_CTB_TTC1_FBCV"
+	kpccapCtbTtc1Pblb                  = "KPCCAP_CTB_TTC1_PBLB"
+	kpccapCtbTtc1Inrc                  = "KPCCAP_CTB_TTC1_INRC"
+	kpccapCtbOci1Fsap                  = "KPCCAP_CTB_OCI1_FSAP"
+	kpccapCtbOci1Apctx                 = "KPCCAP_CTB_OCI1_APCTX"
+	kpccapCtObjectTdsver               = "KPCCAP_CT_OBJECT_TDSVER"
+	kpccapCtRpcver                     = "KPCCAP_CT_RPCVER"
+	kpccapCtRpcsig                     = "KPCCAP_CT_RPCSIG"
+	kpccapCtRpcflgs                    = "KPCCAP_CT_RPCFLGS"
+	kpccapCtDbfver                     = "KPCCAP_CT_DBFVER"
+	kpccapCtPlsql                      = "KPCCAP_CT_PLSQL"
+	koleLobCapUb8Size                  = "KOLE_LOB_CAP_UB8_SIZE"
+	koleLobCapEncs                     = "KOLE_LOB_CAP_ENCS"
+	koleLobCapDil                      = "KOLE_LOB_CAP_DIL"
+	koleLobCapTmplocSz                 = "KOLE_LOB_CAP_TMPLOC_SZ"
+	koleLobCapRemDataInt               = "KOLE_LOB_CAP_REM_DATA_INT"
+	koleLobCapPrfch                    = "KOLE_LOB_CAP_PRFCH"
+	koleLobCap12c                      = "KOLE_LOB_CAP_12C"
+	kpccapCtKpin                       = "KPCCAP_CT_KPIN"
+	kpccapCtAqPropDqa                  = "KPCCAP_CT_AQ_PROP_DQA"
+	kpccapCtbTtc2Zlnp                  = "KPCCAP_CTB_TTC2_ZLNP"
+	kpccapCtUb2dty                     = "KPCCAP_CT_UB2DTY"
+	kpccapCtReplLcrx2y                 = "KPCCAP_CT_REPL_LCRX2Y"
+	kpccapCtAstr                       = "KPCCAP_CT_ASTR"
+	kpccapCtObfuscate                  = "KPCCAP_CT_OBFUSCATE"
+	kpccapCtbOci2Cqc                   = "KPCCAP_CTB_OCI2_CQC"
+	kpccapCtbOci2Edition               = "KPCCAP_CTB_OCI2_EDITION"
+	kpccapCtbOci2Srvcp                 = "KPCCAP_CTB_OCI2_SRVCP"
+	kpccapCtProxy                      = "KPCCAP_CT_PROXY"
+	kpccapCtStrmsCca                   = "KPCCAP_CT_STRMS_CCA"
+	kpccapCtMaxocfn                    = "KPCCAP_CT_MAXOCFN"
+	kpccapCtbOci3Ocssync               = "KPCCAP_CTB_OCI3_OCSSYNC"
+	kpccapCtbOci3AppcontAuto           = "KPCCAP_CTB_OCI3_APPCONT_AUTO"
+	kpccapCtbXMLCsxxmlt                = "KPCCAP_CTB_XML_CSXXMLT"
+	kpccapCtbXMLLobstrImgOnly          = "KPCCAP_CTB_XML_LOBSTR_IMG_ONLY"
+	kpccapCtbTtc3Colmetadata           = "KPCCAP_CTB_TTC3_COLMETADATA"
+	kpccapCtbTtc3Tzver                 = "KPCCAP_CTB_TTC3_TZVER"
+	kpccapCtbTtc3Implres               = "KPCCAP_CTB_TTC3_IMPLRES"
+	kpccapCtbTtc3BigchunkClr           = "KPCCAP_CTB_TTC3_BIGCHUNK_CLR"
+	kpccapCtbTtc3KeepOutOrder          = "KPCCAP_CTB_TTC3_KEEP_OUT_ORDER"
+	kpccapCtXstreamOut                 = "KPCCAP_CT_XSTREAM_OUT"
+	kpccapCtDtysesssignRecVsn          = "KPCCAP_CT_DTYSESSSIGN_REC_VSN"
+	kpccapCtbTtc4FastReneg             = "KPCCAP_CTB_TTC4_FAST_RENEG"
+	kpccapCtbTtc4Ibnm                  = "KPCCAP_CTB_TTC4_IBNM"
+	kpccapCtbTtc4BigTztc               = "KPCCAP_CTB_TTC4_BIG_TZTC"
+	kpccapCtbTtc4ExplBound             = "KPCCAP_CTB_TTC4_EXPL_BOUND"
+	kpccapCtSqlidLength                = "KPCCAP_CT_SQLID_LENGTH"
+	koleLob2CapQuasi                   = "KOLE_LOB2_CAP_QUASI"
+	koleLob2CapVbl32                   = "KOLE_LOB2_CAP_VBL32"
+	koleLob2Cap2gbPrefetch             = "KOLE_LOB2_CAP_2GB_PREFETCH"
+	kpccapCtbShrdKeys                  = "KPCCAP_CTB_SHRD_KEYS"
+	kpccapCtbTtc5Vector                = "KPCCAP_CTB_TTC5_VECTOR"
+	kpccapCtbTtc5PipelineBreak         = "KPCCAP_CTB_TTC5_PIPELINE_BREAK"
+	kpccapCtbTtc5CqnPull               = "KPCCAP_CTB_TTC5_CQN_PULL"
+	kpccapCtbTtc5SessionlessTxn        = "KPCCAP_CTB_TTC5_SESSIONLESS_TXN"
+	kpccapCtbTtc5PdbParams             = "KPCCAP_CTB_TTC5_PDB_PARAMS"
+	kpccapCtbTtcspareAltsess           = "KPCCAP_CTB_TTCSPARE_ALTSESS"
+	kpccapCtbBackportFeature1XsctxHash = "KPCCAP_CTB_BACKPORT_FEATURE1_XSCTX_HASH"
+	kpccapCtbBackportFeature1Xsctx     = "KPCCAP_CTB_BACKPORT_FEATURE1_XSCTX"
+	kpccapCtbFeatureBackportSpare2     = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE2"
+	kpccapCtbFeatureBackportSpare3     = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE3"
+	kpccapCtbFeatureBackportSpare4     = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE4"
+	kpccapCtbFeatureBackportSpare5     = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE5"
+	kpccapCtbFeatureBackportSpare6     = "KPCCAP_CTB_FEATURE_BACKPORT_SPARE6"
+	kpccapCtRaft                       = "KPCCAP_CT_RAFT"
+	kpccapCtVectorFeatureBinary        = "KPCCAP_CT_VECTOR_FEATURE_BINARY"
+	kpccapCtVectorFeatureSparse        = "KPCCAP_CT_VECTOR_FEATURE_SPARSE"
+	kpccapCtResetLogin                 = "KPCCAP_CT_RESET_LOGIN"
 	// Runtime capabilities
 	kpccapRtCompat                 = "KPCCAP_RT_COMPAT"
 	kpccapRtTzEx                   = "KPCCAP_RT_TZ_EX"
@@ -242,56 +244,58 @@ func newCapabilityMetadata() *capability {
 			koleLobCapTmplocSz:             {index: 23, value: 0x08, isFlag: true, isDefault: true},         // Flag indicating that temporary LOB locator size is KOLBLTLMXL
 			koleLobCapRemDataInt:           {index: 23, value: 0x10, isFlag: true, isDefault: true},         // flag indicating that define of remote LOB as char works (data interface)
 			// "KOLE_LOB_CAP_ARRAY": {index: 23, flag: 0x20, isFlag: true}, // flag for LOB array read/write -> not included for some reason
-			koleLobCapPrfch:                {index: 23, value: 0x40, isFlag: true, isDefault: true},          // LOB capabilities for 11g begin here
-			koleLobCap12c:                  {index: 23, value: 0x80, isFlag: true, isDefault: true},          // Enables smart lob creation on the server side
-			kpccapCtKpin:                   {index: 24, value: 1, isFlag: false, isDefault: true},            // Not used default value
-			kpccapCtAqPropDqa:              {index: 25, value: 0x00, isFlag: true, isDefault: true},          // AQ not supported
-			kpccapCtbTtc2Zlnp:              {index: 26, value: 0x04, isFlag: true, isDefault: true},          // can peer handle new key-val pairs
-			kpccapCtUb2dty:                 {index: 27, value: 0x01, isFlag: true, isDefault: true},          // ub2 dty support
-			kpccapCtReplLcrx2y:             {index: 28, value: 0x01, isFlag: true, isDefault: true},          // Streams LCRX2Y propagation capability
-			kpccapCtAstr:                   {index: 29, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
-			kpccapCtObfuscate:              {index: 30, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
-			kpccapCtbOci2Cqc:               {index: 31, value: 0x04, isFlag: true, isDefault: true},          // remote handles OCI query caching
-			kpccapCtbOci2Edition:           {index: 31, value: 0x08, isFlag: true, isDefault: true},          // application EDITION
-			kpccapCtbOci2Srvcp:             {index: 31, value: 0x10, isFlag: true, isDefault: true},          // Server-side Connection pooling
-			kpccapCtProxy:                  {index: 32, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
-			kpccapCtStrmsCca:               {index: 33, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
-			kpccapCtMaxocfn:                {index: 34, value: maxOcfn, isFlag: false, isDefault: true},      // understanding Server Piggyback Function code
-			kpccapCtbOci3Ocssync:           {index: 35, value: 0x20, isFlag: true, isDefault: true},          // sessstate sync via s2c piggyback
-			kpccapCtbOci3AppcontAuto:       {index: 35, value: 0x80, isFlag: true, isDefault: true},          // Client to send pdbuid when getting PDB's startup time in OFGI request
-			kpccapCtbXMLCsxxmlt:            {index: 36, value: 0x01, isFlag: true, isDefault: true},          // client can decode CSX XMLType image
-			kpccapCtbXMLLobstrImgOnly:      {index: 36, value: 0x02, isFlag: true, isDefault: true},          // client can understand only lob/string based images
-			kpccapCtbTtc3Colmetadata:       {index: 37, value: 0x01, isFlag: true, isDefault: true},          // column metadata byte
-			kpccapCtbTtc3Tzver:             {index: 37, value: 0x02, isFlag: true, isDefault: true},          // remote to send timezone version
-			kpccapCtbTtc3Implres:           {index: 37, value: 0x10, isFlag: true, isDefault: true},          // Implicit Results feature, 12g
-			kpccapCtbTtc3BigchunkClr:       {index: 37, value: 0x20, isFlag: true, isDefault: true},          // ttcclr supports big chunks
-			kpccapCtbTtc3KeepOutOrder:      {index: 37, value: 0x80, isFlag: true, isDefault: true},          // preserve out bind order
-			kpccapCtXstreamOut:             {index: 38, value: 0x00, isFlag: true, isDefault: true},          // XStream Out capability
-			kpccapCtDtysesssignRecVsn:      {index: 39, value: ttcFldVsn231, isFlag: false, isDefault: true}, // 20.1 ext 1
-			kpccapCtbTtc4FastReneg:         {index: 40, value: 0x02, isFlag: true, isDefault: true},          // can renegotiate post logon with 1 RPC
-			kpccapCtbTtc4Ibnm:              {index: 40, value: 0x04, isFlag: true, isDefault: true},          // supports inband notifications
-			kpccapCtbTtc4BigTztc:           {index: 40, value: 0x10, isFlag: true, isDefault: true},          // understands 4 byte length DST tables
-			kpccapCtbTtc4ExplBound:         {index: 40, value: 0x40, isFlag: true, isDefault: true},          // Explicit request boundary support
-			kpccapCtSqlidLength:            {index: 41, value: sqlidLength, isFlag: false, isDefault: true},
-			koleLob2CapQuasi:               {index: 42, value: 0x01, isFlag: true, isDefault: true},  // flag used for V4 value based locator feature in 20c
-			koleLob2CapVbl32:               {index: 42, value: 0x02, isFlag: true, isDefault: true},  // For Value based locators, assume default prefetch of 32K
-			koleLob2Cap2gbPrefetch:         {index: 42, value: 0x04, isFlag: true, isDefault: true},  // LOB prefetch buffer can be up to 2G
-			kpccapCtbShrdKeys:              {index: 43, value: 0x00, isFlag: true, isDefault: true},  // Not used default value
-			kpccapCtbTtc5Vector:            {index: 44, value: 0x08, isFlag: true, isDefault: true},  // vector type supported
-			kpccapCtbTtc5PipelineBreak:     {index: 44, value: 0x10, isFlag: true, isDefault: false}, // supports pipeline break
-			kpccapCtbTtc5SessionlessTxn:    {index: 44, value: 0x20, isFlag: true, isDefault: true},  // supports sessionless transactions
-			kpccapCtbTtc5CqnPull:           {index: 44, value: 0x40, isFlag: true, isDefault: true},  // supports CQN pull model
-			kpccapCtbTtc5PdbParams:         {index: 44, value: 0x80, isFlag: true, isDefault: true},  // container params
-			kpccapCtbTtcspareAltsess:       {index: 45, value: 0x01, isFlag: true, isDefault: true},  // understands alter session pbk
-			kpccapCtbFeatureBackportSpare2: {index: 46, value: 0x00, isFlag: true, isDefault: true},
-			kpccapCtbFeatureBackportSpare3: {index: 47, value: 0x00, isFlag: true, isDefault: true},
-			kpccapCtbFeatureBackportSpare4: {index: 48, value: 0x00, isFlag: true, isDefault: true},
-			kpccapCtbFeatureBackportSpare5: {index: 49, value: 0x00, isFlag: true, isDefault: true},
-			kpccapCtbFeatureBackportSpare6: {index: 50, value: 0x00, isFlag: true, isDefault: true},
-			kpccapCtRaft:                   {index: 51, value: 0x00, isFlag: true, isDefault: true},
-			kpccapCtVectorFeatureBinary:    {index: 52, value: 0x01, isFlag: true, isDefault: true}, // BINARY dimension type for VECTOR is supported
-			kpccapCtVectorFeatureSparse:    {index: 52, value: 0x02, isFlag: true, isDefault: true}, // Sparse encoding format for VECTOR is supported
-			kpccapCtResetLogin:             {index: 53, value: 0x02, isFlag: true, isDefault: true}, // supports LOGIN-level reset state
+			koleLobCapPrfch:                    {index: 23, value: 0x40, isFlag: true, isDefault: true},          // LOB capabilities for 11g begin here
+			koleLobCap12c:                      {index: 23, value: 0x80, isFlag: true, isDefault: true},          // Enables smart lob creation on the server side
+			kpccapCtKpin:                       {index: 24, value: 1, isFlag: false, isDefault: true},            // Not used default value
+			kpccapCtAqPropDqa:                  {index: 25, value: 0x00, isFlag: true, isDefault: true},          // AQ not supported
+			kpccapCtbTtc2Zlnp:                  {index: 26, value: 0x04, isFlag: true, isDefault: true},          // can peer handle new key-val pairs
+			kpccapCtUb2dty:                     {index: 27, value: 0x01, isFlag: true, isDefault: true},          // ub2 dty support
+			kpccapCtReplLcrx2y:                 {index: 28, value: 0x01, isFlag: true, isDefault: true},          // Streams LCRX2Y propagation capability
+			kpccapCtAstr:                       {index: 29, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
+			kpccapCtObfuscate:                  {index: 30, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
+			kpccapCtbOci2Cqc:                   {index: 31, value: 0x04, isFlag: true, isDefault: true},          // remote handles OCI query caching
+			kpccapCtbOci2Edition:               {index: 31, value: 0x08, isFlag: true, isDefault: true},          // application EDITION
+			kpccapCtbOci2Srvcp:                 {index: 31, value: 0x10, isFlag: true, isDefault: true},          // Server-side Connection pooling
+			kpccapCtProxy:                      {index: 32, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
+			kpccapCtStrmsCca:                   {index: 33, value: 0x00, isFlag: true, isDefault: true},          // Not used default value
+			kpccapCtMaxocfn:                    {index: 34, value: maxOcfn, isFlag: false, isDefault: true},      // understanding Server Piggyback Function code
+			kpccapCtbOci3Ocssync:               {index: 35, value: 0x20, isFlag: true, isDefault: true},          // sessstate sync via s2c piggyback
+			kpccapCtbOci3AppcontAuto:           {index: 35, value: 0x80, isFlag: true, isDefault: true},          // Client to send pdbuid when getting PDB's startup time in OFGI request
+			kpccapCtbXMLCsxxmlt:                {index: 36, value: 0x01, isFlag: true, isDefault: true},          // client can decode CSX XMLType image
+			kpccapCtbXMLLobstrImgOnly:          {index: 36, value: 0x02, isFlag: true, isDefault: true},          // client can understand only lob/string based images
+			kpccapCtbTtc3Colmetadata:           {index: 37, value: 0x01, isFlag: true, isDefault: true},          // column metadata byte
+			kpccapCtbTtc3Tzver:                 {index: 37, value: 0x02, isFlag: true, isDefault: true},          // remote to send timezone version
+			kpccapCtbTtc3Implres:               {index: 37, value: 0x10, isFlag: true, isDefault: true},          // Implicit Results feature, 12g
+			kpccapCtbTtc3BigchunkClr:           {index: 37, value: 0x20, isFlag: true, isDefault: true},          // ttcclr supports big chunks
+			kpccapCtbTtc3KeepOutOrder:          {index: 37, value: 0x80, isFlag: true, isDefault: true},          // preserve out bind order
+			kpccapCtXstreamOut:                 {index: 38, value: 0x00, isFlag: true, isDefault: true},          // XStream Out capability
+			kpccapCtDtysesssignRecVsn:          {index: 39, value: ttcFldVsn231, isFlag: false, isDefault: true}, // 20.1 ext 1
+			kpccapCtbTtc4FastReneg:             {index: 40, value: 0x02, isFlag: true, isDefault: true},          // can renegotiate post logon with 1 RPC
+			kpccapCtbTtc4Ibnm:                  {index: 40, value: 0x04, isFlag: true, isDefault: true},          // supports inband notifications
+			kpccapCtbTtc4BigTztc:               {index: 40, value: 0x10, isFlag: true, isDefault: true},          // understands 4 byte length DST tables
+			kpccapCtbTtc4ExplBound:             {index: 40, value: 0x40, isFlag: true, isDefault: true},          // Explicit request boundary support
+			kpccapCtSqlidLength:                {index: 41, value: sqlidLength, isFlag: false, isDefault: true},
+			koleLob2CapQuasi:                   {index: 42, value: 0x01, isFlag: true, isDefault: true},  // flag used for V4 value based locator feature in 20c
+			koleLob2CapVbl32:                   {index: 42, value: 0x02, isFlag: true, isDefault: true},  // For Value based locators, assume default prefetch of 32K
+			koleLob2Cap2gbPrefetch:             {index: 42, value: 0x04, isFlag: true, isDefault: true},  // LOB prefetch buffer can be up to 2G
+			kpccapCtbShrdKeys:                  {index: 43, value: 0x00, isFlag: true, isDefault: true},  // Not used default value
+			kpccapCtbTtc5Vector:                {index: 44, value: 0x08, isFlag: true, isDefault: true},  // vector type supported
+			kpccapCtbTtc5PipelineBreak:         {index: 44, value: 0x10, isFlag: true, isDefault: false}, // supports pipeline break
+			kpccapCtbTtc5SessionlessTxn:        {index: 44, value: 0x20, isFlag: true, isDefault: true},  // supports sessionless transactions
+			kpccapCtbTtc5CqnPull:               {index: 44, value: 0x40, isFlag: true, isDefault: true},  // supports CQN pull model
+			kpccapCtbTtc5PdbParams:             {index: 44, value: 0x80, isFlag: true, isDefault: true},  // container params
+			kpccapCtbTtcspareAltsess:           {index: 45, value: 0x01, isFlag: true, isDefault: true},  // understands alter session pbk
+			kpccapCtbBackportFeature1Xsctx:     {index: 45, value: 0x02, isFlag: true, isDefault: true},  // supports OXSCTX piggyback
+			kpccapCtbBackportFeature1XsctxHash: {index: 45, value: 0x20, isFlag: true, isDefault: true},  // supports OXSCTX hash
+			kpccapCtbFeatureBackportSpare2:     {index: 46, value: 0x00, isFlag: true, isDefault: true},
+			kpccapCtbFeatureBackportSpare3:     {index: 47, value: 0x00, isFlag: true, isDefault: true},
+			kpccapCtbFeatureBackportSpare4:     {index: 48, value: 0x00, isFlag: true, isDefault: true},
+			kpccapCtbFeatureBackportSpare5:     {index: 49, value: 0x00, isFlag: true, isDefault: true},
+			kpccapCtbFeatureBackportSpare6:     {index: 50, value: 0x00, isFlag: true, isDefault: true},
+			kpccapCtRaft:                       {index: 51, value: 0x00, isFlag: true, isDefault: true},
+			kpccapCtVectorFeatureBinary:        {index: 52, value: 0x01, isFlag: true, isDefault: true}, // BINARY dimension type for VECTOR is supported
+			kpccapCtVectorFeatureSparse:        {index: 52, value: 0x02, isFlag: true, isDefault: true}, // Sparse encoding format for VECTOR is supported
+			kpccapCtResetLogin:                 {index: 53, value: 0x02, isFlag: true, isDefault: true}, // supports LOGIN-level reset state
 		},
 		// Runtime capabilities
 		knownUsedRuntimeCapabilities: map[string]capabilityMetadata{

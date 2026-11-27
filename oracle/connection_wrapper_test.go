@@ -48,6 +48,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	osql "github.com/oracle/go-oracledb/v26/oracle/sql"
 )
 
 // sessionlessTransactionTestConnector exposes a test driver connection to
@@ -78,6 +79,7 @@ func (sessionlessTransactionTestDriver) Open(string) (driver.Conn, error) {
 // sessionlessTransactionTestConn implements the wrapper interface and records
 // whether database/sql reaches BeginTx after a failed resume preparation.
 type sessionlessTransactionTestConn struct {
+	osql.DeepDataSecurity
 	// resumeErr is returned by the prepared-resume operation.
 	resumeErr error
 	// driverTxCalls counts calls made to BeginTx.

@@ -41,12 +41,13 @@ package common
 import (
 	"reflect"
 	"testing"
-
-	oracleProviders "github.com/oracle/go-oracledb/v26/oracle/providers"
 )
 
+type testProvider interface{}
+
+// namedProvider identifies a test provider by name.
 type namedProvider interface {
-	oracleProviders.Provider
+	testProvider
 	Name() string
 }
 
@@ -63,7 +64,7 @@ func (m mockProviderRegistryProvider) Name() string {
 func TestProviderRegistryGetProviderReturnsFirstMatch(t *testing.T) {
 	t.Parallel()
 
-	registry := NewSafeRegistry[oracleProviders.Provider]()
+	registry := NewSafeRegistry[testProvider]()
 	first := mockProviderRegistryProvider{name: "first"}
 	second := mockProviderRegistryProvider{name: "second"}
 
@@ -86,7 +87,7 @@ func TestProviderRegistryGetProviderReturnsFirstMatch(t *testing.T) {
 func TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded(t *testing.T) {
 	t.Parallel()
 
-	registry := NewSafeRegistry[oracleProviders.Provider]()
+	registry := NewSafeRegistry[testProvider]()
 	for i := 0; i < maxItems; i++ {
 		registry.Register(mockProviderRegistryProvider{name: string(rune('a' + i))})
 	}
@@ -107,7 +108,7 @@ func TestProviderRegistryRegisterProviderEvictsOldestWhenCapacityExceeded(t *tes
 func TestProviderRegistryGetProviderReturnsRequestedInterface(t *testing.T) {
 	t.Parallel()
 
-	registry := NewSafeRegistry[oracleProviders.Provider]()
+	registry := NewSafeRegistry[testProvider]()
 	original := mockProviderRegistryProvider{name: "original"}
 	registry.Register(original)
 
@@ -126,7 +127,7 @@ func TestProviderRegistryGetProviderReturnsRequestedInterface(t *testing.T) {
 func TestProviderRegistryGetProviderReturnsErrorWhenUninitialized(t *testing.T) {
 	t.Parallel()
 
-	registry := NewSafeRegistry[oracleProviders.Provider]()
+	registry := NewSafeRegistry[testProvider]()
 
 	provider, _ := registry.Get(reflect.TypeOf((*namedProvider)(nil)).Elem())
 	if provider != nil {
@@ -203,5 +204,3 @@ func TestRegistryGetSkipsNilItems(t *testing.T) {
 		t.Fatalf("item = %#v, want registered item", got)
 	}
 }
-
-var _ oracleProviders.Provider = mockProviderRegistryProvider{}

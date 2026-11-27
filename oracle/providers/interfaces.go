@@ -38,7 +38,11 @@
 
 package providers
 
-import "context"
+import (
+	"context"
+
+	osql "github.com/oracle/go-oracledb/v26/oracle/sql"
+)
 
 // ProviderRegistrar registers runtime providers used by the connector during
 // connection establishment.
@@ -74,3 +78,13 @@ type SignedTokenAuthenticationProvider interface {
 }
 
 /*** END OF TOKEN AUTHENTICATION ***/
+
+// DeepDataSecurityProvider supplies end-user security contexts for database
+// operations.
+type DeepDataSecurityProvider interface {
+	Provider
+	// EndUserSecurityContext returns a valid context for a query or statement
+	// execution. The driver calls it before each execution unless an explicit
+	// connection context has been selected. An error prevents the operation.
+	EndUserSecurityContext(context.Context) (osql.EndUserSecurityContext, error)
+}

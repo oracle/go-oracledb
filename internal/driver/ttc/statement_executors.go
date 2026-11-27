@@ -891,6 +891,15 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, messages []drive
 	var err error
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
+	// queue any end-user security context before the query
+	finishSecurity, err := e.shelf._deepDataSecurity.queueSecurityContext(ctx, stmr, oracleErrors.RunQueryError)
+	if err != nil {
+		return nil, -1, err
+	}
+	completed := false
+	// retain the context fingerprint only if the round trip completes without cancellation
+	defer func() { finishSecurity(completed && ctx.Err() == nil) }()
+
 	if err = stmr.Push(ctx, message); err != nil {
 		// map push failure -> OGD-00053 RunQueryError("push")
 		common.Odl.Error("runQuery: Push failed", "error", err, "stage", "push", "msgCode", message.GetMsgCode())
@@ -979,6 +988,7 @@ func (e *statementExecutorSelect) runQuery(ctx context.Context, messages []drive
 	if state.rows != nil {
 		state.rows.numOfRows = len(state.rows.rowData)
 	}
+	completed = err == nil
 	return state, returnedCursorID, err
 }
 
@@ -1118,6 +1128,15 @@ func (e *statementExecutorExec) runExec(ctx context.Context, messages []driverCo
 	common.Odl.Fine("runExec: start", "msgCode", message.GetMsgCode())
 	stmr := e.shelf.GetMessageStreamer().(MessageStreamerInterface)
 
+	// queue any end-user security context before the statement
+	finishSecurity, err := e.shelf._deepDataSecurity.queueSecurityContext(ctx, stmr, oracleErrors.RunExecError)
+	if err != nil {
+		return nil, err
+	}
+	completed := false
+	// retain the context fingerprint only if the round trip completes without cancellation
+	defer func() { finishSecurity(completed && ctx.Err() == nil) }()
+
 	if err := stmr.Push(ctx, message); err != nil {
 		common.Odl.Error("runExec: Push failed", "error", err, "stage", "push", "msgCode", message.GetMsgCode())
 		return nil, common.NewOracleError(oracleErrors.RunExecError, err, "push")
@@ -1202,6 +1221,7 @@ func (e *statementExecutorExec) runExec(ctx context.Context, messages []driverCo
 
 	common.Odl.Fine("runExec: End of function", "rowsAffected", rowsAffected)
 	execResult.result = &ttcResult{rowsAffected: rowsAffected, shelf: e.shelf}
+	completed = true
 	return execResult, nil
 }
 

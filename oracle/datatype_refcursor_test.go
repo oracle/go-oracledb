@@ -48,6 +48,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
+	osql "github.com/oracle/go-oracledb/v26/oracle/sql"
 )
 
 type refCursorTestDriverRows struct{}
@@ -81,6 +82,7 @@ func (c refCursorTestConnector) Connect(context.Context) (driver.Conn, error) { 
 func (refCursorTestConnector) Driver() driver.Driver                          { return refCursorTestDriver{} }
 
 type refCursorTestConn struct {
+	osql.DeepDataSecurity
 	query string
 	rows  driver.Rows
 }

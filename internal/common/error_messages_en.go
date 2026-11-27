@@ -689,6 +689,9 @@ func initMessagesEn() {
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.SessionlessTransactionTimeoutOutOfRange), "sessionless transaction timeout must be between 0 and 65535 seconds")
 
+	message.SetString(language.English, string(oracleErrors.DeepDataSecurityNotSupported), "database does not support Deep Data Security")
+	message.SetString(language.English, string(oracleErrors.DeepDataSecurityRequiresTLS), "Deep Data Security requires a TLS connection")
+	message.SetString(language.English, string(oracleErrors.InvalidEndUserSecurityContext), "invalid end-user security context")
 	// Document: No
 	// Cause:    The driver performed an invalid operation on an internal buffer.
 	// Action:   Enable FINEST logging to see the failing buffer operation.

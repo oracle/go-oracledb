@@ -63,6 +63,7 @@ type StmtCancellationFunction func(ctx context.Context) error
 // encoders/decoders/OAC makers for the negotiated TTC protocol version.
 type ttiShelf[T any] struct {
 	*common.Shelf[T]
+	_deepDataSecurity        *deepDataSecurity
 	codecFactory             codecFactory
 	_providerRegistry        internalCommon.Registry[providers.Provider]
 	_refCursors              map[*ttcRowsRefCursor]struct{}

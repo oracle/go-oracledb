@@ -208,6 +208,7 @@ func initMessagesPt() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "chave privada de token assinado inválida"},
 		{oracleErrors.ExpiredToken, "o token de acesso expirou"},
 		{oracleErrors.ProviderNotFound, "nenhum provedor do tipo solicitado foi encontrado"},
+		{oracleErrors.InvalidEndUserSecurityContext, "contexto de segurança do usuário final inválido"},
 		{oracleErrors.InvalidGlobalTransactionIDValue, "valor inválido do identificador global de transação"},
 		{oracleErrors.InvalidSessionlessTransactionTimeout, "o tempo limite para iniciar a transação sem sessão deve ser maior que zero"},
 		{oracleErrors.SessionlessTransactionTimeoutOutOfRange, "o tempo limite da transação sem sessão deve estar entre 0 e 65535 segundos"},

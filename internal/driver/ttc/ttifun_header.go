@@ -124,6 +124,9 @@ func (msg *ttiFunHeader) GetMsgCode() driverCommon.MessageType {
 	return TTIFUN
 }
 
+// GetFuncCode returns the TTC function code for a call without a payload.
+func (msg *ttiFunHeader) GetFuncCode() driverCommon.FunctionType { return msg._funcType }
+
 // MarshalTo marshals the message using the given marshaller.
 // Note that this message does not have any payload, only the message code is
 // marshalled.

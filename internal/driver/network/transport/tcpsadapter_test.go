@@ -114,6 +114,28 @@ func TestNTTCPSProcessWalletRejectsWalletWithoutCertificatesEvenWithSystemTrust(
 	}
 }
 
+// TestNTTCPSIsTLS checks that only a completed TLS handshake is reported as secure.
+func TestNTTCPSIsTLS(t *testing.T) {
+	t.Parallel()
+	nt := NewNTTCPS(NTattributes{})
+	if nt.IsTLS() {
+		t.Fatal("disconnected transport reported TLS")
+	}
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	nt.stream = tls.Client(client, &tls.Config{})
+	if nt.IsTLS() {
+		t.Fatal("unnegotiated transport reported TLS")
+	}
+	tlsConn, cleanup := testTLSClientConnWithServerName(t, "db.example.com")
+	defer cleanup()
+	nt.stream = tlsConn
+	if !nt.IsTLS() {
+		t.Fatal("completed TLS handshake was not reported")
+	}
+}
+
 func TestNTTCPSVerifyPostAcceptDNMatchUsesFinalTLSCertificate(t *testing.T) {
 	t.Parallel()
 	tlsConn, cleanup := testTLSClientConnWithServerName(t, "db.example.com")

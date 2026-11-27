@@ -47,6 +47,7 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
+	osql "github.com/oracle/go-oracledb/v26/oracle/sql"
 )
 
 // connectionWrapper provides Oracle specific operations for a dedicated
@@ -72,6 +73,7 @@ type canBeWrapped interface {
 	ClearPrepareForSessionlessResumeOperation(common.SessionlessTransaction, error)
 
 	GetRows(context.Context, driver.Rows) error
+	osql.DeepDataSecurity
 }
 
 // NewConnectionWrapper validates and wraps a dedicated database/sql connection
@@ -189,4 +191,19 @@ func (w *connectionWrapper) Fetch(ctx context.Context, raw *datatype.Cursor) (*s
 		return nil, err
 	}
 	return w.connection.QueryContext(ctx, datatype.RefCursorQuery, rows)
+}
+
+// SetEndUserSecurityContext implements [osql.DeepDataSecurity.SetEndUserSecurityContext].
+func (w *connectionWrapper) SetEndUserSecurityContext(context osql.EndUserSecurityContext) error {
+	return w.connection.Raw(func(c any) error {
+		return c.(osql.DeepDataSecurity).SetEndUserSecurityContext(context)
+	})
+}
+
+// ClearEndUserSecurityContext implements [osql.DeepDataSecurity.ClearEndUserSecurityContext].
+func (w *connectionWrapper) ClearEndUserSecurityContext() {
+	_ = w.connection.Raw(func(c any) error {
+		c.(osql.DeepDataSecurity).ClearEndUserSecurityContext()
+		return nil
+	})
 }

@@ -63,6 +63,9 @@ func (c *connection) Close() error {
 	ctx, cancel := context.WithTimeout(common.BackgroundContext, _connCloseTimeout)
 	defer cancel()
 
+	// clear end-user sec context
+	c.clearEndUserSecurityContext()
+
 	// Close the TTC connection.
 	ttcCloseErr := c._closeTTCConnection(ctx)
 

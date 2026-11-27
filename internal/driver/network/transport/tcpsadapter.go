@@ -79,6 +79,12 @@ func (nt *nttcps) RemoteAddr() net.Addr {
 	return nt.stream.RemoteAddr()
 }
 
+// IsTLS reports whether the active TLS stream has completed its handshake.
+func (nt *nttcps) IsTLS() bool {
+	stream, ok := nt.stream.(*tls.Conn)
+	return ok && stream.ConnectionState().HandshakeComplete
+}
+
 // Connect establishes a TLS connection
 func (nt *nttcps) Connect(ctx context.Context, address Address) error {
 	nt.originHost = address.OriginHost

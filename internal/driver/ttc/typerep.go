@@ -422,6 +422,7 @@ const (
 	DtyUds           DtyType = 663              // version 23 udsdef
 	DtyPlopn         DtyType = 665              // Pipeline Operatiion piggyback
 	DtyKve           DtyType = 669              // Key value pair element with name
+	DtyXs            DtyType = 670              // eXtensible Security piggyback
 )
 
 const (
@@ -489,7 +490,7 @@ const (
 
 	// MaxReps has no specific meaning here. It's only used as a hint for the size of typeAndRep
 	// so that we know that we have enough room and don't constantly reallocate a larger one.
-	MaxReps int16 = 665
+	MaxReps int16 = 671
 
 	// _maxReceivedReps is the cap for the number of type representations that will be unmarshalled,
 	// if the number of type representations received exceeds this number a protocol violation error

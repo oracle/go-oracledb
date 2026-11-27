@@ -67,4 +67,6 @@ const (
 	oSessState common.FunctionType = 176
 	// occa is the function code for close cursor/cancel,
 	occa common.FunctionType = 105
+	// oXsctx is the function code for eXtensible Security context synchronization.
+	oXsctx common.FunctionType = 205
 )

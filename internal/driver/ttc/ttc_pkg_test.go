@@ -80,6 +80,14 @@ var TestEnvironement TestingEnvironment
 var TestingConfig *TestConfig
 
 var testCases = []oracleTest.CategorizedTestCase{
+	{Name: "TestDDSHashNegotiation", Categories: "unitary", Exclusive: false, Fn: TestDDSHashNegotiation},
+	{Name: "TestDDSHashVectors", Categories: "unitary", Exclusive: false, Fn: TestDDSHashVectors},
+	{Name: "TestDDSHashRoundTrips", Categories: "unitary", Exclusive: false, Fn: TestDDSHashRoundTrips},
+	{Name: "TestDDSSecurityContextValidation", Categories: "unitary", Exclusive: false, Fn: TestDDSSecurityContextValidation},
+	{Name: "TestDDSProviderAndReset", Categories: "unitary", Exclusive: false, Fn: TestDDSProviderAndReset},
+	{Name: "TestDDSExecution", Categories: "unitary", Exclusive: false, Fn: TestDDSExecution},
+	{Name: "TestDDSPayload", Categories: "unitary", Exclusive: false, Fn: TestDDSPayload},
+	{Name: "TestDDSOXSCTXWire", Categories: "unitary", Exclusive: false, Fn: TestDDSOXSCTXWire},
 	{Name: "TestColumnDecoderRegistrations", Categories: "unitary", Exclusive: false, Fn: TestColumnDecoderRegistrations},
 	{Name: "TestColumnUnwrapExecutors", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapExecutors},
 	{Name: "TestColumnUnwrapPLSQLFailures", Categories: "unitary", Exclusive: false, Fn: TestColumnUnwrapPLSQLFailures},
@@ -1059,6 +1067,7 @@ type mockStreamer struct {
 	pushedMsg   list.List
 	pushErr     error
 	flushErr    error
+	flushCalls  int
 	flushCalled bool
 	pullCalled  bool
 	pullTypes   []common.MessageType
@@ -1160,6 +1169,7 @@ func (m *mockStreamer) Pull(_ context.Context, types ...common.MessageType) (com
 }
 
 func (m *mockStreamer) Flush(_ context.Context) error {
+	m.flushCalls++
 	m.flushCalled = true
 	return m.flushErr
 }
@@ -1195,6 +1205,7 @@ func (m *mockOer) getError() error                { return m.err }
 func (m *mockOer) GetMsgCode() common.MessageType { return TTIOER }
 
 type mockNetworkSession struct {
+	tls             bool
 	cancelCalls     atomic.Int32 // needed by -race
 	disconnectCalls atomic.Int32 // needed by -race
 	disconnectErr   error
@@ -1224,6 +1235,9 @@ func newTestConnection(
 	shelf.registerCancelExecution(conn.cancelCurrentExecution)
 	return conn
 }
+
+// IsTLS reports whether the mock session uses TLS.
+func (m *mockNetworkSession) IsTLS() bool { return m.tls }
 
 // CheckInbandNotification implements [common.NetworkSession].
 func (m *mockNetworkSession) CheckInbandNotification() bool {

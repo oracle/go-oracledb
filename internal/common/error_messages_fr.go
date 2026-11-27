@@ -208,6 +208,7 @@ func initMessagesFr() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "clé privée de jeton signé non valide"},
 		{oracleErrors.ExpiredToken, "le jeton d'accès a expiré"},
 		{oracleErrors.ProviderNotFound, "aucun fournisseur du type demandé n'a été trouvé"},
+		{oracleErrors.InvalidEndUserSecurityContext, "contexte de sécurité de l'utilisateur final non valide"},
 		{oracleErrors.InvalidGlobalTransactionIDValue, "valeur non valide de l'identifiant global de transaction"},
 		{oracleErrors.InvalidSessionlessTransactionTimeout, "le délai de démarrage de la transaction sans session doit être supérieur à zéro"},
 		{oracleErrors.ImplicitResultMessageCreationFailed, "échec de création du message de résultat implicite"},

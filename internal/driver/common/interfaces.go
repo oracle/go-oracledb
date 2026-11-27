@@ -50,6 +50,9 @@ const (
 
 // NetworkSession implementors can disconnect a network connection
 type NetworkSession interface {
+	// IsTLS reports whether the active transport has completed a TLS handshake.
+	IsTLS() bool
+
 	// Disconnect disconnects the network connection
 	// Parameters:
 	//   - context : the context to be used

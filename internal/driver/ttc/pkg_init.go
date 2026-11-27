@@ -344,6 +344,14 @@ func init() {
 	if err != nil {
 		common.Odl.Warn("Failed to register function occa", "error", err)
 	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oXsctx}, 18, newOXSCTX18)
+	if err != nil {
+		common.Odl.Warn("Failed to register function OXSCTX", "error", err)
+	}
+	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oXsctx}, MinTTCProtocolVersion, newOXSCTX)
+	if err != nil {
+		common.Odl.Warn("Failed to register function OXSCTX", "error", err)
+	}
 
 	// Register the OSESSSTATE request-boundary piggyback function
 	err = FunctionRegistry.Register(functionRegistryKey{messageType: TTIPFN, functionType: oSessState}, 18, newOSessStatePfn18)
@@ -813,6 +821,7 @@ func init() {
 	typeRepresentationTable.addTypeRepToTable(DtyPlend, DtyPlend, int16(RepRUnv))
 	typeRepresentationTable.addTypeRepToTable(DtyPlbgn, DtyPlbgn, int16(RepRUnv))
 	typeRepresentationTable.addTypeRepToTable(DtyPlopn, DtyPlopn, int16(RepRUnv))
+	typeRepresentationTable.addTypeRepToTable(DtyXs, DtyXs, int16(RepRUnv))
 
 	// ========================= TYPE CODEC Registry =========================
 	// Register default encoders.

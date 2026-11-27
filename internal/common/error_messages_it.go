@@ -208,6 +208,7 @@ func initMessagesIt() {
 		{oracleErrors.InvalidSignedTokenPrivateKey, "chiave privata del token firmato non valida"},
 		{oracleErrors.ExpiredToken, "il token di accesso è scaduto"},
 		{oracleErrors.ProviderNotFound, "nessun provider del tipo richiesto trovato"},
+		{oracleErrors.InvalidEndUserSecurityContext, "contesto di sicurezza dell'utente finale non valido"},
 		{oracleErrors.InvalidGlobalTransactionIDValue, "valore non valido dell'identificatore globale di transazione"},
 		{oracleErrors.InvalidSessionlessTransactionTimeout, "il timeout di avvio della transazione senza sessione deve essere maggiore di zero"},
 		{oracleErrors.SessionlessTransactionTimeoutOutOfRange, "il timeout della transazione senza sessione deve essere compreso tra 0 e 65535 secondi"},

@@ -301,8 +301,6 @@ const (
 	// the wanted provider type
 	ProviderNotFound ErrorCode = "OGD-00206"
 
-	// InvalidBufferOperation indicates an invalid read or write on an internal driver buffer.
-	InvalidBufferOperation ErrorCode = "OGD-00500"
 	// JSONUninitializedValue indicates a public oracle/datatype/json API was called on an uninitialized receiver.
 	JSONUninitializedValue ErrorCode = "OGD-00300"
 	// JSONScanTypeUnsupportedError indicates Scan received a source type that oracle/datatype/json does not accept.
@@ -325,6 +323,18 @@ const (
 	// UnsupportedLobOperation indicates the operation is not supported for the selected LOB
 	// family or access mode.
 	UnsupportedLobOperation ErrorCode = "OGD-00308"
+
+	// DeepDataSecurityNotSupported indicates that the server cannot receive end-user security contexts.
+	DeepDataSecurityNotSupported ErrorCode = "OGD-00400"
+	// DeepDataSecurityRequiresTLS indicates that Deep Data Security requires a TLS connection.
+	DeepDataSecurityRequiresTLS ErrorCode = "OGD-00401"
+	// InvalidEndUserSecurityContext indicates that an end-user security context is
+	// missing required credentials, contains conflicting or invalid fields,
+	// has an expired token, or cannot be encoded within the supported size limit.
+	InvalidEndUserSecurityContext ErrorCode = "OGD-00402"
+
+	// InvalidBufferOperation indicates an invalid read or write on an internal driver buffer.
+	InvalidBufferOperation ErrorCode = "OGD-00500"
 )
 
 // OracleRefuseErrorCodes maps ORA error numbers to the driver error

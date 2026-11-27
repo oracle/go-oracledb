@@ -46,6 +46,10 @@ import (
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
+// columnSecurityEnabled is the column description flag indicating that values
+// can carry a security metadata byte before their encoded data.
+const columnSecurityEnabled uint32 = 0x01
+
 /*
 tTIrxd provides unmarshalling support for TTC RXD protocol messages, which represent plain result set rows
 delivered by the network. This struct receives RXD packets, parses columns per protocol (including column-carry logic for BVC),
@@ -305,6 +309,16 @@ Errors:
   - Propagates errors returned by the delegated column unmarshalling helper.
 */
 func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
+	// TODO
+	// Security metadata precedes each fresh protected result value, including NULL.
+	// PL/SQL OUT binds do not include this byte.
+	if rxd.numberOfReturningPositions == 0 && rxd.columnContexts[col].ColumnFlags&columnSecurityEnabled != 0 {
+		if _, err := mar.UnmarshalUB1(ctx); err != nil {
+			common.Odl.Warn("Failed to read column security metadata", "index", col, "error", err)
+			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[rxd.GetMsgCode()])
+		}
+		common.Odl.Fine("RXD column security metadata consumed", "index", col)
+	}
 	// Preserve CLR framing when the existing decoder lookup has no usable entry.
 	handler := unwrapCLRColumn
 	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unwrapColumn != nil {
