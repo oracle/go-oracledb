@@ -60,15 +60,15 @@ var dummyDecoderA = newTypeDecoder(func(columnContext, any) (driver.Value, error
 var dummyDecoderB = newTypeDecoder(func(columnContext, any) (driver.Value, error) { return "B", nil }, nil, unwrapCLRColumn)
 
 var dummyBindOacA = bindOacType{
-	bindOacFunc: func(common.UB4) common.Marshallable {
-		return newTTIoac(typeCommon.DtyNum, 8)
+	bindOacFunc: func(_ bindValueMetadata, _ common.UB4) (common.Marshallable, error) {
+		return newTTIoac(typeCommon.DtyNum, 8), nil
 	},
 	maxLength: 8,
 }
 
 var dummyBindOacB = bindOacType{
-	bindOacFunc: func(common.UB4) common.Marshallable {
-		return newTTIoac(typeCommon.DtyVCS, 16)
+	bindOacFunc: func(_ bindValueMetadata, _ common.UB4) (common.Marshallable, error) {
+		return newTTIoac(typeCommon.DtyVCS, 16), nil
 	},
 	maxLength: 16,
 }

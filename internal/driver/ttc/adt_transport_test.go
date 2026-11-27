@@ -87,24 +87,19 @@ func (adtCodecFactoryStub) getDefineOac(common.DtyType, columnContext, driverCom
 
 func setObjectField(t *testing.T, object *datatype.Object, name string, value any) {
 	t.Helper()
-	field := object.Value.FieldByName(name)
-	if !field.IsValid() || !field.CanSet() {
-		t.Fatalf("%s is not a settable reflected object field", name)
+	if object == nil || object.Attributes == nil {
+		t.Fatalf("%s cannot be set on nil object", name)
 	}
-	if value == nil {
-		field.SetZero()
-		return
-	}
-	field.Set(reflect.ValueOf(value))
+	object.Attributes[name] = value
 }
 
 func objectField(t *testing.T, object datatype.Object, name string) any {
 	t.Helper()
-	field := object.Value.FieldByName(name)
-	if !field.IsValid() {
-		t.Fatalf("%s is not a reflected object field", name)
+	value, ok := object.Attributes[name]
+	if !ok {
+		t.Fatalf("%s is not an object attribute", name)
 	}
-	return field.Interface()
+	return value
 }
 
 func TestObjectCollectionOperations(t *testing.T) {
@@ -134,17 +129,31 @@ func TestNamedTypeForZeroCollectionAndOutInference(t *testing.T) {
 	if _, ok := namedTypeForBind(datatype.ObjectCollection{}); ok {
 		t.Fatal("zero ObjectCollection unexpectedly reported a named type")
 	}
-	typ := &datatype.ObjectType{Name: "NUMBERS", Collection: true, VArray: true}
-	in, err := typ.NewCollection()
+	typ := &adtDescriptor{Name: "NUMBERS", Collection: true, VArray: true}
+	processor := statementProcessor{shelf: &ttiShelf[driverCommon.MessageType]{adtByName: map[string]*adtDescriptor{
+		"NUMBERS": typ, "ALIAS": typ, "OTHER": {Name: "OTHER", Collection: true},
+	}}}
+	in := datatype.NewCollection("numbers")
+	in.SetNull()
+	metadata, err := processor.bindMetadata([]sqldriver.Value{
+		sql.Out{Dest: &datatype.ObjectCollection{}},
+		in, datatype.NewCollection("alias"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata := extractBindMetadata([]sqldriver.Value{
-		sql.Out{Dest: &datatype.ObjectCollection{}},
-		in,
-	})
-	if metadata[0].objectType != typ {
-		t.Fatalf("inferred type = %v; want %p", metadata[0].objectType, typ)
+	if metadata[0].descriptor != typ || metadata[1].descriptor != typ {
+		t.Fatal("OUT bind and typed NULL must retain the cached collection descriptor")
+	}
+	missing := datatype.NewCollection("missing")
+	for name, args := range map[string][]sqldriver.Value{
+		"ambiguous":           {sql.Out{Dest: &datatype.ObjectCollection{}}, in, datatype.NewCollection("other")},
+		"explicit cache miss": {sql.Out{Dest: &missing}, in},
+		"wrong kind":          {sql.Out{Dest: &datatype.Object{}}, in},
+	} {
+		if _, err := processor.bindMetadata(args); err == nil {
+			t.Errorf("%s: expected ADT metadata error", name)
+		}
 	}
 }
 
@@ -178,7 +187,7 @@ func TestObjectCollectionNullBind(t *testing.T) {
 	if _, ok := namedTypeForBind(c); !ok {
 		t.Fatal("NULL collection lost its named type")
 	}
-	image, err := encodeCollectionImage(c, nil)
+	image, err := (&adtDescriptor{Collection: true}).encodeCollectionImage(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,29 +231,14 @@ func TestRefCursorOutBindUsesCursorOAC(t *testing.T) {
 }
 
 func TestNewCollectionBindsUnusedMetadataAsRefCursors(t *testing.T) {
-	sentinel := errors.New("stop after checking binds")
-	_, err := datatype.NewCollection(context.Background(), adtMetadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
-		if len(args) != 10 {
-			t.Fatalf("bind count = %d, want 10", len(args))
-		}
-		for _, index := range []int{8, 9} {
-			out, ok := args[index].(sql.Out)
-			if !ok {
-				t.Fatalf("bind %d = %T, want sql.Out", index+1, args[index])
-			}
-			if _, ok := out.Dest.(*datatype.Cursor); !ok {
-				t.Fatalf("bind %d destination = %T, want *datatype.Cursor", index+1, out.Dest)
-			}
-		}
-		return nil, sentinel
-	}), "SCHEMA.NUMBER_VARRAY")
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("NewCollection error = %v, want wrapped sentinel", err)
+	collection := datatype.NewCollection("SCHEMA.NUMBER_VARRAY")
+	if collection.ObjectType == nil || !collection.ObjectType.Collection || collection.FullName() != "SCHEMA.NUMBER_VARRAY" {
+		t.Fatalf("collection placeholder = %#v", collection)
 	}
 }
 
 func TestDecodeCollectionImageJDBCHeader(t *testing.T) {
-	typ := &datatype.ObjectType{Collection: true, VArray: true, UpperBound: 5, ElementType: common.DtyNum}
+	typ := &adtDescriptor{Collection: true, VArray: true, UpperBound: 5, ElementType: common.DtyNum}
 	// JDBC's 8.1 image for VARRAY(10, 20, 30): prefix length 3, inline/type-
 	// version flag 0x11, type version 1, collection flags 0, and three values.
 	image := driverCommon.B1Array{
@@ -252,7 +246,8 @@ func TestDecodeCollectionImageJDBCHeader(t *testing.T) {
 		0x03, 0x11, 0x00, 0x01, 0x00, 0x03,
 		0x02, 0xC1, 0x0B, 0x02, 0xC1, 0x15, 0x02, 0xC1, 0x1F,
 	}
-	value, err := decodeCollectionImage(image, typ, NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	typ.attachCodecs(&adtCodecContext{codecs: NewCodecFactoryForProtocol(MinTTCProtocolVersion)})
+	value, err := typ.decodeCollectionImage(image)
 	if err != nil {
 		t.Fatalf("decode JDBC collection image: %v", err)
 	}
@@ -266,7 +261,7 @@ func TestDecodeCollectionImageJDBCHeader(t *testing.T) {
 }
 
 func TestNestedTableInlineCollectionImage(t *testing.T) {
-	typ := &datatype.ObjectType{Collection: true, ElementType: common.DtyNum, TypeVersion: 1}
+	typ := &adtDescriptor{Collection: true, ElementType: common.DtyNum, TypeVersion: 1}
 	collection, err := typ.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -275,11 +270,12 @@ func TestNestedTableInlineCollectionImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	image, err := encodeCollectionImage(collection, factory)
+	typ.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := typ.encodeCollectionImage(collection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := decodeCollectionImage(image, typ, factory)
+	decoded, err := typ.decodeCollectionImage(image)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +292,7 @@ func TestNestedTableInlineCollectionImage(t *testing.T) {
 }
 
 func TestAssociativeCollectionImageRoundTrip(t *testing.T) {
-	typ := &datatype.ObjectType{Collection: true, Associative: true, ElementType: common.DtyNum, TypeVersion: 1}
+	typ := &adtDescriptor{Collection: true, Associative: true, ElementType: common.DtyNum, TypeVersion: 1}
 	collection, err := typ.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -306,7 +302,8 @@ func TestAssociativeCollectionImageRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	image, err := encodeCollectionImage(collection, factory)
+	typ.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := typ.encodeCollectionImage(collection)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +312,7 @@ func TestAssociativeCollectionImageRoundTrip(t *testing.T) {
 	if len(image) < 17 || image[11] != collectionIndexesFlag || !reflect.DeepEqual([]byte(image[13:17]), []byte{0xFF, 0xFF, 0xFF, 0xFE}) {
 		t.Fatalf("associative collection image header = % X", []byte(image))
 	}
-	decoded, err := decodeCollectionImage(image, typ, factory)
+	decoded, err := typ.decodeCollectionImage(image)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,10 +330,11 @@ func TestAssociativeCollectionImageRoundTrip(t *testing.T) {
 }
 
 func TestDecodeCollectionImageRejectsLocatorBackedNestedTable(t *testing.T) {
-	typ := &datatype.ObjectType{Collection: true, ElementType: common.DtyNum}
+	typ := &adtDescriptor{Collection: true, ElementType: common.DtyNum}
 	// 0x90 is an 8.1 degenerate image header. It carries a locator prefix,
 	// not an inline collection data segment.
-	_, err := decodeCollectionImage(driverCommon.B1Array{0x90, 0x01, 0x03, 0x01, 0x00}, typ, NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	typ.attachCodecs(&adtCodecContext{codecs: NewCodecFactoryForProtocol(MinTTCProtocolVersion)})
+	_, err := typ.decodeCollectionImage(driverCommon.B1Array{0x90, 0x01, 0x03, 0x01, 0x00})
 	if err == nil {
 		t.Fatal("locator-backed nested table image was decoded as inline data")
 	}
@@ -352,25 +350,25 @@ func TestObjectAttributes(t *testing.T) {
 	if got := objectField(t, *o, "A"); got != "x" {
 		t.Fatalf("A = %v, want x", got)
 	}
-	if field := o.Value.FieldByName("MISSING"); field.IsValid() {
-		t.Fatal("dynamic object exposes an undeclared attribute")
+	if _, exists := o.Attributes["MISSING"]; exists {
+		t.Fatal("object exposes an undeclared attribute")
 	}
 }
 
 func TestObjectImageRoundTrip(t *testing.T) {
-	typ := &datatype.ObjectType{
+	typ := &adtDescriptor{
 		Name:        "SCALAR_OBJECT",
 		TypeVersion: 1,
-		Attributes: map[string]datatype.ObjectAttribute{
+		Attributes: map[string]adtAttribute{
 			"ID": {
-				Name:       "ID",
-				Sequence:   1,
-				ObjectType: &datatype.ObjectType{ElementType: common.DtyNum},
+				Name:          "ID",
+				Sequence:      1,
+				adtDescriptor: &adtDescriptor{ElementType: common.DtyNum},
 			},
 			"NAME": {
-				Name:       "NAME",
-				Sequence:   2,
-				ObjectType: &datatype.ObjectType{ElementType: common.DtyVCS},
+				Name:          "NAME",
+				Sequence:      2,
+				adtDescriptor: &adtDescriptor{ElementType: common.DtyVCS},
 			},
 		},
 	}
@@ -381,11 +379,12 @@ func TestObjectImageRoundTrip(t *testing.T) {
 	setObjectField(t, object, "ID", int64(42))
 	setObjectField(t, object, "NAME", "forty-two")
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	image, err := encodeObjectImage(object, factory)
+	typ.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := typ.encodeObjectImage(object)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := decodeObjectImage(image, typ, factory)
+	decoded, err := typ.decodeObjectImage(image)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,11 +401,11 @@ func TestObjectImageRoundTrip(t *testing.T) {
 }
 
 func TestObjectImageUsesDeclaredTimestampEncoder(t *testing.T) {
-	typ := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
+	typ := &adtDescriptor{Attributes: map[string]adtAttribute{
 		"CREATED_AT": {
-			Name:       "CREATED_AT",
-			Sequence:   1,
-			ObjectType: &datatype.ObjectType{ElementType: common.DtyStamp},
+			Name:          "CREATED_AT",
+			Sequence:      1,
+			adtDescriptor: &adtDescriptor{ElementType: common.DtyStamp},
 		},
 	}}
 	object, err := typ.NewObject()
@@ -416,7 +415,8 @@ func TestObjectImageUsesDeclaredTimestampEncoder(t *testing.T) {
 	want := time.Date(2026, 11, 17, 14, 40, 56, 987654321, time.UTC)
 	setObjectField(t, object, "CREATED_AT", want)
 
-	image, err := encodeObjectImage(object, NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	typ.attachCodecs(&adtCodecContext{codecs: NewCodecFactoryForProtocol(MinTTCProtocolVersion)})
+	image, err := typ.encodeObjectImage(object)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,7 +427,7 @@ func TestObjectImageUsesDeclaredTimestampEncoder(t *testing.T) {
 		t.Fatalf("TIMESTAMP object image = %x; want 7-byte header plus 11-byte value", image)
 	}
 
-	decoded, err := decodeObjectImage(image, typ, NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	decoded, err := typ.decodeObjectImage(image)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,8 +443,8 @@ func TestObjectImageUsesDeclaredTimestampEncoder(t *testing.T) {
 }
 
 func TestObjectNullBind(t *testing.T) {
-	typ := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	typ := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"ID": {Name: "ID", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
 	object, err := typ.NewObject()
 	if err != nil {
@@ -454,7 +454,8 @@ func TestObjectNullBind(t *testing.T) {
 	if !object.IsNull() {
 		t.Fatal("SetNull did not mark object NULL")
 	}
-	image, err := encodeObjectImage(object, NewCodecFactoryForProtocol(MinTTCProtocolVersion))
+	typ.attachCodecs(&adtCodecContext{codecs: NewCodecFactoryForProtocol(MinTTCProtocolVersion)})
+	image, err := typ.encodeObjectImage(object)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,13 +465,13 @@ func TestObjectNullBind(t *testing.T) {
 }
 
 func TestCompositeObjectImageRoundTrip(t *testing.T) {
-	childType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"LABEL": {Name: "LABEL", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyVCS}},
+	childType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"LABEL": {Name: "LABEL", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyVCS}},
 	}}
-	collectionType := &datatype.ObjectType{Collection: true, VArray: true, UpperBound: 3, ElementType: common.DtyNum, TypeVersion: 1}
-	parentType := &datatype.ObjectType{TypeVersion: 1, Attributes: map[string]datatype.ObjectAttribute{
-		"CHILD":   {Name: "CHILD", Sequence: 1, ObjectType: childType},
-		"NUMBERS": {Name: "NUMBERS", Sequence: 2, ObjectType: collectionType},
+	collectionType := &adtDescriptor{Collection: true, VArray: true, UpperBound: 3, ElementType: common.DtyNum, TypeVersion: 1}
+	parentType := &adtDescriptor{TypeVersion: 1, Attributes: map[string]adtAttribute{
+		"CHILD":   {Name: "CHILD", Sequence: 1, adtDescriptor: childType},
+		"NUMBERS": {Name: "NUMBERS", Sequence: 2, adtDescriptor: collectionType},
 	}}
 	child, err := childType.NewObject()
 	if err != nil {
@@ -491,7 +492,8 @@ func TestCompositeObjectImageRoundTrip(t *testing.T) {
 	setObjectField(t, parent, "CHILD", child)
 	setObjectField(t, parent, "NUMBERS", collection)
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	image, err := encodeObjectImage(parent, factory)
+	parentType.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := parentType.encodeObjectImage(parent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,7 +503,7 @@ func TestCompositeObjectImageRoundTrip(t *testing.T) {
 	if len(image) < 16 || image[14] != 16 || image[15] != 0x88 {
 		t.Fatalf("embedded collection record = %x; want UPT length followed by collection image", []byte(image))
 	}
-	decoded, err := decodeObjectImage(image, parentType, factory)
+	decoded, err := parentType.decodeObjectImage(image)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,13 +527,13 @@ func TestCompositeObjectImageRoundTrip(t *testing.T) {
 }
 
 func TestCompositeObjectImageNullMembers(t *testing.T) {
-	childType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"LABEL": {Name: "LABEL", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyVCS}},
+	childType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"LABEL": {Name: "LABEL", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyVCS}},
 	}}
-	collectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum, TypeVersion: 1}
-	parentType := &datatype.ObjectType{TypeVersion: 1, Attributes: map[string]datatype.ObjectAttribute{
-		"CHILD":   {Name: "CHILD", Sequence: 1, ObjectType: childType},
-		"NUMBERS": {Name: "NUMBERS", Sequence: 2, ObjectType: collectionType},
+	collectionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyNum, TypeVersion: 1}
+	parentType := &adtDescriptor{TypeVersion: 1, Attributes: map[string]adtAttribute{
+		"CHILD":   {Name: "CHILD", Sequence: 1, adtDescriptor: childType},
+		"NUMBERS": {Name: "NUMBERS", Sequence: 2, adtDescriptor: collectionType},
 	}}
 	child, err := childType.NewObject()
 	if err != nil {
@@ -550,11 +552,12 @@ func TestCompositeObjectImageNullMembers(t *testing.T) {
 	setObjectField(t, parent, "CHILD", child)
 	setObjectField(t, parent, "NUMBERS", collection)
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	image, err := encodeObjectImage(parent, factory)
+	parentType.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := parentType.encodeObjectImage(parent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := decodeObjectImage(image, parentType, factory)
+	decoded, err := parentType.decodeObjectImage(image)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,10 +570,10 @@ func TestCompositeObjectImageNullMembers(t *testing.T) {
 }
 
 func TestObjectCollectionImageRoundTrip(t *testing.T) {
-	elementType := &datatype.ObjectType{TypeVersion: 1, Attributes: map[string]datatype.ObjectAttribute{
-		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	elementType := &adtDescriptor{TypeVersion: 1, Attributes: map[string]adtAttribute{
+		"ID": {Name: "ID", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
-	collectionType := &datatype.ObjectType{Collection: true, VArray: true, UpperBound: 3, TypeVersion: 1, CollectionOf: elementType}
+	collectionType := &adtDescriptor{Collection: true, VArray: true, UpperBound: 3, TypeVersion: 1, CollectionOf: elementType}
 	first, err := elementType.NewObject()
 	if err != nil {
 		t.Fatal(err)
@@ -584,7 +587,8 @@ func TestObjectCollectionImageRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	image, err := encodeCollectionImage(collection, factory)
+	collectionType.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := collectionType.encodeCollectionImage(collection)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +597,7 @@ func TestObjectCollectionImageRoundTrip(t *testing.T) {
 	if len(image) < 15 || image[13] != 10 || image[14] != 0x84 {
 		t.Fatalf("object collection element = %x; want UPT length followed by object image", []byte(image))
 	}
-	decoded, err := decodeCollectionImage(image, collectionType, factory)
+	decoded, err := collectionType.decodeCollectionImage(image)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -616,17 +620,17 @@ func TestObjectCollectionImageRoundTrip(t *testing.T) {
 }
 
 func TestPolymorphicObjectImageRoundTrip(t *testing.T) {
-	baseType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	baseType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"ID": {Name: "ID", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
-	subtype := &datatype.ObjectType{TypeVersion: 1, SuperTypeName: "OWNER.BASE", TOID: make([]byte, 16), Attributes: map[string]datatype.ObjectAttribute{
-		"ID":    {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
-		"EXTRA": {Name: "EXTRA", Sequence: 2, ObjectType: &datatype.ObjectType{ElementType: common.DtyVCS}},
+	subtype := &adtDescriptor{TypeVersion: 1, SuperTypeName: "OWNER.BASE", TOID: make([]byte, 16), Attributes: map[string]adtAttribute{
+		"ID":    {Name: "ID", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
+		"EXTRA": {Name: "EXTRA", Sequence: 2, adtDescriptor: &adtDescriptor{ElementType: common.DtyVCS}},
 	}}
 	for i := range subtype.TOID {
 		subtype.TOID[i] = byte(i + 1)
 	}
-	baseType.SubTypes = []*datatype.ObjectType{subtype}
+	baseType.SubTypes = []*adtDescriptor{subtype}
 	object, err := subtype.NewObject()
 	if err != nil {
 		t.Fatal(err)
@@ -634,19 +638,21 @@ func TestPolymorphicObjectImageRoundTrip(t *testing.T) {
 	setObjectField(t, object, "ID", int64(1))
 	setObjectField(t, object, "EXTRA", "derived")
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	image, err := encodeObjectImage(object, factory)
+	subtype.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := subtype.encodeObjectImage(object)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if image[0] != 0x80 {
 		t.Fatalf("polymorphic image flags = %x, want 80", image[0])
 	}
-	decoded, err := decodeObjectImage(image, baseType, factory)
+	baseType.attachCodecs(&adtCodecContext{codecs: factory})
+	decoded, err := baseType.decodeObjectImage(image)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := decoded.(datatype.Object)
-	if got.ObjectType != subtype {
+	if !reflect.DeepEqual(got.ObjectType, subtype.public()) {
 		t.Fatalf("decoded type = %p, want subtype %p", got.ObjectType, subtype)
 	}
 	if value := objectField(t, got, "EXTRA"); value != "derived" {
@@ -655,7 +661,7 @@ func TestPolymorphicObjectImageRoundTrip(t *testing.T) {
 }
 
 func TestNamedTypeOACCarriesTOIDAndVersion(t *testing.T) {
-	typ := &datatype.ObjectType{Name: "NUMBERS", TOID: make([]byte, 16), TypeVersion: 7}
+	typ := &adtDescriptor{Name: "NUMBERS", TOID: make([]byte, 16), TypeVersion: 7}
 	oac, err := newTTIOacNamedType(typ, 128)
 	if err != nil {
 		t.Fatal(err)
@@ -672,8 +678,8 @@ func TestNamedTypeOACCarriesTOIDAndVersion(t *testing.T) {
 }
 
 func TestDecodeOutColumnUsesRegisteredNamedTypeDecoder(t *testing.T) {
-	typ := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	typ := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"ID": {Name: "ID", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
 	object, err := typ.NewObject()
 	if err != nil {
@@ -681,7 +687,8 @@ func TestDecodeOutColumnUsesRegisteredNamedTypeDecoder(t *testing.T) {
 	}
 	setObjectField(t, object, "ID", int64(42))
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	image, err := encodeObjectImage(object, factory)
+	typ.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := typ.encodeObjectImage(object)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -700,27 +707,27 @@ func TestDecodeOutColumnUsesRegisteredNamedTypeDecoder(t *testing.T) {
 		t.Fatal(err)
 	}
 	nullObject, ok := value.(datatype.Object)
-	if !ok || !nullObject.IsNull() || nullObject.ObjectType != typ {
+	if !ok || !nullObject.IsNull() || !reflect.DeepEqual(nullObject.ObjectType, typ.public()) {
 		t.Fatalf("decoded NULL named OUT value = %#v", value)
 	}
 
-	collectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum}
+	collectionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyNum}
 	value, err = decodeOutColumn(factory, columnContext{DataType: common.DtyNty, objectType: collectionType}, columnPayload{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	nullCollection, ok := value.(datatype.ObjectCollection)
-	if !ok || !nullCollection.IsNull() || nullCollection.ObjectType != collectionType {
+	if !ok || !nullCollection.IsNull() || !reflect.DeepEqual(nullCollection.ObjectType, collectionType.public()) {
 		t.Fatalf("decoded NULL named collection OUT value = %#v", value)
 	}
 }
 
 func TestADTTransportBindHelpersAndValidation(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	objectType := &datatype.ObjectType{TOID: make([]byte, 16), Attributes: map[string]datatype.ObjectAttribute{
-		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	objectType := &adtDescriptor{TOID: make([]byte, 16), Attributes: map[string]adtAttribute{
+		"ID": {Name: "ID", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
-	collectionType := &datatype.ObjectType{TOID: make([]byte, 16), Collection: true, VArray: true, ElementType: common.DtyNum}
+	collectionType := &adtDescriptor{TOID: make([]byte, 16), Collection: true, VArray: true, ElementType: common.DtyNum}
 	object, err := objectType.NewObject()
 	if err != nil {
 		t.Fatal(err)
@@ -734,7 +741,7 @@ func TestADTTransportBindHelpersAndValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, typ := range []*datatype.ObjectType{nil, {}, {TOID: []byte{1}}, {TOID: make([]byte, 16), TypeVersion: -1}, {TOID: make([]byte, 16), TypeVersion: 1 << 16}} {
+	for _, typ := range []*adtDescriptor{nil, {}, {TOID: []byte{1}}, {TOID: make([]byte, 16), TypeVersion: -1}, {TOID: make([]byte, 16), TypeVersion: 1 << 16}} {
 		if _, err := newTTIOacNamedType(typ, 0); err == nil {
 			t.Fatalf("newTTIOacNamedType(%#v) succeeded", typ)
 		}
@@ -750,7 +757,7 @@ func TestADTTransportBindHelpersAndValidation(t *testing.T) {
 	if _, err := newNamedTypeBindOAC(bindValueMetadata{}, 0); err == nil {
 		t.Fatal("newNamedTypeBindOAC without metadata succeeded")
 	}
-	if _, err := newNamedTypeBindOAC(bindValueMetadata{objectType: objectType}, 0); err != nil {
+	if _, err := newNamedTypeBindOAC(bindValueMetadata{descriptor: objectType}, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -760,25 +767,25 @@ func TestADTTransportBindHelpersAndValidation(t *testing.T) {
 	if _, ok := namedTypeForBind((*datatype.ObjectCollection)(nil)); ok {
 		t.Fatal("nil collection reported named metadata")
 	}
-	if got, ok := namedTypeForBind(collection); !ok || got != collectionType {
+	if got, ok := namedTypeForBind(collection); !ok || got != collection.ObjectType {
 		t.Fatalf("collection named type = %p, %v", got, ok)
 	}
-	if got, ok := namedTypeForBind(&collection); !ok || got != collectionType {
+	if got, ok := namedTypeForBind(&collection); !ok || got != collection.ObjectType {
 		t.Fatalf("collection pointer named type = %p, %v", got, ok)
 	}
-	if got, ok := namedTypeForBind(object); !ok || got != objectType {
+	if got, ok := namedTypeForBind(object); !ok || got != object.ObjectType {
 		t.Fatalf("object named type = %p, %v", got, ok)
 	}
 	if _, ok := collectionForBind("not a collection"); ok {
 		t.Fatal("non-collection accepted")
 	}
-	if got, ok := collectionForBind(&collection); !ok || got.ObjectType != collectionType {
+	if got, ok := collectionForBind(&collection); !ok || !reflect.DeepEqual(got.ObjectType, collectionType.public()) {
 		t.Fatalf("collection pointer = %#v, %v", got, ok)
 	}
 	if _, ok := objectForBind(collection); ok {
 		t.Fatal("collection accepted as object")
 	}
-	if got, ok := objectForBind(*object); !ok || got.ObjectType != objectType {
+	if got, ok := objectForBind(*object); !ok || got.ObjectType != object.ObjectType {
 		t.Fatalf("object value = %#v, %v", got, ok)
 	}
 	if _, ok := objectForBind("not an object"); ok {
@@ -791,24 +798,31 @@ func TestADTTransportBindHelpersAndValidation(t *testing.T) {
 	if image, err := encodeObjectBind("not an object", factory); err != nil || image != nil {
 		t.Fatalf("invalid object bind = %x, %v", image, err)
 	}
-	if image, err := encodeObjectCollectionBind(collection, factory); err != nil || len(image) == 0 {
+	collectionType.attachCodecs(&adtCodecContext{codecs: factory})
+	objectType.attachCodecs(&adtCodecContext{codecs: factory})
+	if image, err := encodeObjectCollectionBind(collection, adtBindCodecs{codecFactory: factory, descriptor: collectionType}); err != nil || len(image) == 0 {
 		t.Fatalf("collection bind = %x, %v", image, err)
 	}
-	if image, err := encodeObjectBind(*object, factory); err != nil || len(image) == 0 {
+	if image, err := encodeObjectBind(*object, adtBindCodecs{codecFactory: factory, descriptor: objectType}); err != nil || len(image) == 0 {
 		t.Fatalf("object bind = %x, %v", image, err)
 	}
 
 	metadata := []bindValueMetadata{
 		{goType: reflect.TypeFor[datatype.Object](), isOut: true},
-		{objectType: objectType},
+		{descriptor: objectType},
 		{goType: reflect.TypeFor[string](), isOut: true},
 		{goType: reflect.TypeFor[datatype.ObjectCollection](), isOut: true},
+		{descriptor: collectionType},
 	}
-	resolveNamedTypeMetadata(metadata)
-	if metadata[0].objectType != objectType || metadata[2].objectType != nil || metadata[3].objectType != objectType {
+	if err := resolveNamedTypeMetadata(metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata[0].descriptor != objectType || metadata[2].descriptor != nil || metadata[3].descriptor != collectionType {
 		t.Fatalf("resolved metadata = %#v", metadata)
 	}
-	resolveNamedTypeMetadata([]bindValueMetadata{{goType: reflect.TypeFor[datatype.Object](), isOut: true}})
+	if err := resolveNamedTypeMetadata([]bindValueMetadata{{goType: reflect.TypeFor[datatype.Object](), isOut: true}}); err == nil {
+		t.Fatal("expected missing descriptor error for an untyped OUT bind")
+	}
 	if isNamedTypeGoType(reflect.TypeFor[string]()) {
 		t.Fatal("string identified as named type")
 	}
@@ -816,7 +830,7 @@ func TestADTTransportBindHelpersAndValidation(t *testing.T) {
 
 func TestADTTransportPickleAndMalformedImages(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	collectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum}
+	collectionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyNum}
 	collection, err := collectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -824,7 +838,8 @@ func TestADTTransportPickleAndMalformedImages(t *testing.T) {
 	if err := collection.Set([]any{int64(1)}); err != nil {
 		t.Fatal(err)
 	}
-	image, err := encodeCollectionImage(collection, factory)
+	collectionType.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := collectionType.encodeCollectionImage(collection)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -869,93 +884,97 @@ func TestADTTransportPickleAndMalformedImages(t *testing.T) {
 	} {
 		bad := append(driverCommon.B1Array(nil), image...)
 		mutate(bad)
-		if _, err := decodeCollectionImage(bad, collectionType, factory); err == nil {
+		if _, err := collectionType.decodeCollectionImage(bad); err == nil {
 			t.Fatalf("malformed collection image accepted: %x", bad)
 		}
 	}
-	if _, err := decodeCollectionImage(image, nil, factory); err == nil {
+	if _, err := (*adtDescriptor)(nil).decodeCollectionImage(image); err == nil {
 		t.Fatal("nil collection type accepted")
 	}
-	if _, err := decodeCollectionImage(image, &datatype.ObjectType{}, factory); err == nil {
+	if _, err := (&adtDescriptor{adtCodecContext: &adtCodecContext{codecs: factory}}).decodeCollectionImage(image); err == nil {
 		t.Fatal("object type accepted as collection")
 	}
 }
 
 func TestADTTransportObjectValidation(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	if _, err := encodeObjectImage(nil, factory); err == nil {
+	if _, err := (*adtDescriptor)(nil).encodeObjectImage(nil); err == nil {
 		t.Fatal("nil object encoded")
 	}
 	closed := &datatype.Object{Closed: true}
-	if _, err := encodeObjectImage(closed, factory); err == nil {
+	if _, err := (*adtDescriptor)(nil).encodeObjectImage(closed); err == nil {
 		t.Fatal("closed object encoded")
 	}
-	collectionType := &datatype.ObjectType{Collection: true}
+	collectionType := &adtDescriptor{Collection: true}
 	collectionObject, err := collectionType.NewObject()
 	if err == nil || collectionObject != nil {
 		t.Fatal("collection descriptor created an object")
 	}
-	typ := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"ID": {Name: "ID", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	typ := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"ID": {Name: "ID", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
 	object, err := typ.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setObjectField(t, object, "ID", int64(1))
-	if _, err := encodeObjectImage(object, nil); err == nil {
+	if _, err := typ.encodeObjectImage(object); err == nil {
 		t.Fatal("object encoded without codec factory")
 	}
-	polymorphic := &datatype.ObjectType{TypeVersion: 2, Attributes: typ.Attributes}
+	polymorphic := &adtDescriptor{TypeVersion: 2, Attributes: typ.Attributes}
 	polyObject, err := polymorphic.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setObjectField(t, polyObject, "ID", int64(1))
-	if _, err := encodeObjectImage(polyObject, factory); err == nil {
+	polymorphic.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := polymorphic.encodeObjectImage(polyObject); err == nil {
 		t.Fatal("polymorphic object without TOID encoded")
 	}
 
-	image, err := encodeObjectImage(object, factory)
+	typ.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := typ.encodeObjectImage(object)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, bad := range []driverCommon.B1Array{nil, {0x01, 0, 0}, {0x84, 1, 4}, {0x84, 1, 254, 0, 0, 0, 255}, append(driverCommon.B1Array(nil), image[:len(image)-1]...)} {
-		if _, err := decodeObjectImage(bad, typ, factory); err == nil {
+		if _, err := typ.decodeObjectImage(bad); err == nil {
 			t.Fatalf("malformed object image accepted: %x", bad)
 		}
 	}
-	if _, err := decodeObjectImage(image, nil, factory); err == nil {
+	if _, err := (*adtDescriptor)(nil).decodeObjectImage(image); err == nil {
 		t.Fatal("nil object type accepted")
 	}
-	if _, err := decodeObjectImage(image, typ, nil); err == nil {
+	typ.attachCodecs(&adtCodecContext{codecs: nil})
+	if _, err := typ.decodeObjectImage(image); err == nil {
 		t.Fatal("nil codec factory accepted")
 	}
-	if err := setReflectedObjectField(nil, 0, nil); err == nil {
+	if err := setObjectAttribute(nil, "VALUE", nil); err == nil {
 		t.Fatal("nil object field target accepted")
 	}
-	if err := setReflectedObjectField(object, -1, nil); err == nil {
-		t.Fatal("negative object field accepted")
+	if err := setObjectAttribute(object, "MISSING", nil); err == nil {
+		t.Fatal("unknown object field accepted")
 	}
-	if err := setReflectedObjectField(object, 0, "value"); err != nil {
+	if err := setObjectAttribute(object, "ID", "value"); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestADTTransportAdditionalEncodeAndDecodePaths(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	if _, err := encodeCollectionImage(datatype.ObjectCollection{}, factory); err == nil {
+	if _, err := (*adtDescriptor)(nil).encodeCollectionImage(datatype.ObjectCollection{}); err == nil {
 		t.Fatal("zero collection encoded")
 	}
-	missingElementType := &datatype.ObjectType{Collection: true}
+	missingElementType := &adtDescriptor{Collection: true}
 	missingElement, err := missingElementType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := encodeCollectionImage(missingElement, factory); err == nil {
+	missingElementType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := missingElementType.encodeCollectionImage(missingElement); err == nil {
 		t.Fatal("collection without element metadata encoded")
 	}
-	longVersionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum, TypeVersion: 246}
+	longVersionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyNum, TypeVersion: 246}
 	longVersionCollection, err := longVersionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -963,36 +982,40 @@ func TestADTTransportAdditionalEncodeAndDecodePaths(t *testing.T) {
 	if err := longVersionCollection.Set([]any{int64(1)}); err != nil {
 		t.Fatal(err)
 	}
-	if image, err := encodeCollectionImage(longVersionCollection, factory); err != nil || len(image) == 0 {
+	longVersionType.attachCodecs(&adtCodecContext{codecs: factory})
+	if image, err := longVersionType.encodeCollectionImage(longVersionCollection); err != nil || len(image) == 0 {
 		t.Fatalf("long-version collection = %x, %v", image, err)
 	}
-	objectType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"VALUE": {Name: "VALUE", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	objectType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"VALUE": {Name: "VALUE", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
 	object, err := objectType.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if image, err := encodeObjectImage(object, factory); err != nil || len(image) == 0 {
+	objectType.attachCodecs(&adtCodecContext{codecs: factory})
+	if image, err := objectType.encodeObjectImage(object); err != nil || len(image) == 0 {
 		t.Fatalf("object with nil scalar field = %x, %v", image, err)
 	}
-	badAttributeType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
+	badAttributeType := &adtDescriptor{Attributes: map[string]adtAttribute{
 		"VALUE": {Name: "VALUE", Sequence: 1},
 	}}
 	badAttributeObject, err := badAttributeType.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := encodeObjectImage(badAttributeObject, factory); err == nil {
+	badAttributeType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := badAttributeType.encodeObjectImage(badAttributeObject); err == nil {
 		t.Fatal("object with missing attribute type encoded")
 	}
-	longObjectType := &datatype.ObjectType{TOID: make([]byte, 16), TypeVersion: 246, Attributes: objectType.Attributes}
+	longObjectType := &adtDescriptor{TOID: make([]byte, 16), TypeVersion: 246, Attributes: objectType.Attributes}
 	longObject, err := longObjectType.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setObjectField(t, longObject, "VALUE", int64(1))
-	if image, err := encodeObjectImage(longObject, factory); err != nil || image[0] != 0x80 {
+	longObjectType.attachCodecs(&adtCodecContext{codecs: factory})
+	if image, err := longObjectType.encodeObjectImage(longObject); err != nil || image[0] != 0x80 {
 		t.Fatalf("long-version polymorphic object = %x, %v", image, err)
 	}
 	if _, ok := objectValue(*object); !ok {
@@ -1005,7 +1028,7 @@ func TestADTTransportAdditionalEncodeAndDecodePaths(t *testing.T) {
 
 func TestADTTransportRejectsTruncatedObjectAndCollectionRecords(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	collectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum}
+	collectionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyNum}
 	collection, err := collectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -1013,7 +1036,8 @@ func TestADTTransportRejectsTruncatedObjectAndCollectionRecords(t *testing.T) {
 	if err := collection.Set([]any{int64(1)}); err != nil {
 		t.Fatal(err)
 	}
-	collectionImage, err := encodeCollectionImage(collection, factory)
+	collectionType.attachCodecs(&adtCodecContext{codecs: factory})
+	collectionImage, err := collectionType.encodeCollectionImage(collection)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1023,29 +1047,31 @@ func TestADTTransportRejectsTruncatedObjectAndCollectionRecords(t *testing.T) {
 		{0x88, 1, 254, 0, 0, 0, 11, 1, 0, 0, 0},
 		{0x88, 1, 254, 0, 0, 0, 12, 1, 0, 0, 0, 0},
 	} {
-		if _, err := decodeCollectionImage(suffix, collectionType, factory); err == nil {
+		if _, err := collectionType.decodeCollectionImage(suffix); err == nil {
 			t.Fatalf("truncated collection record accepted: %x", suffix)
 		}
 	}
 	missingValue := append(driverCommon.B1Array(nil), collectionImage[:len(collectionImage)-2]...)
 	missingValue[3], missingValue[4], missingValue[5], missingValue[6] = 0, 0, 0, byte(len(missingValue))
-	if _, err := decodeCollectionImage(missingValue, collectionType, factory); err == nil {
+	if _, err := collectionType.decodeCollectionImage(missingValue); err == nil {
 		t.Fatal("collection without element payload decoded")
 	}
-	unsupportedCollectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyType(255)}
-	if _, err := decodeCollectionImage(collectionImage, unsupportedCollectionType, factory); err == nil {
+	unsupportedCollectionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyType(255)}
+	unsupportedCollectionType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := unsupportedCollectionType.decodeCollectionImage(collectionImage); err == nil {
 		t.Fatal("collection with unsupported decoder decoded")
 	}
 
-	objectType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"VALUE": {Name: "VALUE", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	objectType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"VALUE": {Name: "VALUE", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
 	object, err := objectType.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setObjectField(t, object, "VALUE", int64(1))
-	objectImage, err := encodeObjectImage(object, factory)
+	objectType.attachCodecs(&adtCodecContext{codecs: factory})
+	objectImage, err := objectType.encodeObjectImage(object)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1055,65 +1081,69 @@ func TestADTTransportRejectsTruncatedObjectAndCollectionRecords(t *testing.T) {
 		{0x80, 1, 254, 0, 0, 0, 8, 1},
 		{0x84, 1, 254, 0, 0, 0, 7},
 	} {
-		if _, err := decodeObjectImage(bad, objectType, factory); err == nil {
+		if _, err := objectType.decodeObjectImage(bad); err == nil {
 			t.Fatalf("truncated object record accepted: %x", bad)
 		}
 	}
 	missingAttribute := append(driverCommon.B1Array(nil), objectImage[:7]...)
 	missingAttribute[3], missingAttribute[4], missingAttribute[5], missingAttribute[6] = 0, 0, 0, byte(len(missingAttribute))
-	if _, err := decodeObjectImage(missingAttribute, objectType, factory); err == nil {
+	if _, err := objectType.decodeObjectImage(missingAttribute); err == nil {
 		t.Fatal("object without attribute decoded")
 	}
-	badDecoderType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"VALUE": {Name: "VALUE", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyType(255)}},
+	badDecoderType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"VALUE": {Name: "VALUE", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyType(255)}},
 	}}
-	if _, err := decodeObjectImage(objectImage, badDecoderType, factory); err == nil {
+	badDecoderType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := badDecoderType.decodeObjectImage(objectImage); err == nil {
 		t.Fatal("object with unsupported decoder decoded")
 	}
 }
 
 func TestADTTransportRecordErrorPaths(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	scalarType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"VALUE": {Name: "VALUE", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	scalarType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"VALUE": {Name: "VALUE", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
-	if _, _, err := decodeObjectRecord(driverCommon.B1Array{1}, 0, &datatype.ObjectType{Closed: true}, factory, 0); err == nil {
+	if _, _, err := (&adtDescriptor{adtCodecContext: &adtCodecContext{codecs: factory}, Closed: true}).decodeObjectRecord(driverCommon.B1Array{1}, 0, 0); err == nil {
 		t.Fatal("closed object type decoded")
 	}
-	if _, _, err := decodeObjectRecord(driverCommon.B1Array{1}, 0, &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
+	if _, _, err := (&adtDescriptor{adtCodecContext: &adtCodecContext{codecs: factory}, Attributes: map[string]adtAttribute{
 		"VALUE": {Name: "VALUE", Sequence: 1},
-	}}, factory, 0); err == nil {
+	}}).decodeObjectRecord(driverCommon.B1Array{1}, 0, 0); err == nil {
 		t.Fatal("missing object attribute metadata decoded")
 	}
 	for _, data := range []driverCommon.B1Array{nil, {254}, {5, 1}} {
-		if _, _, err := decodeObjectRecord(data, 0, scalarType, factory, 0); err == nil {
+		scalarType.attachCodecs(&adtCodecContext{codecs: factory})
+		if _, _, err := scalarType.decodeObjectRecord(data, 0, 0); err == nil {
 			t.Fatalf("invalid scalar record decoded: %x", data)
 		}
 	}
-	embeddedType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"CHILD": {Name: "CHILD", Sequence: 1, ObjectType: scalarType},
+	embeddedType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"CHILD": {Name: "CHILD", Sequence: 1, adtDescriptor: scalarType},
 	}}
-	if _, _, err := decodeObjectRecord(driverCommon.B1Array{252}, 0, embeddedType, factory, 0); err == nil {
+	embeddedType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, _, err := embeddedType.decodeObjectRecord(driverCommon.B1Array{252}, 0, 0); err == nil {
 		t.Fatal("root-level 252 embedded marker decoded")
 	}
-	if value, pos, err := decodeObjectRecord(driverCommon.B1Array{252, 1}, 0, embeddedType, factory, 1); err != nil || pos != 2 || objectField(t, *value, "CHILD") != nil {
+	if value, pos, err := embeddedType.decodeObjectRecord(driverCommon.B1Array{252, 1}, 0, 1); err != nil || pos != 2 || objectField(t, *value, "CHILD") != nil {
 		t.Fatalf("nested 252 marker = %#v, %d, %v", value, pos, err)
 	}
-	if _, _, err := decodeObjectRecord(driverCommon.B1Array{254}, 0, embeddedType, factory, 0); err == nil {
+	if _, _, err := embeddedType.decodeObjectRecord(driverCommon.B1Array{254}, 0, 0); err == nil {
 		t.Fatal("truncated embedded object decoded")
 	}
-	collectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum}
-	objectWithCollection := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"VALUES": {Name: "VALUES", Sequence: 1, ObjectType: collectionType},
+	collectionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyNum}
+	objectWithCollection := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"VALUES": {Name: "VALUES", Sequence: 1, adtDescriptor: collectionType},
 	}}
 	for _, data := range []driverCommon.B1Array{{254}, {1, 0}} {
-		if _, _, err := decodeObjectRecord(data, 0, objectWithCollection, factory, 0); err == nil {
+		objectWithCollection.attachCodecs(&adtCodecContext{codecs: factory})
+		if _, _, err := objectWithCollection.decodeObjectRecord(data, 0, 0); err == nil {
 			t.Fatalf("invalid collection record decoded: %x", data)
 		}
 	}
-	nonSettable := &datatype.Object{ObjectType: scalarType, Value: reflect.ValueOf(struct{ VALUE any }{})}
-	if err := setReflectedObjectField(nonSettable, 0, int64(1)); err == nil {
-		t.Fatal("non-settable object field was set")
+	nonSettable := &datatype.Object{ObjectType: scalarType.public()}
+	if err := setObjectAttribute(nonSettable, "VALUE", int64(1)); err != nil {
+		t.Fatal("map-backed object field was not set")
 	}
 	if _, ok := objectForBind((*datatype.Object)(nil)); ok {
 		t.Fatal("nil object pointer was accepted")
@@ -1125,28 +1155,30 @@ func TestADTTransportRecordErrorPaths(t *testing.T) {
 
 func TestADTTransportRemainingBranches(t *testing.T) {
 	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	scalarType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"VALUE": {Name: "VALUE", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	scalarType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"VALUE": {Name: "VALUE", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
-	if _, err := encodeObjectRecord(nil, &datatype.Object{ObjectType: scalarType}, factory, 0); err == nil {
-		t.Fatal("object with invalid reflected value encoded")
+	scalarType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := scalarType.encodeObjectRecord(nil, &datatype.Object{ObjectType: scalarType.public()}, 0); err == nil {
+		t.Fatal("object without an attribute map encoded")
 	}
 
-	shortPolymorphic := &datatype.ObjectType{TOID: make([]byte, 16), TypeVersion: 2, Attributes: scalarType.Attributes}
+	shortPolymorphic := &adtDescriptor{TOID: make([]byte, 16), TypeVersion: 2, Attributes: scalarType.Attributes}
 	shortObject, err := shortPolymorphic.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setObjectField(t, shortObject, "VALUE", int64(1))
-	if _, err := encodeObjectImage(shortObject, factory); err != nil {
+	shortPolymorphic.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := shortPolymorphic.encodeObjectImage(shortObject); err != nil {
 		t.Fatal(err)
 	}
 
-	childType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"GRANDCHILD": {Name: "GRANDCHILD", Sequence: 1, ObjectType: scalarType},
+	childType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"GRANDCHILD": {Name: "GRANDCHILD", Sequence: 1, adtDescriptor: scalarType},
 	}}
-	parentType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"CHILD": {Name: "CHILD", Sequence: 1, ObjectType: childType},
+	parentType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"CHILD": {Name: "CHILD", Sequence: 1, adtDescriptor: childType},
 	}}
 	child, err := childType.NewObject()
 	if err != nil {
@@ -1157,11 +1189,12 @@ func TestADTTransportRemainingBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	setObjectField(t, parent, "CHILD", child)
-	if encoded, err := encodeObjectRecord(nil, parent, factory, 0); err != nil || !reflect.DeepEqual(encoded, []byte{252, 1}) {
+	parentType.attachCodecs(&adtCodecContext{codecs: factory})
+	if encoded, err := parentType.encodeObjectRecord(nil, parent, 0); err != nil || !reflect.DeepEqual(encoded, []byte{252, 1}) {
 		t.Fatalf("nested NULL object record = %x, %v", encoded, err)
 	}
 
-	collectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum}
+	collectionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyNum}
 	collection, err := collectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -1172,11 +1205,12 @@ func TestADTTransportRemainingBranches(t *testing.T) {
 	if err := collection.Object.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := encodeCollectionImage(collection, factory); err == nil {
+	collectionType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := collectionType.encodeCollectionImage(collection); err == nil {
 		t.Fatal("closed collection encoded")
 	}
 
-	objectCollectionType := &datatype.ObjectType{Collection: true, VArray: true, CollectionOf: scalarType}
+	objectCollectionType := &adtDescriptor{Collection: true, VArray: true, CollectionOf: scalarType}
 	objectCollection, err := objectCollectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -1184,11 +1218,12 @@ func TestADTTransportRemainingBranches(t *testing.T) {
 	if err := objectCollection.Set([]any{"not an object"}); err != nil {
 		t.Fatal(err)
 	}
-	if image, err := encodeCollectionImage(objectCollection, factory); err != nil || image[len(image)-1] != 255 {
+	objectCollectionType.attachCodecs(&adtCodecContext{codecs: factory})
+	if image, err := objectCollectionType.encodeCollectionImage(objectCollection); err != nil || image[len(image)-1] != 255 {
 		t.Fatalf("non-object collection element = %x, %v", image, err)
 	}
 
-	validCollectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum}
+	validCollectionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyNum}
 	validCollection, err := validCollectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -1196,7 +1231,8 @@ func TestADTTransportRemainingBranches(t *testing.T) {
 	if err := validCollection.Set([]any{int64(1)}); err != nil {
 		t.Fatal(err)
 	}
-	image, err := encodeCollectionImage(validCollection, factory)
+	validCollectionType.attachCodecs(&adtCodecContext{codecs: factory})
+	image, err := validCollectionType.encodeCollectionImage(validCollection)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1208,28 +1244,29 @@ func TestADTTransportRemainingBranches(t *testing.T) {
 	} {
 		bad := append(driverCommon.B1Array(nil), image...)
 		mutate(bad)
-		if _, err := decodeCollectionImage(bad, validCollectionType, factory); err == nil {
+		if _, err := validCollectionType.decodeCollectionImage(bad); err == nil {
 			t.Fatalf("malformed collection image decoded: %x", bad)
 		}
 	}
 	missingElement := append(driverCommon.B1Array(nil), image[:11]...)
 	missingElement[3], missingElement[4], missingElement[5], missingElement[6] = 0, 0, 0, byte(len(missingElement))
-	if _, err := decodeCollectionImage(missingElement, validCollectionType, factory); err == nil {
+	if _, err := validCollectionType.decodeCollectionImage(missingElement); err == nil {
 		t.Fatal("collection without element decoded")
 	}
 	noElementData := driverCommon.B1Array{0x88, 1, 254, 0, 0, 0, 13, 3, 0x11, 0, 0, 0, 1}
-	if _, err := decodeCollectionImage(noElementData, validCollectionType, factory); err == nil {
+	if _, err := validCollectionType.decodeCollectionImage(noElementData); err == nil {
 		t.Fatal("collection with no element bytes decoded")
 	}
-	truncatedIndexType := &datatype.ObjectType{Collection: true, Associative: true, ElementType: common.DtyNum}
+	truncatedIndexType := &adtDescriptor{Collection: true, Associative: true, ElementType: common.DtyNum}
 	truncatedIndex := append(driverCommon.B1Array(nil), image[:13]...)
 	truncatedIndex[11] = collectionIndexesFlag
 	truncatedIndex[3], truncatedIndex[4], truncatedIndex[5], truncatedIndex[6] = 0, 0, 0, byte(len(truncatedIndex))
-	if _, err := decodeCollectionImage(truncatedIndex, truncatedIndexType, factory); err == nil {
+	truncatedIndexType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := truncatedIndexType.decodeCollectionImage(truncatedIndex); err == nil {
 		t.Fatal("collection with truncated index decoded")
 	}
 
-	indexedType := &datatype.ObjectType{Collection: true, Associative: true, ElementType: common.DtyNum}
+	indexedType := &adtDescriptor{Collection: true, Associative: true, ElementType: common.DtyNum}
 	indexed, err := indexedType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -1237,39 +1274,42 @@ func TestADTTransportRemainingBranches(t *testing.T) {
 	if err := indexed.SetIndexed(map[int32]any{1: int64(1), 2: int64(2)}); err != nil {
 		t.Fatal(err)
 	}
-	indexedImage, err := encodeCollectionImage(indexed, factory)
+	indexedType.attachCodecs(&adtCodecContext{codecs: factory})
+	indexedImage, err := indexedType.encodeCollectionImage(indexed)
 	if err != nil {
 		t.Fatal(err)
 	}
 	copy(indexedImage[20:24], indexedImage[13:17])
-	if _, err := decodeCollectionImage(indexedImage, indexedType, factory); err == nil {
+	if _, err := indexedType.decodeCollectionImage(indexedImage); err == nil {
 		t.Fatal("duplicate associative indexes decoded")
 	}
 
-	shortPrefixObjectType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{}}
+	shortPrefixObjectType := &adtDescriptor{Attributes: map[string]adtAttribute{}}
 	shortPrefix := driverCommon.B1Array{0x80, 1, 254, 0, 0, 0, 9, 1, 0x04}
-	if _, err := decodeObjectImage(shortPrefix, shortPrefixObjectType, factory); err == nil {
+	shortPrefixObjectType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := shortPrefixObjectType.decodeObjectImage(shortPrefix); err == nil {
 		t.Fatal("object with short type prefix decoded")
 	}
-	validObjectType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"VALUE": {Name: "VALUE", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	validObjectType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"VALUE": {Name: "VALUE", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
 	validObject, err := validObjectType.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setObjectField(t, validObject, "VALUE", int64(1))
-	validObjectImage, err := encodeObjectImage(validObject, factory)
+	validObjectType.attachCodecs(&adtCodecContext{codecs: factory})
+	validObjectImage, err := validObjectType.encodeObjectImage(validObject)
 	if err != nil {
 		t.Fatal(err)
 	}
 	validObjectImage = append(validObjectImage, 0)
 	validObjectImage[3], validObjectImage[4], validObjectImage[5], validObjectImage[6] = 0, 0, 0, byte(len(validObjectImage))
-	if _, err := decodeObjectImage(validObjectImage, validObjectType, factory); err == nil {
+	if _, err := validObjectType.decodeObjectImage(validObjectImage); err == nil {
 		t.Fatal("object with trailing bytes decoded")
 	}
-	collectionAttributeType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"VALUES": {Name: "VALUES", Sequence: 1, ObjectType: validCollectionType},
+	collectionAttributeType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"VALUES": {Name: "VALUES", Sequence: 1, adtDescriptor: validCollectionType},
 	}}
 	collectionAttribute, err := collectionAttributeType.NewObject()
 	if err != nil {
@@ -1283,7 +1323,8 @@ func TestADTTransportRemainingBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	setObjectField(t, collectionAttribute, "VALUES", closedCollection)
-	if _, err := encodeObjectImage(collectionAttribute, factory); err == nil {
+	collectionAttributeType.attachCodecs(&adtCodecContext{codecs: factory})
+	if _, err := collectionAttributeType.encodeObjectImage(collectionAttribute); err == nil {
 		t.Fatal("object encoded with closed collection attribute")
 	}
 }
@@ -1297,7 +1338,7 @@ func TestADTTransportCodecFailures(t *testing.T) {
 	decodeValueFailure := adtCodecFactoryStub{decoder: &typeDecoder{decodeToType: func(columnContext, any) (sqldriver.Value, error) {
 		return nil, errors.New("decode value failure")
 	}}}
-	scalarCollectionType := &datatype.ObjectType{Collection: true, VArray: true, ElementType: common.DtyNum}
+	scalarCollectionType := &adtDescriptor{Collection: true, VArray: true, ElementType: common.DtyNum}
 	scalarCollection, err := scalarCollectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -1305,41 +1346,46 @@ func TestADTTransportCodecFailures(t *testing.T) {
 	if err := scalarCollection.Set([]any{int64(1)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := encodeCollectionImage(scalarCollection, encodeFailure); err == nil {
+	scalarCollectionType.attachCodecs(&adtCodecContext{codecs: encodeFailure})
+	if _, err := scalarCollectionType.encodeCollectionImage(scalarCollection); err == nil {
 		t.Fatal("collection encoded with failing scalar encoder")
 	}
-	if _, err := encodeCollectionImage(scalarCollection, encodeValueFailure); err == nil {
+	scalarCollectionType.attachCodecs(&adtCodecContext{codecs: encodeValueFailure})
+	if _, err := scalarCollectionType.encodeCollectionImage(scalarCollection); err == nil {
 		t.Fatal("collection encoded with failing scalar value encoder")
 	}
 
-	scalarObjectType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"VALUE": {Name: "VALUE", Sequence: 1, ObjectType: &datatype.ObjectType{ElementType: common.DtyNum}},
+	scalarObjectType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"VALUE": {Name: "VALUE", Sequence: 1, adtDescriptor: &adtDescriptor{ElementType: common.DtyNum}},
 	}}
 	scalarObject, err := scalarObjectType.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setObjectField(t, scalarObject, "VALUE", int64(1))
-	if _, err := encodeObjectImage(scalarObject, encodeFailure); err == nil {
+	scalarObjectType.attachCodecs(&adtCodecContext{codecs: encodeFailure})
+	if _, err := scalarObjectType.encodeObjectImage(scalarObject); err == nil {
 		t.Fatal("object encoded with failing scalar encoder")
 	}
-	if _, err := encodeObjectImage(scalarObject, encodeValueFailure); err == nil {
+	scalarObjectType.attachCodecs(&adtCodecContext{codecs: encodeValueFailure})
+	if _, err := scalarObjectType.encodeObjectImage(scalarObject); err == nil {
 		t.Fatal("object encoded with failing scalar value encoder")
 	}
 
-	embeddedType := &datatype.ObjectType{Attributes: map[string]datatype.ObjectAttribute{
-		"CHILD": {Name: "CHILD", Sequence: 1, ObjectType: scalarObjectType},
+	embeddedType := &adtDescriptor{Attributes: map[string]adtAttribute{
+		"CHILD": {Name: "CHILD", Sequence: 1, adtDescriptor: scalarObjectType},
 	}}
 	embedded, err := embeddedType.NewObject()
 	if err != nil {
 		t.Fatal(err)
 	}
 	setObjectField(t, embedded, "CHILD", scalarObject)
-	if _, err := encodeObjectImage(embedded, encodeFailure); err == nil {
+	embeddedType.attachCodecs(&adtCodecContext{codecs: encodeFailure})
+	if _, err := embeddedType.encodeObjectImage(embedded); err == nil {
 		t.Fatal("embedded object encoded with failing scalar encoder")
 	}
 
-	objectCollectionType := &datatype.ObjectType{Collection: true, VArray: true, CollectionOf: scalarObjectType}
+	objectCollectionType := &adtDescriptor{Collection: true, VArray: true, CollectionOf: scalarObjectType}
 	objectCollection, err := objectCollectionType.NewCollection()
 	if err != nil {
 		t.Fatal(err)
@@ -1347,39 +1393,49 @@ func TestADTTransportCodecFailures(t *testing.T) {
 	if err := objectCollection.Set([]any{scalarObject}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := encodeCollectionImage(objectCollection, encodeFailure); err == nil {
+	objectCollectionType.attachCodecs(&adtCodecContext{codecs: encodeFailure})
+	if _, err := objectCollectionType.encodeCollectionImage(objectCollection); err == nil {
 		t.Fatal("object collection encoded with failing child encoder")
 	}
 
 	validFactory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
-	collectionImage, err := encodeCollectionImage(scalarCollection, validFactory)
+	scalarCollectionType.attachCodecs(&adtCodecContext{codecs: validFactory})
+	collectionImage, err := scalarCollectionType.encodeCollectionImage(scalarCollection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := decodeCollectionImage(collectionImage, scalarCollectionType, decodeFailure); err == nil {
+	scalarCollectionType.attachCodecs(&adtCodecContext{codecs: decodeFailure})
+	if _, err := scalarCollectionType.decodeCollectionImage(collectionImage); err == nil {
 		t.Fatal("collection decoded with failing scalar decoder")
 	}
-	if _, err := decodeCollectionImage(collectionImage, scalarCollectionType, decodeValueFailure); err == nil {
+	scalarCollectionType.attachCodecs(&adtCodecContext{codecs: decodeValueFailure})
+	if _, err := scalarCollectionType.decodeCollectionImage(collectionImage); err == nil {
 		t.Fatal("collection decoded with failing scalar value decoder")
 	}
-	objectImage, err := encodeObjectImage(scalarObject, validFactory)
+	scalarObjectType.attachCodecs(&adtCodecContext{codecs: validFactory})
+	objectImage, err := scalarObjectType.encodeObjectImage(scalarObject)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := decodeObjectImage(objectImage, scalarObjectType, decodeFailure); err == nil {
+	scalarObjectType.attachCodecs(&adtCodecContext{codecs: decodeFailure})
+	if _, err := scalarObjectType.decodeObjectImage(objectImage); err == nil {
 		t.Fatal("object decoded with failing scalar decoder")
 	}
-	if _, err := decodeObjectImage(objectImage, scalarObjectType, decodeValueFailure); err == nil {
+	scalarObjectType.attachCodecs(&adtCodecContext{codecs: decodeValueFailure})
+	if _, err := scalarObjectType.decodeObjectImage(objectImage); err == nil {
 		t.Fatal("object decoded with failing scalar value decoder")
 	}
-	if _, err := decodeObjectImage(objectImage, embeddedType, decodeFailure); err == nil {
+	embeddedType.attachCodecs(&adtCodecContext{codecs: decodeFailure})
+	if _, err := embeddedType.decodeObjectImage(objectImage); err == nil {
 		t.Fatal("embedded-object decode failure was not returned")
 	}
-	objectCollectionImage, err := encodeCollectionImage(objectCollection, validFactory)
+	objectCollectionType.attachCodecs(&adtCodecContext{codecs: validFactory})
+	objectCollectionImage, err := objectCollectionType.encodeCollectionImage(objectCollection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := decodeCollectionImage(objectCollectionImage, objectCollectionType, decodeFailure); err == nil {
+	objectCollectionType.attachCodecs(&adtCodecContext{codecs: decodeFailure})
+	if _, err := objectCollectionType.decodeCollectionImage(objectCollectionImage); err == nil {
 		t.Fatal("object collection decode failure was not returned")
 	}
 }

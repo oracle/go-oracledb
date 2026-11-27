@@ -36,23 +36,23 @@
 ** SOFTWARE.
  */
 
-package datatype
+package ttc
 
 import (
 	"context"
-	"database/sql"
 	"database/sql/driver"
 	"io"
-	"reflect"
 	"testing"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
+	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
 
-type metadataExecer func(context.Context, string, ...any) (sql.Result, error)
+type metadataLoader func(context.Context, string) (typeShapeResult, error)
 
-func (f metadataExecer) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return f(ctx, query, args...)
+func (f metadataLoader) fetchTypeShape(ctx context.Context, name string) (typeShapeResult, error) {
+	return f(ctx, name)
 }
 
 type metadataRows struct {
@@ -65,6 +65,20 @@ func (r *metadataRows) Columns() []string {
 	return []string{
 		"CURSOR_VERSION", "ATTR_NAME", "ATTR_NUM", "ATTR_TYPE_OWNER", "ATTR_TYPE_NAME",
 		"ATTR_TYPE_PACKAGE", "ATTR_TYPE_OID", "ATTR_INSTANTIABLE", "ATTR_SUPERTYPE_OWNER", "ATTR_SUPERTYPE_NAME",
+	}
+}
+func TestADTDescriptorCodecGraph(t *testing.T) {
+	root, child, sub := &adtDescriptor{Collection: true}, &adtDescriptor{}, &adtDescriptor{}
+
+	root.CollectionOf = child
+	child.SubTypes = []*adtDescriptor{sub}
+	sub.Attributes = map[string]adtAttribute{"PARENT": {adtDescriptor: root}, "BASE": {adtDescriptor: child}}
+	ctx := &adtCodecContext{codecs: NewCodecFactoryForProtocol(MinTTCProtocolVersion)}
+	root.attachCodecs(ctx)
+	for _, node := range []*adtDescriptor{root, child, sub} {
+		if node.adtCodecContext != ctx {
+			t.Fatal("descriptor does not share the physical connection's codec context")
+		}
 	}
 }
 
@@ -95,8 +109,8 @@ func TestParseTDSCollection(t *testing.T) {
 		42,       // ENDADT
 		6, 38, 0, // NUMBER(38, 0) deferred element record
 	}
-	typ := &ObjectType{TDS: tds}
-	if err := parseTDS(typ); err != nil {
+	typ := &adtDescriptor{TDS: tds}
+	if err := parseDescriptor(typ); err != nil {
 		t.Fatal(err)
 	}
 	if !typ.Collection || !typ.VArray || typ.UpperBound != 10 || typ.ElementType == 0 || typ.ElementSize != 22 {
@@ -109,8 +123,8 @@ func TestParseTDSNestedTable(t *testing.T) {
 		0, 0, 0, 31, 38, 1, 0, 0, 0, 1, 0, 41, 0, 0, 0, 0, 0, 0,
 		28, 0, 0, 0, 29, 0, 0, 0, 0, 2, 42, 7, 0, 12, 0, 0, 0,
 	}
-	typ := &ObjectType{TDS: tds}
-	if err := parseTDS(typ); err != nil {
+	typ := &adtDescriptor{TDS: tds}
+	if err := parseDescriptor(typ); err != nil {
 		t.Fatal(err)
 	}
 	if !typ.Collection || typ.VArray || typ.UpperBound != 0 || typ.ElementType == 0 || typ.ElementSize != 12 {
@@ -123,8 +137,8 @@ func TestParseTDSAssociativeCollection(t *testing.T) {
 		0, 0, 0, 31, 38, 1, 0, 0, 0, 1, 0, 41, 0, 0, 0, 0, 0, 0,
 		28, 0, 0, 0, 29, 0, 0, 0, 0, 1, 42, 7, 0, 12, 0, 0, 0,
 	}
-	typ := &ObjectType{TDS: tds}
-	if err := parseTDS(typ); err != nil {
+	typ := &adtDescriptor{TDS: tds}
+	if err := parseDescriptor(typ); err != nil {
 		t.Fatal(err)
 	}
 	if !typ.Collection || !typ.Associative || typ.VArray || typ.ElementType == 0 || typ.ElementSize != 12 {
@@ -139,14 +153,14 @@ func TestParseTDSObjectWithEmbeddedObject(t *testing.T) {
 		39, 7, 0, 10, 0, 0, 0, 40, // embedded VARCHAR2 attribute
 		42,
 	}
-	typ := &ObjectType{TDS: tds}
-	if err := parseTDS(typ); err != nil {
+	typ := &adtDescriptor{TDS: tds}
+	if err := parseDescriptor(typ); err != nil {
 		t.Fatal(err)
 	}
-	if typ.Collection || typ.tdsType == nil || len(typ.tdsType.attributes) != 2 {
-		t.Fatalf("unexpected object TDS: %#v", typ.tdsType)
+	if typ.Collection || typ.shape == nil || len(typ.shape.attributes) != 2 {
+		t.Fatalf("unexpected object TDS: %#v", typ.shape)
 	}
-	embedded := typ.tdsType.attributes[1]
+	embedded := typ.shape.attributes[1]
 	if len(embedded.attributes) != 1 || embedded.attributes[0].dtyType == 0 {
 		t.Fatalf("embedded attribute was not parsed: %#v", embedded)
 	}
@@ -163,8 +177,8 @@ func TestParseTDSResolvesDeferredCollectionPatch(t *testing.T) {
 		0, // normal-patch opcode
 	}
 	tds = append(tds, nested...)
-	typ := &ObjectType{TDS: tds}
-	if err := parseTDS(typ); err != nil {
+	typ := &adtDescriptor{TDS: tds}
+	if err := parseDescriptor(typ); err != nil {
 		t.Fatal(err)
 	}
 	if !typ.Collection || !typ.VArray || typ.ElementType == 0 {
@@ -173,12 +187,12 @@ func TestParseTDSResolvesDeferredCollectionPatch(t *testing.T) {
 }
 
 func TestParseTDSRejectsTruncatedMetadata(t *testing.T) {
-	if err := parseTDS(&ObjectType{TDS: []byte{0, 0, 0, 1}}); err == nil {
-		t.Fatal("parseTDS succeeded for truncated TDS")
+	if err := parseDescriptor(&adtDescriptor{TDS: []byte{0, 0, 0, 1}}); err == nil {
+		t.Fatal("parseDescriptor succeeded for truncated TDS")
 	}
 }
 
-func TestNewObjectPopulatesAttributesFromMetadataCursor(t *testing.T) {
+func TestLoadObjectTypePopulatesAttributesFromMetadataCursor(t *testing.T) {
 	tds := []byte{
 		0, 0, 0, 28, 38, 1, 0, 0, 0, 2, 0, 41, 0, 0, 0, 0, 0, 0,
 		6, 38, 0, // NUMBER(38, 0)
@@ -189,40 +203,31 @@ func TestNewObjectPopulatesAttributesFromMetadataCursor(t *testing.T) {
 		{int64(1), "NAME", int64(2), "APP", "VARCHAR2", nil, nil, "YES", nil, nil},
 		{int64(1), "ID", int64(1), "APP", "NUMBER", nil, nil, "YES", nil, nil},
 	}}
-	object, err := NewObject(context.Background(), metadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
-		*args[0].(sql.Out).Dest.(*int64) = 0
-		*args[1].(sql.Out).Dest.(*string) = "APP.PERSON_T"
-		*args[2].(sql.Out).Dest.(*[]byte) = make([]byte, 16)
-		*args[3].(sql.Out).Dest.(*int64) = 1
-		*args[4].(sql.Out).Dest.(*[]byte) = tds
-		if err := args[8].(sql.Out).Dest.(*Cursor).Scan(attributes); err != nil {
-			return nil, err
-		}
-		return nil, nil
+	typ, err := loadRootDescriptor(context.Background(), metadataLoader(func(context.Context, string) (typeShapeResult, error) {
+		return typeShapeResult{CanonicalName: "APP.PERSON_T", TOID: make([]byte, 16), Version: 1, TDS: tds, AttributeRows: attributes}, nil
 	}), "APP.PERSON_T")
 	if err != nil {
 		t.Fatal(err)
 	}
-	typ := object.ObjectType
 	if !attributes.closed {
 		t.Fatal("attribute metadata cursor was not closed")
 	}
 	if got, want := typ.AttributeNames(), []string{"ID", "NAME"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("AttributeNames() = %v, want %v", got, want)
 	}
-	if got := typ.Attributes["ID"].ObjectType; got == nil || got.ElementType != common.DtyNum || got.Precision != 38 {
+	if got := typ.Attributes["ID"].adtDescriptor; got == nil || got.ElementType != common.DtyNum || got.Precision != 38 {
 		t.Fatalf("ID metadata = %#v, want NUMBER(38)", got)
 	}
-	if got := typ.Attributes["NAME"].ObjectType; got == nil || got.ElementType != common.DtyVCS || got.ElementSize != 20 {
+	if got := typ.Attributes["NAME"].adtDescriptor; got == nil || got.ElementType != common.DtyVCS || got.ElementSize != 20 {
 		t.Fatalf("NAME metadata = %#v, want VARCHAR2(20)", got)
 	}
-	id := object.Value.FieldByName("ID")
-	if !id.IsValid() || !id.CanSet() {
-		t.Fatal("ID is not a settable reflected field")
+	object, err := typ.NewObject()
+	if err != nil {
+		t.Fatal(err)
 	}
-	id.Set(reflect.ValueOf(int64(1)))
-	if missing := object.Value.FieldByName("MISSING"); missing.IsValid() {
-		t.Fatal("dynamic object exposes an attribute absent from metadata")
+	object.Attributes["ID"] = int64(1)
+	if _, exists := object.Attributes["MISSING"]; exists {
+		t.Fatal("object exposes an attribute absent from metadata")
 	}
 }
 
@@ -234,25 +239,14 @@ func TestNewObjectAcceptsEmptyAttributeNameFromMetadataCursor(t *testing.T) {
 	attributes := &metadataRows{values: [][]driver.Value{
 		{int64(1), nil, int64(1), "APP", "NUMBER", nil, nil, "YES", nil, nil},
 	}}
-	object, err := NewObject(context.Background(), metadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
-		*args[0].(sql.Out).Dest.(*int64) = 0
-		*args[1].(sql.Out).Dest.(*string) = "APP.EMPTY_NAME_T"
-		*args[2].(sql.Out).Dest.(*[]byte) = make([]byte, 16)
-		*args[3].(sql.Out).Dest.(*int64) = 1
-		*args[4].(sql.Out).Dest.(*[]byte) = tds
-		if err := args[8].(sql.Out).Dest.(*Cursor).Scan(attributes); err != nil {
-			return nil, err
-		}
-		return nil, nil
+	typ, err := loadRootDescriptor(context.Background(), metadataLoader(func(context.Context, string) (typeShapeResult, error) {
+		return typeShapeResult{CanonicalName: "APP.EMPTY_NAME_T", TOID: make([]byte, 16), Version: 1, TDS: tds, AttributeRows: attributes}, nil
 	}), "APP.EMPTY_NAME_T")
 	if err != nil {
 		t.Fatalf("NewObject with empty metadata name: %v", err)
 	}
-	if _, ok := object.Attributes[""]; !ok {
-		t.Fatalf("empty attribute name was not retained: %#v", object.Attributes)
-	}
-	if field := object.FieldByName("F_"); !field.IsValid() || !field.CanSet() {
-		t.Fatal("empty attribute name did not produce a settable generated field")
+	if _, ok := typ.Attributes[""]; !ok {
+		t.Fatalf("empty attribute name was not retained: %#v", typ.Attributes)
 	}
 }
 
@@ -261,7 +255,7 @@ func TestNewValueRejectsWrongADTKind(t *testing.T) {
 		0, 0, 0, 28, 38, 1, 0, 0, 0, 2, 0, 41, 0, 0, 0, 0, 0, 0,
 		6, 38, 0, 7, 0, 20, 0, 0, 0, 42,
 	}
-	if _, err := NewCollection(context.Background(), typeMetadataExecer(objectTDS, "APP.PERSON_T"), "APP.PERSON_T"); err == nil {
+	if typ, err := loadRootDescriptor(context.Background(), typeMetadataLoader(objectTDS, "APP.PERSON_T"), "APP.PERSON_T"); err != nil || typ.Collection {
 		t.Fatal("NewCollection succeeded for an object type")
 	}
 
@@ -271,18 +265,56 @@ func TestNewValueRejectsWrongADTKind(t *testing.T) {
 		0, 0, 0, 31, 38, 1, 0, 0, 0, 1, 0, 41, 0, 0, 0, 0, 0, 0,
 		28, 0, 0, 0, 29, 0, 0, 0, 2, 3, 42, 6, 38, 0,
 	}
-	if _, err := NewObject(context.Background(), typeMetadataExecer(collectionTDS, "APP.NUMBERS_T"), "APP.NUMBERS_T"); err == nil {
+	if typ, err := loadRootDescriptor(context.Background(), typeMetadataLoader(collectionTDS, "APP.NUMBERS_T"), "APP.NUMBERS_T"); err != nil || !typ.Collection {
 		t.Fatal("NewObject succeeded for a collection type")
 	}
 }
 
-func typeMetadataExecer(tds []byte, canonical string) metadataExecer {
-	return metadataExecer(func(_ context.Context, _ string, args ...any) (sql.Result, error) {
-		*args[0].(sql.Out).Dest.(*int64) = 0
-		*args[1].(sql.Out).Dest.(*string) = canonical
-		*args[2].(sql.Out).Dest.(*[]byte) = make([]byte, 16)
-		*args[3].(sql.Out).Dest.(*int64) = 1
-		*args[4].(sql.Out).Dest.(*[]byte) = tds
-		return nil, nil
+func loadRootDescriptor(ctx context.Context, loader adtMetadataLoader, name string) (*adtDescriptor, error) {
+	return loadObjectType(ctx, loader, name, make(map[string]*adtDescriptor))
+}
+
+func typeMetadataLoader(tds []byte, canonical string) metadataLoader {
+	return metadataLoader(func(context.Context, string) (typeShapeResult, error) {
+		return typeShapeResult{CanonicalName: canonical, TOID: make([]byte, 16), Version: 1, TDS: tds}, nil
 	})
+}
+func TestDeferredADTBindValidation(t *testing.T) {
+	scalar := &adtDescriptor{ElementType: common.DtyNum}
+	obj := &adtDescriptor{Name: "PERSON", Attributes: map[string]adtAttribute{"ID": {Name: "ID", Sequence: 1, adtDescriptor: scalar}}}
+	arr := &adtDescriptor{Name: "NUMS", Collection: true, VArray: true, UpperBound: 1, ElementType: common.DtyNum}
+	c := &connection{shelf: &ttiShelf[driverCommon.MessageType]{adtByName: map[string]*adtDescriptor{"PERSON": obj, "NUMS": arr}}}
+	resolve := func(v any) error {
+		return c.resolveADTMetadata(context.Background(), []driver.NamedValue{{Ordinal: 1, Value: v}})
+	}
+	for _, wrong := range []any{datatype.NewObject("NUMS"), datatype.NewCollection("PERSON")} {
+		if err := resolve(wrong); err == nil {
+			t.Fatalf("accepted wrong constructor for %T", wrong)
+		}
+	}
+	p := datatype.NewObject("PERSON")
+	if err := resolve(p); err != nil {
+		t.Fatal(err)
+	}
+	delete(p.ObjectType.Attributes, "ID")
+	if obj.Attributes["ID"].adtDescriptor != scalar {
+		t.Fatal("public attributes alias the physical descriptor")
+	}
+	nums := datatype.NewCollection("NUMS")
+	if err := nums.Set([]int64{1, 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := resolve(nums); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := arr.encodeCollectionImage(nums); err == nil {
+		t.Fatal("accepted oversized VARRAY populated before resolution")
+	}
+	indexed := datatype.NewCollection("NUMS")
+	if err := indexed.SetIndexed(map[int32]any{-1: int64(9)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := resolve(indexed); err == nil {
+		t.Fatal("accepted sparse indexes for a VARRAY")
+	}
 }

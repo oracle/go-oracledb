@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
 	"time"
 
 	_ "github.com/oracle/go-oracledb/v26/oracle"
@@ -107,10 +106,7 @@ func dropTypes(ctx context.Context, conn *sql.Conn) {
 }
 
 func demonstrateVARRAY(ctx context.Context, conn *sql.Conn) error {
-	values, err := datatype.NewCollection(ctx, conn, numberVarrayType)
-	if err != nil {
-		return err
-	}
+	values := datatype.NewCollection(numberVarrayType)
 	if err := values.Set([]int64{10, 20, 30}); err != nil {
 		return err
 	}
@@ -128,10 +124,7 @@ func demonstrateVARRAY(ctx context.Context, conn *sql.Conn) error {
 }
 
 func demonstrateNestedTable(ctx context.Context, conn *sql.Conn) error {
-	values, err := datatype.NewCollection(ctx, conn, numberTableType)
-	if err != nil {
-		return err
-	}
+	values := datatype.NewCollection(numberTableType)
 	if err := values.Set([]any{int64(10), nil, int64(30)}); err != nil {
 		return err
 	}
@@ -149,32 +142,26 @@ func demonstrateNestedTable(ctx context.Context, conn *sql.Conn) error {
 }
 
 func demonstrateObject(ctx context.Context, conn *sql.Conn) error {
-	person, err := datatype.NewObject(ctx, conn, personType)
-	if err != nil {
-		return err
-	}
+	person := datatype.NewObject(personType)
 	createdAt := time.Date(2026, time.January, 2, 3, 4, 5, 123456789, time.UTC)
-	person.FieldByName("ID").Set(reflect.ValueOf(int64(42)))
-	person.FieldByName("NAME").Set(reflect.ValueOf("Ada"))
-	person.FieldByName("CREATED_AT").Set(reflect.ValueOf(createdAt))
+	person.Attributes["ID"] = int64(42)
+	person.Attributes["NAME"] = "Ada"
+	person.Attributes["CREATED_AT"] = createdAt
 
 	var out datatype.Object
 	if _, err := conn.ExecContext(ctx, "BEGIN :1 := :2; END;", sql.Out{Dest: &out}, person); err != nil {
 		return err
 	}
 	fmt.Printf("Object: ID=%v NAME=%q CREATED_AT=%v\n",
-		out.FieldByName("ID").Interface(),
-		out.FieldByName("NAME").Interface(),
-		out.FieldByName("CREATED_AT").Interface(),
+		out.Attributes["ID"],
+		out.Attributes["NAME"],
+		out.Attributes["CREATED_AT"],
 	)
 	return nil
 }
 
 func demonstrateAssociativeArray(ctx context.Context, conn *sql.Conn) error {
-	values, err := datatype.NewCollection(ctx, conn, packageName+".NUMBER_BY_INDEX")
-	if err != nil {
-		return err
-	}
+	values := datatype.NewCollection(packageName + ".NUMBER_BY_INDEX")
 	if err := values.SetIndexed(map[int32]any{-2: int64(10), 3: int64(20), 9: int64(30)}); err != nil {
 		return err
 	}

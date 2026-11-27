@@ -47,7 +47,6 @@ import (
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
-	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -136,18 +135,15 @@ type decoderFunc func(columnContext, any) (driver.Value, error)
 // nullDecoderFunc decodes a SQL NULL when a datatype needs a typed NULL value.
 type nullDecoderFunc func(columnContext) (driver.Value, error)
 
-// bindOacFunc defines the signature for bind OAC constructor functions registered
-// with the codec factory. The function receives the requested maximum bind length
-// and must return a TTC OAC descriptor suitable for marshalling bind metadata.
-type bindOacFunc func(driverCommon.UB4) driverCommon.Marshallable
+// bindOacFunc constructs a bind OAC from the resolved metadata and payload length.
+type bindOacFunc func(bindValueMetadata, driverCommon.UB4) (driverCommon.Marshallable, error)
 
 // bindOacType stores a bind OAC constructor together with the default max-length
 // and scale metadata that should be applied for OUT bind handling.
 type bindOacType struct {
 	bindOacFunc
-	bindOacWithMetadata func(bindValueMetadata, driverCommon.UB4) (driverCommon.Marshallable, error)
-	maxLength           driverCommon.UB4
-	scale               driverCommon.SB1
+	maxLength driverCommon.UB4
+	scale     driverCommon.SB1
 }
 
 // defineOacFunc defines the signature for define OAC constructor functions
@@ -203,7 +199,7 @@ Description:
 */
 type bindValueMetadata struct {
 	goType     reflect.Type
-	objectType *datatype.ObjectType
+	descriptor *adtDescriptor
 	isNull     bool
 	isOut      bool
 	isOutOnly  bool
@@ -228,10 +224,7 @@ Returns:
   - bindValueMetadata: the metadata used by getEncoderForGoType and getBindOac.
 */
 func extractBindValueMetadata(bindValue driver.Value) bindValueMetadata {
-	metadata, value := normalizeBindValue(bindValue)
-	if typ, ok := namedTypeForBind(value); ok {
-		metadata.objectType = typ
-	}
+	metadata, _ := normalizeBindValue(bindValue)
 	return metadata
 }
 
@@ -531,7 +524,7 @@ func (f *CodecFactoryImpl) getEncoderForGoType(metadata bindValueMetadata) (*typ
 	// A scalar typed NULL retains its OAC type but has no Go payload for that
 	// type's encoder. Named ADT NULLs are the exception: they require their
 	// registered NAMED_TYPE envelope to preserve the descriptor.
-	if metadata.isNull && metadata.objectType == nil {
+	if metadata.isNull && metadata.descriptor == nil {
 		return newCLRBindEncoder(converters.EncodeNull), nil
 	}
 
@@ -658,15 +651,9 @@ func (f *CodecFactoryImpl) getBindOac(metadata bindValueMetadata, maxLength driv
 		// the function that can build the OAC, and type specific data
 		// to build the oac for out parameters
 		bindOacTypeObj := bestCandidate.makeFunc
-		var oac driverCommon.Marshallable
-		var err error
-		if bindOacTypeObj.bindOacWithMetadata != nil {
-			oac, err = bindOacTypeObj.bindOacWithMetadata(metadata, maxLength)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			oac = bindOacTypeObj.bindOacFunc(maxLength)
+		oac, err := bindOacTypeObj.bindOacFunc(metadata, maxLength)
+		if err != nil {
+			return nil, err
 		}
 		// In case of out parameters, we need to override the oac maxlength
 		// scale as per the type we are sending. This must be the max possible

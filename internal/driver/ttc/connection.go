@@ -49,7 +49,6 @@ import (
 	"strings"
 
 	"reflect"
-	"sync"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -60,9 +59,10 @@ import (
 // connection implements database/sql/driver.Conn and holds negotiated session
 // artifacts.
 type connection struct {
-	shelf   *ttiShelf[driverCommon.MessageType]
-	sessCtx *driverCommon.SessionContext
-	ns      driverCommon.NetworkSession
+	adtCodecs *adtCodecContext
+	shelf     *ttiShelf[driverCommon.MessageType]
+	sessCtx   *driverCommon.SessionContext
+	ns        driverCommon.NetworkSession
 	// _requestStartCallbacks contains callbacks run when the connection is
 	// borrowed from the pool (ResetSession).
 	_requestStartCallbacks []*requestBoundaryCallback
@@ -78,11 +78,6 @@ type connection struct {
 	// failure) or when then connectionShouldBeDropped flag is received on an STA
 	// or OER message (TODO).
 	_isValid bool
-	// adtTypes is scoped to this physical TTC connection. A named-type
-	// descriptor contains server-specific TOID/version metadata and must not be
-	// populated through one pooled connection then used on another.
-	adtMu    sync.Mutex
-	adtTypes map[string]*datatype.ObjectType
 }
 
 // newConnection constructs a new Oracle connection wrapping negotiated state.
@@ -109,7 +104,6 @@ func newConnection(
 		ns:        ns,
 		_isClosed: false,
 		_isValid:  true,
-		adtTypes:  make(map[string]*datatype.ObjectType),
 	}
 	conn.registerEventListeners(conn.shelf.getEventService())
 	conn._registerHandleEndOfCallStatus()
@@ -170,6 +164,7 @@ func (c *connection) PrepareContext(_ context.Context, query string) (driver.Stm
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
+	stmt.adtConnection = c
 	return stmt, nil
 }
 
@@ -181,6 +176,7 @@ func (c *connection) ExecContext(ctx context.Context, query string, args []drive
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
+	stmt.adtConnection = c
 	defer stmt.Close()
 	result, execErr := stmt.ExecContext(ctx, args)
 	return result, c.shelf.LocalizeError(execErr)
@@ -193,6 +189,7 @@ func (c *connection) QueryContext(ctx context.Context, query string, args []driv
 	if err != nil {
 		return nil, c.shelf.LocalizeError(err)
 	}
+	stmt.adtConnection = c
 	result, err := stmt.QueryContext(ctx, args)
 	if err != nil {
 		_ = stmt.Close()

@@ -197,49 +197,49 @@ func newTTIOAcDefine(
 }
 
 // newTTIOacString creates an OAC descriptor for string bind values using VARCHAR semantics.
-func newTTIOacString(maxLength driverCommon.UB4) driverCommon.Marshallable {
+func newTTIOacString(_ bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
 	if maxLength == 0 {
 		maxLength = converters.EmptyStringOacLength
 	}
-	return newTTIoac(common.DtyVCS, maxLength)
+	return newTTIoac(common.DtyVCS, maxLength), nil
 }
 
 // newTTIOacNumber creates an OAC descriptor for Oracle NUMBER values using the negotiated maximum NUMBER length.
-func newTTIOacNumber() driverCommon.Marshallable {
-	return newTTIoac(common.DtyNum, converters.MaxNumberLength)
+func newTTIOacNumber(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyNum, converters.MaxNumberLength), nil
 }
 
 // newTTIOacBytes creates an OAC descriptor for raw byte bind values.
-func newTTIOacBytes(maxLength driverCommon.UB4) driverCommon.Marshallable {
+func newTTIOacBytes(_ bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
 	if maxLength == 0 {
 		maxLength = converters.EmptyBytesOacLength
 	}
-	return newTTIoac(common.DtyVbi, maxLength)
+	return newTTIoac(common.DtyVbi, maxLength), nil
 }
 
 // newTTIOacNull creates an OAC descriptor for null bind values using the driver's null placeholder length.
-func newTTIOacNull() driverCommon.Marshallable {
-	return newTTIoac(common.DtyVCS, converters.MaxNullLength)
+func newTTIOacNull(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyVCS, converters.MaxNullLength), nil
 }
 
 // newTTIOacRefCursor creates an OAC descriptor for REF CURSOR bind values.
-func newTTIOacRefCursor(maxLength driverCommon.UB4) driverCommon.Marshallable {
-	return newTTIoac(common.DtyRSet, maxLength)
+func newTTIOacRefCursor(_ bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyRSet, maxLength), nil
 }
 
 // newTTIOacBoolV17 creates an OAC descriptor for pre-native-boolean representations that are sent as NUMBER values.
-func newTTIOacBoolV17(maxLength driverCommon.UB4) driverCommon.Marshallable {
-	return newTTIoac(common.DtyNum, maxLength)
+func newTTIOacBoolV17(_ bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyNum, maxLength), nil
 }
 
 // newTTIOacBool creates an OAC descriptor for native Oracle BOOLEAN values.
-func newTTIOacBool() driverCommon.Marshallable {
-	return newTTIoac(common.DtyBol, converters.MaxBoolLength)
+func newTTIOacBool(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyBol, converters.MaxBoolLength), nil
 }
 
 // newTTIOacTime creates an OAC descriptor for timestamp-with-time-zone values.
-func newTTIOacTime() driverCommon.Marshallable {
-	return newTTIoac(common.DtyStz, converters.MaxTimeStampLength)
+func newTTIOacTime(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyStz, converters.MaxTimeStampLength), nil
 }
 
 // newTTIOacJSONDefine requests Oracle's native JSON representation and

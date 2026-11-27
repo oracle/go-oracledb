@@ -47,7 +47,6 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
-	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -103,8 +102,7 @@ type columnContext struct {
 	Nullable             bool
 	NamedTypeTOID        driverCommon.B1Array
 	NamedTypeVersion     uint16
-	objectType           *datatype.ObjectType
-	codecFactory         codecFactory
+	objectType           *adtDescriptor
 	LobContext           *lobColumnContext
 	serverTimeZoneOffset int16
 	// skipRxdPayloadUnmarshal identifies a descriptor-only column. Oracle can
@@ -198,7 +196,9 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	colCtx.LobContext = payload.lob
 	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
 	if (dtype == common.DtyINty || dtype == common.DtyNty) && len(colCtx.NamedTypeTOID) != 0 {
-		colCtx.objectType = r.shelf.adtByTOID[string(colCtx.NamedTypeTOID)]
+		if descriptor := r.shelf.adtByTOID[string(colCtx.NamedTypeTOID)]; descriptor != nil {
+			colCtx.objectType = descriptor
+		}
 	}
 	// Preserve ordinary SQL NULL handling. Named types are dispatched to their
 	// registered decoder so they can retain their descriptor in a typed NULL.
@@ -218,7 +218,6 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 		return payload.data, nil
 	}
 
-	colCtx.codecFactory = r.shelf.GetCodecFactory()
 	val, err := decoder.decode(colCtx, payload.data)
 	if err != nil {
 		// Preserve the decoder error for localization.

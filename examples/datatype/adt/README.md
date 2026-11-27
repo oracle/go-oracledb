@@ -21,17 +21,15 @@ export ORACLE_DSN='user/password@localhost:1521/freepdb1'
 go run ./examples/datatype/adt
 ```
 
-The output includes collection values, reflected object fields, and the sparse
+The output includes collection values, object attribute values, and the sparse
 associative-array indexes returned by Oracle.
 
 ## Key points
 
-- The example obtains one `*sql.Conn` and uses it both to call
-  `datatype.NewObject` / `datatype.NewCollection` and to execute each bind.
+- Constructors take a type name, not a connection. The executing connection resolves and caches type metadata.
 - Collections are populated and read as whole values with `Set`/`Get`, or
   `SetIndexed`/`GetIndexed` for associative arrays.
-- Object attributes are set and read through the generated reflected value:
-  `object.FieldByName("NAME")`.
+- Object attributes are stored by database name: `person.Attributes["NAME"] = "Ada"`.
 
 See [the ADT guide](../../../documentation/adt.md) for API details and SQL
 examples.

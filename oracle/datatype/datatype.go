@@ -44,15 +44,9 @@
 package datatype
 
 import (
-	"context"
-	"database/sql"
-	"database/sql/driver"
-	"io"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
@@ -79,20 +73,8 @@ type ObjectType struct {
 	Scale       int8
 	FsPrecision uint8
 
-	// TOID is the database type object identifier.
-	TOID []byte
-	// TypeVersion identifies the current version of the database type.
-	TypeVersion int
-	// TDS contains the type descriptor stream returned by the database.
-	TDS []byte
 	// Collection reports whether this descriptor represents a collection type.
 	Collection bool
-	// Instantiable reports whether Oracle permits direct instances of this type.
-	Instantiable bool
-	// SuperTypeName is the fully qualified immediate supertype name, if any.
-	SuperTypeName string
-	// SubTypes contains descriptors for the immediate subtypes reported by Oracle.
-	SubTypes []*ObjectType
 	// VArray reports whether this collection is a VARRAY rather than another
 	// collection kind.
 	VArray bool
@@ -106,39 +88,6 @@ type ObjectType struct {
 	ElementSize int
 	// Closed reports whether Close has been called for this descriptor.
 	Closed bool
-
-	// tdsType is the parsed root of TDS. It is deliberately private: callers
-	// work with ObjectType and ObjectAttribute, while the driver uses this tree
-	// to preserve type order and shape while decoding ADT metadata.
-	tdsType        *tdsType
-	subTypesByTOID map[string]*ObjectType
-	dynamicMu      sync.Mutex
-	dynamicType    reflect.Type
-}
-
-// tdsType is one type record in an Oracle type descriptor stream. Named type
-// references are initially represented by their TDS record and resolved when
-// their deferred TDS patch is processed.
-type tdsType struct {
-	dtyType     common.DtyType
-	size        int
-	precision   int16
-	scale       int8
-	fsPrecision uint8
-
-	collection  bool
-	varray      bool
-	associative bool
-	upperBound  int64
-	element     *tdsType
-	attributes  []*tdsType
-	deferred    *tdsPatch
-	source      []byte
-}
-
-type tdsPatch struct {
-	offset int
-	code   byte
 }
 
 // ObjectAttribute describes one attribute of an Oracle object type.
@@ -155,13 +104,9 @@ type ObjectAttribute struct {
 type Object struct {
 	// ObjectType identifies the database type represented by this value.
 	*ObjectType
-	// Value holds the runtime-generated struct containing this object's
-	// attributes. Its fields are ordered by Oracle attribute declaration and
-	// use interface values so NULL attributes remain representable.
-	//
-	// It is embedded so reflection methods can be called directly on Object,
-	// for example object.FieldByName("ID").
-	reflect.Value
+	// Attributes holds object values keyed by database attribute name. Values
+	// absent from the map are encoded as NULL attributes.
+	Attributes map[string]any
 	// values holds collection elements when this object represents a collection.
 	// Collection values are accessed through ObjectCollection.Set and Get.
 	values []any
@@ -181,714 +126,29 @@ type ObjectCollection struct {
 	Null bool
 }
 
-// Execer executes a statement using database/sql-style positional arguments.
-// Both *sql.DB and *sql.Conn implement this interface.
-type Execer interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
+// NewObject creates a named object value. The driver resolves type metadata on
+// the physical connection immediately before the object is used. Attributes,
+// when supplied, are copied into the returned object.
+func NewObject(typeName string, attributes ...map[string]any) *Object {
+	values := make(map[string]any)
+	for _, input := range attributes {
+		for name, value := range input {
+			values[name] = value
+		}
+	}
+	return &Object{ObjectType: newUnresolvedObjectType(typeName, false), Attributes: values}
 }
 
-// NewObject retrieves metadata for typeName and creates an empty object value.
-// ex should use the same physical database connection that will later bind the
-// returned value. It returns an error when typeName identifies a collection.
-func NewObject(ctx context.Context, ex Execer, typeName string) (*Object, error) {
-	typ, err := loadRootObjectType(ctx, ex, typeName)
-	if err != nil {
-		return nil, err
-	}
-	return typ.NewObject()
+// NewCollection creates a named collection value. The driver resolves type
+// metadata on the physical connection immediately before it is used.
+func NewCollection(typeName string) ObjectCollection {
+	return ObjectCollection{Object: &Object{ObjectType: newUnresolvedObjectType(typeName, true)}}
 }
 
-// NewCollection retrieves metadata for typeName and creates an empty
-// collection value. ex should use the same physical database connection that
-// will later bind the returned value. It returns an error when typeName
-// identifies an object type.
-func NewCollection(ctx context.Context, ex Execer, typeName string) (ObjectCollection, error) {
-	typ, err := loadRootObjectType(ctx, ex, typeName)
-	if err != nil {
-		return ObjectCollection{}, err
-	}
-	return typ.NewCollection()
-}
-
-func loadRootObjectType(ctx context.Context, ex Execer, typeName string) (*ObjectType, error) {
-	if ex == nil || strings.TrimSpace(typeName) == "" {
-		common.Odl.Error("ADT metadata error")
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	return loadObjectType(ctx, ex, strings.TrimSpace(typeName), make(map[string]*ObjectType))
-}
-
-func loadObjectType(ctx context.Context, ex Execer, typeName string, cache map[string]*ObjectType) (*ObjectType, error) {
-	canonicalKey := strings.ToUpper(strings.TrimSpace(typeName))
-	if typ := cache[canonicalKey]; typ != nil {
-		return typ, nil
-	}
-
-	var rc int64
-	canonical := typeName
-	var toid, tds []byte
-	var version int64
-	var instantiable, superOwner, superName string
-	var attributes, subtypes Cursor
-	_, err := ex.ExecContext(ctx, `BEGIN
-  :1 := SYS.DBMS_PICKLER.GET_TYPE_SHAPE(:2, :3, :4, :5, :6, :7, :8, :9, :10);
-END;`,
-		sql.Out{Dest: &rc}, sql.Out{Dest: &canonical, In: true},
-		sql.Out{Dest: &toid}, sql.Out{Dest: &version}, sql.Out{Dest: &tds},
-		sql.Out{Dest: &instantiable}, sql.Out{Dest: &superOwner}, sql.Out{Dest: &superName},
-		sql.Out{Dest: &attributes}, sql.Out{Dest: &subtypes})
-	if err != nil {
-		common.Odl.Error("ADT metadata error")
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
-	}
-	attributeRows := attributes.DriverRows()
-	subtypeRows := subtypes.DriverRows()
-	defer closeRows(attributeRows)
-	defer closeRows(subtypeRows)
-	if err := fetchMetadataCursor(ctx, ex, &attributes); err != nil {
-		common.Odl.Error("ADT metadata error")
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
-	}
-	if err := fetchMetadataCursor(ctx, ex, &subtypes); err != nil {
-		common.Odl.Error("ADT metadata error")
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
-	}
-	if rc != 0 || len(toid) != 16 || len(tds) == 0 {
-		common.Odl.Error("ADT metadata error", "type", canonical, "returnCode", rc,
-			"toidLength", len(toid), "tdsLength", len(tds))
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-
-	typ := &ObjectType{
-		Attributes:  make(map[string]ObjectAttribute),
-		TOID:        append([]byte(nil), toid...),
-		TypeVersion: int(version),
-		TDS:         append([]byte(nil), tds...),
-	}
-	typ.SetName(canonical)
-	typ.Instantiable = strings.EqualFold(instantiable, "YES")
-	typ.SuperTypeName = qualifiedTypeName(superOwner, "", superName)
-	cache[canonicalKey] = typ
-	if err := parseTDS(typ); err != nil {
-		return nil, err
-	}
-	if err := populateObjectAttributes(ctx, ex, typ, attributeRows, cache); err != nil {
-		common.Odl.Error("ADT metadata error")
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
-	}
-	if err := populateObjectSubtypes(ctx, ex, typ, subtypeRows, cache); err != nil {
-		common.Odl.Error("ADT metadata error")
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, err)
-	}
-	return typ, nil
-}
-
-// fetchMetadataCursor performs the deferred server fetch required by the REF
-// CURSOR architecture when metadata is loaded through a dedicated sql.Conn.
-// Non-sql.Conn Execers are used by metadata unit tests, whose supplied rows
-// are already ready to consume.
-func fetchMetadataCursor(ctx context.Context, ex Execer, cursor *Cursor) error {
-	rows := cursor.DriverRows()
-	if rows == nil {
-		return nil
-	}
-	raw, ok := ex.(interface {
-		Raw(func(any) error) error
-	})
-	if !ok {
-		return nil
-	}
-	return raw.Raw(func(conn any) error {
-		fetcher, ok := conn.(interface {
-			GetRows(context.Context, driver.Rows) error
-		})
-		if !ok {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		return fetcher.GetRows(ctx, rows)
-	})
-}
-
-func closeRows(rows driver.Rows) {
-	if rows != nil {
-		_ = rows.Close()
-	}
-}
-
-func populateObjectSubtypes(ctx context.Context, ex Execer, typ *ObjectType, rows driver.Rows, cache map[string]*ObjectType) error {
-	if typ == nil {
-		return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	if rows == nil {
-		return nil
-	}
-	if len(rows.Columns()) != 4 {
-		return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	for {
-		values := make([]driver.Value, 4)
-		err := rows.Next(values)
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		version, ok := adtMetadataInt(values[0])
-		if !ok || version != 1 {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		owner, ok := adtMetadataString(values[1])
-		if !ok || owner == "" {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		name, ok := adtMetadataString(values[2])
-		if !ok || name == "" {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		oid, ok := adtMetadataBytes(values[3])
-		if !ok || len(oid) != 16 {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		subtype, err := loadObjectType(ctx, ex, qualifiedTypeName(owner, "", name), cache)
-		if err != nil {
-			return err
-		}
-		if typ.subTypesByTOID == nil {
-			typ.subTypesByTOID = make(map[string]*ObjectType)
-		}
-		key := string(oid)
-		if typ.subTypesByTOID[key] != nil {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		typ.subTypesByTOID[key] = subtype
-		typ.SubTypes = append(typ.SubTypes, subtype)
-	}
-}
-
-// SubTypeForTOID returns the immediate subtype associated with toid, or nil
-// when toid is not a subtype of t.
-func (t *ObjectType) SubTypeForTOID(toid []byte) *ObjectType {
-	if t == nil {
-		return nil
-	}
-	if subtype := t.subTypesByTOID[string(toid)]; subtype != nil {
-		return subtype
-	}
-	for _, subtype := range t.SubTypes {
-		if subtype != nil && string(subtype.TOID) == string(toid) {
-			return subtype
-		}
-	}
-	return nil
-}
-
-// populateObjectAttributes maps the DBMS_PICKLER attribute cursor onto the
-// declaration-ordered TDS tree. The cursor identifies names and named-type
-// identities; TDS supplies the scalar and collection shape for each position.
-func populateObjectAttributes(ctx context.Context, ex Execer, typ *ObjectType, rows driver.Rows, cache map[string]*ObjectType) error {
-	if typ == nil || typ.tdsType == nil {
-		return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	if rows == nil {
-		return nil
-	}
-	// For scalar collections Oracle returns an attribute-cursor row describing
-	// the scalar element (for example NUMBER or VARCHAR2). Its complete shape
-	// is already present in the collection TDS; it is not a named child type
-	// that can be loaded through GET_TYPE_SHAPE.
-	if typ.Collection && typ.CollectionOf == nil {
-		return nil
-	}
-	if len(rows.Columns()) != 10 {
-		return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	for {
-		values := make([]driver.Value, 10)
-		err := rows.Next(values)
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		version, ok := adtMetadataInt(values[0])
-		if !ok || version != 1 {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		name, ok := adtMetadataString(values[1])
-		// Oracle JDBC stores the cursor value directly, including a NULL/empty
-		// attribute name. Keep that behavior: the TDS sequence determines the
-		// wire position, while dynamicFieldName supplies a usable Go field name
-		// for an empty database name.
-		if !ok {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		sequence, ok := adtMetadataInt(values[2])
-		metadataType := typ
-		nodes := typ.tdsType.attributes
-		if typ.Collection && typ.CollectionOf != nil && len(nodes) == 1 && nodes[0].collection && nodes[0].element != nil && len(nodes[0].element.attributes) != 0 {
-			metadataType = typ.CollectionOf
-			nodes = nodes[0].element.attributes
-		}
-		if !ok || sequence < 1 || sequence > len(nodes) {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		// A collection-element UPT may have supplied an anonymous positional
-		// attribute from its TDS. Replace it when the metadata cursor supplies
-		// the declared database name for the same position.
-		for existingName, existing := range metadataType.Attributes {
-			if existing.Sequence == uint32(sequence) && existingName != name {
-				delete(metadataType.Attributes, existingName)
-			}
-		}
-		if _, exists := metadataType.Attributes[name]; exists {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		// GET_TYPE_SHAPE returns the attribute type name before its owner.
-		// Preserve that order when resolving nested named object and collection
-		// descriptors; reversing these fields produces TYPE.OWNER names.
-		typeName, _ := adtMetadataString(values[3])
-		owner, _ := adtMetadataString(values[4])
-		packageName, _ := adtMetadataString(values[5])
-		oid, ok := adtMetadataBytes(values[6])
-		if !ok {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		node := nodes[sequence-1]
-		attributeType := newObjectTypeFromTDSType(node, owner, typeName, packageName, oid)
-		// Named embedded objects and collection attributes need their own
-		// descriptor: the parent TDS provides the wire shape, while the named
-		// descriptor supplies attribute names and the collection type version.
-		if (len(node.attributes) != 0 || node.collection) && typeName != "" {
-			fullName := qualifiedTypeName(owner, packageName, typeName)
-			loaded, loadErr := loadObjectType(ctx, ex, fullName, cache)
-			if loadErr != nil {
-				return loadErr
-			}
-			attributeType = loaded
-		}
-		metadataType.Attributes[name] = ObjectAttribute{
-			ObjectType: attributeType,
-			Name:       name,
-			Sequence:   uint32(sequence),
-		}
-	}
-}
-
-func qualifiedTypeName(owner, packageName, name string) string {
-	if packageName != "" {
-		return owner + "." + packageName + "." + name
-	}
-	if owner != "" {
-		return owner + "." + name
-	}
-	return name
-}
-
-func newObjectTypeFromTDSType(node *tdsType, schema, name, packageName string, oid []byte) *ObjectType {
-	typ := &ObjectType{
-		Attributes:  make(map[string]ObjectAttribute),
-		Schema:      schema,
-		Name:        name,
-		PackageName: packageName,
-		TOID:        append([]byte(nil), oid...),
-		tdsType:     node,
-	}
-	if node == nil {
-		return typ
-	}
-	if node.collection {
-		typ.Collection = true
-		typ.VArray = node.varray
-		typ.Associative = node.associative
-		typ.UpperBound = node.upperBound
-		if node.element != nil {
-			typ.ElementType = node.element.dtyType
-			typ.ElementSize = node.element.size
-			typ.Precision = node.element.precision
-			typ.Scale = node.element.scale
-			typ.FsPrecision = node.element.fsPrecision
-			if len(node.element.attributes) != 0 {
-				typ.CollectionOf = newObjectTypeFromTDSType(node.element, "", "", "", nil)
-			}
-		}
-		return typ
-	}
-	typ.ElementType = node.dtyType
-	typ.ElementSize = node.size
-	typ.Precision = node.precision
-	typ.Scale = node.scale
-	typ.FsPrecision = node.fsPrecision
-	// A UPT embedded in a collection TDS preserves the element's complete wire
-	// shape but has no SQL name or attribute-name metadata. Keep a usable
-	// anonymous positional descriptor here, without issuing an additional
-	// dictionary query.
-	for index, attribute := range node.attributes {
-		attributeName := "F_" + strconv.Itoa(index+1)
-		typ.Attributes[attributeName] = ObjectAttribute{
-			ObjectType: newObjectTypeFromTDSType(attribute, "", "", "", nil),
-			Name:       attributeName,
-			Sequence:   uint32(index + 1),
-		}
-	}
+func newUnresolvedObjectType(typeName string, collection bool) *ObjectType {
+	typ := &ObjectType{Attributes: make(map[string]ObjectAttribute), Collection: collection}
+	typ.SetName(strings.TrimSpace(typeName))
 	return typ
-}
-
-func adtMetadataString(value driver.Value) (string, bool) {
-	switch value := value.(type) {
-	case nil:
-		return "", true
-	case string:
-		return value, true
-	case []byte:
-		return string(value), true
-	default:
-		return "", false
-	}
-}
-
-func adtMetadataBytes(value driver.Value) ([]byte, bool) {
-	switch value := value.(type) {
-	case nil:
-		return nil, true
-	case []byte:
-		return value, true
-	case string:
-		return []byte(value), true
-	default:
-		return nil, false
-	}
-}
-
-func adtMetadataInt(value driver.Value) (int, bool) {
-	switch value := value.(type) {
-	case int64:
-		return int(value), int64(int(value)) == value
-	case int:
-		return value, true
-	case float64:
-		return int(value), value == float64(int(value))
-	case string:
-		parsed, err := strconv.Atoi(value)
-		return parsed, err == nil
-	case []byte:
-		parsed, err := strconv.Atoi(string(value))
-		return parsed, err == nil
-	default:
-		return 0, false
-	}
-}
-
-// TDS opcodes are defined by the TTC type descriptor stream. The parser only
-// accepts records whose byte layout is known, so malformed metadata cannot
-// advance beyond the returned TDS buffer.
-const (
-	tdsVersionOpcode       = 38
-	tdsStartEmbeddedOpcode = 39
-	tdsEndEmbeddedOpcode   = 40
-	tdsStartADT            = 41
-	tdsEndADT              = 42
-	tdsSubtypeMarker       = 43
-	tdsEmbeddedInfo        = 44
-	tdsCollectionOpcode    = 28
-	tdsUPTOpcode           = 27
-)
-
-type tdsReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *tdsReader) remaining(n int) bool { return n >= 0 && r.pos <= len(r.data)-n }
-
-func (r *tdsReader) readByte() (byte, error) {
-	if !r.remaining(1) {
-		return 0, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	b := r.data[r.pos]
-	r.pos++
-	return b, nil
-}
-
-func (r *tdsReader) readUB2() (int, error) {
-	if !r.remaining(2) {
-		return 0, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	v := int(r.data[r.pos])<<8 | int(r.data[r.pos+1])
-	r.pos += 2
-	return v, nil
-}
-
-func (r *tdsReader) readUB4() (int, error) {
-	if !r.remaining(4) {
-		return 0, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	v := int(uint32(r.data[r.pos])<<24 | uint32(r.data[r.pos+1])<<16 | uint32(r.data[r.pos+2])<<8 | uint32(r.data[r.pos+3]))
-	r.pos += 4
-	return v, nil
-}
-
-func parseTDS(typ *ObjectType) error {
-	root, err := parseTDSBytes(typ.TDS)
-	if err != nil {
-		common.Odl.Error("ADT metadata error")
-		return err
-	}
-	if err := resolveTDSPatches(root); err != nil {
-		common.Odl.Error("ADT metadata error")
-		return err
-	}
-	typ.tdsType = root
-	applyTDSType(root, typ)
-	return nil
-}
-
-func parseTDSBytes(data []byte) (*tdsType, error) {
-	r := &tdsReader{data: data}
-	if !r.remaining(18) {
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	if _, err := r.readUB4(); err != nil { // TDS byte length
-		return nil, err
-	}
-	opcode, err := r.readByte()
-	if err != nil || opcode != tdsVersionOpcode {
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	if _, err = r.readByte(); err != nil { // TDS version
-		return nil, err
-	}
-	if !r.remaining(2) {
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	r.pos += 2
-	attributeCount, err := r.readUB2()
-	if err != nil {
-		return nil, err
-	}
-	if _, err = r.readByte(); err != nil { // descriptor flags
-		return nil, err
-	}
-	opcode, err = r.readByte()
-	if err != nil || opcode != tdsStartADT {
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	if n, err := r.readUB2(); err != nil || n != 0 {
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	if _, err = r.readUB4(); err != nil { // index-table offset
-		return nil, err
-	}
-
-	root, err := parseTDSRecords(r, tdsEndADT)
-	if err != nil {
-		return nil, err
-	}
-	if len(root.attributes) != attributeCount {
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	return root, nil
-}
-
-func parseTDSRecords(r *tdsReader, endOpcode byte) (*tdsType, error) {
-	root := &tdsType{source: r.data}
-	for {
-		opcode, err := r.readByte()
-		if err != nil {
-			return nil, err
-		}
-		switch opcode {
-		case endOpcode:
-			return root, nil
-		case tdsSubtypeMarker:
-			continue
-		case tdsEmbeddedInfo:
-			if _, err := r.readByte(); err != nil {
-				return nil, err
-			}
-			continue
-		case tdsStartEmbeddedOpcode:
-			embedded, err := parseTDSRecords(r, tdsEndEmbeddedOpcode)
-			if err != nil {
-				return nil, err
-			}
-			root.attributes = append(root.attributes, embedded)
-		default:
-			node, err := parseTDSRecord(r, opcode)
-			if err != nil {
-				return nil, err
-			}
-			root.attributes = append(root.attributes, node)
-		}
-	}
-}
-
-func parseTDSRecord(r *tdsReader, opcode byte) (*tdsType, error) {
-	node := &tdsType{source: r.data}
-	switch opcode {
-	case 1, 7: // CHAR, VARCHAR2
-		size, err := r.readUB2()
-		if err != nil {
-			return nil, err
-		}
-		if !r.remaining(3) { // form and character set
-			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		r.pos += 3
-		node.dtyType, node.size = common.DtyVCS, size
-	case 2: // DATE
-		node.dtyType, node.size = common.DtyDat, 7
-	case 3, 4, 5, 6: // DECIMAL, DOUBLE, FLOAT, NUMBER
-		precision, err := r.readByte()
-		if err != nil {
-			return nil, err
-		}
-		scale, err := r.readByte()
-		if err != nil {
-			return nil, err
-		}
-		node.dtyType, node.size = common.DtyNum, 22
-		node.precision, node.scale = int16(precision), int8(scale)
-	case 8: // SINT32 / PLS_INTEGER
-		node.dtyType, node.size = common.DtyBol, 4
-	case 19: // RAW
-		size, err := r.readUB2()
-		if err != nil {
-			return nil, err
-		}
-		node.dtyType, node.size = common.DtyBin, size
-	case 21: // TIMESTAMP
-		precision, err := r.readByte()
-		if err != nil {
-			return nil, err
-		}
-		node.dtyType, node.size, node.fsPrecision = common.DtyStamp, 11, uint8(precision)
-	case 23: // TIMESTAMP WITH TIME ZONE
-		precision, err := r.readByte()
-		if err != nil {
-			return nil, err
-		}
-		node.dtyType, node.size, node.fsPrecision = common.DtyStz, 13, uint8(precision)
-	case 33: // TIMESTAMP WITH LOCAL TIME ZONE
-		precision, err := r.readByte()
-		if err != nil {
-			return nil, err
-		}
-		node.dtyType, node.size, node.fsPrecision = common.DtySitz, 11, uint8(precision)
-	case 37:
-		node.dtyType, node.size = common.DtyIbFloat, 4
-	case 45:
-		node.dtyType, node.size = common.DtyIbDouble, 8
-	case tdsCollectionOpcode:
-		elementOffset, err := r.readUB4()
-		if err != nil {
-			return nil, err
-		}
-		upperBound, err := r.readUB4()
-		if err != nil {
-			return nil, err
-		}
-		userCode, err := r.readByte()
-		// Oracle uses user code 1 for a PL/SQL INDEX BY PLS_INTEGER table,
-		// 2 for a nested table, and 3 for a VARRAY.
-		if err != nil || (userCode != 1 && userCode != 2 && userCode != 3) {
-			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		if elementOffset < 0 || elementOffset >= len(r.data) {
-			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		elementReader := &tdsReader{data: r.data, pos: elementOffset}
-		elementOpcode, err := elementReader.readByte()
-		if err != nil {
-			return nil, err
-		}
-		element, err := parseTDSRecord(elementReader, elementOpcode)
-		if err != nil {
-			return nil, err
-		}
-		node.collection = true
-		node.varray = userCode == 3
-		node.associative = userCode == 1
-		node.upperBound, node.element = int64(upperBound), element
-	case tdsUPTOpcode:
-		offset, err := r.readUB4()
-		if err != nil {
-			return nil, err
-		}
-		code, err := r.readByte()
-		if err != nil || (code != 250 && code != 251) {
-			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		if offset < 0 || offset >= len(r.data) {
-			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		node.deferred = &tdsPatch{offset: offset, code: code}
-	default:
-		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	return node, nil
-}
-
-func resolveTDSPatches(node *tdsType) error {
-	if node == nil {
-		return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-	}
-	if node.deferred != nil {
-		patch := node.deferred
-		// A normal UPT patch starts with its patch opcode. ADT patches carry a
-		// four-byte ADT-length field before the nested TDS; collection patches
-		// start the TDS immediately after that opcode.
-		start := patch.offset + 1
-		if patch.code == 250 {
-			start += 4
-		}
-		if start < 0 || start >= len(node.source) {
-			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
-		}
-		resolved, err := parseTDSBytes(node.source[start:])
-		if err != nil {
-			return err
-		}
-		// A named collection is wrapped in a one-attribute ADT TDS. Match the
-		// JDBC cleanup step by exposing that collection record to its parent;
-		// an ADT patch retains its ordered attribute tree.
-		if len(resolved.attributes) == 1 && resolved.attributes[0].collection {
-			*node = *resolved.attributes[0]
-		} else {
-			*node = *resolved
-		}
-	}
-	if node.element != nil {
-		if err := resolveTDSPatches(node.element); err != nil {
-			return err
-		}
-	}
-	for _, attribute := range node.attributes {
-		if err := resolveTDSPatches(attribute); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func applyTDSType(root *tdsType, typ *ObjectType) {
-	if len(root.attributes) != 1 || !root.attributes[0].collection {
-		return
-	}
-	collection := root.attributes[0]
-	typ.Collection = true
-	typ.VArray = collection.varray
-	typ.Associative = collection.associative
-	typ.UpperBound = collection.upperBound
-	typ.ElementType = collection.element.dtyType
-	typ.ElementSize = collection.element.size
-	typ.Precision = collection.element.precision
-	typ.Scale = collection.element.scale
-	typ.FsPrecision = collection.element.fsPrecision
-	if len(collection.element.attributes) != 0 {
-		typ.CollectionOf = newObjectTypeFromTDSType(collection.element, "", "", "", nil)
-	}
 }
 
 // SetName parses name and assigns the descriptor's schema, package, and type
@@ -955,11 +215,7 @@ func (t *ObjectType) NewObject() (*Object, error) {
 	if !t.IsObject() {
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
-	dynamicType, err := t.dynamicObjectLayout()
-	if err != nil {
-		return nil, err
-	}
-	return &Object{ObjectType: t, Value: reflect.New(dynamicType).Elem()}, nil
+	return &Object{ObjectType: t, Attributes: make(map[string]any)}, nil
 }
 
 // NewCollection creates an empty ObjectCollection value for t.
@@ -986,50 +242,6 @@ func (o *Object) Collection() ObjectCollection {
 		return ObjectCollection{Object: o}
 	}
 	return ObjectCollection{}
-}
-
-// dynamicObjectLayout creates the per-type reflected struct layout once. Each
-// field remains interface{} because Oracle attributes may be NULL and NUMBER
-// values can have multiple Go representations depending on their metadata.
-func (t *ObjectType) dynamicObjectLayout() (reflect.Type, error) {
-	if t == nil {
-		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
-	}
-	t.dynamicMu.Lock()
-	defer t.dynamicMu.Unlock()
-	if t.dynamicType != nil {
-		return t.dynamicType, nil
-	}
-
-	names := t.AttributeNames()
-	fields := make([]reflect.StructField, 0, len(names))
-	usedNames := make(map[string]struct{}, len(names))
-	for index, name := range names {
-		fieldName := dynamicFieldName(name, index, usedNames)
-		fields = append(fields, reflect.StructField{Name: fieldName, Type: reflect.TypeFor[any]()})
-	}
-	t.dynamicType = reflect.StructOf(fields)
-	return t.dynamicType, nil
-}
-
-func dynamicFieldName(name string, index int, used map[string]struct{}) string {
-	var builder strings.Builder
-	for _, r := range name {
-		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
-			builder.WriteRune(r)
-		} else {
-			builder.WriteByte('_')
-		}
-	}
-	fieldName := builder.String()
-	if fieldName == "" || fieldName[0] < 'A' || fieldName[0] > 'Z' {
-		fieldName = "F_" + fieldName
-	}
-	if _, exists := used[fieldName]; exists {
-		fieldName += "_" + strconv.Itoa(index+1)
-	}
-	used[fieldName] = struct{}{}
-	return fieldName
 }
 
 // SetNull marks o as a NULL object. NULL is distinct from an object whose
@@ -1096,7 +308,7 @@ func (c *ObjectCollection) Set(values any) error {
 // PL/SQL PLS_INTEGER indexes and are encoded in ascending key order.
 // It returns an error if c is not an associative collection.
 func (c *ObjectCollection) SetIndexed(values map[int32]any) error {
-	if c == nil || c.Object == nil || c.Object.Closed || c.ObjectType == nil || !c.ObjectType.Collection || !c.Associative {
+	if c == nil || c.Object == nil || c.Object.Closed || c.ObjectType == nil || !c.ObjectType.Collection || ((c.VArray || c.ElementType != 0 || c.CollectionOf != nil) && !c.Associative) {
 		return common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
 	indexes := make([]int32, 0, len(values))
@@ -1108,6 +320,7 @@ func (c *ObjectCollection) SetIndexed(values map[int32]any) error {
 	for position, index := range indexes {
 		items[position] = values[index]
 	}
+	c.Associative = true // Preserve the requested index semantics until bind-time validation.
 	c.values = items
 	c.indexes = indexes
 	c.Null = false
@@ -1142,11 +355,12 @@ func (c ObjectCollection) Get() ([]any, error) {
 // PL/SQL PLS_INTEGER index. It returns an error for non-associative,
 // invalid, and NULL collections.
 func (c ObjectCollection) GetIndexed() (map[int32]any, error) {
-	if c.Object == nil || c.Object.Closed || c.IsNull() || !c.Associative || len(c.indexes) != len(c.values) {
-		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
+	indexes, err := c.Indexes()
+	if err != nil {
+		return nil, err
 	}
 	values := make(map[int32]any, len(c.values))
-	for position, index := range c.indexes {
+	for position, index := range indexes {
 		values[index] = c.values[position]
 	}
 	return values, nil
@@ -1156,8 +370,15 @@ func (c ObjectCollection) GetIndexed() (map[int32]any, error) {
 // collection order. It returns an error for non-associative, invalid, or NULL
 // collections.
 func (c ObjectCollection) Indexes() ([]int32, error) {
-	if c.Object == nil || c.Object.Closed || c.IsNull() || !c.Associative || len(c.indexes) != len(c.values) {
+	if c.Object == nil || c.Object.Closed || c.IsNull() || !c.Associative || (c.indexes != nil && len(c.indexes) != len(c.values)) {
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
+	}
+	if c.indexes == nil {
+		indexes := make([]int32, len(c.values))
+		for i := range indexes {
+			indexes[i] = int32(i + 1)
+		}
+		return indexes, nil
 	}
 	return append([]int32(nil), c.indexes...), nil
 }

@@ -130,6 +130,7 @@ type Statement struct {
 	queryStatementExecutor QueryWithContext
 	execStatementExecutor  ExecWithContext
 	_rows                  driver.Rows // reference on created Rows.
+	adtConnection          *connection
 }
 
 /*
@@ -202,6 +203,11 @@ Implementation details:
 Callers must fully consume and Close the returned Rows.
 */
 func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if s.adtConnection != nil {
+		if err := s.adtConnection.resolveADTMetadata(ctx, args); err != nil {
+			return nil, s.shelf.LocalizeError(err)
+		}
+	}
 	subContext, cancelSubContext, cleanup := s.createSubContextWithCancelAfterfunction(ctx)
 	defer cleanup()
 
@@ -223,6 +229,15 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 		return nil, err
 	}
 
+	if e == nil && s.adtConnection != nil {
+		if rows, ok := selectedRows.(*ttcRows); ok {
+			if err := s.adtConnection.resolveADTColumns(ctx, rows.columnContexts); err != nil {
+				_ = selectedRows.Close()
+				s._rows = nil
+				return nil, s.shelf.LocalizeError(err)
+			}
+		}
+	}
 	return selectedRows, s.shelf.LocalizeError(e)
 }
 
@@ -295,6 +310,11 @@ Implementation details:
 The returned Result may expose rows-affected metadata when the server provides it.
 */
 func (s *Statement) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	if s.adtConnection != nil {
+		if err := s.adtConnection.resolveADTMetadata(ctx, args); err != nil {
+			return nil, s.shelf.LocalizeError(err)
+		}
+	}
 	subContext, cancelSubContext, cleanup := s.createSubContextWithCancelAfterfunction(ctx)
 	defer cleanup()
 

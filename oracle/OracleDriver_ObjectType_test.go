@@ -41,7 +41,6 @@ package oracle
 import (
 	"context"
 	"database/sql"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -52,27 +51,15 @@ import (
 
 func setObjectValue(t *testing.T, object *datatype.Object, name string, value any) {
 	t.Helper()
-	field := object.Value.FieldByName(name)
-	if !field.IsValid() || !field.CanSet() {
-		t.Fatalf("%s is not a settable reflected object field", name)
-	}
-	if value == nil {
-		field.SetZero()
-		return
-	}
-	field.Set(reflect.ValueOf(value))
+	object.Attributes[name] = value
 }
 
 func objectValue(t *testing.T, object datatype.Object, name string) any {
 	t.Helper()
-	field := object.Value.FieldByName(name)
-	if !field.IsValid() {
-		t.Fatalf("%s is not a reflected object field", name)
-	}
-	return field.Interface()
+	return object.Attributes[name]
 }
 
-func TestDriver_ObjectTypeReflectionValue(t *testing.T) {
+func TestDriver_ObjectTypeMapValue(t *testing.T) {
 	if TestingConfig == nil {
 		t.Skip("No configuration available")
 	}
@@ -89,38 +76,31 @@ func TestDriver_ObjectTypeReflectionValue(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	typeName := strings.ToUpper(createObjectName("object_reflection_value"))
+	typeName := strings.ToUpper(createObjectName("object_map_value"))
 	if _, err = conn.ExecContext(ctx, "CREATE TYPE "+typeName+" AS OBJECT (ID NUMBER, NAME VARCHAR2(50), CREATED_AT TIMESTAMP(9))"); err != nil {
 		t.Fatalf("create object type: %v", err)
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-	object, err := datatype.NewObject(ctx, conn, typeName)
-	if err != nil {
-		t.Fatalf("NewObject(%s): %v", typeName, err)
-	}
-
-	// Object attributes are set and read directly through the reflected value.
 	wantTime := time.Date(2026, 9, 22, 10, 30, 0, 123456789, time.UTC)
-	object.FieldByName("ID").Set(reflect.ValueOf(int64(42)))
-	object.FieldByName("NAME").Set(reflect.ValueOf("reflection"))
-	object.FieldByName("CREATED_AT").Set(reflect.ValueOf(wantTime))
+	object := datatype.NewObject(typeName, map[string]any{"ID": int64(42), "NAME": "Ada"})
+	object.Attributes["CREATED_AT"] = wantTime
 
 	var out datatype.Object
 	if _, err = conn.ExecContext(ctx, "BEGIN :1 := :2; END;", sql.Out{Dest: &out}, object); err != nil {
 		t.Fatalf("PL/SQL object IN/OUT: %v", err)
 	}
-	if got := out.FieldByName("ID").Interface(); got != int64(42) {
+	if got := out.Attributes["ID"]; got != int64(42) {
 		t.Fatalf("ID = %v, want 42", got)
 	}
-	if got := out.FieldByName("NAME").Interface(); got != "reflection" {
-		t.Fatalf("NAME = %v, want reflection", got)
+	if got := out.Attributes["NAME"]; got != "Ada" {
+		t.Fatalf("NAME = %v, want Ada", got)
 	}
-	gotTime, ok := out.FieldByName("CREATED_AT").Interface().(time.Time)
+	gotTime, ok := out.Attributes["CREATED_AT"].(time.Time)
 	if !ok {
-		t.Fatalf("CREATED_AT = %T, want time.Time", out.FieldByName("CREATED_AT").Interface())
+		t.Fatalf("CREATED_AT = %T, want time.Time", out.Attributes["CREATED_AT"])
 	}
-	assertSameYMDHMSNanos(t, 0, "reflected object TIMESTAMP", gotTime, wantTime)
+	assertSameYMDHMSNanos(t, 0, "map-backed object TIMESTAMP", gotTime, wantTime)
 }
 
 // TestDriver_ObjectTypeTableColumn verifies that an object can be bound into a
@@ -154,10 +134,11 @@ func TestDriver_ObjectTypeTableColumn(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TABLE "+tableName) })
 
-	in, err := datatype.NewObject(ctx, conn, typeName)
-	if err != nil {
-		t.Fatalf("NewObject(%s): %v", typeName, err)
+	var cold datatype.Object
+	if err := conn.QueryRowContext(ctx, "SELECT "+typeName+"(7,'cold',NULL) FROM dual").Scan(&cold); err != nil || cold.Attributes["ID"] != int64(7) {
+		t.Fatalf("select without previous ADT bind: %#v, %v", cold.Attributes, err)
 	}
+	in := datatype.NewObject(typeName)
 	wantTime := time.Date(2026, 9, 30, 11, 12, 13, 987654321, time.UTC)
 	setObjectValue(t, in, "ID", int64(42))
 	setObjectValue(t, in, "NAME", "stored object")
@@ -209,16 +190,13 @@ func TestDriver_ObjectTypeMetadata(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-	object, err := datatype.NewObject(ctx, conn, typeName)
-	if err != nil {
-		t.Fatalf("NewObject(%s): %v", typeName, err)
+	object := datatype.NewObject(typeName)
+	if _, err = conn.ExecContext(ctx, "BEGIN :1 := :1; END;", sql.Out{Dest: object, In: true}); err != nil {
+		t.Fatalf("resolve object metadata: %v", err)
 	}
 	typ := object.ObjectType
 	if !typ.IsObject() {
 		t.Fatalf("descriptor is not an object: %#v", typ)
-	}
-	if _, err := datatype.NewCollection(ctx, conn, typeName); err == nil {
-		t.Fatal("NewCollection succeeded for an object type")
 	}
 	if got, want := typ.AttributeNames(), []string{"ID", "NAME", "CREATED_AT"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Fatalf("AttributeNames() = %v, want %v", got, want)
@@ -257,10 +235,7 @@ func TestDriver_ObjectTypeScalarPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-	in, err := datatype.NewObject(ctx, conn, typeName)
-	if err != nil {
-		t.Fatalf("NewObject(%s): %v", typeName, err)
-	}
+	in := datatype.NewObject(typeName)
 	wantTime := time.Date(2025, 4, 5, 6, 7, 8, 123456789, time.UTC)
 	for name, value := range map[string]any{"ID": int64(42), "NAME": "answer", "CREATED_AT": wantTime} {
 		setObjectValue(t, in, name, value)
@@ -327,9 +302,9 @@ func TestDriver_CompositeObjectPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+parentName+" FORCE") })
 
-	parent, err := datatype.NewObject(ctx, conn, parentName)
-	if err != nil {
-		t.Fatalf("NewObject(%s): %v", parentName, err)
+	parent := datatype.NewObject(parentName)
+	if _, err = conn.ExecContext(ctx, "BEGIN :1 := :1; END;", sql.Out{Dest: parent, In: true}); err != nil {
+		t.Fatalf("resolve composite metadata: %v", err)
 	}
 	parentType := parent.ObjectType
 	childType := parentType.Attributes["CHILD"].ObjectType
@@ -401,21 +376,8 @@ func TestDriver_ObjectVARRAYPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+collectionName+" FORCE") })
 
-	in, err := datatype.NewCollection(ctx, conn, collectionName)
-	if err != nil {
-		t.Fatalf("NewCollection(%s): %v", collectionName, err)
-	}
-	collectionType := in.ObjectType
-	if collectionType.CollectionOf == nil || len(collectionType.CollectionOf.Attributes) != 1 {
-		t.Fatalf("object collection metadata = %#v", collectionType.CollectionOf)
-	}
-	element, err := collectionType.CollectionOf.NewObject()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The collection TDS contains the object element's shape but not its SQL
-	// attribute names, so use the positional element layout.
-	element.Field(0).Set(reflect.ValueOf(int64(1)))
+	in := datatype.NewCollection(collectionName)
+	element := datatype.NewObject(elementName, map[string]any{"ID": int64(1)})
 	if err := in.Set([]any{element, nil}); err != nil {
 		t.Fatal(err)
 	}
@@ -432,8 +394,8 @@ func TestDriver_ObjectVARRAYPLSQL(t *testing.T) {
 	if !ok {
 		t.Fatalf("element = %T, want datatype.Object", value)
 	}
-	if id := got.Field(0).Interface(); id != int64(1) {
-		t.Fatalf("element field 0 = %v, want 1", id)
+	if id := got.Attributes["F_1"]; id != int64(1) {
+		t.Fatalf("element field F_1 = %v, want 1", id)
 	}
 	if len(values) != 2 || values[1] != nil {
 		t.Fatalf("element 2 = %#v, want nil", values)
@@ -468,19 +430,14 @@ func TestDriver_ObjectTypeHierarchyMetadata(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP TYPE "+subtypeName+" FORCE") })
 
-	baseValue, err := datatype.NewObject(ctx, conn, baseName)
-	if err != nil {
-		t.Fatalf("NewObject(%s): %v", baseName, err)
+	baseValue := datatype.NewObject(baseName)
+	if _, err = conn.ExecContext(ctx, "BEGIN :1 := :1; END;", sql.Out{Dest: baseValue, In: true}); err != nil {
+		t.Fatalf("resolve hierarchy metadata: %v", err)
 	}
-	base := baseValue.ObjectType
-	if len(base.SubTypes) != 1 {
-		t.Fatalf("subtypes = %d, want 1", len(base.SubTypes))
+	if _, err = conn.ExecContext(ctx, "BEGIN :1 := "+subtypeName+"(42, 'child'); END;", sql.Out{Dest: baseValue}); err != nil {
+		t.Fatalf("fetch subtype through base OUT bind: %v", err)
 	}
-	subtype := base.SubTypes[0]
-	if subtype.SuperTypeName == "" || subtype.SubTypeForTOID(subtype.TOID) != nil {
-		t.Fatalf("subtype metadata = %#v", subtype)
-	}
-	if base.SubTypeForTOID(subtype.TOID) != subtype {
-		t.Fatal("base descriptor did not resolve subtype TOID")
+	if baseValue.Name != subtypeName || baseValue.Attributes["ID"] != int64(42) || baseValue.Attributes["EXTRA"] != "child" {
+		t.Fatalf("decoded subtype %q: %#v", baseValue.Name, baseValue.Attributes)
 	}
 }

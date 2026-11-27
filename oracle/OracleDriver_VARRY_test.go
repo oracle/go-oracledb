@@ -69,7 +69,7 @@ func TestDriver_VARRAY_TypeShapeDebug(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = db.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-	ex := datatype.Execer(db)
+	ex := db
 	var rc int64
 	canonical := strings.TrimSpace(typeName)
 	var toid, tds []byte
@@ -143,10 +143,7 @@ func TestDriver_VARRAY_InsertSelectPLSQL(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	in, err := datatype.NewCollection(ctx, conn, typeName)
-	if err != nil {
-		t.Fatalf("NewCollection(%s): %v", typeName, err)
-	}
+	in := datatype.NewCollection(typeName)
 	if err := in.Set([]int64{10, 20, 30}); err != nil {
 		t.Fatalf("set VARRAY values: %v", err)
 	}
@@ -197,10 +194,7 @@ func TestDriver_VARRAY_NullBind(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	nullIn, err := datatype.NewCollection(ctx, conn, typeName)
-	if err != nil {
-		t.Fatalf("NewCollection(%s): %v", typeName, err)
-	}
+	nullIn := datatype.NewCollection(typeName)
 	nullIn.SetNull()
 	if !nullIn.IsNull() {
 		t.Fatal("SetNull did not mark the collection as NULL")
@@ -280,16 +274,10 @@ func TestDriver_VARRAY_PublicAPIs(t *testing.T) {
 			}
 			t.Cleanup(func() { _, _ = db.ExecContext(ctx, "DROP TYPE "+typeName+" FORCE") })
 
-			collection, err := datatype.NewCollection(ctx, conn, typeName)
-			if err != nil {
-				t.Fatalf("NewCollection(%s): %v", typeName, err)
-			}
+			collection := datatype.NewCollection(typeName)
 			typ := collection.ObjectType
 			if typ.IsObject() || typ.String() != typ.FullName() || typ.FullName() == "" {
 				t.Fatalf("unexpected VARRAY descriptor: String=%q FullName=%q IsObject=%v", typ.String(), typ.FullName(), typ.IsObject())
-			}
-			if _, err := datatype.NewObject(ctx, conn, typeName); err == nil {
-				t.Fatal("NewObject succeeded for a VARRAY")
 			}
 			if err := collection.Set(tc.values); err != nil {
 				t.Fatalf("Set(%#v): %v", tc.values, err)
@@ -373,10 +361,7 @@ func TestDriver_VARRAY_OtherScalarTypes(t *testing.T) {
 
 			// Use the public constructor with sql.Conn so metadata retrieval and
 			// subsequent collection binds use the same physical database connection.
-			collection, err := datatype.NewCollection(ctx, conn, typeName)
-			if err != nil {
-				t.Fatalf("NewCollection(%s): %v", tc.name, err)
-			}
+			collection := datatype.NewCollection(typeName)
 			if err := collection.Set(tc.values); err != nil {
 				t.Fatalf("Set(%#v): %v", tc.values, err)
 			}

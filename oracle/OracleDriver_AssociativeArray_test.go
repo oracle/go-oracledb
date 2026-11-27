@@ -59,6 +59,20 @@ END;`); err != nil {
 	}
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, "DROP PACKAGE "+packageName) })
 
+	t.Run("dense_before_resolution", func(t *testing.T) {
+		in := datatype.NewCollection(packageName + ".NUMBER_BY_INDEX")
+		if err := in.Set([]int64{10, 20}); err != nil {
+			t.Fatal(err)
+		}
+		var out datatype.ObjectCollection
+		if _, err := conn.ExecContext(ctx, "BEGIN "+packageName+".ECHO_NUMBERS(:1,:2); END;", in, sql.Out{Dest: &out}); err != nil {
+			t.Fatal(err)
+		}
+		got, err := out.GetIndexed()
+		if err != nil || !reflect.DeepEqual(got, map[int32]any{1: int64(10), 2: int64(20)}) {
+			t.Fatalf("dense indexes: %v, %v", got, err)
+		}
+	})
 	tests := []struct {
 		name      string
 		typeName  string
@@ -72,13 +86,7 @@ END;`); err != nil {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			typeName := packageName + "." + tc.typeName
-			in, err := datatype.NewCollection(ctx, conn, typeName)
-			if err != nil {
-				t.Fatalf("NewCollection(%s): %v", typeName, err)
-			}
-			if !in.Associative || in.VArray || !in.ObjectType.Collection {
-				t.Fatalf("associative-array descriptor: Collection=%v VArray=%v Associative=%v", in.ObjectType.Collection, in.VArray, in.Associative)
-			}
+			in := datatype.NewCollection(typeName)
 			if err = in.SetIndexed(tc.values); err != nil {
 				t.Fatalf("SetIndexed associative-array values: %v", err)
 			}
@@ -86,6 +94,9 @@ END;`); err != nil {
 			var out datatype.ObjectCollection
 			if _, err = conn.ExecContext(ctx, "BEGIN "+packageName+"."+tc.procedure+"(:1, :2); END;", in, sql.Out{Dest: &out}); err != nil {
 				t.Fatalf("PL/SQL associative-array IN/OUT: %v", err)
+			}
+			if !in.Associative || in.VArray {
+				t.Fatalf("resolved associative-array descriptor: %#v", in.ObjectType)
 			}
 			values, err := out.GetIndexed()
 			if err != nil {

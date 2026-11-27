@@ -91,32 +91,32 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 
 	// Register bind OAC makers used by bind preparation tests.
 	_ = bindOacRegistry.Register(reflect.TypeOf(int64(0)), 2, bindOacType{
-		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(typeCommon.DtyNum, maxLength)
+		bindOacFunc: func(_ bindValueMetadata, maxLength common.UB4) (common.Marshallable, error) {
+			return newTTIoac(typeCommon.DtyNum, maxLength), nil
 		},
 		maxLength: converters.MaxNumberLength,
 	})
 	_ = bindOacRegistry.Register(reflect.TypeOf(""), 2, bindOacType{
-		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(typeCommon.DtyVCS, maxLength)
+		bindOacFunc: func(_ bindValueMetadata, maxLength common.UB4) (common.Marshallable, error) {
+			return newTTIoac(typeCommon.DtyVCS, maxLength), nil
 		},
 		maxLength: 32768,
 	})
 	_ = bindOacRegistry.Register(reflect.TypeOf([]byte(nil)), 2, bindOacType{
-		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(typeCommon.DtyVbi, maxLength)
+		bindOacFunc: func(_ bindValueMetadata, maxLength common.UB4) (common.Marshallable, error) {
+			return newTTIoac(typeCommon.DtyVbi, maxLength), nil
 		},
 		maxLength: 32767,
 	})
 	_ = bindOacRegistry.Register(reflect.TypeOf(true), 2, bindOacType{
-		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(typeCommon.DtyBol, maxLength)
+		bindOacFunc: func(_ bindValueMetadata, maxLength common.UB4) (common.Marshallable, error) {
+			return newTTIoac(typeCommon.DtyBol, maxLength), nil
 		},
 		maxLength: converters.MaxBoolLength,
 	})
 	_ = bindOacRegistry.Register(reflect.TypeOf(time.Time{}), 2, bindOacType{
-		bindOacFunc: func(maxLength common.UB4) common.Marshallable {
-			return newTTIoac(typeCommon.DtyStz, maxLength)
+		bindOacFunc: func(_ bindValueMetadata, maxLength common.UB4) (common.Marshallable, error) {
+			return newTTIoac(typeCommon.DtyStz, maxLength), nil
 		},
 		maxLength: converters.MaxTimeStampLength,
 	})
@@ -143,7 +143,10 @@ func registerTestCodecs(shelf *ttiShelf[common.MessageType], ttcProtocolVersion 
 }
 
 func prepareBindDataForTest(sp *statementProcessor, args []sqldriver.Value) ([][]common.B1Array, []bindValueMetadata, []common.Marshallable, error) {
-	metadata := extractBindMetadata(args)
+	metadata, err := sp.bindMetadata(args)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	rows, err := sp.encodeBindValues(args, metadata)
 	if err != nil {
 		return nil, nil, nil, err

@@ -1,8 +1,47 @@
+/*
+** Copyright (c) 2026 Oracle and/or its affiliates.
+**
+** The Universal Permissive License (UPL), Version 1.0
+**
+** Subject to the condition set forth below, permission is hereby granted to any
+** person obtaining a copy of this software, associated documentation and/or data
+** (collectively the "Software"), free of charge and under any and all copyright
+** rights in the Software, and any and all patent rights owned or freely
+** licensable by each licensor hereunder covering either (i) the unmodified
+** Software as contributed to or provided by such licensor, or (ii) the Larger
+** Works (as defined below), to deal in both
+**
+** (a) the Software, and
+** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
+** one is included with the Software (each a "Larger Work" to which the Software
+** is contributed by such licensors),
+**
+** without restriction, including without limitation the rights to copy, create
+** derivative works of, display, perform, and distribute the Software and make,
+** use, sell, offer for sale, import, export, have made, and have sold the
+** Software and the Larger Work(s), and to sublicense the foregoing rights on
+** either these or other terms.
+**
+** This license is subject to the following condition:
+** The above copyright notice and either this complete permission notice or at
+** a minimum a reference to the UPL must be included in all copies or
+** substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+** SOFTWARE.
+ */
+
 package ttc
 
 import (
 	"database/sql/driver"
 	"reflect"
+	"strings"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -29,7 +68,7 @@ const (
 // Returns:
 //   - *tTIoac: OAC containing the named type TOID, version, and charset.
 //   - error: Error if typ has invalid TOID or version metadata.
-func newTTIOacNamedType(typ *datatype.ObjectType, maxLength driverCommon.UB4) (*tTIoac, error) {
+func newTTIOacNamedType(typ *adtDescriptor, maxLength driverCommon.UB4) (*tTIoac, error) {
 	if typ == nil || len(typ.TOID) != 16 {
 		common.Odl.Error("ADT metadata error")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
@@ -78,12 +117,18 @@ func namedTypeForBind(v any) (*datatype.ObjectType, bool) {
 	return nil, false
 }
 
+// adtBindCodecs supplies the resolved bind descriptor at the registry boundary.
+type adtBindCodecs struct {
+	codecFactory
+	descriptor *adtDescriptor
+}
+
 // encodeObjectCollectionBind encodes a collection bind value as an ADT image.
 // It returns a nil image for values that are not ObjectCollection values.
 //
 // Parameters:
 //   - value: Driver bind value to inspect and encode.
-//   - factory: Codec factory used for collection element encoding.
+//   - factory: Registry context carrying the resolved collection descriptor.
 //
 // Returns:
 //   - driverCommon.B1Array: Encoded collection image, or nil for another value type.
@@ -93,7 +138,11 @@ func encodeObjectCollectionBind(value driver.Value, factory codecFactory) (drive
 	if !ok {
 		return nil, nil
 	}
-	return encodeCollectionImage(collection, factory)
+	ctx, ok := factory.(adtBindCodecs)
+	if !ok || ctx.descriptor == nil {
+		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
+	}
+	return ctx.descriptor.encodeCollectionImage(collection)
 }
 
 // encodeObjectBind encodes an object bind value as an ADT image. It returns a
@@ -101,7 +150,7 @@ func encodeObjectCollectionBind(value driver.Value, factory codecFactory) (drive
 //
 // Parameters:
 //   - value: Driver bind value to inspect and encode.
-//   - factory: Codec factory used for object attribute encoding.
+//   - factory: Registry context carrying the resolved object descriptor.
 //
 // Returns:
 //   - driverCommon.B1Array: Encoded object image, or nil for another value type.
@@ -111,7 +160,11 @@ func encodeObjectBind(value driver.Value, factory codecFactory) (driverCommon.B1
 	if !ok {
 		return nil, nil
 	}
-	return encodeObjectImage(object, factory)
+	ctx, ok := factory.(adtBindCodecs)
+	if !ok || ctx.descriptor == nil {
+		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
+	}
+	return ctx.descriptor.encodeObjectImage(object)
 }
 
 // newNamedTypeBindOAC creates an ADT bind OAC from normalized bind metadata.
@@ -124,11 +177,11 @@ func encodeObjectBind(value driver.Value, factory codecFactory) (driverCommon.B1
 //   - driverCommon.Marshallable: Named-type OAC for the bind.
 //   - error: Error if ADT descriptor metadata is unavailable or invalid.
 func newNamedTypeBindOAC(metadata bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
-	if metadata.objectType == nil {
+	if metadata.descriptor == nil {
 		common.Odl.Error("Named ADT bind is missing type metadata")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 	}
-	return newTTIOacNamedType(metadata.objectType, maxLength)
+	return newTTIOacNamedType(metadata.descriptor, maxLength)
 }
 
 // resolveNamedTypeMetadata supplies a known ADT descriptor to untyped named
@@ -136,22 +189,32 @@ func newNamedTypeBindOAC(metadata bindValueMetadata, maxLength driverCommon.UB4)
 //
 // Parameters:
 //   - metadata: Bind metadata to update in place.
-func resolveNamedTypeMetadata(metadata []bindValueMetadata) {
-	var typ *datatype.ObjectType
-	for _, item := range metadata {
-		if item.objectType != nil {
-			typ = item.objectType
-			break
+func resolveNamedTypeMetadata(metadata []bindValueMetadata) error {
+	for i := range metadata {
+		out := &metadata[i]
+		if !out.isOut || out.descriptor != nil || !isNamedTypeGoType(out.goType) {
+			continue
 		}
-	}
-	if typ == nil {
-		return
-	}
-	for index := range metadata {
-		if metadata[index].objectType == nil && metadata[index].isOut && isNamedTypeGoType(metadata[index].goType) {
-			metadata[index].objectType = typ
+		collection := out.goType == reflect.TypeFor[datatype.ObjectCollection]()
+		var candidate *adtDescriptor
+		for _, input := range metadata {
+			t := input.descriptor
+			if t == nil || t.Collection != collection {
+				continue
+			}
+			if candidate != nil && candidate != t {
+				candidate = nil
+				break
+			}
+			candidate = t
 		}
+		if candidate == nil {
+			common.Odl.Error("Cannot infer a unique ADT OUT bind descriptor", "position", i+1)
+			return common.NewOracleError(oracleErrors.ADTMetadataError, nil)
+		}
+		out.descriptor = candidate
 	}
+	return nil
 }
 
 // isNamedTypeGoType reports whether goType represents a public ADT value.
@@ -210,13 +273,12 @@ func objectForBind(v any) (*datatype.Object, bool) {
 //
 // Parameters:
 //   - collection: Public collection value to encode.
-//   - factory: Codec factory used to encode scalar and object elements.
 //
 // Returns:
 //   - driverCommon.B1Array: Complete inline collection image, or nil for NULL.
 //   - error: Error if collection metadata, values, or element encoding is invalid.
-func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFactory) (driverCommon.B1Array, error) {
-	if collection.Object == nil || collection.ObjectType == nil || !collection.ObjectType.Collection {
+func (typ *adtDescriptor) encodeCollectionImage(collection datatype.ObjectCollection) (driverCommon.B1Array, error) {
+	if collection.Object == nil || typ == nil || !typ.Collection {
 		common.Odl.Error("ADT collection type error")
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
@@ -227,15 +289,18 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 	if err != nil {
 		return nil, err
 	}
+	if typ.VArray && typ.UpperBound > 0 && int64(len(values)) > typ.UpperBound {
+		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
+	}
 	var indexes []int32
-	if collection.Associative {
+	if typ.Associative {
 		indexes, err = collection.Indexes()
 		if err != nil || len(indexes) != len(values) {
 			common.Odl.Error("ADT collection image error")
 			return nil, common.NewOracleError(oracleErrors.ADTEncodingError, err)
 		}
 	}
-	if collection.ElementType == 0 && collection.CollectionOf == nil {
+	if typ.adtCodecContext == nil || typ.codecs == nil || (typ.ElementType == 0 && typ.CollectionOf == nil) {
 		common.Odl.Error("ADT metadata error")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 	}
@@ -243,7 +308,7 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 	// The prefix carries the inline/type-version flag and TDS version. Versions
 	// up to 245 use a two-byte signed value; larger versions use the five-byte
 	// pickle-length form.
-	version := collection.ObjectType.TypeVersion
+	version := typ.TypeVersion
 	prefix := []byte{0x11}
 	if version <= 245 {
 		prefix = append(prefix, byte(version>>8), byte(version))
@@ -254,26 +319,32 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 	data = appendPickleLength(data, len(prefix))
 	data = append(data, prefix...)
 	collectionFlags := byte(0)
-	if collection.Associative {
+	if typ.Associative {
 		collectionFlags |= collectionIndexesFlag
 	}
 	data = append(data, collectionFlags)
 	data = appendPickleLength(data, len(values))
 	for position, value := range values {
-		if collection.Associative {
+		if typ.Associative {
 			data = appendCollectionIndex(data, indexes[position])
 		}
 		if value == nil {
 			data = append(data, 255)
 			continue
 		}
-		if collection.CollectionOf != nil {
+		if typ.CollectionOf != nil {
 			object, ok := objectValue(value)
 			if !ok || object.IsNull() {
 				data = append(data, 255)
 				continue
 			}
-			image, err := encodeObjectImage(object, factory)
+			element := typ.CollectionOf
+			if object.ObjectType != nil {
+				if named := typ.byName[strings.ToUpper(object.FullName())]; named != nil {
+					element = named
+				}
+			}
+			image, err := element.encodeObjectImage(object)
 			if err != nil {
 				return nil, err
 			}
@@ -285,11 +356,11 @@ func encodeCollectionImage(collection datatype.ObjectCollection, factory codecFa
 			continue
 		}
 		metadata := extractBindValueMetadata(value)
-		encoder, err := factory.getEncoderForDtyType(collection.ElementType, metadata)
+		encoder, err := typ.codecs.getEncoderForDtyType(typ.ElementType, metadata)
 		if err != nil {
 			return nil, err
 		}
-		encoded, err := encoder.encode(value, factory)
+		encoded, err := encoder.encode(value, typ.codecs)
 		if err != nil {
 			return nil, err
 		}
@@ -321,26 +392,25 @@ func appendCollectionIndex(data []byte, index int32) []byte {
 //
 // Parameters:
 //   - object: Public object value to encode.
-//   - factory: Codec factory used to encode object attributes.
 //
 // Returns:
 //   - driverCommon.B1Array: Complete inline object image, or nil for NULL.
 //   - error: Error if object metadata, state, or attribute encoding is invalid.
-func encodeObjectImage(object *datatype.Object, factory codecFactory) (driverCommon.B1Array, error) {
-	if object == nil || object.Closed || object.ObjectType == nil || !object.ObjectType.IsObject() {
+func (typ *adtDescriptor) encodeObjectImage(object *datatype.Object) (driverCommon.B1Array, error) {
+	if object == nil || object.Closed || typ == nil || !typ.IsObject() {
 		common.Odl.Error("ADT object type error")
 		return nil, common.NewOracleError(oracleErrors.ADTValueError, nil)
 	}
 	if object.IsNull() {
 		return nil, nil
 	}
-	if factory == nil {
+	if typ.adtCodecContext == nil || typ.codecs == nil {
 		common.Odl.Error("ADT metadata error")
 		return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 	}
 	data := []byte{0x84, 1, 254, 0, 0, 0, 0}
-	if object.ObjectType.TypeVersion > 1 || object.ObjectType.SuperTypeName != "" {
-		if len(object.ObjectType.TOID) != 16 {
+	if typ.TypeVersion > 1 || typ.SuperTypeName != "" {
+		if len(typ.TOID) != 16 {
 			common.Odl.Error("ADT metadata error")
 			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
@@ -349,20 +419,20 @@ func encodeObjectImage(object *datatype.Object, factory codecFactory) (driverCom
 		// declared bind type.
 		data[0] = 0x80
 		prefix := []byte{0x05}
-		prefix = append(prefix, object.ObjectType.TOID...)
-		if object.ObjectType.TypeVersion > 1 {
+		prefix = append(prefix, typ.TOID...)
+		if typ.TypeVersion > 1 {
 			prefix[0] |= 0x10
-			if object.ObjectType.TypeVersion <= 245 {
-				prefix = append(prefix, byte(object.ObjectType.TypeVersion>>8), byte(object.ObjectType.TypeVersion))
+			if typ.TypeVersion <= 245 {
+				prefix = append(prefix, byte(typ.TypeVersion>>8), byte(typ.TypeVersion))
 			} else {
-				prefix = appendPickleLength(prefix, object.ObjectType.TypeVersion)
+				prefix = appendPickleLength(prefix, typ.TypeVersion)
 			}
 		}
 		data = appendPickleLength(data, len(prefix))
 		data = append(data, prefix...)
 	}
 	var err error
-	data, err = encodeObjectRecord(data, object, factory, 0)
+	data, err = typ.encodeObjectRecord(data, object, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -377,24 +447,23 @@ func encodeObjectImage(object *datatype.Object, factory codecFactory) (driverCom
 // Parameters:
 //   - data: Object image bytes to extend.
 //   - object: Object whose attributes are encoded.
-//   - factory: Codec factory used for scalar attribute encoding.
 //   - depth: Embedded-object nesting depth.
 //
 // Returns:
 //   - []byte: data with the encoded object record appended.
-//   - error: Error if object metadata, reflected values, or codecs are invalid.
-func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFactory, depth byte) ([]byte, error) {
-	for index, name := range object.ObjectType.AttributeNames() {
-		attributeType := object.ObjectType.Attributes[name].ObjectType
+//   - error: Error if object metadata, attribute values, or codecs are invalid.
+func (typ *adtDescriptor) encodeObjectRecord(data []byte, object *datatype.Object, depth byte) ([]byte, error) {
+	for index, name := range typ.AttributeNames() {
+		attributeType := typ.Attributes[name].adtDescriptor
 		if attributeType == nil {
 			common.Odl.Error("ADT metadata error")
 			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
-		if !object.Value.IsValid() || object.Value.Kind() != reflect.Struct || index >= object.Value.NumField() {
+		if object.Attributes == nil {
 			common.Odl.Error("ADT object image error")
 			return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 		}
-		value := object.Value.Field(index).Interface()
+		value := object.Attributes[name]
 		if isEmbeddedObject(attributeType) {
 			child, childOK := objectValue(value)
 			if !childOK || child.IsNull() {
@@ -408,7 +477,7 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 				continue
 			}
 			var err error
-			data, err = encodeObjectRecord(data, child, factory, depth+1)
+			data, err = attributeType.encodeObjectRecord(data, child, depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -424,7 +493,7 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 				data = append(data, 255)
 				continue
 			}
-			image, err := encodeCollectionImage(collection, factory)
+			image, err := attributeType.encodeCollectionImage(collection)
 			if err != nil {
 				return nil, err
 			}
@@ -440,11 +509,11 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 			return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
 		metadata := extractBindValueMetadata(value)
-		encoder, err := factory.getEncoderForDtyType(attributeType.ElementType, metadata)
+		encoder, err := typ.codecs.getEncoderForDtyType(attributeType.ElementType, metadata)
 		if err != nil {
 			return nil, err
 		}
-		encoded, err := encoder.encode(value, factory)
+		encoded, err := encoder.encode(value, typ.codecs)
 		if err != nil {
 			return nil, err
 		}
@@ -462,7 +531,7 @@ func encodeObjectRecord(data []byte, object *datatype.Object, factory codecFacto
 //
 // Returns:
 //   - bool: True when typ represents an embedded object record.
-func isEmbeddedObject(typ *datatype.ObjectType) bool {
+func isEmbeddedObject(typ *adtDescriptor) bool {
 	return typ != nil && !typ.Collection && typ.ElementType == 0
 }
 
@@ -501,24 +570,22 @@ func appendPickleLength(data []byte, length int) []byte {
 }
 
 // decodeCollectionImage decodes a dense, inline 8.1 collection image using
-// the supplied collection descriptor and scalar codec factory.
+// this descriptor and its connection’s scalar codecs.
 //
 // Parameters:
 //   - data: Raw inline collection image.
-//   - typ: Collection descriptor used to interpret elements and indexes.
-//   - factory: Codec factory used to decode scalar and object elements.
 //
 // Returns:
 //   - driver.Value: Decoded ObjectCollection value.
 //   - error: Error if the image framing, metadata, or elements are invalid.
-func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, factory codecFactory) (driver.Value, error) {
+func (typ *adtDescriptor) decodeCollectionImage(data driverCommon.B1Array) (driver.Value, error) {
 	const (
 		pickle81ImageFlag      = 0x80
 		pickleCollectionFlag   = 0x08
 		pickleDegenerateFlag   = 0x10
 		pickleInlineCollection = 0x01
 	)
-	if typ == nil || !typ.Collection || len(data) < 3 || data[0]&pickle81ImageFlag == 0 {
+	if typ == nil || typ.adtCodecContext == nil || typ.codecs == nil || !typ.Collection || len(data) < 3 || data[0]&pickle81ImageFlag == 0 {
 		common.Odl.Error("ADT collection image error")
 		return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 	}
@@ -584,7 +651,7 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 	indexes := make([]int32, 0, count)
 	var decoder *typeDecoder
 	if typ.CollectionOf == nil {
-		decoder, err = factory.getDecoder(typ.ElementType)
+		decoder, err = typ.codecs.getDecoder(typ.ElementType)
 		if err != nil {
 			return nil, err
 		}
@@ -617,7 +684,7 @@ func decodeCollectionImage(data driverCommon.B1Array, typ *datatype.ObjectType, 
 				return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 			}
 			end := next + imageLength
-			value, decodeErr := decodeObjectImage(data[next:end], typ.CollectionOf, factory)
+			value, decodeErr := typ.CollectionOf.decodeObjectImage(data[next:end])
 			if decodeErr != nil {
 				return nil, decodeErr
 			}
@@ -680,9 +747,9 @@ func decodeNamedTypeColumn(column columnContext, value any) (driver.Value, error
 		return value, nil
 	}
 	if typ.Collection {
-		return decodeCollectionImage(data, typ, column.codecFactory)
+		return typ.decodeCollectionImage(data)
 	}
-	return decodeObjectImage(data, typ, column.codecFactory)
+	return typ.decodeObjectImage(data)
 }
 
 // decodeNullNamedTypeColumn constructs a typed NULL value for a named-type
@@ -740,18 +807,16 @@ func readCollectionIndex(data driverCommon.B1Array, pos int) (int32, int, error)
 //
 // Parameters:
 //   - data: Raw inline object image.
-//   - typ: Declared object descriptor used to interpret the image.
-//   - factory: Codec factory used to decode scalar attributes.
 //
 // Returns:
 //   - driver.Value: Decoded Object value.
 //   - error: Error if the image framing, subtype, metadata, or attributes are invalid.
-func decodeObjectImage(data driverCommon.B1Array, typ *datatype.ObjectType, factory codecFactory) (driver.Value, error) {
+func (typ *adtDescriptor) decodeObjectImage(data driverCommon.B1Array) (driver.Value, error) {
 	const (
 		pickle81ImageFlag  = 0x80
 		pickleNoPrefixFlag = 0x04
 	)
-	if typ == nil || !typ.IsObject() || factory == nil || len(data) < 3 || data[0]&pickle81ImageFlag == 0 {
+	if typ == nil || !typ.IsObject() || typ.adtCodecContext == nil || typ.codecs == nil || len(data) < 3 || data[0]&pickle81ImageFlag == 0 {
 		common.Odl.Error("ADT object image error")
 		return nil, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 	}
@@ -779,7 +844,7 @@ func decodeObjectImage(data driverCommon.B1Array, typ *datatype.ObjectType, fact
 		}
 		pos = next + prefixLength
 	}
-	object, pos, err := decodeObjectRecord(data, pos, decodeType, factory, 0)
+	object, pos, err := decodeType.decodeObjectRecord(data, pos, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -796,29 +861,27 @@ func decodeObjectImage(data driverCommon.B1Array, typ *datatype.ObjectType, fact
 // Parameters:
 //   - data: Object image containing the record.
 //   - pos: Offset of the first attribute record.
-//   - typ: Descriptor for the record being decoded.
-//   - factory: Codec factory used for scalar attributes.
 //   - depth: Embedded-object nesting depth.
 //
 // Returns:
 //   - *datatype.Object: Decoded object value.
 //   - int: Offset immediately after the decoded record.
 //   - error: Error if record metadata, framing, or attributes are invalid.
-func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.ObjectType, factory codecFactory, depth byte) (*datatype.Object, int, error) {
+func (typ *adtDescriptor) decodeObjectRecord(data driverCommon.B1Array, pos int, depth byte) (*datatype.Object, int, error) {
 	object, err := typ.NewObject()
 	if err != nil {
 		return nil, pos, err
 	}
 	for index, name := range typ.AttributeNames() {
 		attribute := typ.Attributes[name]
-		attributeType := attribute.ObjectType
+		attributeType := attribute.adtDescriptor
 		if attributeType == nil || pos >= len(data) {
 			common.Odl.Error("ADT metadata error")
 			return nil, pos, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
 		}
 		if isEmbeddedObject(attributeType) {
 			if data[pos] == 253 {
-				if err := setReflectedObjectField(object, index, nil); err != nil {
+				if err := setObjectAttribute(object, name, nil); err != nil {
 					return nil, pos, err
 				}
 				pos++
@@ -829,24 +892,24 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 					common.Odl.Error("ADT object image error")
 					return nil, pos, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 				}
-				if err := setReflectedObjectField(object, index, nil); err != nil {
+				if err := setObjectAttribute(object, name, nil); err != nil {
 					return nil, pos, err
 				}
 				pos += 2
 				continue
 			}
-			child, next, childErr := decodeObjectRecord(data, pos, attributeType, factory, depth+1)
+			child, next, childErr := attributeType.decodeObjectRecord(data, pos, depth+1)
 			if childErr != nil {
 				return nil, pos, childErr
 			}
-			if err := setReflectedObjectField(object, index, *child); err != nil {
+			if err := setObjectAttribute(object, name, *child); err != nil {
 				return nil, pos, err
 			}
 			pos = next
 			continue
 		}
 		if data[pos] == 255 {
-			if err := setReflectedObjectField(object, index, nil); err != nil {
+			if err := setObjectAttribute(object, name, nil); err != nil {
 				return nil, pos, err
 			}
 			pos++
@@ -862,11 +925,11 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 				return nil, pos, common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 			}
 			end := next + imageLength
-			value, decodeErr := decodeCollectionImage(data[next:end], attributeType, factory)
+			value, decodeErr := attributeType.decodeCollectionImage(data[next:end])
 			if decodeErr != nil {
 				return nil, pos, decodeErr
 			}
-			if err := setReflectedObjectField(object, index, value); err != nil {
+			if err := setObjectAttribute(object, name, value); err != nil {
 				return nil, pos, err
 			}
 			pos = end
@@ -881,7 +944,7 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 			common.Odl.Error("ADT object image error")
 			return nil, pos, common.NewOracleError(oracleErrors.ADTEncodingError, lengthErr)
 		}
-		decoder, decoderErr := factory.getDecoder(attributeType.ElementType)
+		decoder, decoderErr := typ.codecs.getDecoder(attributeType.ElementType)
 		if decoderErr != nil {
 			return nil, pos, decoderErr
 		}
@@ -889,7 +952,7 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 		if decodeErr != nil {
 			return nil, pos, decodeErr
 		}
-		if err := setReflectedObjectField(object, index, value); err != nil {
+		if err := setObjectAttribute(object, name, value); err != nil {
 			return nil, pos, err
 		}
 		pos = next + length
@@ -897,31 +960,29 @@ func decodeObjectRecord(data driverCommon.B1Array, pos int, typ *datatype.Object
 	return object, pos, nil
 }
 
-// setReflectedObjectField assigns value to one dynamically generated object
-// field, preserving a nil value as a NULL attribute.
+// setObjectAttribute assigns value to an object attribute, preserving nil as a
+// NULL attribute.
 //
 // Parameters:
-//   - object: Object whose reflected field is updated.
-//   - index: Declaration-order field index.
+//   - object: Object whose attribute map is updated.
+//   - name: Database attribute name.
 //   - value: Decoded attribute value, or nil for a NULL attribute.
 //
 // Returns:
 //   - error: Error if object state or field mutability is invalid.
-func setReflectedObjectField(object *datatype.Object, index int, value any) error {
-	if object == nil || object.Closed || !object.Value.IsValid() || object.Value.Kind() != reflect.Struct || index < 0 || index >= object.Value.NumField() {
+func setObjectAttribute(object *datatype.Object, name string, value any) error {
+	if object == nil || object.Closed || object.ObjectType == nil {
 		common.Odl.Error("ADT object image error")
 		return common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 	}
-	field := object.Value.Field(index)
-	if !field.CanSet() {
+	if _, ok := object.ObjectType.Attributes[name]; !ok {
 		common.Odl.Error("ADT object image error")
 		return common.NewOracleError(oracleErrors.ADTEncodingError, nil)
 	}
-	if value == nil {
-		field.SetZero()
-		return nil
+	if object.Attributes == nil {
+		object.Attributes = make(map[string]any)
 	}
-	field.Set(reflect.ValueOf(value))
+	object.Attributes[name] = value
 	return nil
 }
 

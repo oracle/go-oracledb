@@ -45,6 +45,7 @@ import (
 	sqldriver "database/sql/driver"
 	"errors"
 	"reflect"
+	"strings"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -325,7 +326,7 @@ Notes:
   - Metadata extraction from getBindOac is best-effort; if it fails, the execution
     still proceeds without populating the corresponding output column context.
 */
-func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
+func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) error {
 	// Reset per-execution counters and cached destinations before inspecting new binds.
 	// the pointer type to an outDestPtrs may change during re-execution. Reset and
 	// rebuild the contexts and pointers
@@ -337,7 +338,10 @@ func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
 	// Resolve metadata for the complete bind list before inspecting OUT binds.
 	// A typed ADT OUT bind can obtain its descriptor from the matching IN bind
 	// in the same PL/SQL call.
-	metadata := extractBindMetadata(args)
+	metadata, err := e.bindMetadata(args)
+	if err != nil {
+		return err
+	}
 	for outIndex, arg := range args {
 		// Only sql.Out binds participate in DML RETURNING / OUT parameter handling.
 		if outArg, ok := arg.(sql.Out); ok {
@@ -357,7 +361,7 @@ func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
 						Scale:       int8(oac.scale),
 						CharsetForm: uint8(oac.characterSetForm),
 						CharsetID:   uint16(oac.characterSetID),
-						objectType:  metadata[outIndex].objectType,
+						objectType:  metadata[outIndex].descriptor,
 					})
 				}
 			}
@@ -370,6 +374,7 @@ func (e *statementExecutorExec) initExecRunner(args []sqldriver.Value) {
 		e.opts &= ^noPLSQLMode
 		e.opts = e.opts | returnIOVVector
 	}
+	return nil
 }
 
 // statementExecutorDML implements queries and statements for DMLs.
@@ -438,7 +443,9 @@ func (e *statementExecutorPlSql) QueryContext(ctx context.Context, query *qualif
 		return nil, err
 	}
 	// Rebuild bind state for this execution.
-	e.initExecRunner(binds)
+	if err := e.initExecRunner(binds); err != nil {
+		return nil, err
+	}
 	// Set the prefetch option before building OALL8 when the server supports it.
 	prefetchEnabled := e.enableImplicitResultPrefetch()
 	e.initForTransaction()
@@ -545,8 +552,10 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 	)
 	if len(args) > 0 {
 		var err error
-		metadata = extractBindMetadata(args)
-		e.cacheADTTypes(metadata)
+		metadata, err = e.bindMetadata(args)
+		if err != nil {
+			return nil, err
+		}
 		rows, err = e.encodeBindValues(args, metadata)
 		if err != nil {
 			return nil, err
@@ -590,16 +599,25 @@ func (e *statementProcessor) createMessages(query *qualifiedSQLStatement, args [
 	return messages, nil
 }
 
-// cacheADTTypes retains descriptors supplied by named input binds so a later
-// result column with the same TOID can decode its pickled image.
-func (e *statementProcessor) cacheADTTypes(metadata []bindValueMetadata) {
-	for _, item := range metadata {
-		typ := item.objectType
-		if typ == nil || len(typ.TOID) == 0 {
-			continue
+// bindMetadata resolves both OUT decoder contexts and outgoing binds against
+// the same physical connection's descriptors.
+func (e *statementProcessor) bindMetadata(args []sqldriver.Value) ([]bindValueMetadata, error) {
+	metadata := make([]bindValueMetadata, len(args))
+	for i, arg := range args {
+		m, value := normalizeBindValue(arg)
+		if typ, ok := namedTypeForBind(value); ok {
+			m.descriptor = e.shelf.adtByName[strings.ToUpper(typ.FullName())]
+			if m.descriptor == nil {
+				common.Odl.Error("Named ADT bind descriptor not cached", "position", i+1)
+				return nil, common.NewOracleError(oracleErrors.ADTMetadataError, nil)
+			}
 		}
-		e.shelf.adtByTOID[string(typ.TOID)] = typ
+		metadata[i] = m
 	}
+	if err := resolveNamedTypeMetadata(metadata); err != nil {
+		return nil, err
+	}
+	return metadata, nil
 }
 
 // createOAll8Message constructs an OALL8 request. It includes bind OACs only
@@ -704,7 +722,9 @@ func (e *statementExecutorDML) ExecContext(ctx context.Context, query *qualified
 	if err != nil {
 		return nil, err
 	}
-	e.initExecRunner(args)
+	if err := e.initExecRunner(args); err != nil {
+		return nil, err
+	}
 	e.initForTransaction()
 	rank := e._currentRank
 	messages, err := e.createMessages(query, args, executionMessageConfig{
@@ -775,17 +795,6 @@ func buildAl8i4(iterations driverCommon.UB4, selectStmt bool, flags driverCommon
 	return al
 }
 
-// extractBindMetadata returns normalized metadata for the ordered bind values.
-
-func extractBindMetadata(args []sqldriver.Value) []bindValueMetadata {
-	metadata := make([]bindValueMetadata, len(args))
-	for i, value := range args {
-		metadata[i] = extractBindValueMetadata(value)
-	}
-	resolveNamedTypeMetadata(metadata)
-	return metadata
-}
-
 // encodeBindValues encodes one bind row from raw values and their normalized metadata.
 func (e *statementProcessor) encodeBindValues(args []sqldriver.Value, metadata []bindValueMetadata) ([][]driverCommon.B1Array, error) {
 	rows := make([][]driverCommon.B1Array, 1)
@@ -798,7 +807,7 @@ func (e *statementProcessor) encodeBindValues(args []sqldriver.Value, metadata [
 		var payload driverCommon.B1Array
 		if !metadata[i].isOutOnly {
 			_, normalizedValue := normalizeBindValue(value)
-			payload, err = encoder.encode(normalizedValue, e.shelf.GetCodecFactory())
+			payload, err = encoder.encode(normalizedValue, adtBindCodecs{e.shelf.GetCodecFactory(), metadata[i].descriptor})
 			if err != nil {
 				return nil, err
 			}
@@ -1034,7 +1043,9 @@ func (e *statementExecutorPlSql) ExecContext(ctx context.Context, query *qualifi
 	if err != nil {
 		return nil, err
 	}
-	e.initExecRunner(args)
+	if err := e.initExecRunner(args); err != nil {
+		return nil, err
+	}
 	prefetchEnabled := e.enableImplicitResultPrefetch()
 	e.initForTransaction()
 	config := executionMessageConfig{functionType: oAll8}
@@ -1674,6 +1685,5 @@ func decodeOutColumn(factory codecFactory, column columnContext, payload columnP
 	if err != nil {
 		return nil, err
 	}
-	column.codecFactory = factory
 	return decoder.decode(column, payload.data)
 }

@@ -5,34 +5,16 @@ The `oracle/datatype` package supports Oracle named types through the standard
 
 | Oracle type | Constructor | Value API | Supported use |
 | --- | --- | --- | --- |
-| Object type | `datatype.NewObject` | Reflected fields via `FieldByName` or `Field` | SQL column binds and scans; PL/SQL IN, OUT, and IN OUT binds |
+| Object type | `datatype.NewObject` | Attribute values in `map[string]any` | SQL column binds and scans; PL/SQL IN, OUT, and IN OUT binds |
 | VARRAY | `datatype.NewCollection` | `Set`, `Get`, `Len` | Scalar and object elements; SQL column binds and scans; PL/SQL IN, OUT, and IN OUT binds |
 | Nested table | `datatype.NewCollection` | `Set`, `Get`, `Len` | Scalar values, including NULL elements; PL/SQL IN, OUT, and IN OUT binds |
 | Associative array | `datatype.NewCollection` | `SetIndexed`, `GetIndexed`, `Indexes` | `PLS_INTEGER`-indexed PL/SQL package types and PL/SQL IN, OUT, and IN OUT binds |
 
 The runnable counterpart is [examples/datatype/adt](../examples/datatype/adt).
 
-## Connection requirement
+## When metadata is resolved
 
-Create the ADT value and use it on the same physical `*sql.Conn`. An ADT
-descriptor contains database metadata, including its TOID and type version,
-which is registered on the physical connection when it is bound or decoded.
-
-```go
-conn, err := db.Conn(ctx)
-if err != nil {
-    return err
-}
-defer conn.Close()
-
-numbers, err := datatype.NewCollection(ctx, conn, "APP_NUMBER_VARRAY")
-if err != nil {
-    return err
-}
-```
-
-Do not load a descriptor through `*sql.DB` and later bind it through another
-operation on `*sql.DB`: the pool may select a different physical connection.
+Construct values by name without a connection. During Exec or Query the driver loads and caches the Oracle descriptor on the physical connection. For a named result column, the server description identifies the type even if no ADT was previously bound. Type mismatches and database lookup errors are reported by execution, not construction.
 
 ## VARRAY
 
@@ -49,15 +31,12 @@ CREATE TABLE app_varray_rows (
 ```
 
 ```go
-numbers, err := datatype.NewCollection(ctx, conn, "APP_NUMBER_VARRAY")
-if err != nil {
-    return err
-}
+numbers := datatype.NewCollection("APP_NUMBER_VARRAY")
 if err := numbers.Set([]int64{10, 20, 30}); err != nil {
     return err
 }
 
-_, err = conn.ExecContext(ctx,
+_, err := conn.ExecContext(ctx,
     "INSERT INTO app_varray_rows (id, values_col) VALUES (:1, :2)",
     int64(1), numbers,
 )
@@ -74,16 +53,13 @@ if err := conn.QueryRowContext(ctx,
 values, err := selected.Get() // []any{int64(10), int64(20), int64(30)}
 ```
 
-The VARRAY bound is exposed through `numbers.UpperBound`; `Set` rejects a
-slice or array that exceeds it. Supported scalar element coverage includes
+Once resolved, `numbers.UpperBound` exposes the VARRAY bound. A value that exceeds the bound is rejected when bound, or by `Set` if the bound is already known. Supported scalar element coverage includes
 `NUMBER`, `VARCHAR2`, `RAW`, `DATE`, `TIMESTAMP`, `BINARY_FLOAT`, and
 `BINARY_DOUBLE`. Object-valued VARRAY elements are also supported.
 
 ## Object type
 
-An object value exposes a runtime-generated struct. Each Oracle attribute is
-represented by an exported `interface{}` field, so values are assigned and
-read through reflection.
+Object values store attributes by their database names. Unquoted Oracle identifiers use uppercase keys. Missing attributes encode as NULL.
 
 ```sql
 CREATE TYPE app_person AS OBJECT (
@@ -94,26 +70,23 @@ CREATE TYPE app_person AS OBJECT (
 ```
 
 ```go
-person, err := datatype.NewObject(ctx, conn, "APP_PERSON")
-if err != nil {
-    return err
-}
-person.FieldByName("ID").Set(reflect.ValueOf(int64(42)))
-person.FieldByName("NAME").Set(reflect.ValueOf("Ada"))
-person.FieldByName("CREATED_AT").Set(reflect.ValueOf(time.Now().UTC()))
+person := datatype.NewObject("APP_PERSON", map[string]any{
+    "ID": int64(42), "NAME": "Ada", "CREATED_AT": time.Now().UTC(),
+})
+person.Attributes["NAME"] = "Grace"
 
 var out datatype.Object
-_, err = conn.ExecContext(ctx, "BEGIN :1 := :2; END;",
+_, err := conn.ExecContext(ctx, "BEGIN :1 := :2; END;",
     sql.Out{Dest: &out}, person,
 )
 if err != nil {
     return err
 }
-fmt.Println(out.FieldByName("NAME").Interface())
+fmt.Println(out.Attributes["NAME"])
 ```
 
 Object types can be inserted into and scanned from relational table columns.
-For nested object and collection attributes, use the descriptor available from
+After resolving a parent, you can construct nested values from the attribute metadata on
 the parent object type:
 
 ```go
@@ -121,8 +94,7 @@ childType := person.ObjectType.Attributes["CHILD"].ObjectType
 child, err := childType.NewObject()
 ```
 
-Use positional access (`Field(0)`, `Field(1)`) for object elements whose TDS
-contains their shape but not SQL attribute names.
+For anonymous element shapes without SQL attribute names, use the positional keys supplied by the driver (such as `F_1`).
 
 ## Nested table
 
@@ -134,16 +106,13 @@ CREATE TYPE app_number_table AS TABLE OF NUMBER;
 ```
 
 ```go
-numbers, err := datatype.NewCollection(ctx, conn, "APP_NUMBER_TABLE")
-if err != nil {
-    return err
-}
+numbers := datatype.NewCollection("APP_NUMBER_TABLE")
 if err := numbers.Set([]any{int64(10), nil, int64(30)}); err != nil {
     return err
 }
 
 var out datatype.ObjectCollection
-_, err = conn.ExecContext(ctx, "BEGIN :1 := :2; END;",
+_, err := conn.ExecContext(ctx, "BEGIN :1 := :2; END;",
     sql.Out{Dest: &out}, numbers,
 )
 if err != nil {
@@ -184,16 +153,13 @@ END;
 ```
 
 ```go
-indexed, err := datatype.NewCollection(ctx, conn, "APP_ADT_PKG.NUMBER_BY_INDEX")
-if err != nil {
-    return err
-}
+indexed := datatype.NewCollection("APP_ADT_PKG.NUMBER_BY_INDEX")
 if err := indexed.SetIndexed(map[int32]any{-2: int64(10), 3: int64(20)}); err != nil {
     return err
 }
 
 var out datatype.ObjectCollection
-_, err = conn.ExecContext(ctx, "BEGIN APP_ADT_PKG.ECHO_NUMBERS(:1, :2); END;",
+_, err := conn.ExecContext(ctx, "BEGIN APP_ADT_PKG.ECHO_NUMBERS(:1, :2); END;",
     indexed, sql.Out{Dest: &out},
 )
 if err != nil {
@@ -211,10 +177,10 @@ valid for an associative array when consecutive one-based indexes are wanted;
 An empty collection and a typed Oracle NULL collection are distinct:
 
 ```go
-empty, _ := datatype.NewCollection(ctx, conn, "APP_NUMBER_VARRAY")
+empty := datatype.NewCollection("APP_NUMBER_VARRAY")
 // empty has zero elements and is not NULL.
 
-nullValue, _ := datatype.NewCollection(ctx, conn, "APP_NUMBER_VARRAY")
+nullValue := datatype.NewCollection("APP_NUMBER_VARRAY")
 nullValue.SetNull()
 if nullValue.IsNull() {
     // Binds a typed Oracle NULL.
@@ -244,8 +210,7 @@ case typ.Collection:
 }
 ```
 
-`NewObject` returns an error for a collection type. `NewCollection` returns an
-error for an object type.
+Binding a value created with the wrong constructor returns an error during Exec or Query.
 
 ## Current scope
 
