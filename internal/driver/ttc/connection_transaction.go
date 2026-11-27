@@ -254,7 +254,7 @@ func addRollbackEndRequestCallback(callbacks *requestCallbacks, conn *connection
 					// only invalidate the connection if the transaction is not closed after the call
 					// independent on whether there was an error.
 					if transaction.currentTransactionState() != transactionEndedServer {
-						conn._isValid = false
+						conn.markInvalid()
 					}
 				}
 			}

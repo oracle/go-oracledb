@@ -223,7 +223,7 @@ func (c *connection) cancelCurrentExecution(ctx context.Context) error {
 	if err := c.ns.CancelOperation(ctx); err != nil {
 		// If an error occurs during cancellation, mark the connection as invalid so that
 		// it will be dropped form the pool
-		c._isValid = false
+		c.markInvalid()
 		e := common.NewOracleError(oracleErrors.CancelOperationError, err, nil)
 		return c.shelf.LocalizeError(e)
 	}
@@ -282,9 +282,12 @@ func (c *connection) _handleEndOfCallStatus(msg driverCommon.Message[driverCommo
 	// If the connectionShouldBeDropped flag was received in TTISTA or TTIOER, it means
 	// that the connection is being drained and it should be closed and not
 	// released to the connection pool
-	c._isValid = !msg.(connectionStatusProvider).isBeingDrained()
+	status := msg.(connectionStatusProvider)
+	if status.isBeingDrained() {
+		c.markInvalid()
+	}
 	// check for active transaction
-	transactionState := msg.(connectionStatusProvider).transactionState()
+	transactionState := status.transactionState()
 	currentTransaction := c.shelf.getTransaction()
 	switch transactionState {
 	case active:
@@ -345,10 +348,10 @@ func (c *connection) notify(event eventType, e eventData) {
 	switch event {
 	case streamerStaleEvent:
 		common.Odl.Fine("Connection.notify: streamer stale received")
-		c._isValid = false
+		c.markInvalid()
 	case streamerOverFlowEvent:
 		common.Odl.Fine("Connection.notify: streamer overflow received")
-		c._isValid = false
+		c.markInvalid()
 	case sessionPropertiesUpdateEvent:
 		common.Odl.Debug("Connection.notify: session properties changed")
 		c.handleSessionPropertyChange(e)
@@ -358,6 +361,15 @@ func (c *connection) notify(event eventType, e eventData) {
 	if wasValid == true && c._isValid == false {
 		c.shelf.getEventService().post(connectionInvalidatedEvent, nil)
 	}
+}
+
+// markInvalid marks the connection and its LOB state invalid.
+func (c *connection) markInvalid() {
+	if !c._isValid {
+		return
+	}
+	c._isValid = false
+	discardLobSessionState(c.shelf)
 }
 
 // CheckNamedValue allows sql.Out binds to pass through database/sql conversion.

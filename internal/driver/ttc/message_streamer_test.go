@@ -580,6 +580,31 @@ func TestMessageStreamer_SimplePush(t *testing.T) {
 	}
 }
 
+// TestMessageStreamer_EmergencyFlushErrorStopsPush verifies a failed overflow
+// flush stops Push before it queues another message. TTIPRO is a simple
+// message because the overflow check runs before LOB-specific handling.
+func TestMessageStreamer_EmergencyFlushErrorStopsPush(t *testing.T) {
+	shelf := _prepareShelf()
+	streamer := NewMessageStreamer(shelf)
+	marshalErr := errors.New("overflow flush marshal failure")
+	first := NewMockTTIpro().(*mockMessage)
+	first.setMarshallFailure(marshalErr)
+	if err := streamer.Push(context.Background(), first); err != nil {
+		t.Fatalf("queue first message: %v", err)
+	}
+	for index := 1; index <= outgoingMessagesListMaxLength; index++ {
+		if err := streamer.Push(context.Background(), NewMockTTIpro()); err != nil {
+			t.Fatalf("queue message %d: %v", index, err)
+		}
+	}
+	if err := streamer.Push(context.Background(), NewMockTTIpro()); !errors.Is(err, marshalErr) {
+		t.Fatalf("Push error = %v, want overflow flush failure", err)
+	}
+	if got := streamer.outgoingMessages.Len(); got != 0 {
+		t.Fatalf("outgoing queue length = %d, want 0 after failed flush", got)
+	}
+}
+
 // simple pull from cache test
 // 1 - create streamer
 // 2 - push TTIPRO messages

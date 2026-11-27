@@ -57,6 +57,10 @@ const (
 	kolbLocatorLengthHeaderBytes = 2
 	// kolbVersionOffset is the byte offset of the locator version (KOLBLVSNB).
 	kolbVersionOffset = 2
+	// kolbLobIDOffset is the byte offset where a locator's stable LOB identity begins.
+	kolbLobIDOffset = 10
+	// kolbLobIDLength is the number of bytes in that stable identity.
+	kolbLobIDLength = 10
 	// Offset of the flags in the locator (KOLL* values mirror koll.h definitions).
 	koll1FlagOffset = 0x04
 	koll2FlagOffset = koll1FlagOffset + 1

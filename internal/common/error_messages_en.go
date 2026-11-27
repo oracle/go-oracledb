@@ -476,6 +476,12 @@ func initMessagesEn() {
 	// Action:   Use an operation supported by the selected LOB family.
 	// Comment:  Arg[0]: compact operation and LOB-family detail.
 	message.SetString(language.English, string(oracleErrors.UnsupportedLobOperation), "LOB operation is not supported: %s")
+	// Locator-backed LOB lifecycle and input errors.
+	// Document: No
+	// Cause:    The Rows, statement, transaction, or connection owning the LOB locator is no longer usable.
+	// Action:   Re-run the query and scan a new LOB value.
+	// Comment:  Arg[0]: invalidation detail.
+	message.SetString(language.English, string(oracleErrors.LobValueInvalidated), "LOB value is invalid because its owner is no longer usable: %s")
 
 	// Document: No
 	message.SetString(language.English, string(oracleErrors.CancelOperationError), "cancel operation failed")
