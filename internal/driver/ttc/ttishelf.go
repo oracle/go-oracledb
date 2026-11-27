@@ -40,6 +40,8 @@ package ttc
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"maps"
 	"weak"
@@ -72,7 +74,7 @@ type ttiShelf[T any] struct {
 	_refCursors              map[*ttcRowsRefCursor]struct{}
 	_currentTransaction      *transaction
 	_cancelExecutionFunction StmtCancellationFunction
-	_serverTimeZoneOffset    int16 // server time zone in seconds
+	_serverTimeZoneDuration  *time.Duration
 	_eventService            *eventService
 	_validatorRegistry       internalCommon.Registry[stateValidator]
 }
@@ -214,12 +216,13 @@ func (s *ttiShelf[T]) cancelExecution(ctx context.Context) error {
 	return s._cancelExecutionFunction(ctx)
 }
 
-func (s *ttiShelf[T]) registerServerTimeZoneOffset(serverTimeZoneOffset int16) {
-	s._serverTimeZoneOffset = serverTimeZoneOffset
+func (s *ttiShelf[T]) registerServerTimeZoneDuration(serverTimeZoneDuration *time.Duration) {
+	fmt.Printf("timezone registered %s \n", serverTimeZoneDuration)
+	s._serverTimeZoneDuration = serverTimeZoneDuration
 }
 
-func (s *ttiShelf[T]) getServerTimeZoneOffset() int16 {
-	return s._serverTimeZoneOffset
+func (s *ttiShelf[T]) getServerTimeZoneDuration() *time.Duration {
+	return s._serverTimeZoneDuration
 }
 
 func (s *ttiShelf[T]) getEventService() *eventService {

@@ -44,6 +44,7 @@ import (
 	"errors"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 )
@@ -457,5 +458,85 @@ func TestConnectionNegotiator_Negotiate_SelectsEOCSMessages(t *testing.T) {
 	}
 	if !staMsg._supportsEndOfCallStatus {
 		t.Error("TTISTA does not support end-of-call status after EOCS negotiation")
+	}
+}
+
+// TestTimeZoneToDuration checks signed day-to-second intervals, fractional
+// seconds, zero, malformed input, and duration overflow handling.
+func TestTimeZoneToDuration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    time.Duration
+		wantErr bool
+	}{
+		{
+			name:  "positive offset",
+			input: "00 05:30:00.0",
+			want:  5*time.Hour + 30*time.Minute,
+		},
+		{
+			name:  "negative offset",
+			input: "-00 08:15:00.0",
+			want:  -(8*time.Hour + 15*time.Minute),
+		},
+		{
+			name:  "fractional seconds",
+			input: "00 00:00:00.123456789",
+			want:  123456789 * time.Nanosecond,
+		},
+		{
+			name:  "multiple days",
+			input: "02 03:04:05.000000006",
+			want:  2*24*time.Hour + 3*time.Hour + 4*time.Minute + 5*time.Second + 6*time.Nanosecond,
+		},
+		{
+			name:  "negative days",
+			input: "-01 00:00:00.0",
+			want:  -24 * time.Hour,
+		},
+		{
+			name:  "zero",
+			input: "00 00:00:00.0",
+			want:  0,
+		},
+		{
+			name:  "maximum duration",
+			input: "106751 23:47:16.854775807",
+			want:  time.Duration(1<<63 - 1),
+		},
+		{name: "empty input", input: "", wantErr: true},
+		{name: "missing time", input: "00", wantErr: true},
+		{name: "invalid day", input: "day 00:00:00.0", wantErr: true},
+		{name: "invalid time", input: "00 00:xx:00.0", wantErr: true},
+		{name: "extra field", input: "00 00:00:00.0 extra", wantErr: true},
+		{
+			name:    "duration overflow",
+			input:   "106751 23:47:16.854775808",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := timeZoneToDuration(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("timeZoneToDuration(%q) expected an error", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("timeZoneToDuration(%q) returned an unexpected error: %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Errorf("timeZoneToDuration(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }

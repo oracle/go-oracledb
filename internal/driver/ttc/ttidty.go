@@ -43,6 +43,7 @@ import (
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -66,6 +67,7 @@ type tTIdty struct {
 	negotiatedCaps        *capability
 	negotiatedCapsMap     map[string]driverCommon.Capability
 	timeZoneVersionNumber byte
+	timeZoneBytes         driverCommon.B1Array
 }
 
 // NewTTIdty creates and returns a tTIdty protocol struct for database type/representations negotiation on the given connection.
@@ -175,9 +177,7 @@ func (p *tTIdty) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 	isTimeZoneInfoSupported := p.negotiatedCapsMap[kpccapRtTzEx].IsSet
 	isTtc3Capability := p.negotiatedCapsMap[kpccapCtbTtc3Tzver].IsSet
 	if isTimeZoneInfoSupported {
-		// timezone info supported ? if so unmarshal it
-		var ldiIntDaySecond int = 11
-		_, err = mar.UnmarshalB1Array(ctx, ldiIntDaySecond)
+		p.timeZoneBytes, err = mar.UnmarshalB1Array(ctx, converters.IntervalDSEncodingLen)
 		if err != nil {
 			common.Odl.Warn("Failed to unmarshal ldiIntDaySecond", "error", err)
 			return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])

@@ -45,6 +45,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -78,12 +79,13 @@ func TestIsRefCursorDestination(t *testing.T) {
 func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name      string
-		input     string
-		wantValid bool
+		name         string
+		input        string
+		wantDuration time.Duration
+		wantValid    bool
 	}{
-		{name: "valid positive timezone", input: "+05:30", wantValid: true},
-		{name: "valid negative timezone", input: "-08:15", wantValid: true},
+		{name: "valid positive timezone", input: "+05:30", wantDuration: 5*time.Hour + 30*time.Minute, wantValid: true},
+		{name: "valid negative timezone", input: "-08:15", wantDuration: -(8*time.Hour + 15*time.Minute), wantValid: true},
 		{name: "empty timezone", input: "", wantValid: false},
 		{name: "sign only timezone", input: "+", wantValid: false},
 		{name: "missing separator", input: "0530", wantValid: false},
@@ -99,12 +101,15 @@ func TestConnection_ParseTimeZoneRejectsMalformedValues(t *testing.T) {
 				}
 			}()
 
-			h, m, err := parseTimeZone(tt.input)
+			duration, err := parseTimeZone(tt.input)
 			if tt.wantValid {
 				if err != nil {
 					t.Fatalf("parseTimeZone(%q) should be valid: %v", tt.input, err)
 				}
-				fmt.Printf("PASS: accepted valid input %q -> (%d, %d)\n", tt.input, h, m)
+				if duration != tt.wantDuration {
+					t.Fatalf("parseTimeZone(%q) = %v, want %v", tt.input, duration, tt.wantDuration)
+				}
+				fmt.Printf("PASS: accepted valid input %q -> %v\n", tt.input, duration)
 				return
 			}
 

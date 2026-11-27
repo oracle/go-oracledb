@@ -498,7 +498,7 @@ func DecodeTimestampWithLocalTimeZoneColumn(columnContext columnContext, value a
 	if err != nil {
 		return nil, err
 	}
-	tm, err := converters.DecodeTimestampWithLocalTimeZone(data, columnContext.serverTimeZoneOffset)
+	tm, err := converters.DecodeTimestampWithLocalTimeZone(data, columnContext.serverTimeZoneDuration)
 	if err != nil {
 		return nil, rowDecodeError(columnContext, err, "TIMESTAMP WITH LOCAL TIME ZONE")
 	}

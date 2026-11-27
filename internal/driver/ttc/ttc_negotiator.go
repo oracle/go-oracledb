@@ -41,9 +41,13 @@ package ttc
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/internal/driver/ttc/converters"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -113,6 +117,20 @@ func (cn *connectionNegotiator) Negotiate(ctx context.Context) (*driverCommon.Se
 
 	// 7. Update Version based MessageFactory
 	_ = _createAndRegisterMessageFactory(shelf, int8(negotiatedTTCVersion))
+
+	// 8. Unmarshal server timezone
+	decodedTimeZone, err := converters.DecodeIntervalDayToSecond(dty.timeZoneBytes)
+	if err != nil {
+		common.Odl.Debug("Could not decode server timezone interval", "error", err)
+	} else {
+		timeZoneDuration, err := timeZoneToDuration(decodedTimeZone)
+		if err != nil {
+			common.Odl.Debug("Could not convert server timezone interval to duration", "timezone", decodedTimeZone, "error", err)
+		} else {
+			shelf.registerServerTimeZoneDuration(&timeZoneDuration)
+			common.Odl.Fine("Decoded server timezone interval", "timezone", decodedTimeZone, "duration", timeZoneDuration)
+		}
+	}
 
 	common.Odl.Fine("connectionNegotiator: Negotiation complete", "SessionContext", sessCtx, "Shelf", shelf)
 
@@ -293,4 +311,46 @@ func _createAndRegisterMarshaller(
 	}
 	shelf.RegisterMarshaller(mar)
 	common.Odl.Fine("connectionNegotiator: Marshaller created/updated and registered")
+}
+
+// timeZoneToDuration converts the canonical INTERVAL DAY TO SECOND string
+// returned by DecodeIntervalDayToSecond into a time.Duration.
+func timeZoneToDuration(timeZone string) (time.Duration, error) {
+	parts := strings.Fields(timeZone)
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("invalid day-to-second timezone %q", timeZone)
+	}
+
+	sign := 1
+	daysText := parts[0]
+	if strings.HasPrefix(daysText, "-") {
+		sign = -1
+		daysText = daysText[1:]
+	} else if strings.HasPrefix(daysText, "+") {
+		daysText = daysText[1:]
+	}
+	days, err := strconv.ParseInt(daysText, 10, 64)
+	if err != nil || days < 0 {
+		return 0, fmt.Errorf("invalid day component in timezone %q", timeZone)
+	}
+
+	timeParts := strings.Split(parts[1], ":")
+	if len(timeParts) != 3 {
+		return 0, fmt.Errorf("invalid time component in timezone %q", timeZone)
+	}
+	timeOfDay, err := time.ParseDuration(timeParts[0] + "h" + timeParts[1] + "m" + timeParts[2] + "s")
+	if err != nil || timeOfDay < 0 {
+		return 0, fmt.Errorf("invalid time component in timezone %q", timeZone)
+	}
+
+	const dayDuration = 24 * time.Hour
+	maxDuration := time.Duration(1<<63 - 1)
+	if days > int64((maxDuration-timeOfDay)/dayDuration) {
+		return 0, fmt.Errorf("timezone duration overflows time.Duration: %q", timeZone)
+	}
+	duration := time.Duration(days)*dayDuration + timeOfDay
+	if sign < 0 {
+		duration = -duration
+	}
+	return duration, nil
 }

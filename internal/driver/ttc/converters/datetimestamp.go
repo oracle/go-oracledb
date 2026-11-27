@@ -288,7 +288,7 @@ func EncodeTimestampWithLocalTimeZone(v driver.Value) (driverCommon.B1Array, err
 }
 
 // Decode converts a common.B1Array containing a TIMESTAMP WITH LOCAL TIME ZONE encoding into a time.Time value in the local time zone.
-func DecodeTimestampWithLocalTimeZone(value driverCommon.B1Array, serverTimeZoneOffset int16) (time.Time, error) {
+func DecodeTimestampWithLocalTimeZone(value driverCommon.B1Array, serverTimeZoneDuration time.Duration) (time.Time, error) {
 
 	if len(value) < _dateLength {
 		return time.Time{}, common.NewOracleError(oracleErrors.ConverterExpectedFormat, nil, "TIMESTAMP WITH LOCAL TIME ZONE", "Decode", driverCommon.ReasonInvalidLength, ">="+strconv.Itoa(_dateLength))
@@ -317,9 +317,9 @@ func DecodeTimestampWithLocalTimeZone(value driverCommon.B1Array, serverTimeZone
 		ns = (uint32(fracBytes[0]) << 24) | (uint32(fracBytes[1]) << 16) | (uint32(fracBytes[2]) << 8) | uint32(fracBytes[3])
 	}
 
-	// We get the time in server time zone, since we want to create it as UTC, we
-	// need to add the server time zone offset (in seconds)
+	// We get the time in the server time zone. To create it as UTC, subtract the
+	// server time zone duration.
 	utc := time.Date(year, month, day, hour, minute, second, int(ns), time.UTC)
-	utc = utc.Add(time.Second * time.Duration(-1*serverTimeZoneOffset))
+	utc = utc.Add(-serverTimeZoneDuration)
 	return utc.In(time.Local), nil
 }
