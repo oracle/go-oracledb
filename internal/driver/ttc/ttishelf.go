@@ -71,6 +71,8 @@ type ttiShelf[T any] struct {
 	_serverTimeZoneOffset    int16 // server time zone in seconds
 	_eventService            *eventService
 	_validatorRegistry       internalCommon.Registry[stateValidator]
+	adtByName                map[string]*adtDescriptor
+	adtByTOID                map[string]*adtDescriptor
 }
 
 // newShelf creates a new TTC shelf wrapping a fresh common.Shelf[T].
@@ -84,6 +86,8 @@ func newShelf[T any]() *ttiShelf[T] {
 		_refCursors:        make(map[*ttcRowsRefCursor]struct{}),
 		_eventService:      newEventService(),
 		_validatorRegistry: internalCommon.NewRegistry[stateValidator](),
+		adtByName:          make(map[string]*adtDescriptor),
+		adtByTOID:          make(map[string]*adtDescriptor),
 	}
 }
 

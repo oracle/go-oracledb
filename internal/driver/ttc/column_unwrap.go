@@ -190,6 +190,35 @@ func unwrapCLRColumn(ctx context.Context, mar driverCommon.Marshaller, env colum
 	return payload, nil
 }
 
+// unwrapNamedTypeColumn consumes the NAMED_TYPE envelope and retains its
+// pickled object or collection image for metadata-aware decoding by ttcRows.
+func unwrapNamedTypeColumn(ctx context.Context, mar driverCommon.Marshaller, env columnUnwrapContext) (columnPayload, error) {
+	for range 3 { // TOID, OID, and snapshot locator
+		var locator dynamicAllocatedArray
+		if err := locator.UnmarshalFrom(ctx, mar); err != nil {
+			return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+		}
+	}
+	if _, err := mar.UnmarshalUB2(ctx); err != nil { // VCN
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	imageLength, err := mar.UnmarshalUB4(ctx)
+	if err != nil {
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if _, err = mar.UnmarshalUB2(ctx); err != nil { // image flags
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	if imageLength == 0 {
+		return columnPayload{}, nil
+	}
+	image, _, err := mar.UnmarshalCLRColumnData(ctx)
+	if err != nil {
+		return columnPayload{}, common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[TTIRXD])
+	}
+	return byteColumnPayload(image), nil
+}
+
 /*
 unwrapClobColumn reads a prefetched CLOB or NCLOB column.
 
@@ -386,9 +415,9 @@ unwrapJSONColumn reads a prefetched OSON payload and its LOB metadata.
 
 Description:
 
-	Reads the LOB length, prefetch metadata, OSON bytes, and locator independently
-	of the BLOB reader. A zero LOB length returns NULL data with its LOB context.
-	The native JSON fetch path has no trailing JSON indicators.
+		Reads the LOB length, prefetch metadata, OSON bytes, and locator independently
+		of the BLOB reader. A zero LOB length returns NULL data with its LOB context.
+	    The native JSON fetch path has no trailing JSON indicators.
 
 Parameters:
   - ctx: Request context used while reading from the wire.

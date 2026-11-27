@@ -266,6 +266,13 @@ const (
 	// InvalidSessionlessTransactionTimeout indicates the timeout for starting a
 	// sessionless transaction is zero.
 	InvalidSessionlessTransactionTimeout ErrorCode = "OGD-00165"
+	// ADTMetadataError indicates invalid or incomplete ADT metadata returned by
+	// DBMS_PICKLER or encountered while parsing a type descriptor.
+	ADTMetadataError ErrorCode = "OGD-00166"
+	// ADTEncodingError indicates malformed ADT object or collection image data.
+	ADTEncodingError ErrorCode = "OGD-00167"
+	// ADTValueError indicates an invalid ADT value or object/collection operation.
+	ADTValueError ErrorCode = "OGD-00168"
 	// ImplicitResultMessageCreationFailed indicates that the driver could not
 	// create the TTC message used to decode implicit results.
 	ImplicitResultMessageCreationFailed ErrorCode = "OGD-00169"

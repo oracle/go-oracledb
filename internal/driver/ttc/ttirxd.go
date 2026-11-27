@@ -243,6 +243,9 @@ func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		}
 		rxd.row = make([]columnPayload, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
+			if rxd.columnContexts[col].skipRxdPayloadUnmarshal {
+				continue
+			}
 			if rxd.bvcColSent != nil && rxd.bvcColSent.Get(col) {
 				err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
 				if err != nil {
@@ -262,6 +265,9 @@ func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 		// Non-BVC: all columns present, unmarshal each as fresh.
 		rxd.row = make([]columnPayload, rxd.numberOfColumns)
 		for col := 0; col < int(rxd.numberOfColumns); col++ {
+			if rxd.columnContexts[col].skipRxdPayloadUnmarshal {
+				continue
+			}
 			err := rxd._unmarshalColumn(ctx, rxd.getColumnDataType(col), mar, col)
 			if err != nil {
 				return err
@@ -280,7 +286,7 @@ func (rxd *tTIrxd) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshalle
 	return nil
 }
 
-func (rxd *tTIrxd) getColumnDataType(col int) DtyType {
+func (rxd *tTIrxd) getColumnDataType(col int) common.DtyType {
 	return rxd.columnContexts[col].DataType
 }
 
@@ -304,7 +310,7 @@ Returns:
 Errors:
   - Propagates errors returned by the delegated column unmarshalling helper.
 */
-func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType DtyType, mar driverCommon.Marshaller, col int) error {
+func (rxd *tTIrxd) _unmarshalColumn(ctx context.Context, dtyType common.DtyType, mar driverCommon.Marshaller, col int) error {
 	// Preserve CLR framing when the existing decoder lookup has no usable entry.
 	handler := unwrapCLRColumn
 	if decoder, err := rxd.codecFactory.getDecoder(dtyType); err == nil && decoder != nil && decoder.unwrapColumn != nil {

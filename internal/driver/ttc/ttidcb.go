@@ -41,6 +41,7 @@ package ttc
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -67,8 +68,8 @@ type tTIdcb struct {
 func newTTIdcb() driverCommon.Message[driverCommon.MessageType] {
 	obj := &tTIdcb{}
 	obj.newUDS = newTTIuds
-	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
-		common.Odl.Finest("tTIdcb: newTTIdcb constructor", "struct", fmt.Sprintf("%+v", obj))
+	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
+		common.Odl.Debug("tTIdcb: newTTIdcb constructor", "struct", fmt.Sprintf("%+v", obj))
 	}
 	return obj
 }
@@ -95,21 +96,26 @@ func (p *tTIdcb) getColumnContexts() ([]columnContext, error) {
 		if udsProv != nil {
 			oac := udsProv.getOac()
 			metaData[i] = columnContext{
-				Index:          i,
-				Name:           udsProv.getColumnName(),
-				SchemaName:     udsProv.getSchemaName(),
-				DBTypeName:     udsProv.getTypeName(),
-				Length:         int64(oac.maxLength),
-				DataType:       DtyType(oac.dataType),
-				Precision:      int64(oac.precision),
-				Scale:          int8(oac.scale),
-				KernelPosition: int(udsProv.getKernelPosition()),
-				ColumnFlags:    uint32(udsProv.getColumnFlags()),
-				CharsetForm:    uint8(oac.characterSetForm),
-				CharsetID:      uint16(oac.characterSetID),
-				Nullable:       udsProv.nullable(),
+				Index:                   i,
+				Name:                    udsProv.getColumnName(),
+				SchemaName:              udsProv.getSchemaName(),
+				DBTypeName:              udsProv.getTypeName(),
+				Length:                  int64(oac.maxLength),
+				DataType:                common.DtyType(oac.dataType),
+				Precision:               int64(oac.precision),
+				Scale:                   int8(oac.scale),
+				KernelPosition:          int(udsProv.getKernelPosition()),
+				ColumnFlags:             uint32(udsProv.getColumnFlags()),
+				CharsetForm:             uint8(oac.characterSetForm),
+				CharsetID:               uint16(oac.characterSetID),
+				Nullable:                udsProv.nullable(),
+				NamedTypeVersion:        uint16(oac.versionNumber),
+				skipRxdPayloadUnmarshal: common.DtyType(oac.dataType) == common.DtyChr && oac.maxLength == 0,
 			}
-			common.Odl.Finest("populateColumnMetaData: added column", "colName", metaData[i].Name)
+			if oac.toid != nil {
+				metaData[i].NamedTypeTOID = append(driverCommon.B1Array(nil), (*oac.toid)...)
+			}
+			common.Odl.Debug("populateColumnMetaData: added column", "colName", metaData[i].Name)
 		}
 	}
 	return metaData, nil
@@ -118,7 +124,7 @@ func (p *tTIdcb) getColumnContexts() ([]columnContext, error) {
 // UnmarshalFrom unmarshal's column description buffers
 // It returns an error if any.
 func (p *tTIdcb) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller) error {
-	common.Odl.Finest("tTIdcb: UnmarshalFrom start")
+	common.Odl.Debug("tTIdcb: UnmarshalFrom start")
 	var err error
 	length, err := mar.UnmarshalUB1(ctx)
 	if err != nil {
@@ -143,33 +149,15 @@ func (p *tTIdcb) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
 	}
 
-	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
-		common.Odl.Finest("tTIdcb: UnmarshalFrom done", "struct", fmt.Sprintf("%+v", p))
+	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
+		common.Odl.Debug("tTIdcb: UnmarshalFrom done", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
 }
 
-/*
-unmarshalFromRefCursor reads the describe information embedded in a REF CURSOR
-value carried by TTIRXD.
-
-Description:
-
-  - Consumes the REF CURSOR-specific leading byte and maximum-row-size field.
-  - Decodes the common DCB metadata that describes the cursor's result columns.
-  - Leaves the marshaller positioned at the server cursor ID that follows the
-    descriptor; the caller reads that ID separately.
-
-Parameters:
-
-  - ctx: context governing TTC unmarshalling.
-  - mar: marshaller positioned at the embedded REF CURSOR DCB payload.
-
-Returns:
-
-  - error: a wrapped unmarshalling error when the prefix or common DCB metadata
-    is malformed; nil when the descriptor is decoded successfully.
-*/
+// unmarshalFromRefCursor reads the DCB embedded in a REF CURSOR RXD value.
+// Unlike a top-level DCB, this form starts with an ignored UB1 and UB4 before
+// the common descriptor body.
 func (p *tTIdcb) unmarshalFromRefCursor(ctx context.Context, mar driverCommon.Marshaller) error {
 	if _, err := mar.UnmarshalUB1(ctx); err != nil {
 		return common.NewOracleError(oracleErrors.FailUnmarshal, err, TTCMsgTypeDescription[p.GetMsgCode()])
@@ -183,7 +171,7 @@ func (p *tTIdcb) unmarshalFromRefCursor(ctx context.Context, mar driverCommon.Ma
 // receiveCommon unmarshals column information.
 // If fromOdny is true, unmarshalling logic is adapted for ODNY sources.
 func (p *tTIdcb) receiveCommon(ctx context.Context, mar driverCommon.Marshaller, fromOdny bool) error {
-	common.Odl.Finest("tTIdcb: receiveCommon start", "fromOdny", fromOdny)
+	common.Odl.Debug("tTIdcb: receiveCommon start", "fromOdny", fromOdny)
 	var err error
 
 	if fromOdny {
@@ -233,7 +221,7 @@ func (p *tTIdcb) receiveCommon(ctx context.Context, mar driverCommon.Marshaller,
 		p.udsArr[i] = uds
 		cn := uds.(interface{ getColumnName() driverCommon.B1Array })
 		p.colNames[i] = cn.getColumnName()
-		common.Odl.Finest("tTIdcb: unmarshalled column", "index", i, "colName", p.colNames[i])
+		common.Odl.Debug("tTIdcb: unmarshalled column", "index", i, "colName", p.colNames[i])
 	}
 
 	if !fromOdny {
@@ -276,8 +264,8 @@ func (p *tTIdcb) receiveCommon(ctx context.Context, mar driverCommon.Marshaller,
 		}
 		p.queryCompileKey = queryCKey.value
 	}
-	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
-		common.Odl.Finest("tTIdcb: receiveCommon done", "struct", fmt.Sprintf("%+v", p))
+	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
+		common.Odl.Debug("tTIdcb: receiveCommon done", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
 }
@@ -286,8 +274,8 @@ func (p *tTIdcb) receiveCommon(ctx context.Context, mar driverCommon.Marshaller,
 func newTTIdcb17() driverCommon.Message[driverCommon.MessageType] {
 	obj := &tTIdcb{}
 	obj.newUDS = newTTIuds17
-	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
-		common.Odl.Finest("tTIdcb17: newTTIdcb17 constructor", "struct", fmt.Sprintf("%+v", obj))
+	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
+		common.Odl.Debug("tTIdcb17: newTTIdcb17 constructor", "struct", fmt.Sprintf("%+v", obj))
 	}
 	return obj
 }
@@ -296,8 +284,8 @@ func newTTIdcb17() driverCommon.Message[driverCommon.MessageType] {
 func newTTIdcb20() driverCommon.Message[driverCommon.MessageType] {
 	obj := &tTIdcb{}
 	obj.newUDS = newTTIuds20
-	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
-		common.Odl.Finest("tTIdcb20: newTTIdcb20 constructor", "struct", fmt.Sprintf("%+v", obj))
+	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
+		common.Odl.Debug("tTIdcb20: newTTIdcb20 constructor", "struct", fmt.Sprintf("%+v", obj))
 	}
 	return obj
 }
@@ -306,6 +294,6 @@ func newTTIdcb20() driverCommon.Message[driverCommon.MessageType] {
 func newTTIdcb24() driverCommon.Message[driverCommon.MessageType] {
 	obj := &tTIdcb{}
 	obj.newUDS = newTTIuds24
-	common.Odl.Finest("tTIdcb24: newTTIdcb24 constructor", "struct", fmt.Sprintf("%+v", obj))
+	common.Odl.Debug("tTIdcb24: newTTIdcb24 constructor", "struct", fmt.Sprintf("%+v", obj))
 	return obj
 }

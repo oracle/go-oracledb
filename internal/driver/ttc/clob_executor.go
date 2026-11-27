@@ -192,7 +192,7 @@ func (c *clobExecutor) createTemporaryLob(ctx context.Context, cache bool, durat
 		charsetID = c.policy.ncharCS
 	}
 
-	def := newLobDefinitionForTemporaryCreate(tempSize, formOfUse, driverCommon.UB8(DtyClob), duration, cache, charsetID)
+	def := newLobDefinitionForTemporaryCreate(tempSize, formOfUse, driverCommon.UB8(common.DtyClob), duration, cache, charsetID)
 
 	if common.Odl.Enabled(ctx, slog.LevelDebug) {
 		common.Odl.Debug(

@@ -45,7 +45,9 @@ import (
 	"testing"
 	"time"
 
+	typeCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
+	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
 
@@ -58,25 +60,25 @@ var dummyDecoderA = newTypeDecoder(func(columnContext, any) (driver.Value, error
 var dummyDecoderB = newTypeDecoder(func(columnContext, any) (driver.Value, error) { return "B", nil }, nil, unwrapCLRColumn)
 
 var dummyBindOacA = bindOacType{
-	bindOacFunc: func(common.UB4) common.Marshallable {
-		return newTTIoac(DtyNum, 8)
+	bindOacFunc: func(_ bindValueMetadata, _ common.UB4) (common.Marshallable, error) {
+		return newTTIoac(typeCommon.DtyNum, 8), nil
 	},
 	maxLength: 8,
 }
 
 var dummyBindOacB = bindOacType{
-	bindOacFunc: func(common.UB4) common.Marshallable {
-		return newTTIoac(DtyVCS, 16)
+	bindOacFunc: func(_ bindValueMetadata, _ common.UB4) (common.Marshallable, error) {
+		return newTTIoac(typeCommon.DtyVCS, 16), nil
 	},
 	maxLength: 16,
 }
 
 func dummyDefineOacA(columnContext, common.UB4) common.Marshallable {
-	return newTTIoac(DtyNum, define_maxlength_scalar)
+	return newTTIoac(typeCommon.DtyNum, define_maxlength_scalar)
 }
 
 func dummyDefineOacB(columnContext, common.UB4) common.Marshallable {
-	return newTTIoac(DtyVCS, define_maxlength_varchar)
+	return newTTIoac(typeCommon.DtyVCS, define_maxlength_varchar)
 }
 
 // TestCodecFactory_getEncoderForGoType exercises encoder selection and error paths for CodecFactoryImpl.
@@ -175,11 +177,11 @@ func TestCodecFactory_getEncoderForDtyType(t *testing.T) {
 	if err := registry.Register(encoderKey{goType: reflect.TypeOf(float64(0))}, 1, newCLRBindEncoder(dummyEncoderA)); err != nil {
 		t.Fatalf("register ordinary float encoder: %v", err)
 	}
-	if err := registry.Register(encoderKey{dtyType: DtyNum, goType: reflect.TypeOf(float64(0))}, 1, newCLRBindEncoder(dummyEncoderB)); err != nil {
+	if err := registry.Register(encoderKey{dtyType: typeCommon.DtyNum, goType: reflect.TypeOf(float64(0))}, 1, newCLRBindEncoder(dummyEncoderB)); err != nil {
 		t.Fatalf("register float NUMBER encoder: %v", err)
 	}
 	factory := &CodecFactoryImpl{ttcVersion: 1, encoders: registry}
-	encoder, err := factory.getEncoderForDtyType(DtyNum, extractBindValueMetadata(float64(1)))
+	encoder, err := factory.getEncoderForDtyType(typeCommon.DtyNum, extractBindValueMetadata(float64(1)))
 	if err != nil {
 		t.Fatalf("get float NUMBER encoder: %v", err)
 	}
@@ -188,10 +190,10 @@ func TestCodecFactory_getEncoderForDtyType(t *testing.T) {
 		t.Fatalf("encode float NUMBER value: %v", err)
 	}
 	if !reflect.DeepEqual(got, common.B1Array{1, 2, 3}) {
-		t.Fatalf("float DtyType encoder result = %v, want [1 2 3]", got)
+		t.Fatalf("float typeCommon.DtyType encoder result = %v, want [1 2 3]", got)
 	}
 
-	encoder, err = factory.getEncoderForDtyType(DtyNum, extractBindValueMetadata(int64(1)))
+	encoder, err = factory.getEncoderForDtyType(typeCommon.DtyNum, extractBindValueMetadata(int64(1)))
 	if err != nil {
 		t.Fatalf("get integer NUMBER encoder: %v", err)
 	}
@@ -200,7 +202,7 @@ func TestCodecFactory_getEncoderForDtyType(t *testing.T) {
 		t.Fatalf("encode integer NUMBER value: %v", err)
 	}
 	if got != nil {
-		t.Fatalf("integer DtyType encoder result = %v, want nil", got)
+		t.Fatalf("integer typeCommon.DtyType encoder result = %v, want nil", got)
 	}
 }
 
@@ -223,29 +225,29 @@ func TestCodecFactory_getDecoder(t *testing.T) {
 		{
 			name:     "picks highest version within protocol",
 			protocol: 5,
-			dbType:   DtyNum,
+			dbType:   typeCommon.DtyNum,
 			setup: func(reg *codecRegistry[int16, *typeDecoder]) {
-				reg.Register(DtyNum, -1, dummyDecoderA)
-				reg.Register(DtyNum, 2, dummyDecoderB)
+				reg.Register(typeCommon.DtyNum, -1, dummyDecoderA)
+				reg.Register(typeCommon.DtyNum, 2, dummyDecoderB)
 			},
 			wantValue: "B",
 		},
 		{
 			name:     "falls back to lower version when protocol is low",
 			protocol: 1,
-			dbType:   DtyNum,
+			dbType:   typeCommon.DtyNum,
 			setup: func(reg *codecRegistry[int16, *typeDecoder]) {
-				reg.Register(DtyNum, -1, dummyDecoderA)
-				reg.Register(DtyNum, 2, dummyDecoderB)
+				reg.Register(typeCommon.DtyNum, -1, dummyDecoderA)
+				reg.Register(typeCommon.DtyNum, 2, dummyDecoderB)
 			},
 			wantValue: "A",
 		},
 		{
 			name:     "no candidate eligible for negotiated protocol",
 			protocol: 1,
-			dbType:   DtyNum,
+			dbType:   typeCommon.DtyNum,
 			setup: func(reg *codecRegistry[int16, *typeDecoder]) {
-				reg.Register(DtyNum, 3, dummyDecoderB)
+				reg.Register(typeCommon.DtyNum, 3, dummyDecoderB)
 			},
 			expectError: true,
 			errCode:     oracleErrors.InternalError,
@@ -253,9 +255,9 @@ func TestCodecFactory_getDecoder(t *testing.T) {
 		{
 			name:     "decoder type not registered",
 			protocol: 1,
-			dbType:   DtyChr,
+			dbType:   typeCommon.DtyChr,
 			setup: func(reg *codecRegistry[int16, *typeDecoder]) {
-				reg.Register(DtyNum, -1, dummyDecoderA)
+				reg.Register(typeCommon.DtyNum, -1, dummyDecoderA)
 			},
 			expectError: true,
 			errCode:     oracleErrors.InternalError,
@@ -325,7 +327,7 @@ func TestCodecFactory_getBindOac(t *testing.T) {
 				reg.Register(reflect.TypeOf(int64(0)), 1, dummyBindOacA)
 				reg.Register(reflect.TypeOf(int64(0)), 3, dummyBindOacB)
 			},
-			wantDataType: common.UB1(DtyChr),
+			wantDataType: common.UB1(typeCommon.DtyChr),
 		},
 		{
 			name:            "missing bind oac candidate",
@@ -369,6 +371,49 @@ func TestCodecFactory_getBindOac(t *testing.T) {
 				t.Fatalf("expected dataType %d, got %d", tc.wantDataType, got.dataType)
 			}
 		})
+	}
+}
+
+// TestCodecFactory_RefCursorRegistrations verifies that REF CURSOR metadata is
+// resolved through the named decoder and bind OAC constructors registered at
+// package initialization.
+func TestCodecFactory_RefCursorRegistrations(t *testing.T) {
+	t.Parallel()
+
+	factory := NewCodecFactoryForProtocol(MinTTCProtocolVersion)
+	decoder, err := factory.getDecoder(typeCommon.DtyCur)
+	if err != nil {
+		t.Fatalf("get REF CURSOR decoder: %v", err)
+	}
+	if got, want := decoder.getScanType(columnContext{}), reflect.TypeFor[driver.Rows](); got != want {
+		t.Fatalf("REF CURSOR scan type = %v, want %v", got, want)
+	}
+	value, err := decoder.decodeToType(columnContext{}, nil)
+	if err != nil {
+		t.Fatalf("decode REF CURSOR placeholder: %v", err)
+	}
+	if value != nil {
+		t.Fatalf("REF CURSOR placeholder = %v, want nil", value)
+	}
+
+	var rows datatype.Cursor
+	metadata := extractBindValueMetadata(sql.Out{Dest: &rows})
+	if got, want := metadata.goType, reflect.TypeFor[datatype.Cursor](); got != want {
+		t.Fatalf("normalized REF CURSOR bind type = %v, want %v", got, want)
+	}
+	oac, err := factory.getBindOac(metadata, 0)
+	if err != nil {
+		t.Fatalf("get REF CURSOR bind OAC: %v", err)
+	}
+	refCursorOac, ok := oac.(*tTIoac)
+	if !ok {
+		t.Fatalf("REF CURSOR OAC type = %T, want *tTIoac", oac)
+	}
+	if got, want := refCursorOac.dataType, common.UB1(typeCommon.DtyCur); got != want {
+		t.Fatalf("REF CURSOR OAC data type = %d, want %d", got, want)
+	}
+	if got, want := refCursorOac.maxLength, common.UB4(refCursorBindMaxLength); got != want {
+		t.Fatalf("REF CURSOR OAC max length = %d, want %d", got, want)
 	}
 }
 
@@ -482,6 +527,11 @@ func TestNormalizeBindValue_SQLNullTypes(t *testing.T) {
 			input:     sql.Out{Dest: &sql.NullString{String: "out", Valid: false}, In: true},
 			wantIsNil: true,
 		},
+		{
+			name:      "typed nil pointer",
+			input:     (*int)(nil),
+			wantIsNil: true,
+		},
 	}
 
 	for _, tc := range cases {
@@ -508,9 +558,9 @@ func TestCodecFactory_getDefineOac(t *testing.T) {
 	type testCase struct {
 		name         string
 		protocol     int8
-		dbType       DtyType
+		dbType       typeCommon.DtyType
 		columnCtx    columnContext
-		setup        func(reg *codecRegistry[DtyType, defineOacFunc])
+		setup        func(reg *codecRegistry[typeCommon.DtyType, defineOacFunc])
 		wantMaxLen   common.UB4
 		wantDataType common.UB1
 	}
@@ -519,29 +569,29 @@ func TestCodecFactory_getDefineOac(t *testing.T) {
 		{
 			name:      "selects highest compatible define oac constructor",
 			protocol:  3,
-			dbType:    DtyVCS,
-			columnCtx: columnContext{DataType: DtyVCS},
-			setup: func(reg *codecRegistry[DtyType, defineOacFunc]) {
-				reg.Register(DtyVCS, 1, dummyDefineOacA)
-				reg.Register(DtyVCS, 3, dummyDefineOacB)
+			dbType:    typeCommon.DtyVCS,
+			columnCtx: columnContext{DataType: typeCommon.DtyVCS},
+			setup: func(reg *codecRegistry[typeCommon.DtyType, defineOacFunc]) {
+				reg.Register(typeCommon.DtyVCS, 1, dummyDefineOacA)
+				reg.Register(typeCommon.DtyVCS, 3, dummyDefineOacB)
 			},
 			wantMaxLen:   define_maxlength_varchar,
-			wantDataType: common.UB1(DtyChr),
+			wantDataType: common.UB1(typeCommon.DtyChr),
 		},
 		{
 			name:         "falls back to scalar define oac when missing",
 			protocol:     1,
-			dbType:       DtyNum,
-			columnCtx:    columnContext{DataType: DtyNum},
-			setup:        func(reg *codecRegistry[DtyType, defineOacFunc]) {},
+			dbType:       typeCommon.DtyNum,
+			columnCtx:    columnContext{DataType: typeCommon.DtyNum},
+			setup:        func(reg *codecRegistry[typeCommon.DtyType, defineOacFunc]) {},
 			wantMaxLen:   define_maxlength_scalar,
-			wantDataType: common.UB1(DtyNum),
+			wantDataType: common.UB1(typeCommon.DtyNum),
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			defineReg := newCodecRegistry[DtyType, defineOacFunc]()
+			defineReg := newCodecRegistry[typeCommon.DtyType, defineOacFunc]()
 			if tc.setup != nil {
 				tc.setup(defineReg)
 			}

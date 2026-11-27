@@ -46,6 +46,7 @@ import (
 	"strings"
 	"testing"
 
+	typeCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	oracleErrors "github.com/oracle/go-oracledb/v26/oracle/errors"
 )
@@ -57,6 +58,30 @@ func Oall8Payload(lines []string) []byte {
 		return []byte{}
 	}
 	return buf[11:]
+}
+
+// TestRefCursorRowsExecutor verifies that the internal refcursor statement
+// returns its supplied rows without starting a TTC round trip.
+func TestRefCursorRowsExecutor(t *testing.T) {
+	t.Parallel()
+
+	executor := newRefCursorRowsExecutor()
+	rows := newTTCRows(nil)
+	got, err := executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: rows}})
+	if err != nil {
+		t.Fatalf("QueryContext: %v", err)
+	}
+	if got != rows {
+		t.Fatalf("QueryContext rows = %p, want %p", got, rows)
+	}
+	if _, err = executor.QueryContext(context.Background(), nil, nil); err == nil {
+		t.Fatal("QueryContext with no arguments unexpectedly succeeded")
+	} else if sqlErr, ok := err.(oracleErrors.SQLError); !ok || sqlErr.ErrorCode() != string(oracleErrors.StatementParsingInvalidArgCount) {
+		t.Fatalf("no-argument error = %v, want %s", err, oracleErrors.StatementParsingInvalidArgCount)
+	}
+	if _, err = executor.QueryContext(context.Background(), nil, []sqldriver.NamedValue{{Value: nil}}); err == nil {
+		t.Fatal("QueryContext with nil rows unexpectedly succeeded")
+	}
 }
 
 // Faulty shelf using FaultyArrayBasedDataBuffer via createMarshaller to inject read/write failures.
@@ -159,6 +184,32 @@ func newExecTestShelf(bufSize int) (*ttiShelf[common.MessageType], *MessageStrea
 	return shelf, streamer, buf
 }
 
+// TestConnectionGetRowsUsesCallerContext verifies that the connection fetches
+// a REF CURSOR with the context supplied by connectionWrapper.GetRows.
+func TestConnectionGetRowsUsesCallerContext(t *testing.T) {
+	t.Parallel()
+
+	shelf, _, _ := newExecTestShelf(1024)
+	streamer := &mockStreamer{pullMsg: &mockOer{}}
+	shelf.RegisterMessageStreamer(streamer)
+	rows := newRefCursorRows(41, []columnContext{{DataType: typeCommon.DtyVCS}})
+	shelf.addRefCursor(rows)
+	conn := &connection{shelf: shelf}
+
+	if err := conn.GetRows(context.Background(), rows); err != nil {
+		t.Fatalf("GetRows: %v", err)
+	}
+	if !streamer.pushCalled {
+		t.Fatal("deferred REF CURSOR fetch did not start a round trip")
+	}
+	if err := conn.GetRows(context.Background(), rows); err != nil {
+		t.Fatalf("second GetRows: %v", err)
+	}
+	if streamer.pushedMsg.Len() != 1 {
+		t.Fatalf("REF CURSOR fetch round trips = %d, want 1", streamer.pushedMsg.Len())
+	}
+}
+
 func makeOall8RPAPayloadFromDump(dump []string) []byte {
 	buf, _ := ExtractBytesFromDump(dump)
 	if len(buf) <= 11 {
@@ -188,9 +239,9 @@ func (s *testStringScanner) Scan(src any) error {
 
 func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T) {
 	t.Parallel()
-	decoderRegistry := newCodecRegistry[DtyType, *typeDecoder]()
+	decoderRegistry := newCodecRegistry[typeCommon.DtyType, *typeDecoder]()
 	if err := decoderRegistry.Register(
-		DtyVCS,
+		typeCommon.DtyVCS,
 		-1,
 		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
@@ -212,7 +263,7 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 		},
 		outDestPtrs: []any{dest},
 		outColumnContexts: []columnContext{
-			{DataType: DtyVCS},
+			{DataType: typeCommon.DtyVCS},
 		},
 	}
 
@@ -235,9 +286,9 @@ func TestStatementExecutorExec_HandleRXDRow_UsesScannerDestination(t *testing.T)
 
 func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T) {
 	t.Parallel()
-	decoderRegistry := newCodecRegistry[DtyType, *typeDecoder]()
+	decoderRegistry := newCodecRegistry[typeCommon.DtyType, *typeDecoder]()
 	if err := decoderRegistry.Register(
-		DtyVCS,
+		typeCommon.DtyVCS,
 		-1,
 		newTypeDecoder(func(columnContext, any) (sqldriver.Value, error) {
 			return "scanner-value", nil
@@ -259,7 +310,7 @@ func TestStatementExecutorExec_HandleRXDRow_PropagatesScannerError(t *testing.T)
 		},
 		outDestPtrs: []any{dest},
 		outColumnContexts: []columnContext{
-			{DataType: DtyVCS},
+			{DataType: typeCommon.DtyVCS},
 		},
 	}
 

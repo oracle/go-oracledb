@@ -454,6 +454,21 @@ func initMessagesEn() {
 	// Comment:  N/A
 	message.SetString(language.English, string(oracleErrors.InvalidIdentifier), "invalid SQL identifier")
 	// Document: No
+	// Cause:    The database returned incomplete ADT metadata or the metadata image could not be parsed.
+	// Action:   Verify the type definition and enable driver logging when investigating the metadata response.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.ADTMetadataError), "invalid ADT metadata")
+	// Document: No
+	// Cause:    The ADT object or collection image could not be encoded or decoded.
+	// Action:   Verify the supplied value matches its Oracle object or collection type.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.ADTEncodingError), "invalid ADT image")
+	// Document: No
+	// Cause:    An ADT API was used with an incompatible value or type.
+	// Action:   Use an object API for object types and a collection API for collection types.
+	// Comment:  N/A
+	message.SetString(language.English, string(oracleErrors.ADTValueError), "invalid ADT value or collection operation")
+	// Document: No
 	message.SetString(language.English, string(oracleErrors.ImplicitResultMessageCreationFailed), "failed to create implicit result message")
 	// Document: No
 	// Cause:    A REF CURSOR was fetched using a connection other than the one that opened it.

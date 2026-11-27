@@ -41,6 +41,7 @@ package ttc
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/oracle/go-oracledb/v26/internal/common"
 	driverCommon "github.com/oracle/go-oracledb/v26/internal/driver/common"
@@ -73,7 +74,7 @@ type tTIoac struct {
 	characterSetID driverCommon.UB2
 	// characterSetForm specifies the character set form (e.g., implicit/explicit, AL16UTF16, etc.)
 	characterSetForm driverCommon.UB1
-	// dataType is the wire protocol data type (e.g., DtyNum, DtyChr, etc.) for this column.
+	// dataType is the wire protocol data type (e.g., common.DtyNum, common.DtyChr, etc.) for this column.
 	dataType driverCommon.UB1
 	// flags holds protocol flags for binding/definition properties.
 	flags driverCommon.UB1
@@ -113,7 +114,7 @@ Usage:
 
 	Call this constructore before Marshalling the TTIoac for binding or defining a column.
 */
-func newTTIoac(typ DtyType, maxLength driverCommon.UB4) *tTIoac {
+func newTTIoac(typ common.DtyType, maxLength driverCommon.UB4) *tTIoac {
 	common.Odl.Finest("TTIoac.newTTIoac called", "requestedtype", typ, "maxLength", maxLength)
 	obj := &tTIoac{}
 	obj.requestedtype = typ
@@ -125,32 +126,32 @@ func newTTIoac(typ DtyType, maxLength driverCommon.UB4) *tTIoac {
 	   DTY type is negotiated with server during the TTC handshake.
 	   For example:
 
-	   For DtyVCS, we use DtyChr instead of DtyVCS because:
-	      typeRepresentationTable.addTypeRepToTable(DtyVCS, DtyChr, int16(RepCUnv))
+	   For common.DtyVCS, we use common.DtyChr instead of common.DtyVCS because:
+	      typeRepresentationTable.addTypeRepToTable(common.DtyVCS, common.DtyChr, int16(RepCUnv))
 	   refer to pkg_init for the mappings.
 	*/
 	switch typ {
-	case DtyVCS, DtyChr:
-		obj.dataType = driverCommon.UB1(DtyChr)
-	case DtyRdd:
-		obj.dataType = driverCommon.UB1(DtyRiD)
-	case DtyVnu, DtyNum:
-		obj.dataType = driverCommon.UB1(DtyNum)
-	case DtyVbi:
-		obj.dataType = driverCommon.UB1(DtyBin)
-	case DtyRSet:
-		obj.dataType = driverCommon.UB1(DtyCur)
+	case common.DtyVCS, common.DtyChr:
+		obj.dataType = driverCommon.UB1(common.DtyChr)
+	case common.DtyRdd:
+		obj.dataType = driverCommon.UB1(common.DtyRiD)
+	case common.DtyVnu, common.DtyNum:
+		obj.dataType = driverCommon.UB1(common.DtyNum)
+	case common.DtyVbi:
+		obj.dataType = driverCommon.UB1(common.DtyBin)
+	case common.DtyRSet:
+		obj.dataType = driverCommon.UB1(common.DtyCur)
 	default:
 		obj.dataType = driverCommon.UB1(typ)
 	}
 
-	if obj.dataType == driverCommon.UB1(DtyChr) || obj.dataType == driverCommon.UB1(DtyAfc) {
+	if obj.dataType == driverCommon.UB1(common.DtyChr) || obj.dataType == driverCommon.UB1(common.DtyAfc) {
 		obj.flagsContinuation = _uacFlagContinuationNoadj
 	} else {
 		obj.flagsContinuation = 0
 	}
 
-	if obj.dataType == driverCommon.UB1(DtyCur) {
+	if obj.dataType == driverCommon.UB1(common.DtyCur) {
 		obj.maxLength = 4
 	} else {
 		obj.maxLength = maxLength
@@ -181,7 +182,7 @@ Parameters:
   - prefetchSize: LOB prefetch size applied to codepointLengthLimit.
 */
 func newTTIOAcDefine(
-	typ DtyType,
+	typ common.DtyType,
 	maxLength driverCommon.UB4,
 	colCtx columnContext,
 	flags driverCommon.UB8,
@@ -196,55 +197,55 @@ func newTTIOAcDefine(
 }
 
 // newTTIOacString creates an OAC descriptor for string bind values using VARCHAR semantics.
-func newTTIOacString(maxLength driverCommon.UB4) driverCommon.Marshallable {
+func newTTIOacString(_ bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
 	if maxLength == 0 {
 		maxLength = converters.EmptyStringOacLength
 	}
-	return newTTIoac(DtyVCS, maxLength)
+	return newTTIoac(common.DtyVCS, maxLength), nil
 }
 
 // newTTIOacNumber creates an OAC descriptor for Oracle NUMBER values using the negotiated maximum NUMBER length.
-func newTTIOacNumber() driverCommon.Marshallable {
-	return newTTIoac(DtyNum, converters.MaxNumberLength)
+func newTTIOacNumber(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyNum, converters.MaxNumberLength), nil
 }
 
 // newTTIOacBytes creates an OAC descriptor for raw byte bind values.
-func newTTIOacBytes(maxLength driverCommon.UB4) driverCommon.Marshallable {
+func newTTIOacBytes(_ bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
 	if maxLength == 0 {
 		maxLength = converters.EmptyBytesOacLength
 	}
-	return newTTIoac(DtyVbi, maxLength)
+	return newTTIoac(common.DtyVbi, maxLength), nil
 }
 
 // newTTIOacNull creates an OAC descriptor for null bind values using the driver's null placeholder length.
-func newTTIOacNull() driverCommon.Marshallable {
-	return newTTIoac(DtyVCS, converters.MaxNullLength)
+func newTTIOacNull(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyVCS, converters.MaxNullLength), nil
 }
 
 // newTTIOacRefCursor creates an OAC descriptor for REF CURSOR bind values.
-func newTTIOacRefCursor(maxLength driverCommon.UB4) driverCommon.Marshallable {
-	return newTTIoac(DtyRSet, maxLength)
+func newTTIOacRefCursor(_ bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyRSet, maxLength), nil
 }
 
 // newTTIOacBoolV17 creates an OAC descriptor for pre-native-boolean representations that are sent as NUMBER values.
-func newTTIOacBoolV17(maxLength driverCommon.UB4) driverCommon.Marshallable {
-	return newTTIoac(DtyNum, maxLength)
+func newTTIOacBoolV17(_ bindValueMetadata, maxLength driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyNum, maxLength), nil
 }
 
 // newTTIOacBool creates an OAC descriptor for native Oracle BOOLEAN values.
-func newTTIOacBool() driverCommon.Marshallable {
-	return newTTIoac(DtyBol, converters.MaxBoolLength)
+func newTTIOacBool(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyBol, converters.MaxBoolLength), nil
 }
 
 // newTTIOacTime creates an OAC descriptor for timestamp-with-time-zone values.
-func newTTIOacTime() driverCommon.Marshallable {
-	return newTTIoac(DtyStz, converters.MaxTimeStampLength)
+func newTTIOacTime(_ bindValueMetadata, _ driverCommon.UB4) (driverCommon.Marshallable, error) {
+	return newTTIoac(common.DtyStz, converters.MaxTimeStampLength), nil
 }
 
-// newTTIOacJSONDefine creates a define OAC descriptor for JSON values with prefetch enabled.
+// newTTIOacJSONDefine requests Oracle's native JSON representation and
+// sufficient prefetch space for a complete OSON document.
 func newTTIOacJSONDefine(columnContext columnContext, _ driverCommon.UB4) driverCommon.Marshallable {
-	// for JSON we want to fetch all the doc
-	return newTTIOAcDefine(DtyJSON, max_lob_length, columnContext, uacfsald, _jsonPrefetchSize)
+	return newTTIOAcDefine(common.DtyJSON, max_lob_length, columnContext, uacfsald, _jsonPrefetchSize)
 }
 
 // newTTIOacClobDefine creates a define OAC descriptor for CLOB values using column metadata and LOB prefetch settings.
@@ -287,11 +288,11 @@ func (p *tTIoac) MarshalTo(ctx context.Context, mar driverCommon.Marshaller) err
 		return common.NewOracleError(oracleErrors.FailMarshal, err, "OAC")
 	}
 
-	if p.dataType == driverCommon.UB1(DtyNum) ||
-		p.dataType == driverCommon.UB1(DtyStamp) ||
-		p.dataType == driverCommon.UB1(DtyStz) ||
-		p.dataType == driverCommon.UB1(DtySitz) ||
-		p.dataType == driverCommon.UB1(DtyIds) {
+	if p.dataType == driverCommon.UB1(common.DtyNum) ||
+		p.dataType == driverCommon.UB1(common.DtyStamp) ||
+		p.dataType == driverCommon.UB1(common.DtyStz) ||
+		p.dataType == driverCommon.UB1(common.DtySitz) ||
+		p.dataType == driverCommon.UB1(common.DtyIds) {
 		if err := mar.MarshalUB2(ctx, driverCommon.UB2(p.scale)); err != nil {
 			common.Odl.Warn("MarshalTo: Failed to marshal scale as UB2", "error", err)
 			return common.NewOracleError(oracleErrors.FailMarshal, err, "OAC")
@@ -436,16 +437,16 @@ func (p *tTIoac) UnmarshalFrom(ctx context.Context, mar driverCommon.Marshaller)
 
 	if p.maxLength > 0 {
 		switch p.dataType {
-		case driverCommon.UB1(DtyNum):
+		case driverCommon.UB1(common.DtyNum):
 			p.maxLength = _oacMaxLengthNumber
-		case driverCommon.UB1(DtyDat):
+		case driverCommon.UB1(common.DtyDat):
 			p.maxLength = _oacMaxLengthDate
-		case driverCommon.UB1(DtyStz):
+		case driverCommon.UB1(common.DtyStz):
 			p.maxLength = _oacMaxLengthStampTZ
 		}
 	}
-	if common.Odl.Enabled(common.BackgroundContext, common.OlFinest) {
-		common.Odl.Finest("TTIoac.UnmarshalFrom completed", "struct", fmt.Sprintf("%+v", p))
+	if common.Odl.Enabled(common.BackgroundContext, slog.LevelDebug) {
+		common.Odl.Debug("TTIoac.UnmarshalFrom completed", "struct", fmt.Sprintf("%+v", p))
 	}
 	return nil
 }

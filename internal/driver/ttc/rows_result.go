@@ -92,7 +92,7 @@ type columnContext struct {
 	DBTypeName           driverCommon.B1Array
 	ScanType             *reflect.Type
 	Length               int64
-	DataType             DtyType
+	DataType             common.DtyType
 	Precision            int64
 	Scale                int8
 	KernelPosition       int
@@ -100,8 +100,15 @@ type columnContext struct {
 	CharsetForm          uint8
 	CharsetID            uint16
 	Nullable             bool
+	NamedTypeTOID        driverCommon.B1Array
+	NamedTypeVersion     uint16
+	objectType           *adtDescriptor
 	LobContext           *lobColumnContext
 	serverTimeZoneOffset int16
+	// skipRxdPayloadUnmarshal identifies a descriptor-only column. Oracle can
+	// describe a constant NULL expression in DCB metadata while omitting its
+	// payload from every RXD row.
+	skipRxdPayloadUnmarshal bool
 }
 
 // ttcRows implements database/sql/driver.Rows and optional ColumnType* interfaces.
@@ -188,23 +195,30 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 	payload := r.rowData[r.currentRowIdx][i]
 	colCtx.LobContext = payload.lob
 	colCtx.serverTimeZoneOffset = r.shelf.getServerTimeZoneOffset()
-	// Handle Oracle SQL NULL (typically raw length zero is NULL).
-	if payload.data == nil {
+	if (dtype == common.DtyINty || dtype == common.DtyNty) && len(colCtx.NamedTypeTOID) != 0 {
+		if descriptor := r.shelf.adtByTOID[string(colCtx.NamedTypeTOID)]; descriptor != nil {
+			colCtx.objectType = descriptor
+		}
+	}
+	// Preserve ordinary SQL NULL handling. Named types are dispatched to their
+	// registered decoder so they can retain their descriptor in a typed NULL.
+	if payload.data == nil && colCtx.objectType == nil {
 		return r.handleNull(i, dtype, scale), nil
 	}
 
-	data, raw := payload.data.(driverCommon.B1Array)
-	if !raw {
-		return payload.data, nil
+	if payload.data != nil {
+		if _, raw := payload.data.(driverCommon.B1Array); !raw {
+			return payload.data, nil
+		}
 	}
 
 	decoder, err := r.shelf.GetCodecFactory().getDecoder(dtype)
 	if err != nil || decoder == nil {
 		// Preserve unknown types as raw bytes
-		return data, nil
+		return payload.data, nil
 	}
 
-	val, err := decoder.decodeToType(colCtx, data)
+	val, err := decoder.decode(colCtx, payload.data)
 	if err != nil {
 		// Preserve the decoder error for localization.
 		return nil, r.shelf.LocalizeError(err)
@@ -226,7 +240,7 @@ func (r *ttcRows) decodeColumnValue(i int) (driver.Value, error) {
 // Outputs:
 //   - driver.Value representing the NULL substitution (for example 0, "", time.Time{}),
 //     or nil when no specific default applies.
-func (r *ttcRows) handleNull(i int, dtype DtyType, scale int8) driver.Value {
+func (r *ttcRows) handleNull(i int, dtype common.DtyType, scale int8) driver.Value {
 	if !r.strictNullHandlingValue {
 		if val, ok := _defaultValueForNull(dtype, scale); ok {
 			return val
@@ -253,7 +267,7 @@ func (r *ttcRows) handleNull(i int, dtype DtyType, scale int8) driver.Value {
 //
 // Numeric defaults consider scale to decide between integer, floating-point, or
 // decimal string representations.
-func _defaultValueForNull(dtype DtyType, scale int8) (driver.Value, bool) {
+func _defaultValueForNull(dtype common.DtyType, scale int8) (driver.Value, bool) {
 	if resolver, ok := defaultNullValueResolvers[dtype]; ok {
 		return resolver(scale)
 	}
@@ -277,42 +291,42 @@ func constantDefaultNullValue(value driver.Value) defaultNullValueResolver {
 // defaultNullValueResolvers defines the default substitution for TTC datatypes when
 // strict null handling is disabled. Numeric types are handled separately because the
 // default representation depends on scale metadata.
-var defaultNullValueResolvers = map[DtyType]defaultNullValueResolver{
-	DtyNum:      defaultNumericValue,
-	DtyVnu:      defaultNumericValue,
-	DtyInt:      defaultNumericValue,
-	DtyPdn:      defaultNumericValue,
-	DtyUin:      defaultNumericValue,
-	DtySls:      defaultNumericValue,
-	DtyIbFloat:  constantDefaultNullValue(float64(0)),
-	DtyIbDouble: constantDefaultNullValue(float64(0)),
-	DtyChr:      constantDefaultNullValue(""),
-	DtyStr:      constantDefaultNullValue(""),
-	DtyVCS:      constantDefaultNullValue(""),
-	DtyAfc:      constantDefaultNullValue(""),
-	DtyAvc:      constantDefaultNullValue(""),
-	DtyBin:      constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyVbi:      constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyLbi:      constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyBlob:     constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyDblob:    constantDefaultNullValue(driverCommon.B1Array{}),
-	DtyBol:      constantDefaultNullValue(false),
-	DtyDat:      constantDefaultNullValue(time.Time{}),
-	DtyEdate:    constantDefaultNullValue(time.Time{}),
-	DtyStamp:    constantDefaultNullValue(time.Time{}),
-	DtyEstamp:   constantDefaultNullValue(time.Time{}),
-	DtyStz:      constantDefaultNullValue(time.Time{}),
-	DtyEstz:     constantDefaultNullValue(time.Time{}),
-	DtySitz:     constantDefaultNullValue(time.Time{}),
-	DtyEsitz:    constantDefaultNullValue(time.Time{}),
-	DtyTime:     constantDefaultNullValue(time.Time{}),
-	DtyEtime:    constantDefaultNullValue(time.Time{}),
-	DtyTtz:      constantDefaultNullValue(time.Time{}),
-	DtyEttz:     constantDefaultNullValue(time.Time{}),
-	DtyIym:      constantDefaultNullValue("00-00"),
-	DtyEiym:     constantDefaultNullValue("00-00"),
-	DtyIds:      constantDefaultNullValue("00 00:00:00.0"),
-	DtyEids:     constantDefaultNullValue("00 00:00:00.0"),
+var defaultNullValueResolvers = map[common.DtyType]defaultNullValueResolver{
+	common.DtyNum:      defaultNumericValue,
+	common.DtyVnu:      defaultNumericValue,
+	common.DtyInt:      defaultNumericValue,
+	common.DtyPdn:      defaultNumericValue,
+	common.DtyUin:      defaultNumericValue,
+	common.DtySls:      defaultNumericValue,
+	common.DtyIbFloat:  constantDefaultNullValue(float64(0)),
+	common.DtyIbDouble: constantDefaultNullValue(float64(0)),
+	common.DtyChr:      constantDefaultNullValue(""),
+	common.DtyStr:      constantDefaultNullValue(""),
+	common.DtyVCS:      constantDefaultNullValue(""),
+	common.DtyAfc:      constantDefaultNullValue(""),
+	common.DtyAvc:      constantDefaultNullValue(""),
+	common.DtyBin:      constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyVbi:      constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyLbi:      constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyBlob:     constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyDblob:    constantDefaultNullValue(driverCommon.B1Array{}),
+	common.DtyBol:      constantDefaultNullValue(false),
+	common.DtyDat:      constantDefaultNullValue(time.Time{}),
+	common.DtyEdate:    constantDefaultNullValue(time.Time{}),
+	common.DtyStamp:    constantDefaultNullValue(time.Time{}),
+	common.DtyEstamp:   constantDefaultNullValue(time.Time{}),
+	common.DtyStz:      constantDefaultNullValue(time.Time{}),
+	common.DtyEstz:     constantDefaultNullValue(time.Time{}),
+	common.DtySitz:     constantDefaultNullValue(time.Time{}),
+	common.DtyEsitz:    constantDefaultNullValue(time.Time{}),
+	common.DtyTime:     constantDefaultNullValue(time.Time{}),
+	common.DtyEtime:    constantDefaultNullValue(time.Time{}),
+	common.DtyTtz:      constantDefaultNullValue(time.Time{}),
+	common.DtyEttz:     constantDefaultNullValue(time.Time{}),
+	common.DtyIym:      constantDefaultNullValue("00-00"),
+	common.DtyEiym:     constantDefaultNullValue("00-00"),
+	common.DtyIds:      constantDefaultNullValue("00 00:00:00.0"),
+	common.DtyEids:     constantDefaultNullValue("00 00:00:00.0"),
 }
 
 // defaultNumericValue calculates the default driver.Value to surface for
@@ -371,65 +385,65 @@ func newTTCRows(columnContexts []columnContext) *ttcRows {
 func (r *ttcRows) ColumnTypeDatabaseTypeName(index int) string {
 	// inline translation here waiting for refactor of our type registry
 	switch r.columnContexts[index].DataType {
-	case DtyChr:
+	case common.DtyChr:
 		if r.columnContexts[index].CharsetForm == 2 {
 			return "NVARCHAR2"
 		}
 		return "VARCHAR2"
-	case DtyNum, DtyVnu:
+	case common.DtyNum, common.DtyVnu:
 		if r.columnContexts[index].Precision != 0 && r.columnContexts[index].Precision == -127 {
 			return "FLOAT"
 		}
 		return "NUMBER"
-	case DtyLng:
+	case common.DtyLng:
 		return "LONG"
-	case DtyDat:
+	case common.DtyDat:
 		return "DATE"
-	case DtyBin:
+	case common.DtyBin:
 		return "RAW"
-	case DtyLbi:
+	case common.DtyLbi:
 		return "LONG RAW"
-	case DtyAfc:
+	case common.DtyAfc:
 		if r.columnContexts[index].CharsetForm == 2 {
 			return "NCHAR"
 		}
 		return "CHAR"
-	case DtyIbFloat:
+	case common.DtyIbFloat:
 		return "BINARY_FLOAT"
-	case DtyIbDouble:
+	case common.DtyIbDouble:
 		return "BINARY_DOUBLE"
-	case DtyCur:
+	case common.DtyCur:
 		return "REFCURSOR"
-	case DtyRdd, DtyBuri:
+	case common.DtyRdd, common.DtyBuri:
 		return "ROWID"
-	case DtyINty:
+	case common.DtyINty:
 		return "Internal Named Type" // enough for now
-	case DtyIref:
+	case common.DtyIref:
 		return "Internal Named Type" // enough for now
-	case DtyClob:
+	case common.DtyClob:
 		if r.columnContexts[index].CharsetForm == 2 {
 			return "NCLOB"
 		}
 		return "CLOB"
-	case DtyBlob:
+	case common.DtyBlob:
 		return "BLOB"
-	case DtyBFil:
+	case common.DtyBFil:
 		return "BFILE"
-	case DtyJSON:
+	case common.DtyJSON:
 		return "JSON"
-	case DtyVec:
+	case common.DtyVec:
 		return "VECTOR"
-	case DtyStamp:
+	case common.DtyStamp:
 		return "TIMESTAMP"
-	case DtyStz:
+	case common.DtyStz:
 		return "TIMESTAMP WITH TIME ZONE"
-	case DtyIym:
+	case common.DtyIym:
 		return "INTERVALYM"
-	case DtyIds:
+	case common.DtyIds:
 		return "INTERVALDS"
-	case DtySitz:
+	case common.DtySitz:
 		return "TIMESTAMP WITH LOCAL TIME ZONE"
-	case DtyBol:
+	case common.DtyBol:
 		return "BOOLEAN"
 	default:
 		common.Odl.Warn("Do not have name mapping", "type", r.columnContexts[index].DataType)
@@ -459,7 +473,7 @@ func (r *ttcRows) ColumnTypeNullable(index int) (bool, bool) {
 // the precision and scale for decimal types. If not applicable, ok should be false.
 func (r *ttcRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
 	dty := r.columnContexts[index].DataType
-	if dty == DtyNum || dty == DtyVnu {
+	if dty == common.DtyNum || dty == common.DtyVnu {
 		return r.columnContexts[index].Precision, int64(r.columnContexts[index].Scale), true
 	}
 

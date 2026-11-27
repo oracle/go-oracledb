@@ -57,6 +57,7 @@ import (
 	sqldriver "database/sql/driver"
 	"testing"
 
+	typeCommon "github.com/oracle/go-oracledb/v26/internal/common"
 	"github.com/oracle/go-oracledb/v26/internal/driver/common"
 	"github.com/oracle/go-oracledb/v26/oracle/datatype"
 )
@@ -436,7 +437,7 @@ func TestHandleRXDRow_AssignsDecodedValue(t *testing.T) {
 	var dest string
 	exec.outDestPtrs = []any{&dest}
 	exec.outColumnContexts = []columnContext{
-		{Index: 0, DataType: DtyVCS},
+		{Index: 0, DataType: typeCommon.DtyVCS},
 	}
 
 	// Build a fake tTIrxd carrying the wire bytes for "hello".
@@ -467,7 +468,7 @@ func TestHandleRXDRow_NullRefCursorClearsReusedDestination(t *testing.T) {
 		},
 	}
 	exec.outDestPtrs = []any{&dest}
-	exec.outColumnContexts = []columnContext{{Index: 0, DataType: DtyCur}}
+	exec.outColumnContexts = []columnContext{{Index: 0, DataType: typeCommon.DtyCur}}
 
 	rxd := newTTIrxd().(*tTIrxd)
 	rxd.row = testColumnRow([]common.B1Array{nil})
@@ -494,7 +495,7 @@ func TestHandleRXDRow_NilDestinationSkipped(t *testing.T) {
 
 	exec.outDestPtrs = []any{nil} // nil destination
 	exec.outColumnContexts = []columnContext{
-		{Index: 0, DataType: DtyVCS},
+		{Index: 0, DataType: typeCommon.DtyVCS},
 	}
 
 	rxd := newTTIrxd().(*tTIrxd)
@@ -523,8 +524,8 @@ func TestHandleRXDRow_MoreDestsThanReturnedValues(t *testing.T) {
 	var dest2 string = "sentinel2"
 	exec.outDestPtrs = []any{&dest1, &dest2}
 	exec.outColumnContexts = []columnContext{
-		{Index: 0, DataType: DtyVCS},
-		{Index: 1, DataType: DtyVCS},
+		{Index: 0, DataType: typeCommon.DtyVCS},
+		{Index: 1, DataType: typeCommon.DtyVCS},
 	}
 
 	// Server only returned one value.
@@ -559,7 +560,7 @@ func TestHandleRXDRow_NilWireValue_SkipsAssignment(t *testing.T) {
 
 	exec.outDestPtrs = []any{new("original")}
 	exec.outColumnContexts = []columnContext{
-		{Index: 0, DataType: DtyVCS},
+		{Index: 0, DataType: typeCommon.DtyVCS},
 	}
 
 	// Nil wire payload – decoder returns nil → assignment skipped.
@@ -569,14 +570,14 @@ func TestHandleRXDRow_NilWireValue_SkipsAssignment(t *testing.T) {
 	if err := exec.handleRXDRow(rxd); err != nil {
 		t.Fatalf("handleRXDRow returned error for nil wire value: %v", err)
 	}
-	// The decoder for DtyVCS called with nil data returns "".
+	// The decoder for typeCommon.DtyVCS called with nil data returns "".
 	// An empty string IS a valid decoded value (not nil), so the field gets assigned "".
 	// This is acceptable behaviour for an empty/null string wire payload.
 	// The important thing is: no panic and no error.
 }
 
 // TestHandleRXDRow_RawBytes_AssignedToByteSlice verifies that raw bytes in the wire
-// payload are assigned to a []byte destination via the registered DtyBin decoder.
+// payload are assigned to a []byte destination via the registered typeCommon.DtyBin decoder.
 func TestHandleRXDRow_RawBytes_AssignedToByteSlice(t *testing.T) {
 	t.Parallel()
 	shelf := newShelf[common.MessageType]()
@@ -591,7 +592,7 @@ func TestHandleRXDRow_RawBytes_AssignedToByteSlice(t *testing.T) {
 	var dest []byte
 	exec.outDestPtrs = []any{&dest}
 	exec.outColumnContexts = []columnContext{
-		{Index: 0, DataType: DtyBin},
+		{Index: 0, DataType: typeCommon.DtyBin},
 	}
 
 	payload := common.B1Array{0xDE, 0xAD, 0xBE, 0xEF}

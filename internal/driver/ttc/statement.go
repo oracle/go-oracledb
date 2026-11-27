@@ -130,6 +130,7 @@ type Statement struct {
 	queryStatementExecutor QueryWithContext
 	execStatementExecutor  ExecWithContext
 	_rows                  driver.Rows // reference on created Rows.
+	adtConnection          *connection
 }
 
 /*
@@ -202,6 +203,11 @@ Implementation details:
 Callers must fully consume and Close the returned Rows.
 */
 func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if s.adtConnection != nil {
+		if err := s.adtConnection.resolveADTMetadata(ctx, args); err != nil {
+			return nil, s.shelf.LocalizeError(err)
+		}
+	}
 	subContext, cancelSubContext, cleanup := s.createSubContextWithCancelAfterfunction(ctx)
 	defer cleanup()
 
@@ -223,6 +229,15 @@ func (s *Statement) QueryContext(ctx context.Context, args []driver.NamedValue) 
 		return nil, err
 	}
 
+	if e == nil && s.adtConnection != nil {
+		if rows, ok := selectedRows.(*ttcRows); ok {
+			if err := s.adtConnection.resolveADTColumns(ctx, rows.columnContexts); err != nil {
+				_ = selectedRows.Close()
+				s._rows = nil
+				return nil, s.shelf.LocalizeError(err)
+			}
+		}
+	}
 	return selectedRows, s.shelf.LocalizeError(e)
 }
 
@@ -233,18 +248,12 @@ func (s *Statement) _closeCursor() error {
 	}
 	msg, err := s.shelf.GetMessageFactory().(Factory).GetMessageForFunction(TTIPFN, occa)
 	if err != nil {
-		common.Odl.Error("Statement.Close: GetMessageForFunction(TTIPFN,occa) failed", "error", err)
 		return s.shelf.LocalizeError(err)
 	}
-
-	common.Odl.Debug("Closing cursorID", "ID", s.qualifiedQuery.cursorID)
 	occaMsg := msg.(*tTIOcca)
 	occaMsg.setCursorIDs([]driverCommon.UB4{driverCommon.UB4(s.qualifiedQuery.cursorID)})
-
-	// Push (no flush; keep existing previous behavior).
-	stmr := s.shelf.GetMessageStreamer().(MessageStreamerInterface)
-	if err := stmr.Push(context.Background(), occaMsg); err != nil {
-		common.Odl.Error("Statement.Close: Push(OCCA) failed", "error", err)
+	streamer := s.shelf.GetMessageStreamer().(MessageStreamerInterface)
+	if err := streamer.Push(context.Background(), occaMsg); err != nil {
 		return s.shelf.LocalizeError(err)
 	}
 	s.qualifiedQuery.cursorID = 0
@@ -301,6 +310,11 @@ Implementation details:
 The returned Result may expose rows-affected metadata when the server provides it.
 */
 func (s *Statement) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	if s.adtConnection != nil {
+		if err := s.adtConnection.resolveADTMetadata(ctx, args); err != nil {
+			return nil, s.shelf.LocalizeError(err)
+		}
+	}
 	subContext, cancelSubContext, cleanup := s.createSubContextWithCancelAfterfunction(ctx)
 	defer cleanup()
 
